@@ -1,7 +1,7 @@
 # WorkBuddy 技术架构逆向分析（本机实测）
 
 > 分析方式：对本机安装的 WorkBuddy 桌面端做文件级逆向分析（安装目录、配置目录、工作目录），不含任何动态调试或破解行为。
-> 姊妹文档：[workbuddy.md](workbuddy.md)（产品层面分析）。
+> 姊妹文档：[workbuddy.md](workbuddy.md)（产品层面分析）、**[workbuddy-extension-system.md](workbuddy-extension-system.md)（扩展系统专项：专家/技能/连接器/插件的动态加载机制，含 WorkPivot 实现参考）**。
 > 隐私说明：本文只引用结构与机制，不引用本机用户的记忆内容与密钥原文。
 
 - **分析人**：ZCode
@@ -163,6 +163,7 @@
 ```
 
 即专家 = 插件包（prompt + 技能 + 头像）+ 行业分类 ID + 预置开场白，支持自定义专家。
+（专家插件的完整 manifest、召唤流程、市场分发机制详见 [workbuddy-extension-system.md](workbuddy-extension-system.md) §4。）
 
 ### 3.4 团队智能体
 
