@@ -1,0 +1,165 @@
+# 开源项目分析：OpenWorkBuddy（WorkBuddy 的极简开源复刻）
+
+> 分析方式：源码级分析（E:\project\openworkbuddy，v0.1.0 全量 137 文件）+ README（48KB）与《架构优化路线》文档精读。
+> 姊妹文档：[workbuddy.md](workbuddy.md) 系列（被复刻对象）、[myagents.md](myagents.md)（另一条技术路线的开源实现）——文末有三者对照。
+
+- **分析人**：ZCode
+- **日期**：2026-08-27
+- **先回答一个问题**：这个仓库**是完整可运行的源码**，不是文档集——之所以看起来像「开发心得」，是因为 README 写了 48KB 的产品级长文，docs/ 里的《架构优化路线》是按「为什么/怎么做/怎么算做完」格式写的工程复盘，工程经验浓度远超一般开源项目。**代码本体是一个刻意保持极简的手写 Agent 工作台**。
+
+---
+
+## 1. 项目身份
+
+| 项 | 值 |
+|----|-----|
+| 定位 | **腾讯 WorkBuddy 的开源复刻版**（作者自述，与腾讯无关联）：一句话下任务，AI 自主规划执行，交付可验收的 PPT/Word/Excel/网页/报告文件 |
+| 作者 | 开发者猫叔（GitHub: CatCatUncle），单人项目 |
+| 许可 | **PolyForm Noncommercial 1.0.0**（个人/学习/学术/政府免费，**商用需单独授权**）⚠️ |
+| 版本 | v0.1.0（2026-08 活跃迭代，架构路线文档显示 P0-P5 优化已全部收官） |
+| 技术栈 | **纯 Node.js（CommonJS）+ Electron 43 + Express 4，无构建步骤、无前端框架** |
+| 模型 | OpenAI 兼容 + Anthropic 双协议；DeepSeek/通义/智谱/Kimi/火山/OpenRouter/**Ollama 本地**，界面点选热切换 |
+| 依赖清单 | 仅 10 个运行时依赖：express、electron、@larksuiteoapi/node-sdk、docx、exceljs、pptxgenjs、mermaid、echarts、@viz-js/viz、qrcode——**agent 主循环、SSE、多租户、安全中心全部手写** |
+
+产品哲学（README 原文转述）：东西都在你自己手里（自托管、默认只听 127.0.0.1）；不被一家模型绑死；交付的是文件不是聊天记录；**代码是给人读的**——「想学 agent 到底怎么转，clone 下来就能顺着读」。
+
+## 2. 架构与代码组织
+
+**单进程 Electron 应用，main 进程里住着一个 Express 服务和一个手写的 agent 循环，前端是无构建单文件页面**（后拆为 6 个顺序加载的经典脚本 `app-01.js~06.js`，逐字节等价拆分）。
+
+| 文件 | 大小 | 职责 |
+|------|------|------|
+| `server.js` | 137KB | Web API + SSE 全部端点（会话/设置/评测/技能/记忆） |
+| `agent.js` | 81KB | Agent 运行时：步循环 + 自动续跑外循环 + 子代理递归；协调者用 `delegate_to_expert`/`delegate_to_team` 委派 |
+| `tools.js` | 84KB | ~20 个内置工具 + 写后自检（JS/JSON/MD/HTML/PY/SH 语法级校验） |
+| `llm.js` | 26KB | 多模型适配（OpenAI 兼容 + Anthropic）+ **工具调用泄漏救援** + embedding |
+| `skills.js` + `skills/` | 18KB | 技能加载器；14 个内置技能（SKILL.md 热加载，改完下一条任务即生效） |
+| `plugins.js` | 23KB | **Agent Plugins 1.0.0**（agent-plugins.org 开放标准）：一个包同时带技能和 MCP |
+| `mcp.js` | 12KB | MCP 客户端（stdio / Streamable HTTP） |
+| `security.js` | 23KB | 安全中心：命令审批闸门、DANGER_PATTERNS 高危表、黑白名单、URL 白名单、审计日志 |
+| `account.js` | 23KB | 多用户账号、用量、可选积分额度 |
+| `memory.js` | 14KB | 双层记忆（手写区 + 条目区），向量召回 |
+| `im.js` + 3 个适配器 | 63KB | IM 总线：飞书/QQ/企微/微信(iLink/公众号)/钉钉/通用 Webhook |
+| `scheduler.js` | 13KB | cron 定时任务（错过补跑） |
+| `experts.json` | 15KB | **12 位专家 + 4 个专家团**的单文件定义 |
+| `store.js` | 4KB | JSON 落盘：原子写 + `.bak` 兜底 + 坏文件隔离 |
+| `pet.js` / `electron-main.js` / `cli.js` | - | 桌面宠物（状态可视化挂件）/ 桌面壳 / 命令行 |
+| `eval/` | - | 评测系统 v2（15 题黑盒 + 机器判分 + AI 评委 + 基线管理） |
+
+数据全部是 JSON 文件（`data/`），无数据库。**明确不做**（架构文档原文）：微服务/k8s/独立数据库/前端框架/向量库服务/多租户硬隔离——「这是个人 agent，不是 SaaS」。
+
+## 3. 对 WorkBuddy 功能的复刻方式（与正版对照）
+
+| WorkBuddy 的实现 | OpenWorkBuddy 的极简实现 |
+|------------------|--------------------------|
+| 专家 = 插件包 + agents/*.md + 双语元数据 + 市场 | **experts.json 单文件**：name/alias(花名)/avatar(emoji)/category/tags/skills(干活前自动提示加载)/system(喂给子智能体的提示词)；专家团 = members 数组按序接力（后一位能看到前一位的汇报和产出） |
+| 技能市场 + 插件缓存 + 版本管理 | `skills/` 目录，一个 SKILL.md 一个技能，**每次任务重读磁盘**（免重启热更新） |
+| 插件体系（.codebuddy-plugin） | **Agent Plugins 1.0.0 开放标准**（agent-plugins.org）+ MCP，不自造格式 |
+| 连接器 = 远程 MCP + 本地聚合代理 | mcp.js 直连（stdio / Streamable HTTP），工具自动注入 agent |
+| 记忆：四层 Markdown 体系 | **双层**：手写区（全局共享、界面编辑）+ 条目区（`remember`/`forget` 工具，按账号隔离、去重、超量丢最旧）；召回 = 0.7×余弦 + 0.3×中文二元组（超 6000 字预算才筛，无向量退关键词） |
+| 助理 = 固定文件夹单会话 + claw 通道 | 助理模式：本地通道 + IM @机器人 流入同一历史 |
+| 权限：默认/完全访问 + 沙箱 | 四档：只看不动/每步都问/自动改文件/全自动（参考 Claude Code）；**无沙箱**（已知债，软护栏：DANGER_PATTERNS 全档位拦截 + 删除保护） |
+| 自动化：本地配置 + 小程序推送 | cron + 错过补跑 + 结果推 IM |
+| 桌面宠物（WorkBuddy 无此功能） | pet.js 透明置顶挂件：敲键盘=干活/跳起=有问题问你/撒花=完成/掉汗=出错；用户可传照片现场生成 |
+
+## 4. 独有亮点（WorkBuddy/MyAgents 都没有的）
+
+### 4.1 评测驱动的 Agent 开发闭环（最值得学）
+
+- 15 道分层任务（L1 基础/L2 进阶陷阱/L3 高难多约束），整 agent 当黑盒考
+- **pass@1 均值**（能不能）+ **k 次全过 pass^k**（稳不稳，τ-bench 思路）；时过时不过标 ⚡
+- **AI 评委只判 是/否**（不打会漂移的印象分）；失败自动归成确定性死因码（超时/死循环/没交产物/内容不对）
+- 📌 设为基线 → 之后每轮自动逐题对比、**退步点名**；架构路线明确「提示词/工具描述改动 = 必跑 eval」
+- `npm run eval -- --repeat 3 --judge Y --save-baseline`，模拟 LLM 跑 `npm test` 不需要 API Key
+
+### 4.2 成果核验与 Goal 验收（把「交付」做实）
+
+- **成果核验闸门**：声称写了文件但磁盘上没有 / 0 字节空壳 → 打回重做（最多 2 次）
+- Goal 模式：目标拆成可验收清单，每轮由「验收员」逐条核对——**不只看汇报，还对成果文件做机器实测**（JS 语法/JSON 解析/HTML 截断检查），未达成自动补跑（最多 3 轮）
+
+### 4.3 长任务韧性（自动续跑把任务拉到小时级后的整套治理）
+
+| 机制 | 实现 |
+|------|------|
+| 强制收尾 | 撞步数/时长上限时额外发一次**不带工具的请求**，只答三件事：做完了什么/产出了哪些真实存在的文件/下次从哪接着做（用户手动停止不做，省钱） |
+| 自动续跑 | `auto_continue_rounds` + **PROGRESS.md 断点纪律**（大任务第一步建进度档，写在系统提示词里；后升级为框架自动注入） |
+| 卡循环检测 | 同工具+同入参+同结果 3 次→注入提醒换思路；5 次→拦截不执行（键带结果指纹，「改一遍读一遍」不误伤） |
+| token 预算护栏 | 整棵任务树（含专家、含续跑）共享用量闸，80% 预警、超限强制收尾且不再续跑 |
+| 备用渠道换道 | 真实死因数据（199 轮次里超时杀 7、busy 杀 3）驱动：挂起/硬错误触发 `failover_model`，一次封顶、大声播报、**绝不静默降级**用户配置 |
+| 重启中断标记 | `data/running.json` 起跑写入收尾清除，启动清算补中断说明 |
+| 睡眠治理 | 10s 心跳测睡眠（钟差>5s），任务中合盖：时限顺延、计时器重置、前端出 💤 事件 |
+
+### 4.4 上下文中枢（明确标注「借鉴 pi agent (earendil-works/pi)」）
+
+- 任务中**分轮压缩**（用户轮不够切时退到助手消息边界，工具调用/结果永远成对，切点向前搜索）
+- 结构化摘要固定小节（目标/已完成/进行中/关键决定/下一步/关键上下文）+ **确定性文件清单**（从工具调用机械提取，不靠摘要模型转述，跨压缩累计）
+- 最近的用户指令原文机械保留
+- 项目挂载自动读 AGENTS.md / CLAUDE.md（截 6000 字符）
+
+### 4.5 联网与渲染的实战补丁（被中转层坑出来的）
+
+- **工具调用泄漏救援**：DeepSeek 类模型的工具调用特殊 token 经中转层不解码进 `tool_calls` 而混入正文 → 模型开始**编造抓取结果**；llm.js 识别标记还原成真调用，流式闸门防漏到界面，半截参数整个丢弃
+- 浏览器化请求头（原 UA 被 B 站/微博 412 风控）；JSON 原样返回；GBK 按真实字符集解码；PDF/图片下载成文件不塞正文
+- 动态页面用 Electron 自带 Chrome 真渲染兜底；抓取失败必须「说清为什么 + 列出还能换哪几条路」，同一目标至少真试三种路子才许说做不到，**不许把选择题丢回给用户**
+- `gen_diagram` 一个工具四条渲染管线（mermaid/Graphviz WASM/ECharts SSR/PlantUML）全本机离线出 SVG+2x PNG（飞书云文档只收位图）
+- 回复正文直接写 ```svg 围栏，流式逐帧重画（图一笔一笔长出来）；SVG 清洗（script/foreignObject/on*/外链）+ `<style>` 作用域锁死在图内
+
+### 4.6 其他
+
+- **只读工具并发**（web_search/fetch_url/read_file 并发上限 3，混入写操作整批退串行；过程卡按调用 id 配对）
+- 模型健康账本（滚动近 20 次成败，连挂 ≥2 标红）
+- 数据备份（tar 全家桶）+ 记忆搬家（扫描导入 Claude Code/Codex/Cowork/WorkBuddy 的记忆文件）
+- 启动 30 秒白窗根修（探活只认 r.ok 而 /api/info 在登录守卫后回 401；改为任何 HTTP 应答算活：31682ms → 629ms）
+
+## 5. 三条技术路线对照（本仓库研究全景）
+
+| 维度 | WorkBuddy（商业） | MyAgents（开源·工程派） | OpenWorkBuddy（开源·极简派） |
+|------|------------------|------------------------|----------------------------|
+| 桌面框架 | Electron + 内嵌 CodeBuddy CLI | Tauri v2 + Rust + Node Sidecar | Electron main 里直接住 Express |
+| Agent 内核 | CodeBuddy CLI（genie） | Claude Agent SDK + 可换 3 种外部 CLI | **纯手写 agent 循环**（~81KB） |
+| 代码规模 | asar 283MB | 中大型 TS 单仓（严格分层） | **~15 个 JS 文件，零抽象** |
+| 扩展格式 | 自有插件体系 | MCP + Anthropic Skills + OpenClaw 插件 | MCP + SKILL.md + **Agent Plugins 1.0.0** |
+| 记忆 | 四层 Markdown + memorySelector | OpenMino 三层 + 托管维护任务 | 双层 JSON + 混合召回 |
+| 工程方法论 | 企业级（策略/审计/市场） | Owner 模型 + fail-closed + 测试分层 | **评测驱动开发 + 真实死因数据驱动** |
+| 文档 | 官方文档站 | 架构文档 1169 行 | README 48KB + 架构复盘（为什么/怎么做/怎么算做完） |
+| 许可 | 闭源 | AGPL + 商业双轨 | PolyForm 非商业 + 商业授权 |
+
+## 6. 对 WorkPivot 的启示
+
+**必须学的（方法论层面，无许可风险）：**
+
+1. **评测驱动开发是 Agent 产品的质量地基**：黑盒题库 + pass@1/pass^k + 是非评委 + 死因码 + 基线对比退步点名——WorkPivot 从第一天就该建 `eval/`，把「改提示词必跑评测」写进研发流程（这正是 WorkBuddy 以 2 天一版高速迭代还能稳住质量的隐形能力，OpenWorkBuddy 把它开源化了）
+2. **成果核验闸门 + Goal 验收员的机器实测**：「声称交付但文件不存在/空壳打回重做」应成为 WorkPivot 任务系统的硬规则
+3. **长任务韧性六件套**（强制收尾/PROGRESS.md 续跑/卡循环检测/token 预算/换道/中断标记）是小时级任务的必备护栏，全部低成本可复制
+4. **真实死因数据驱动优化**：先统计「任务怎么死的」再对症下药（超时/busy 占大头 → 换道优先级最高）
+5. **上下文工程**：工具结果分级压缩 + 确定性文件清单（机械提取不靠模型转述）+ 最近用户指令原文保留——直接可抄的设计
+6. **联网工具的实战补丁清单**（泄漏救援/浏览器头/GBK/渲染兜底/失败给替代路径）是踩过坑的完整 checklist
+7. **多租户的诚实表述**值得效仿：README 明写「应用层挡不住成员读别人产出」——WorkPivot 做企业多租户时，隔离必须做到进程/容器级，不能只做账号级
+
+**不能学的（架构层面）：**
+
+- 单文件大 JS、无构建、无类型、无沙箱是**单人项目的性格**，企业级产品不可复制；数据 JSON 文件化同理
+- 无沙箱 + 高危表软护栏只适合个人桌面；WorkPivot 私有化交付必须真沙箱（参考 WorkBuddy sandbox-cli / MyAgents 的进程隔离）
+
+**许可警示（比 AGPL 更严）：**
+
+- PolyForm Noncommercial：**任何商业使用都需作者授权**。与 MyAgents（AGPL，可避）不同，这个项目**一行代码都不能进 WorkPivot**，只能读它的文档学经验——恰好它的价值也主要在文档与设计思想
+
+## 7. 待深挖项
+
+- [ ] `agent.js` 委派循环与会话/上下文传递的完整读码（81KB，协调者-专家模式的最小实现范本）
+- [ ] `eval/run.js` 评测框架源码（作为 WorkPivot eval 体系的参考原型）
+- [ ] Agent Plugins 1.0.0 标准规范（agent-plugins.org）——值得纳入 WorkPivot 插件格式评估
+- [ ] 与 pi agent（earendil-works/pi）上下文压缩设计的对照（OpenWorkBuddy 与 MyAgents 都引用了它）
+
+## 附：快速验证路径（本机）
+
+| 想看什么 | 去哪里 |
+|----------|--------|
+| 产品全貌与实现细节 | `E:\project\openworkbuddy\README.md`（48KB，按目录跳读） |
+| 工程经验核心 | `docs/架构优化路线_2026-08.md`（P0-P5 + 五个追加专题） |
+| 手写 agent 循环 | `agent.js`（委派工具定义在文件头部） |
+| 专家极简实现 | `experts.json`（含字段说明注释） |
+| 技能格式 | `skills/ppt-design/SKILL.md` 等 14 个 |
+| 评测方法论 | `docs/评测方法论.md` + `eval/` |
+| 安全软护栏 | `security.js`（DANGER_PATTERNS） |

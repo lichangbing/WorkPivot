@@ -24,6 +24,7 @@
 | Coze（扣子） | Agent 构建平台 | ⬜ 待补充 |
 | Microsoft 365 Copilot | 国际标杆，办公套件 + AI | ⬜ 待补充 |
 | MyAgents（开源） | **开源参考实现**：Tauri v2 + Claude Agent SDK 桌面个人 Agent 工作台（AGPL）——桌面端技术选型与架构参考 | 源码级分析：[myagents.md](competitors/myagents.md) ✅ |
+| OpenWorkBuddy（开源） | **WorkBuddy 的极简开源复刻**（纯手写 agent 循环 + 评测驱动开发）——agent 工程经验宝库；PolyForm 非商业许可，只学思想不抄码 | 源码级分析：[openworkbuddy.md](competitors/openworkbuddy.md) ✅ |
 
 新建竞品分析请复制 [competitors/_template.md](competitors/_template.md)。
 
