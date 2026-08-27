@@ -1,8 +1,10 @@
 # 竞品分析：WorkBuddy（腾讯）
 
-> ⚠️ 初稿：基于 2026-08-27 的公开资料整理，尚未实测产品。待补充：实际体验、企业版定价、私有化交付细节。
+> ⚠️ 初稿：基于 2026-08-27 的公开资料整理。~~待补充：实际体验、企业版定价、私有化交付细节~~ → **定价与私有化流程已由官方文档补齐**（见下）。
 >
 > 📐 **技术架构深度拆解**（本机实测逆向：架构/存储/记忆/安全）：[workbuddy-technical-analysis.md](workbuddy-technical-analysis.md)
+> 🧩 **扩展系统专项**（专家/技能/连接器/插件动态加载）：[workbuddy-extension-system.md](workbuddy-extension-system.md)
+> 📖 **官方文档调研纪要**（功能·流程·企业版定价/私有化）：[workbuddy-official-docs.md](workbuddy-official-docs.md)
 > —— 关键结论：Electron + 内嵌 CodeBuddy CLI 运行时 + OpenClaw 式记忆/通道层；存在 product.selfhosted.json 私有化形态（单模型、关遥测）；API key 明文存储为安全短板。
 
 - **分析人**：ZCode（初始整理）

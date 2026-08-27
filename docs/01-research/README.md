@@ -18,7 +18,7 @@
 
 | 竞品 | 类型 | 分析文档 |
 |------|------|----------|
-| WorkBuddy（腾讯） | 企业 AI 智能体工作台，最直接对标 | 产品分析：[workbuddy.md](competitors/workbuddy.md) ✅ 初稿<br>技术拆解（本机逆向）：[workbuddy-technical-analysis.md](competitors/workbuddy-technical-analysis.md) ✅<br>扩展系统专项（专家/技能/连接器/插件动态加载）：[workbuddy-extension-system.md](competitors/workbuddy-extension-system.md) ✅ |
+| WorkBuddy（腾讯） | 企业 AI 智能体工作台，最直接对标 | 产品分析：[workbuddy.md](competitors/workbuddy.md) ✅ 初稿<br>技术拆解（本机逆向）：[workbuddy-technical-analysis.md](competitors/workbuddy-technical-analysis.md) ✅<br>扩展系统专项（专家/技能/连接器/插件动态加载）：[workbuddy-extension-system.md](competitors/workbuddy-extension-system.md) ✅<br>官方文档纪要（功能/流程/企业版定价/私有化）：[workbuddy-official-docs.md](competitors/workbuddy-official-docs.md) ✅ |
 | 钉钉 AI 助理 | IM + AI 助理生态 | ⬜ 待补充 |
 | 飞书智能伙伴 | 协同办公 + AI | ⬜ 待补充 |
 | Coze（扣子） | Agent 构建平台 | ⬜ 待补充 |
