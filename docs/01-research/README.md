@@ -9,7 +9,7 @@
 | 1 | 竞品分析 | `competitors/` | WorkBuddy 等标杆产品的功能、架构、商业模式是什么？我们学什么、避什么？ | 🔴 高 | 🔄 进行中 |
 | 2 | 技术调研 | `tech/` | 后端技术栈、桌面端框架（Electron/Tauri）、LLM 编排、RAG、私有化部署方案如何选型？ | 🔴 高 | 🔄 进行中 |
 | 2a | Cordis 动态插件架构 | `tech/` | DeepSeek Harness 实证：插件/技能动态生成+热加载+页面状态（MIT 可用）；编排内核选型首选候选 | 🔴 高 | ✅ [01-cordis-动态插件架构.md](tech/01-cordis-动态插件架构.md) |
-| 2b | 桌面端框架选型 | `tech/` | Electron vs Tauri v2：基于 MyAgents(Tauri/95MB) 与 WorkBuddy+OWB(Electron/500MB) 三产品实测对照；倾向 Tauri v2 + 三分离形态，待 Rust 承载力 PoC | 🔴 高 | ✅ [02-桌面端框架选型.md](tech/02-桌面端框架选型.md) |
+| 2b | 桌面端框架选型 | `tech/` | Electron vs Tauri v2：基于 MyAgents(Tauri/95MB) 与 WorkBuddy+OWB(Electron/500MB) 三产品实测对照 | 🔴 高 | ✅ **已定 Electron**（形态 A 起步→A' 演进）：[02-桌面端框架选型.md](tech/02-桌面端框架选型.md) |
 | 3 | 市场调研 | `market/` | 目标客群是谁？市场规模多大？私有化交付的竞争格局如何？ | 🟡 中 | ⬜ 未开始 |
 | 4 | 用户调研 | `users/` | 企业用户现有的办公/AI 使用场景与痛点是什么？愿意为什么付费？ | 🟡 中 | ⬜ 未开始 |
 | 5 | 结论汇总 | `conclusions/` | 汇总以上研究，形成产品定位与技术路线的初步决策建议 | 🔴 高 | ⬜ 未开始 |

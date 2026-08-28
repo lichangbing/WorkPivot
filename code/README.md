@@ -3,11 +3,12 @@
 > ⚠️ 本目录为**占位**：后端技术栈与整体架构待 `docs/01-research/tech/` 调研定案
 >（并落 ADR 于 `docs/02-design/decisions/`）后，再按结论建立实际工程目录。
 
-## 已确定的技术约束（截至 2026-08-27）
+## 已确定的技术约束（截至 2026-08-28）
 
 - **交付模式**：私有化部署（架构须支持内网环境、离线安装交付）
-- **客户端**：桌面端必有（框架 Electron vs Tauri 待调研）；Web 端、IM 接入待定
-- **后端技术栈**：待定（候选：Java/Spring Boot、Python/FastAPI、Node.js/NestJS 或混合架构）
+- **客户端**：桌面端必有，**框架已定 Electron**（MVP 用「主进程同居」形态起步，按压力信号演进到「运行时拆子进程」形态，见 docs/01-research/tech/02）
+- **技术栈**：全栈 TypeScript/Node（Electron 决策的连带收敛；编排内核倾向 Cordis + jiti，待 PoC 落 ADR）
+- **Web 端 / IM 接入**：待定（见需求清单开放问题 Q2/Q3）
 
 ## 建议的 monorepo 布局（定案后参考，非最终结论）
 
