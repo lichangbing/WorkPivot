@@ -27,6 +27,7 @@
 | MyAgents（开源） | **开源参考实现**：Tauri v2 + Claude Agent SDK 桌面个人 Agent 工作台（AGPL）——桌面端技术选型与架构参考 | 源码级分析：[myagents.md](competitors/myagents.md) ✅ |
 | OpenWorkBuddy（开源） | **WorkBuddy 的极简开源复刻**（纯手写 agent 循环 + 评测驱动开发）——agent 工程经验宝库；PolyForm 非商业许可，只学思想不抄码 | 源码级分析：[openworkbuddy.md](competitors/openworkbuddy.md) ✅ |
 | OpenClaw（开源） | **个人 AI 助理框架，记忆/人设/插件格式的事实标准源头**（WorkBuddy/MyAgents 均对齐）——Gateway 架构、Dreaming 记忆固化、pi 运行时；MIT | 源码级分析：[openclaw.md](competitors/openclaw.md) ✅ |
+| Hermes Agent（开源） | **自改进智能体**（Nous Research，Python/MIT）——技能自动生成四层闭环（工具策略/nudge/Curator 治理/状态机） | 源码级分析：[hermes.md](competitors/hermes.md) ✅ |
 
 新建竞品分析请复制 [competitors/_template.md](competitors/_template.md)。
 
