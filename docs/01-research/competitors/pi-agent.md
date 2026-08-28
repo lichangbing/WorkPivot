@@ -1,0 +1,161 @@
+# 开源项目分析：Pi Agent Harness（极简自扩展智能体内核——被四方引用的参考实现）
+
+> 分析方式：源码级分析（E:\project\pi，earendil-works/pi，Mario Zehner 作品）+ 包文档精读。
+> 姊妹文档：[openclaw.md](openclaw.md)（运行时直接采用 pi-agent-core）、[openworkbuddy.md](openworkbuddy.md)（借鉴 pi 的 compaction）、[01-cordis-动态插件架构.md](../tech/01-cordis-动态插件架构.md)（dsh 引用 pi）、[hermes.md](hermes.md)（ACP 相邻生态）——**本文是这一系列引用链的终点**。
+
+- **分析人**：ZCode
+- **日期**：2026-08-28
+
+---
+
+## 1. 项目身份与地位
+
+| 项 | 值 |
+|----|-----|
+| 定位 | **Pi Agent Harness**：「自扩展（self-extensible）编码智能体」——极简内核 + 一切能力动态加载 |
+| 作者 | Mario Zehner（earendil-works；npm 作用域 @mariozechner） |
+| 许可 | MIT（LICENSE 1KB） |
+| 语言 | TypeScript，npm workspaces monorepo（9 包） |
+| 规模 | 约 11.5 万行 TS（见 §2 表——「极简」是设计哲学而非行数：TUI 与多供应商适配占了大量体积） |
+
+**在本研究版图中的地位**：pi 是「个人 agent 运行时」领域被引用最多的最小内核——OpenClaw 的生产运行时就是 `pi-agent-core`；OpenWorkBuddy 的上下文压缩直接标注「借鉴 pi」；dsh 文档引用其设计；Hermes 经 ACP 生态相邻。**分析 pi = 分析这个赛道的「最小公约数」**。
+
+## 2. 分层 monorepo（9 包）
+
+| 包 | 行数 | 职责 |
+|----|------|------|
+| `pi-ai`（ai） | 22,281 | **统一多供应商 LLM API**（OpenAI/Anthropic/Google/Bedrock/自定义…）：api/ auth/ images/ compat——独立可复用的模型接入层 |
+| `pi-agent-core`（agent） | 12,167 | Agent 运行时：agent-loop / 事件流 / 工具调用 / 状态管理 / harness / proxy |
+| `pi-coding-agent`（coding-agent） | 58,159 | 编码智能体产品层：7 个内置工具、扩展系统、技能、压缩、会话、TUI 集成、modes、RPC |
+| `pi-tui`（tui） | 15,887 | 终端 UI 库（差分渲染） |
+| `pi-client`（client） | 1,227 | 客户端协议实现 |
+| `pi-server`（server） | 2,312 | 服务化（RPC 入口） |
+| `pi-protocol`（protocol） | 1,233 | 协议定义 |
+| `pi-telemetry`（telemetry） | 270 | 厂商中立遥测契约 |
+| `pi-session-backends` / evals | 1,277+ | 会话存储后端（SQLite）/ 评测 |
+
+**分层要义**：`ai`（模型接入）与 `agent`（循环内核）与 `coding-agent`（产品）严格分离——ai 和 agent 都可独立嵌入（OpenClaw 就是证明）。**对应 WorkPivot：模型网关层与编排内核层独立成包，是可嵌入性的前提**。
+
+## 3. 核心哲学：极简内置 + 一切动态加载
+
+**内置工具只有 7 个**（`packages/coding-agent/src/core/tools/`）：
+
+| 工具 | 文件 |
+|------|------|
+| `bash` | bash.ts |
+| `read` | read.ts |
+| `write` | write.ts |
+| `edit` | edit.ts（+edit-diff 内部辅助） |
+| `find`（glob） | find.ts |
+| `grep` | grep.ts |
+| `ls` | ls.ts |
+
+没有 WebSearch、没有 subagent、没有记忆、没有 MCP——**这些全部经扩展/技能/外部进程动态获得**。权限边界同样极简：**pi 不内置权限系统**（README 明言默认以启动用户的权限运行，需要更强边界就容器化——docs 给了三种容器化模式：Gondolin 微 VM 路由/Docker 整体/OpenShell 策略沙箱）。这是刻意选择：**内核只做不可减的部分，安全边界外置**。
+
+## 4. 扩展系统（本项目的灵魂）
+
+> 文档第一句话：「**pi can create extensions. Ask it to build one for your use case.**」——自扩展不是附带能力，是产品主张。
+
+### 4.1 加载机制
+
+- 扩展 = **TypeScript 模块**，经 **jiti**（`createJiti` + `jiti.import(path)`）运行时加载——无需编译步骤，与 OpenClaw 插件加载同款方案（**jiti 是 TS 插件热加载的事实工具**）
+- **自动发现位置**：`~/.pi/agent/extensions/`（全局）或项目 `.pi/extensions/`；`pi -e ./path.ts` 仅用于临时测试
+- **热重载**：自动发现位置的扩展可用 `/reload` 命令热加载
+- 仓库自带自举示例（`.pi/extensions/`）：`tps.ts`（tokens/秒脚注）、`redraws.ts`（渲染计数）、`prompt-url-widget.ts`、`import-repro.ts`
+
+### 4.2 扩展能力面（Extension API，现成的扩展点设计清单）
+
+| 能力 | API |
+|------|-----|
+| **注册 LLM 可调工具** | `pi.registerTool()` |
+| **事件拦截** | 订阅生命周期事件：**阻断/改写工具调用、注入上下文、定制压缩** |
+| 用户交互 | `ctx.ui`：select / confirm / input / notify |
+| 自定义 TUI 组件 | `ctx.ui.custom()`（带键盘输入的完整终端组件） |
+| 自定义命令 | `pi.registerCommand()`（`/mycommand`） |
+| 会话持久化 | `pi.appendEntry()`（扩展自己的状态进会话日志，重启存活） |
+| 自定义渲染 | 控制工具调用/结果与消息在 TUI 的呈现 |
+
+另可触及：pi-ai 的完整 `Api`（流式/采样/OAuth）、ModelRegistry、SessionManager、Keybindings、EventBus——**扩展与内核同权**（这正是它敢说 self-extensible 的原因）。
+
+### 4.3 技能（SKILL.md）
+
+- 递归发现目录树中的 `SKILL.md`（目录含 SKILL.md 即为技能根，不再下钻）
+- frontmatter：`name / description / disable-model-invocation`（**禁模型自主调用=仅用户斜杠入口**，与 dsh 的 modelInvocable 同构）
+- 技能自动映射为 `/技能名` 斜杠命令；系统提示词内建「技能内相对路径按技能目录解析为绝对路径」的纪律
+- 仓库示例：`.pi/skills/add-llm-provider.md`（教 agent 给自己加模型供应商）
+
+### 4.4 `.pi/` 目录（项目级配置的范本）
+
+```
+.pi/
+├── extensions/   # TS 扩展（热重载）
+├── skills/       # SKILL.md 技能
+├── prompts/      # 提示词模板（cl.md/pr.md/wr.md…，斜杠调用）
+├── git/          # git 相关配置
+└── npm/          # npm 相关配置
+```
+
+**项目本地 `.pi/` + 全局 `~/.pi/`** 的双层发现——与 Claude 的 `.claude/`、OpenClaw 的工作区同构，已是行业惯例。
+
+## 5. 其他关键子系统
+
+- **Compaction**（core/compaction/：compaction.ts + branch-summarization.ts）：会话压缩 + **分支摘要**——OpenWorkBuddy「上下文中枢升级」整段标注借鉴于此；对应需求清单 K04
+- **pi-ai 统一模型层**：多供应商 + OAuth + 图片模型注册表 + 兼容层——对应 C02，且证明这层可独立成包
+- **会话**：SessionManager + session-backends（SQLite）+ 分支（branch summary entry）
+- **modes/**：交互模式（interactive/theme 等）
+- **RPC/server/client/protocol**：pi 可作为 SDK 与 RPC 服务嵌入（OpenClaw 的用法），protocol 独立成包
+- **evals 包**：评测独立成包（对应 K01）
+- **AGENTS.md 项目规则**（人机共用的贡献规范）
+
+## 6. 与已分析项目的关系（引用链收口）
+
+```
+                 ┌── OpenClaw ──── 运行时 = pi-agent-core + pi-ai（生产采用）
+                 │
+Pi Agent Harness ┼── OpenWorkBuddy ── compaction 设计借鉴（明确标注）
+（最小内核）      │
+                 ├── DeepSeek Harness ── 文档引用（cordis 生态对照）
+                 │
+                 └── Hermes ── ACP 协议相邻（编辑器互操作）
+```
+
+**四种「动态加载」实现的光谱**（本研究全部覆盖）：
+
+| 实现 | 机制 | 加载单位 | 热卸载 |
+|------|------|----------|--------|
+| **pi** | jiti 加载 TS 模块 | 代码扩展/技能/提示词 | `/reload` 热重载（进程内替换） |
+| dsh | Cordis 可逆效应 | 双半插件（vm 沙箱） | ✅ 卸载自动回滚 |
+| OpenClaw | jiti + capability 注册 | 插件/通道/Provider | ✅（fiber 生命周期） |
+| WorkBuddy | 文件清单 + 市场版本缓存 | 声明式包（技能/专家） | 版本目录 + PID 引用锁 |
+
+## 7. 对 WorkPivot 的启示
+
+1. **「7 个工具 + 动态加载」给出内核最小化的基准线**：WorkPivot 的 P0 内核工具面可以对标裁剪（文件 4 件套 + bash + 检索 2 件套），其余全部走扩展/技能——需求清单 C01 的工具表可据此收敛
+2. **jiti 确定为 TS 扩展加载器**：pi 与 OpenClaw 双重生产验证，我们的扩展运行时直接采用（TECH-01 的 Cordis 管架构、jiti 管模块加载，互补）
+3. **扩展能力面清单可直接抄**（§4.2 七项）：registerTool/事件拦截（含注入上下文与定制压缩）/UI 交互/命令/会话持久化/自定义渲染——这就是 WorkPivot 扩展 API v0 的目录
+4. **`disable-model-invocation` 的双入口设计**：技能既可模型自主调用也可仅用户显式触发——企业场景的权限粒度刚需（对应 I02 权限档位）
+5. **分层成包的嵌入性**：ai 层、agent 层独立——我们的模型网关与编排内核也应独立成包（私有化时可整体嵌入桌面端）
+6. **反面对照——权限系统不能学**：pi 把安全边界完全外置给容器，企业客户不可接受；WorkPivot 必须内置沙箱+审批（I01/I06），容器化作为增强而非替代
+7. **`.pi/` 式项目本地配置目录**：双层发现（全局+项目）纳入我们的工作区设计（B 模块）
+8. **分支摘要（branch summarization）**：会话压缩时保留分支要点的能力，纳入 K04 设计细节
+
+## 8. 待深挖项
+
+- [ ] `agent-loop.ts` 主循环的精确语义（事件流模型，作为自研内核的对照）
+- [ ] compaction 的提示词与策略细节（OpenWorkBuddy 只抄了部分）
+- [ ] RPC/protocol 包的协议面（若 WorkPivot 桌面端采用「壳+内核进程」拓扑可参考）
+- [ ] OpenClaw 对 pi-agent-core 的封装层（两份源码对照，理解「产品如何包内核」）
+
+## 附：快速验证路径（本机）
+
+| 想看什么 | 去哪里 |
+|----------|--------|
+| 扩展系统文档（能力面/放置/热重载） | `packages/coding-agent/docs/extensions.md` |
+| 扩展加载器（jiti） | `packages/coding-agent/src/core/extensions/loader.ts` |
+| 扩展 API 类型 | 同目录 `types.ts` |
+| 7 个内置工具 | `packages/coding-agent/src/core/tools/` |
+| 技能发现 | `packages/coding-agent/src/core/skills.ts` |
+| 压缩/分支摘要 | `packages/coding-agent/src/core/compaction/` |
+| 统一模型层 | `packages/ai/src/` |
+| 项目级配置范本 | 仓库自带 `.pi/` 目录 |
+| 容器化三模式 | `packages/coding-agent/docs/containerization.md` |
