@@ -26,6 +26,7 @@
 | Microsoft 365 Copilot | 国际标杆，办公套件 + AI | ⬜ 待补充 |
 | MyAgents（开源） | **开源参考实现**：Tauri v2 + Claude Agent SDK 桌面个人 Agent 工作台（AGPL）——桌面端技术选型与架构参考 | 源码级分析：[myagents.md](competitors/myagents.md) ✅ |
 | OpenWorkBuddy（开源） | **WorkBuddy 的极简开源复刻**（纯手写 agent 循环 + 评测驱动开发）——agent 工程经验宝库；PolyForm 非商业许可，只学思想不抄码 | 源码级分析：[openworkbuddy.md](competitors/openworkbuddy.md) ✅ |
+| OpenClaw（开源） | **个人 AI 助理框架，记忆/人设/插件格式的事实标准源头**（WorkBuddy/MyAgents 均对齐）——Gateway 架构、Dreaming 记忆固化、pi 运行时；MIT | 源码级分析：[openclaw.md](competitors/openclaw.md) ✅ |
 
 新建竞品分析请复制 [competitors/_template.md](competitors/_template.md)。
 
