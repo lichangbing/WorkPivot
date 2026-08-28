@@ -14,7 +14,7 @@
 
 | 目录 | 内容 | 主要产出物 |
 |------|------|-----------|
-| `product/` | 产品设计 | PRD、功能规格说明书（模板：[_template-PRD.md](product/_template-PRD.md)）；**[需求池 backlog.md](product/backlog.md)**（仅登记未排期的需求，不受下方准入门槛限制）；**[需求清单](product/需求清单.md)**（调研收敛的 v1 需求全景，含开放问题） |
+| `product/` | 产品设计 | PRD、功能规格说明书（模板：[_template-PRD.md](product/_template-PRD.md)）；**[需求池 backlog.md](product/backlog.md)**（仅登记未排期的需求，不受下方准入门槛限制）；**[需求清单 v2](product/需求清单.md)**（详细需求规格：14 模块含后台管理 M 与公共 Skill/MCP 服务 S，每条含背景/用户故事/功能要求/边界/验收/依赖） |
 | `architecture/` | 系统架构 | 总体架构设计、私有化部署架构、多租户/权限模型、API 设计、数据模型 |
 | `ui-ux/` | 交互与视觉 | 设计规范、原型稿导出、桌面端交互说明（源文件存 Figma 等，此处放导出物与说明） |
 | `decisions/` | 决策记录 | ADR 架构决策记录（模板：[_template-ADR.md](decisions/_template-ADR.md)） |
