@@ -1,7 +1,7 @@
 # 技术调研 01：Cordis 动态插件架构（DeepSeek Harness 实证）
 
 > 使用说明：按 [_template.md](_template.md) 结构整理。调研对象为 `E:\project\deepseek-harness`（DeepSeek 官方开源 Agent Harness，本地源码级分析 + 项目文档精读）。
-> 结论状态：🔄 **已有倾向**——建议 WorkPivot 编排内核采用 Cordis（或其核心模式），待 PoC 验证后落 ADR。
+> 结论状态：✅ **方向已定（2026-08-28 产品负责人确认）**——编排内核采用 **Cordis 模式**，且内核必须满足三项能力要求：**① 一切能力动态加载（热装卸）② Agent 自动生成的技能/插件经用户确认后加载 ③ 记忆等生成内容同样走确认流**。PoC 保留为实施前验证步骤，通过后落 ADR-002。
 
 - **调研人**：ZCode
 - **日期**：2026-08-28
@@ -104,10 +104,13 @@
 
 ## 7. 结论与建议
 
-- **推荐**：WorkPivot 的 Agent 编排内核与扩展体系以 **Cordis 模式为蓝本**——优先直接采用 vendored cordis（MIT），PoC 失败则自研精简实现（三概念+可逆效应是必须保留的内核）
+- **定案（2026-08-28）**：WorkPivot 的 Agent 编排内核采用 **Cordis 模式**，配合 **jiti**（TS 模块加载，pi/OpenClaw 双重验证）。用户确认的内核能力要求与实现的对应：
+  1. **动态加载** → Cordis「注册即可逆效应」（卸载自动回滚）+ jiti 热加载 + Profile/Bundle 运行时组合
+  2. **自动生成→用户确认→加载** → 双轨：知识技能走 Hermes 模式（skill_manage + nudge + 用户确认 + 安全扫描，低风险先行）；代码插件走 dsh 模式（cordis_define 登记→对话卡片→真人审批→vm 沙箱运行，二期）
+  3. **记忆纳入确认流** → OpenClaw/Hermes 模式：记忆自动写入 + 用户可查看/编辑/关闭；涉及长期记忆晋升（Dreaming Deep 相）的内容经用户确认后生效
 - **理由**：MIT 无传染（对比 MyAgents AGPL / OWB PolyForm）；腾讯 CodeBuddy（Cell）与 DeepSeek 官方 harness 双重产业验证；「注册即可逆效应」是热加载安全性的唯一系统化解法；双半插件为「agent 自生成扩展」预留了业界最完整的合规范本
-- **风险与缓解**：生态小众（cordiverse/Koishi 圈）→ vendor 进仓库锁定版本（dsh 同款做法）；学习成本 → 从三概念最小集起步；安全 → 双半插件延后到二期并强制三层防线
-- **是否落 ADR**：✅ 是——PoC 通过后落 `ADR-002-编排内核采用Cordis模式`（ADR-001 留给后端语言/桌面框架）
+- **风险与缓解**：生态小众（cordiverse/Koishi 圈）→ vendor 进仓库锁定版本（dsh 同款做法）；学习成本 → 从三概念最小集起步；安全 → 代码插件延后到二期并强制三层防线（vm 沙箱+白名单代理+人工审批）
+- **落 ADR**：✅ PoC 通过后落 `ADR-002-编排内核=Cordis 模式`（含上述三项能力要求作为验收标准）
 
 ## 8. 参考链接
 
