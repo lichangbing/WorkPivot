@@ -100,6 +100,25 @@
   .modal-foot { display:flex; justify-content:flex-end; gap:10px; margin-top:8px; }
   .btn-sm.ghost { background:#fff; border:1px solid #e5e6eb; color:#4e5969; }
 
+  .user-box { margin-top:auto; border-top:1px solid #f2f3f5; padding-top:10px; }
+  .user-row { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px; cursor:pointer; }
+  .user-row:hover { background:#f2f3f5; }
+  .avatar { width:32px; height:32px; border-radius:50%; background:#1a56db; color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; }
+  .user-meta { flex:1; }
+  .user-meta b { display:block; font-size:13px; }
+  .user-meta span { font-size:11px; color:#86909c; }
+  .gear { color:#86909c; font-size:14px; padding:4px; border-radius:6px; }
+  .gear:hover { background:#e5e6eb; color:#1f2329; }
+  .user-menu { position:fixed; background:#fff; border:1px solid #e5e6eb; border-radius:10px; box-shadow:0 6px 20px rgba(31,35,41,.12); padding:6px; width:200px; z-index:20; display:none; }
+  .user-menu.show { display:block; }
+  .um-item { padding:9px 12px; border-radius:7px; font-size:13px; color:#4e5969; cursor:pointer; display:flex; justify-content:space-between; align-items:center; }
+  .um-item:hover { background:#f2f3f5; }
+  .um-item.danger { color:#f53f3f; }
+  .um-sep { border-top:1px solid #f2f3f5; margin:5px 8px; }
+  .theme-row { display:flex; gap:8px; padding:6px 12px; }
+  .theme-dot { width:22px; height:22px; border-radius:50%; cursor:pointer; border:2px solid transparent; }
+  .theme-dot.on { border-color:#1a56db; }
+
   .proto-note { position:fixed; right:16px; bottom:16px; background:#1f2329; color:#fff; font-size:12px; padding:10px 14px; border-radius:8px; opacity:.85; max-width:260px; }
 </style>
 </head>
@@ -282,6 +301,14 @@
         <div class="nav-item">🧩 技能与工具</div>
         <div class="nav-item">📝 agent.md 编辑</div>
         <div class="nav-item">📚 项目记忆</div>
+
+        <div class="user-box">
+          <div class="user-row" onclick="toggleUserMenu(event)">
+            <div class="avatar">李</div>
+            <div class="user-meta"><b>李长冰</b><span>企业管理员 · 在线</span></div>
+            <span class="gear" onclick="event.stopPropagation();go('p-settings');">⚙</span>
+          </div>
+        </div>
       </div>
       <div class="col-m">
         <div class="chat-head">📁 中新融创项目 · 共享项目记忆 ｜ 工作目录：server://workspaces/q3-review ｜ 专家：数据分析 ｜ 模型：内网旗舰（推荐）</div>
@@ -314,7 +341,36 @@
   <div class="proto-note">三栏：左=新对话+项目树+资产编辑入口 ｜ 中=对话（中文叙事主线+关键结论卡）｜ 右=成果预览（专职）</div>
 </div>
 
+<div class="user-menu" id="userMenu">
+  <div style="padding:8px 12px;font-size:12px;color:#86909c;">lichangbing@company</div>
+  <div class="um-sep"></div>
+  <div class="um-item" onclick="alert('原型演示：跳转个人资料（PRD-06 设置）')">👤 个人资料</div>
+  <div class="um-item">🔔 通知设置 <span style="font-size:11px;color:#86909c;">已开启</span></div>
+  <div class="um-item">🛡️ 权限档位 <span style="font-size:11px;color:#86909c;">自动档</span></div>
+  <div class="um-sep"></div>
+  <div style="padding:6px 12px 2px;font-size:12px;color:#86909c;">界面主题</div>
+  <div class="theme-row">
+    <div class="theme-dot on" style="background:#fff;border-color:#1a56db;" title="浅色"></div>
+    <div class="theme-dot" style="background:#1f2329;" title="深色" onclick="alert('原型演示：切换深色主题（PRD-06）')"></div>
+    <div class="theme-dot" style="background:linear-gradient(90deg,#fff 50%,#1f2329 50%);" title="跟随系统"></div>
+  </div>
+  <div class="um-sep"></div>
+  <div class="um-item danger" onclick="go('p-login');hideUserMenu()">⏻ 退出登录</div>
+</div>
+
 <script>
+  function toggleUserMenu(e){
+    var m=document.getElementById('userMenu');
+    var r=e.currentTarget.getBoundingClientRect();
+    m.style.left=r.left+'px'; m.style.top=(r.top-m.offsetHeight-8)+'px';
+    m.classList.toggle('show');
+    e.stopPropagation();
+  }
+  function hideUserMenu(){ document.getElementById('userMenu').classList.remove('show'); }
+  document.addEventListener('click',function(e){
+    var m=document.getElementById('userMenu');
+    if(m && !m.contains(e.target)) hideUserMenu();
+  });
   function go(id){
     document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
     document.getElementById(id).classList.add('active');
