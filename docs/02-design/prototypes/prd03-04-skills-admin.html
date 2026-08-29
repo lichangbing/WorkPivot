@@ -65,22 +65,38 @@
   <a onclick="go('p8',this)">8 审计日志</a>
 </div>
 
-<!-- 1 技能列表 -->
+<!-- 1 技能中心：市场 + 我的 -->
 <div class="pg active" id="p1"><div class="wrap">
   <div class="h1">技能与工具</div>
-  <div class="h2">三组权限分层：公共（管理员发布·只读）→ 项目 → 我的；同名就近优先</div>
+  <div class="h2">两部分拆分：市场=官方与企业公共技能（只读安装）；我的=个人与项目技能（全权）</div>
+  <div class="tabs"><div class="tab on" onclick="sktab(0,this)">技能市场</div><div class="tab" onclick="sktab(1,this)">我的技能</div></div>
+
+  <div id="sk0">
   <div style="margin-bottom:12px;display:flex;gap:10px;">
-    <input placeholder="搜索技能名/描述" style="height:34px;border:1px solid #e5e6eb;border-radius:8px;padding:0 12px;width:240px;">
-    <button class="btn">新建技能</button><button class="btn ghost">从文档生成</button>
+    <input placeholder="搜索市场技能" style="height:34px;border:1px solid #e5e6eb;border-radius:8px;padding:0 12px;width:220px;">
+    <span class="pill">全部</span><span class="pill">文档</span><span class="pill">调研</span><span class="pill">数据</span><span class="pill">设计</span></div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+    <div class="card" style="margin:0;"><span class="tag blue">官方</span> <b>deep-research</b><br><span class="ver">深度调研：双源交叉验证+结构化报告+来源清单</span><div style="margin-top:10px;"><button class="btn sm">安装到我的技能</button></div></div>
+    <div class="card" style="margin:0;"><span class="tag blue">官方</span> <b>excel-report</b><br><span class="ver">Excel 报表：多 sheet+公式+图表，数据可追溯</span><div style="margin-top:10px;"><button class="btn sm">安装到我的技能</button></div></div>
+    <div class="card" style="margin:0;"><span class="tag blue">官方</span> <b>ppt-design</b> <span class="tag warn">有更新</span><br><span class="ver">PPT 设计系统：母版/版式配方/一页一论点</span><div style="margin-top:10px;"><button class="btn sm">安装到我的技能</button></div></div>
+    <div class="card" style="margin:0;"><span class="tag ok">企业</span> <b>pe-due-diligence</b><br><span class="ver">公司尽调标准流程（管理员发布 · 投资部定制）</span><div style="margin-top:10px;"><button class="btn sm">安装到我的技能</button></div></div>
+    <div class="card" style="margin:0;"><span class="tag ok">企业</span> <b>fund-data-clean</b><br><span class="ver">基金数据清洗（含沙箱脚本）</span><div style="margin-top:10px;"><button class="btn sm">安装到我的技能</button></div></div>
+    <div class="card" style="margin:0;"><span class="tag blue">官方</span> <b>weekly-report</b><br><span class="ver">周报生成：汇总本周任务与产出</span><div style="margin-top:10px;"><button class="btn sm">安装到我的技能</button></div></div>
   </div>
-  <table><tr><th>分组</th><th>技能</th><th>触发方式</th><th>更新</th><th>操作</th></tr>
-  <tr><td rowspan="2"><span class="tag blue">公共</span></td><td><b>excel-report</b><br><span class="ver">Excel 报表生成：数据→多 sheet+公式+图表</span></td><td><span class="tag">自动</span></td><td>管理员 · 08-20</td><td><a class="op">查看</a><a class="op">复制为我的</a></td></tr>
-  <tr><td><b>deep-research</b><br><span class="ver">深度调研：双源交叉验证+来源清单</span></td><td><span class="tag">自动</span></td><td>管理员 · 08-25</td><td><a class="op">查看</a><a class="op">复制为我的</a></td></tr>
-  <tr><td><span class="tag gray">项目</span></td><td><b>pe-due-diligence</b> <span class="tag warn">覆盖公共版</span><br><span class="ver">PE 尽调清单（本项目定制步骤）</span></td><td><span class="tag">自动</span></td><td>昨天</td><td><a class="op">编辑</a><a class="op">导出</a><a class="op" style="color:#f53f3f;">删除</a></td></tr>
-  <tr><td rowspan="2"><span class="tag ok">我的</span></td><td><b>q3-ppt-style</b><br><span class="ver">Q3 汇报 PPT 版式（公司模板+一页一论点）</span></td><td><span class="tag">仅手动</span></td><td>刚刚</td><td><a class="op">编辑</a><a class="op">试运行</a><a class="op">导出</a></td></tr>
-  <tr><td><b>fund-data-clean</b><br><span class="ver">基金数据清洗（脚本）</span></td><td><span class="tag">自动</span></td><td>2 天前</td><td><a class="op">编辑</a><a class="op">试运行</a></td></tr>
-  </table>
-  <div class="note">公共技能只读可复制；项目/我的全权；触发方式=自动(AI 自主) 或 仅手动(/斜杠)</div>
+  <div style="margin-top:12px;font-size:12px;color:#86909c;">市场技能只读；「安装」=复制为个人副本独立演进，市场更新仅提示不自动覆盖；用户自己的技能不在市场展示</div>
+  </div>
+
+  <div id="sk1" style="display:none;">
+  <div style="margin-bottom:12px;display:flex;gap:10px;">
+    <input placeholder="搜索我的技能" style="height:34px;border:1px solid #e5e6eb;border-radius:8px;padding:0 12px;width:220px;">
+    <button class="btn">新建技能</button><button class="btn ghost">从文档生成</button></div>
+  <table><tr><th>分组</th><th>技能</th><th>触发方式</th><th>来源</th><th>更新</th><th>操作</th></tr>
+  <tr><td><span class="tag gray">项目</span></td><td><b>pe-legal-check</b><br><span class="ver">本项目法务条款核查清单</span></td><td><span class="tag">自动</span></td><td>自建</td><td>昨天</td><td><a class="op">编辑</a><a class="op">试运行</a><a class="op" style="color:#f53f3f;">删除</a></td></tr>
+  <tr><td rowspan="3"><span class="tag ok">我的</span></td><td><b>q3-ppt-style</b><br><span class="ver">Q3 汇报 PPT 版式（公司模板+一页一论点）</span></td><td><span class="tag">仅手动</span></td><td>从对话沉淀</td><td>刚刚</td><td><a class="op">编辑</a><a class="op">试运行</a><a class="op">导出</a></td></tr>
+  <tr><td><b>deep-research</b> <span class="tag blue">已装自市场</span> <span class="tag warn">市场有新版</span><br><span class="ver">深度调研（安装后自行修改过）</span></td><td><span class="tag">自动</span></td><td>市场安装</td><td>08-20</td><td><a class="op">编辑</a><a class="op">重新安装覆盖</a></td></tr>
+  <tr><td><b>fund-data-clean</b><br><span class="ver">基金数据清洗（沙箱脚本）</span></td><td><span class="tag">自动</span></td><td>从文档生成</td><td>2 天前</td><td><a class="op">编辑</a><a class="op">试运行</a></td></tr></table>
+  </div>
+  <div class="note">两个独立 Tab：市场（官方+企业公共，卡片流，安装=复制副本）｜我的（项目+个人，含来源标记与市场更新提示）</div>
 </div></div>
 
 <!-- 2 技能编辑器 -->
@@ -286,6 +302,7 @@ version: 3
 </div>
 
 <script>
+function sktab(i,el){document.getElementById('sk0').style.display=i?'none':'';document.getElementById('sk1').style.display=i?'':'none';document.querySelectorAll('#p1 .tabs .tab').forEach(t=>t.classList.remove('on'));el.classList.add('on');}
 function go(id,el){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.idx a').forEach(a=>a.classList.remove('on'));if(el)el.classList.add('on');}
 </script>
 </body>
