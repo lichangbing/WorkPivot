@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>WorkPivot 原型 · 技能专家(PRD-03) 与 后台管理(PRD-04)</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft YaHei","PingFang SC",sans-serif;}
+  body{background:#f5f6f8;color:#1f2329;}
+  .pg{display:none;height:100vh;overflow:auto}.pg.active{display:block}
+  .idx{position:fixed;left:12px;top:12px;background:#fff;border:1px solid #e5e6eb;border-radius:10px;padding:10px;z-index:60;font-size:12px;box-shadow:0 4px 14px rgba(31,35,41,.08);}
+  .idx b{display:block;padding:4px 8px;color:#86909c;font-size:11px}
+  .idx a{display:block;padding:5px 8px;border-radius:6px;color:#4e5969;cursor:pointer;text-decoration:none}
+  .idx a:hover,.idx a.on{background:#e8effb;color:#1a56db}
+  .btn{height:34px;padding:0 16px;border:none;border-radius:8px;background:#1a56db;color:#fff;font-size:13px;cursor:pointer}
+  .btn.ghost{background:#fff;border:1px solid #e5e6eb;color:#4e5969}
+  .btn.sm{height:28px;padding:0 12px;font-size:12px}
+  .wrap{padding:26px 34px 26px 210px}
+  .h1{font-size:19px;font-weight:700;margin-bottom:4px}.h2{font-size:12px;color:#86909c;margin-bottom:18px}
+  table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(31,35,41,.05);margin-bottom:14px}
+  th{background:#f7f8fa;text-align:left;font-size:12px;color:#4e5969;padding:10px 14px}
+  td{padding:10px 14px;font-size:13px;border-top:1px solid #f2f3f5}
+  .tag{padding:2px 8px;border-radius:9px;font-size:11px}
+  .tag.ok{background:#e8ffea;color:#00b42a}.tag.gray{background:#f2f3f5;color:#86909c}.tag.blue{background:#e8effb;color:#1a56db}.tag.warn{background:#fff7e8;color:#d25f00}
+  a.op{color:#1a56db;font-size:13px;margin-right:10px;cursor:pointer;text-decoration:none}
+  .frame{display:flex;height:100vh}
+  .sidebar{width:190px;background:#fff;border-right:1px solid #e5e6eb;padding:14px 10px;flex-shrink:0}
+  .side-logo{font-size:14px;font-weight:700;color:#1a56db;padding:6px 10px 16px}
+  .nav-item{padding:9px 12px;border-radius:8px;font-size:13px;color:#4e5969;cursor:pointer;margin-bottom:2px}
+  .nav-item:hover{background:#f2f3f5}.nav-item.active{background:#e8effb;color:#1a56db;font-weight:600}
+  .nav-group{font-size:11px;color:#86909c;padding:14px 12px 4px}
+  .main{flex:1;overflow:auto;padding:24px 30px}
+  .card{background:#fff;border:1px solid #e5e6eb;border-radius:12px;padding:20px;margin-bottom:14px}
+  .fld{margin-bottom:12px}.fld label{display:block;font-size:12px;color:#4e5969;margin-bottom:5px}
+  .fld input,.fld select,.fld textarea{width:100%;border:1px solid #e5e6eb;border-radius:8px;padding:8px 11px;font-size:13px;outline:none;font-family:inherit}
+  .fld input:focus,.fld textarea:focus{border-color:#1a56db}
+  .row2{display:flex;gap:12px}.row2 .fld{flex:1}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid #e5e6eb;margin-bottom:16px}
+  .tab{padding:8px 16px;font-size:13px;color:#4e5969;cursor:pointer;border-bottom:2px solid transparent}
+  .tab.on{color:#1a56db;border-color:#1a56db;font-weight:600}
+  .editor{background:#1e2430;color:#d7dce5;border-radius:10px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.8;white-space:pre;overflow:auto}
+  .editor .c{color:#7d8799}.editor .k{color:#7db3ff}.editor .s{color:#a8d98a}
+  .filetree{width:200px;border-right:1px solid #f2f3f5;padding-right:10px;font-size:12px;color:#4e5969;line-height:2}
+  .filetree .dir{font-weight:600;color:#1f2329}.filetree .f{padding-left:14px;cursor:pointer}.filetree .f.on{color:#1a56db}
+  .split{display:flex;gap:16px}
+  .warnbox{background:#fff7e8;border:1px solid #f7ba1e55;border-radius:8px;padding:8px 12px;font-size:12px;color:#d25f00;margin-bottom:12px}
+  .drawer{width:330px;background:#fff;border-left:1px solid #e5e6eb;padding:16px;overflow:auto;font-size:12px}
+  .drawer h4{font-size:13px;margin-bottom:10px}
+  .hit{background:#f0f7ff;border:1px solid #1a56db44;border-radius:8px;padding:8px 10px;margin-bottom:8px}
+  .miss{background:#fff2f0;border:1px solid #f53f3f44;border-radius:8px;padding:8px 10px;margin-bottom:8px}
+  .note{position:fixed;right:14px;bottom:14px;background:#1f2329;color:#fff;font-size:11px;padding:9px 12px;border-radius:8px;opacity:.85;max-width:250px}
+  .ver{font-size:11px;color:#86909c}.pill{font-size:11px;border:1px solid #e5e6eb;border-radius:12px;padding:2px 10px;color:#4e5969;margin-right:6px}
+</style>
+</head>
+<body>
+<div class="idx">
+  <b>PRD-03 技能与专家</b>
+  <a class="on" onclick="go('p1',this)">1 技能列表</a>
+  <a onclick="go('p2',this)">2 技能编辑器</a>
+  <a onclick="go('p3',this)">3 从文档生成</a>
+  <a onclick="go('p4',this)">4 专家配置(后台)</a>
+  <b>PRD-04 后台管理</b>
+  <a onclick="go('p5',this)">5 模型管理</a>
+  <a onclick="go('p6',this)">6 连接器向导</a>
+  <a onclick="go('p7',this)">7 默认agent.md</a>
+  <a onclick="go('p8',this)">8 审计日志</a>
+</div>
+
+<!-- 1 技能列表 -->
+<div class="pg active" id="p1"><div class="wrap">
+  <div class="h1">技能与工具</div>
+  <div class="h2">三组权限分层：公共（管理员发布·只读）→ 项目 → 我的；同名就近优先</div>
+  <div style="margin-bottom:12px;display:flex;gap:10px;">
+    <input placeholder="搜索技能名/描述" style="height:34px;border:1px solid #e5e6eb;border-radius:8px;padding:0 12px;width:240px;">
+    <button class="btn">新建技能</button><button class="btn ghost">从文档生成</button>
+  </div>
+  <table><tr><th>分组</th><th>技能</th><th>触发方式</th><th>更新</th><th>操作</th></tr>
+  <tr><td rowspan="2"><span class="tag blue">公共</span></td><td><b>excel-report</b><br><span class="ver">Excel 报表生成：数据→多 sheet+公式+图表</span></td><td><span class="tag">自动</span></td><td>管理员 · 08-20</td><td><a class="op">查看</a><a class="op">复制为我的</a></td></tr>
+  <tr><td><b>deep-research</b><br><span class="ver">深度调研：双源交叉验证+来源清单</span></td><td><span class="tag">自动</span></td><td>管理员 · 08-25</td><td><a class="op">查看</a><a class="op">复制为我的</a></td></tr>
+  <tr><td><span class="tag gray">项目</span></td><td><b>pe-due-diligence</b> <span class="tag warn">覆盖公共版</span><br><span class="ver">PE 尽调清单（本项目定制步骤）</span></td><td><span class="tag">自动</span></td><td>昨天</td><td><a class="op">编辑</a><a class="op">导出</a><a class="op" style="color:#f53f3f;">删除</a></td></tr>
+  <tr><td rowspan="2"><span class="tag ok">我的</span></td><td><b>q3-ppt-style</b><br><span class="ver">Q3 汇报 PPT 版式（公司模板+一页一论点）</span></td><td><span class="tag">仅手动</span></td><td>刚刚</td><td><a class="op">编辑</a><a class="op">试运行</a><a class="op">导出</a></td></tr>
+  <tr><td><b>fund-data-clean</b><br><span class="ver">基金数据清洗（脚本）</span></td><td><span class="tag">自动</span></td><td>2 天前</td><td><a class="op">编辑</a><a class="op">试运行</a></td></tr>
+  </table>
+  <div class="note">公共技能只读可复制；项目/我的全权；触发方式=自动(AI 自主) 或 仅手动(/斜杠)</div>
+</div></div>
+
+<!-- 2 技能编辑器 -->
+<div class="pg" id="p2"><div class="wrap">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+    <div class="h1" style="margin:0">编辑技能：q3-ppt-style</div>
+    <div><button class="btn ghost sm">试运行</button> <button class="btn sm">保存（热生效）</button></div>
+  </div>
+  <div class="h2">保存即热生效——下一条任务立即使用新版本；左 Tab=说明(MD)，右 Tab=文件(代码层)</div>
+  <div class="tabs"><div class="tab on">说明（SKILL.md）</div><div class="tab">文件（scripts/references…）</div></div>
+  <div class="row2" style="margin-bottom:12px;">
+    <div class="fld"><label>技能标识名</label><input value="q3-ppt-style"></div>
+    <div class="fld"><label>触发方式</label><select><option>自动（AI 按描述触发词自主调用）</option><option>仅手动（用户 /斜杠 触发）</option></select></div>
+    <div class="fld"><label>适用范围</label><select><option>全局（我的技能）</option><option>仅当前项目</option></select></div>
+  </div>
+  <div class="fld"><label>显示描述（触发词写在这里——空则永不自动触发）</label>
+    <input value="生成 Q3 汇报 PPT：基于公司模板，一页一论点，含图表；Triggers: 汇报PPT, 季度PPT, Q3 PPT"></div>
+  <div class="split">
+    <div style="flex:1">
+      <div class="fld"><label>正文（Markdown，模板骨架：触发条件→编号步骤→注意事项→验证步骤）</label>
+      <div class="editor" style="height:280px;"><span class="c"># Q3 汇报 PPT 生成</span>
+
+<span class="k">## 触发条件</span>
+用户要生成季度汇报/复盘类 PPT，且未指定其他版式技能
+
+<span class="k">## 步骤</span>
+1. 确认数据口径：<span class="s">净额（剔除退款）</span>，与财务月报一致
+2. 先产出大纲（每页一个论点），经用户确认后再生成
+3. 使用模板 <span class="s">templates/公司汇报模板.pptx</span>
+4. 图表用 gen_diagram 生成后插入
+
+<span class="k">## 注意事项</span>
+- 中文用思源黑体；数字保留两位小数
+- 每页 bullet ≤6 条，每条 ≤20 字</div></div>
+    </div>
+    <div class="drawer">
+      <h4>目录（代码层 Tab 预览）</h4>
+      <div class="filetree">
+        <div class="dir">q3-ppt-style/</div>
+        <div class="f on">SKILL.md</div>
+        <div class="dir" style="padding-left:0;">templates/</div><div class="f">公司汇报模板.pptx</div>
+        <div class="dir" style="padding-left:0;">scripts/</div><div class="f">check_font.py</div>
+        <div class="dir" style="padding-left:0;">references/</div><div class="f">chart-spec.md</div>
+      </div>
+      <div class="warnbox">scripts/ 脚本将始终在沙箱内执行（I01）；企业策略可禁用成员脚本</div>
+      <div class="hit"><b>试运行 · 命中判定</b><br>输入「帮我做Q3汇报PPT」→ 命中触发词「Q3 PPT / 汇报PPT」<br>目录注入形态：name + description（渐进披露）</div>
+    </div>
+  </div>
+  <div class="note">双 Tab 编辑器：MD 层（表单+高亮正文+预览）｜代码层（目录树+脚本高亮）；试运行抽屉含命中判定/注入预览/真执行（沙箱）</div>
+</div></div>
+
+<!-- 3 从文档生成 -->
+<div class="pg" id="p3"><div class="wrap">
+  <div class="h1">从文档生成技能 · 第 2 步：抽取预览</div>
+  <div class="h2">来源：《尽调操作手册 v3.docx》(2.1MB)；AI 只出草稿，你确认并编辑后才保存（可控性原则）</div>
+  <div class="card">
+    <div class="row2"><div class="fld"><label>技能名（可改）</label><input value="due-diligence-flow"></div>
+    <div class="fld"><label>置信度</label><div style="padding-top:8px;"><span class="tag ok">整体高</span> <span class="tag warn">2 个字段建议核对</span></div></div></div>
+    <div class="fld"><label>适用场景 <span class="tag ok">依据：第1.2节</span></label><input value="对目标公司开展投资尽调时的标准流程执行"></div>
+    <div class="fld" style="background:#fff7e8;border-radius:8px;padding:10px;"><label style="color:#d25f00;">前置条件（低置信·请重点核对）<span class="tag warn">依据推断：第3章零散提及</span></label>
+      <input value="已获取目标公司近三年财务数据与工商信息" style="border-color:#f7ba1e;"></div>
+    <div class="fld"><label>步骤序列 <span class="tag ok">依据：第2章流程图 + 2.1-2.6节</span></label>
+      <table><tr><th>#</th><th>动作</th><th>输入</th><th>输出</th></tr>
+      <tr><td>1</td><td>工商信息核验（登记/股权/变更）</td><td>企业名称</td><td>核验清单</td></tr>
+      <tr><td>2</td><td>财务三表勾稽复核</td><td>近三年财报</td><td>差异说明表</td></tr>
+      <tr><td>3</td><td> <span style="color:#d25f00;">访谈提纲生成（手册未明确定义输出物——建议核对）</span></td><td>业务范围</td><td>提纲初稿</td></tr></table></div>
+    <div class="fld"><label>验证方法 <span class="tag ok">依据：附录A检查表</span></label><input value="对照附录A的37项检查表逐项打勾"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;"><button class="btn ghost">重新抽取</button><button class="btn">进入编辑器核对并保存（必经）</button></div>
+  </div>
+  <div class="note">schema 强约束抽取→模板渲染；每字段标注原文依据；低置信标黄；编辑确认必经（同一文档重复生成结构一致）</div>
+</div></div>
+
+<!-- 4 专家配置(后台) -->
+<div class="pg" id="p4"><div class="frame">
+  <div class="sidebar"><div class="side-logo">WorkPivot 管理后台</div>
+    <div class="nav-item">用户与角色</div><div class="nav-item">模型管理</div><div class="nav-item">连接器配置</div>
+    <div class="nav-item active">专家配置</div><div class="nav-item">默认 Agent 定义</div><div class="nav-item">公共技能</div><div class="nav-item">文档模板</div><div class="nav-item">审计日志</div>
+  </div>
+  <div class="main">
+    <div class="h1">编辑专家：尽调助手</div>
+    <div class="h2">数量不设限；停用后用户端 60 秒内不可选；人格叠加在企业默认 agent.md 之上（红线不可覆盖）</div>
+    <div class="row2"><div class="fld"><label>名称（用户端下拉可见）</label><input value="尽调助手"></div>
+      <div class="fld"><label>maxTurns 会话预算</label><input value="50"></div>
+      <div class="fld"><label>状态</label><select><option>启用</option><option>停用</option></select></div></div>
+    <div class="fld"><label>显示描述</label><input value="按公司尽调方法论执行投资尽调全流程"></div>
+    <div class="fld"><label>人格提示词（agent.md 正文，支持上传 .md）</label>
+      <div class="editor" style="height:150px;">你是本公司的资深尽调专家。遵循《尽调操作手册 v3》流程……
+<span class="c"># 不可覆盖（S03 企业红线自动叠加，此处只读提示）</span>
+- 所有金额保留两位小数；结论必须给依据引用</div></div>
+    <div class="row2">
+      <div class="fld"><label>绑定技能</label><div><span class="pill">due-diligence-flow ×</span><span class="pill">deep-research ×</span><span class="pill">＋ 添加</span></div></div>
+      <div class="fld"><label>绑定数据源</label><div><span class="pill">工商数据库(只读) ×</span><span class="pill">公司知识库(RAG) ×</span><span class="pill">＋ 添加</span></div></div></div>
+    <div class="fld"><label>开场提示（可选，用户选该专家新建任务时的默认首句）</label><input value="请提供目标公司名称，我将启动尽调流程"></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;"><button class="btn ghost">取消</button><button class="btn">保存</button></div>
+  </div>
+</div>
+<div class="note">D02 后台配置制：人格+技能+数据源+开场提示；内置模板（调研/写作/数据/PPT）可改可停</div>
+</div>
+
+<!-- 5 模型管理 -->
+<div class="pg" id="p5"><div class="frame">
+  <div class="sidebar"><div class="side-logo">WorkPivot 管理后台</div>
+    <div class="nav-item">用户与角色</div><div class="nav-item active">模型管理</div><div class="nav-item">连接器配置</div><div class="nav-item">专家配置</div><div class="nav-item">默认 Agent 定义</div><div class="nav-item">公共技能</div><div class="nav-item">文档模板</div><div class="nav-item">审计日志</div>
+  </div>
+  <div class="main">
+    <div class="h1">模型管理</div>
+    <div class="h2">管理员唯一配置入口；OpenAI 接口模式为主（base_url+Key+模型ID）；保存前连通测试必过</div>
+    <div style="margin-bottom:12px;"><button class="btn">＋ 新增模型</button></div>
+    <table><tr><th>名称</th><th>协议</th><th>分组</th><th>可见范围</th><th>健康度</th><th>并发</th><th>状态</th><th>操作</th></tr>
+      <tr><td><b>内网旗舰 128k</b> <span class="tag blue">默认</span></td><td>OpenAI 兼容</td><td><span class="tag ok">本地池</span></td><td>全员</td><td>近20次 18成</td><td>5</td><td><span class="tag ok">启用</span></td><td><a class="op">编辑</a><a class="op">停用</a></td></tr>
+      <tr><td>内网轻量 flash</td><td>OpenAI 兼容</td><td><span class="tag ok">本地池</span></td><td>全员</td><td>近20次 20成</td><td>不限</td><td><span class="tag ok">启用</span></td><td><a class="op">编辑</a><a class="op">停用</a></td></tr>
+      <tr><td>商用 DeepSeek-V4</td><td>Anthropic</td><td><span class="tag gray">云池</span></td><td>研发部</td><td><span style="color:#f53f3f;">连挂 2 次</span></td><td>3</td><td><span class="tag gray">停用</span></td><td><a class="op">编辑</a><a class="op" style="color:#00b42a;">启用</a></td></tr></table>
+    <div class="card"><b>推荐规则（任务类型 → 模型）</b>
+      <table style="margin-top:8px;"><tr><th>任务类型</th><th>推荐模型</th><th>操作</th></tr>
+        <tr><td>文档生成</td><td>内网旗舰 128k</td><td><a class="op">改</a><a class="op">删</a></td></tr>
+        <tr><td>数据分析</td><td>内网轻量 flash</td><td><a class="op">改</a><a class="op">删</a></td></tr>
+        <tr><td>深度调研</td><td>内网旗舰 128k</td><td><a class="op">改</a><a class="op">删</a></td></tr>
+        <tr><td>＋ 添加类型（通用对话/自定义…）</td><td colspan="2"></td></tr></table></div>
+    <div class="card"><b>并发配置</b>：企业最大并发会话 <input value="20" style="width:60px;border:1px solid #e5e6eb;border-radius:6px;padding:4px 8px;"> ｜ 单用户并行任务上限 <input value="8" style="width:60px;border:1px solid #e5e6eb;border-radius:6px;padding:4px 8px;"> ｜（按模型分档见列表「并发」列）</div>
+  </div>
+</div>
+<div class="note">M03：Key 密文不回显；停用 60s 生效；推荐规则对用户透明标注「推荐」；健康连挂标红</div>
+</div>
+
+<!-- 6 连接器向导 -->
+<div class="pg" id="p6"><div class="wrap">
+  <div class="h1">新增连接器 · 类型：数据库（只读）</div>
+  <div class="h2">凭据存服务端加密库——成员端永不落盘（S02）；写操作默认禁用</div>
+  <div class="card">
+    <div class="row2"><div class="fld"><label>连接器名称</label><input value="生产数据库-只读"></div>
+      <div class="fld"><label>数据库类型</label><select><option>MySQL</option><option>PostgreSQL</option><option>SQL Server</option><option>SQLite</option></select></div></div>
+    <div class="row2"><div class="fld"><label>主机</label><input value="10.0.8.21"></div>
+      <div class="fld"><label>端口</label><input value="3306"></div>
+      <div class="fld"><label>库名</label><input value="fund_prod"></div></div>
+    <div class="row2"><div class="fld"><label>账号（建议只读账号）</label><input value="ro_workpivot"></div>
+      <div class="fld"><label>密码（I04 加密存储）</label><input type="password" value="********"></div></div>
+    <div class="fld"><label>表白名单（只勾选可查的表）</label>
+      <div><span class="pill">fund_info ✓</span><span class="pill">nav_history ✓</span><span class="pill">investor ✓</span><span class="pill" style="color:#c9cdd4;">user_creds ✗</span></div></div>
+    <div class="fld"><label>工具启停（自动发现）</label>
+      <table><tr><th>工具</th><th>说明</th><th>状态</th></tr>
+        <tr><td>db_query</td><td>白名单表只读查询</td><td><span class="tag ok">启用</span></td></tr>
+        <tr><td>db_schema</td><td>查看表结构</td><td><span class="tag ok">启用</span></td></tr>
+        <tr><td>db_write</td><td>写入/变更</td><td><span class="tag gray">默认禁用</span> <a class="op">启用需二次确认+审计加严</a></td></tr></table></div>
+    <div class="fld"><label>使用范围</label><select><option>全员</option><option>按部门：投资部</option><option>指定项目</option></select></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;"><button class="btn ghost">测试连接</button><button class="btn">保存</button></div>
+  </div>
+  <div class="note">S02：服务端公共连接器；启停 60s 生效；调用全审计（M06）；协作场景个人连接器自动禁用</div>
+</div></div>
+
+<!-- 7 默认agent.md -->
+<div class="pg" id="p7"><div class="frame">
+  <div class="sidebar"><div class="side-logo">WorkPivot 管理后台</div>
+    <div class="nav-item">用户与角色</div><div class="nav-item">模型管理</div><div class="nav-item">连接器配置</div><div class="nav-item">专家配置</div><div class="nav-item active">默认 Agent 定义</div><div class="nav-item">公共技能</div><div class="nav-item">文档模板</div><div class="nav-item">审计日志</div>
+  </div>
+  <div class="main">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;"><div class="h1" style="margin:0">默认 Agent 定义（企业层）</div>
+    <div><span class="ver">当前 v3 · 08-28 发布</span> <button class="btn ghost sm">历史版本</button> <button class="btn sm">保存为新版本</button></div></div>
+    <div class="h2">分层：平台基础层 → 企业层（本页，成员不可关闭）→ 用户个人层；新会话即时生效，进行中不中断</div>
+    <div class="fld"><label>agent.md（frontmatter + 正文；「不可覆盖」区块用标记包裹）</label>
+    <div class="editor" style="height:300px;">---
+name: company-default
+version: 3
+---
+你是公司员工的工作助手，使用简体中文，回答务实、给依据。
+
+<span class="c">&lt;!-- wp:locked --&gt;</span>
+<span class="k">## 以下约束不可被个人层/专家层覆盖</span>
+- 全部金额两位小数，币种默认 CNY
+- 投资结论必须给「依据+来源」，单一来源标注「待核实」
+- 不讨论未公开项目信息；涉密内容拒绝并提示
+<span class="c">&lt;!-- /wp:locked --&gt;</span>
+
+## 输出规范
+- 报告类交付遵循文档模板；正文先结论后论证</div></div>
+    <div class="hit" style="max-width:520px;"><b>分层预览</b>：平台基础层（内置）→ <b>企业层（上述内容）</b> → 用户层（个人 agent.md，只读示意）。成员端可查看当前生效的企业指令（透明原则）。</div>
+  </div>
+</div>
+<div class="note">S03：版本化+回滚；红线区块锁定；成员可查看不可关闭</div>
+</div>
+
+<!-- 8 审计日志 -->
+<div class="pg" id="p8"><div class="frame">
+  <div class="sidebar"><div class="side-logo">WorkPivot 管理后台</div>
+    <div class="nav-item">用户与角色</div><div class="nav-item">模型管理</div><div class="nav-item">连接器配置</div><div class="nav-item">专家配置</div><div class="nav-item">默认 Agent 定义</div><div class="nav-item">公共技能</div><div class="nav-item">文档模板</div><div class="nav-item active">审计日志</div>
+  </div>
+  <div class="main">
+    <div class="h1">审计日志</div>
+    <div class="h2">六类事件统一查询；连接器调用页签对连接器管理员+企业管理员可见；支持导出 CSV</div>
+    <div style="margin-bottom:12px;display:flex;gap:8px;font-size:12px;">
+      <select style="border:1px solid #e5e6eb;border-radius:8px;padding:6px 10px;"><option>全部事件</option><option>登录</option><option>任务操作</option><option>危险命令</option><option>界外授权</option><option>连接器调用</option><option>后台操作</option></select>
+      <select style="border:1px solid #e5e6eb;border-radius:8px;padding:6px 10px;"><option>全部用户</option><option>wangfy</option><option>liuyq</option></select>
+      <input placeholder="时间范围" style="border:1px solid #e5e6eb;border-radius:8px;padding:6px 10px;width:180px;" value="今天">
+      <button class="btn sm">查询</button><button class="btn ghost sm">导出 CSV</button></div>
+    <table><tr><th>时间</th><th>用户</th><th>事件</th><th>对象</th><th>结果</th><th>详情</th></tr>
+      <tr><td>09:41</td><td>wangfy</td><td><span class="tag warn">界外授权</span></td><td>D:\公司资料\行业报告\白皮书.pdf</td><td><span class="tag ok">仅此次允许</span></td><td><a class="op">展开（原因/命令哈希）</a></td></tr>
+      <tr><td>09:38</td><td>wangfy</td><td><span class="tag blue">连接器调用</span></td><td>生产数据库-只读 · db_query</td><td><span class="tag ok">成功</span></td><td><a class="op">参数摘要</a></td></tr>
+      <tr><td>09:32</td><td>liuyq</td><td><span class="tag" style="background:#ffe8e6;color:#f53f3f;">危险命令拦截</span></td><td>rm -rf ./ 未确认目录</td><td><span class="tag" style="background:#ffe8e6;color:#f53f3f;">已拦截</span></td><td><a class="op">命令哈希</a></td></tr>
+      <tr><td>09:15</td><td>admin</td><td><span class="tag gray">后台操作</span></td><td>模型管理 · 新增「内网轻量 flash」</td><td><span class="tag ok">成功</span></td><td><a class="op">变更详情</a></td></tr>
+      <tr><td>09:02</td><td>chenj</td><td><span class="tag gray">登录</span></td><td>飞书扫码</td><td><span class="tag ok">成功</span></td><td><a class="op">来源 IP</a></td></tr></table>
+  </div>
+</div>
+<div class="note">M06/I03：危险操作完整可追溯；界外授权记录授权选项；导出 CSV</div>
+</div>
+
+<script>
+function go(id,el){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.idx a').forEach(a=>a.classList.remove('on'));if(el)el.classList.add('on');}
+</script>
+</body>
+</html>
