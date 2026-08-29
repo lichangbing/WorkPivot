@@ -133,18 +133,18 @@
       <div class="field">
         <label>用户名</label>
         <input placeholder="请输入用户名">
-      </div>
+ </div>
       <div class="field">
         <label>密码</label>
         <input type="password" placeholder="请输入密码">
-      </div>
+ </div>
       <button class="btn" onclick="go('p-main')">登 录</button>
       <div class="auth-foot" id="reg-link">还没有账号？<a onclick="go('p-reg')">注册管理员账号</a></div>
       <button class="feishu-btn" onclick="alert('原型演示：跳转飞书扫码授权页（J07，P1）')">
         <span style="color:#3370ff;font-weight:700;">飞</span> 使用飞书登录
-      </button>
-    </div>
-  </div>
+ </button>
+ </div>
+ </div>
   <div class="proto-note">原型说明：当系统无任何用户时显示「注册管理员账号」链接；已有用户后该链接消失（首个注册者=管理员）</div>
 </div>
 
@@ -158,24 +158,24 @@
         <label>用户名</label>
         <input placeholder="4-32 位，字母/数字/下划线" oninput="v1=this.value">
         <div class="hint gray" id="reg-u-hint">字母开头，字母/数字/下划线</div>
-      </div>
+ </div>
       <div class="field">
         <label>密码</label>
         <input type="password" placeholder="至少 8 位，须含字母和数字" oninput="chkPwd()">
         <div class="hint gray" id="pwd-hint">强度：<span id="pwd-lv">—</span></div>
-      </div>
+ </div>
       <div class="field">
         <label>确认密码</label>
         <input type="password" placeholder="再次输入密码">
-      </div>
+ </div>
       <div class="field">
         <label>显示名称（可选）</label>
         <input placeholder="如：张工">
-      </div>
+ </div>
       <button class="btn" onclick="go('p-setup')">注册并成为管理员</button>
       <div class="auth-foot"><a onclick="go('p-login')">返回登录</a></div>
-    </div>
-  </div>
+ </div>
+ </div>
 </div>
 
 <!-- ============ 3. 初始化引导 ============ -->
@@ -189,16 +189,16 @@
         <label>模型服务地址（OpenAI 兼容 base_url）</label>
         <input placeholder="如 http://内网服务器:8000/v1">
         <div class="hint gray">由管理员配置，成员无需操作</div>
-      </div>
+ </div>
       <div class="field">
         <label>API Key</label>
         <input placeholder="sk-...">
-        <div class="hint ok">✓ 连通测试通过（保存前自动验活）</div>
-      </div>
+        <div class="hint ok">连通测试通过（保存前自动验活）</div>
+ </div>
       <button class="btn" onclick="go('p-main')">完成并进入</button>
       <button class="btn sec" onclick="go('p-main')">暂不配置，跳过</button>
-    </div>
-  </div>
+ </div>
+ </div>
 </div>
 
 <!-- ============ 4. 用户管理（后台/管理员） ============ -->
@@ -215,7 +215,7 @@
       <div class="nav-item">审计日志</div>
       <div style="flex:1"></div>
       <div class="nav-item" onclick="go('p-login')">退出登录</div>
-    </div>
+ </div>
     <div class="main">
       <div class="main-title">用户与角色</div>
       <div class="main-desc">管理员分配账户制：用户由管理员创建后才能登录（J07）；支持飞书组织架构同步（P1）</div>
@@ -224,17 +224,17 @@
         <button class="btn-sm" onclick="showModal()">＋ 新增用户</button>
         <button class="btn-sm gray">批量导入 CSV</button>
         <button class="btn-sm gray">飞书同步</button>
-      </div>
+ </div>
       <table>
         <tr><th>用户名</th><th>显示名称</th><th>角色</th><th>状态</th><th>最近登录</th><th>操作</th></tr>
         <tr><td>admin</td><td>李长冰</td><td><span class="tag admin">管理员</span></td><td><span class="tag ok">启用</span></td><td>今天 09:12</td><td><a class="op">重置密码</a><a class="op">编辑</a></td></tr>
         <tr><td>wangfy</td><td>王分析</td><td><span class="tag">成员</span></td><td><span class="tag ok">启用</span></td><td>昨天 18:40</td><td><a class="op">重置密码</a><a class="op">停用</a></td></tr>
         <tr><td>liuyq</td><td>刘研究</td><td><span class="tag">成员</span></td><td><span class="tag ok">启用</span></td><td>3 天前</td><td><a class="op">重置密码</a><a class="op">停用</a></td></tr>
         <tr><td>chenj</td><td>陈尽职</td><td><span class="tag conn">连接器管理员</span></td><td><span class="tag off">已停用</span></td><td>30 天前</td><td><a class="op" style="color:#00b42a">启用</a><a class="op">编辑</a></td></tr>
-      </table>
+ </table>
       <div class="proto-note">交互细节：停用 → 二次确认「停用后该用户 30 秒内会话失效」；重置密码 → 生成临时密码展示一次</div>
-    </div>
-  </div>
+ </div>
+ </div>
 </div>
 
 <!-- 新增用户弹窗 -->
@@ -245,19 +245,19 @@
     <div class="row">
       <div class="field"><label>初始密码</label><input type="password" placeholder="≥8 位含字母数字"></div>
       <div class="field"><label>显示名称</label><input placeholder="如：王分析"></div>
-    </div>
+ </div>
     <div class="field"><label>角色</label>
       <div style="display:flex;gap:14px;font-size:13px;color:#4e5969;padding-top:4px;">
         <label><input type="radio" name="role" checked> 成员</label>
         <label><input type="radio" name="role"> 连接器管理员</label>
         <label><input type="radio" name="role"> 企业管理员</label>
-      </div>
-    </div>
+ </div>
+ </div>
     <div class="modal-foot">
       <button class="btn-sm ghost" onclick="hideModal()">取消</button>
       <button class="btn-sm" onclick="hideModal();alert('原型演示：创建成功，将初始密码告知用户（首次登录需修改）')">创建</button>
-    </div>
-  </div>
+ </div>
+ </div>
 </div>
 
 <!-- ============ 5. 主界面（三栏） ============ -->
@@ -270,26 +270,26 @@
       <div style="flex:1"></div>
       <span style="font-size:13px;color:#4e5969;">李长冰（管理员）</span>
       <span style="font-size:13px;color:#86909c;cursor:pointer;" onclick="go('p-users')">后台管理</span>
-    </div>
+ </div>
     <div class="ws-cols">
       <div class="col-l">
         <button class="new-chat">＋ 新对话</button>
         <div style="display:flex;align-items:center;justify-content:space-between;padding:0 6px 6px;">
           <span style="font-size:12px;color:#86909c;">项目</span>
           <span style="font-size:14px;color:#86909c;cursor:pointer;" title="新建项目">＋</span>
-        </div>
+ </div>
 
-        <div class="proj">📂 中新融创项目 <span style="font-weight:400;color:#86909c;font-size:12px;">· 3 任务</span></div>
+        <div class="proj">中新融创项目 <span style="font-weight:400;color:#86909c;font-size:12px;">· 3 任务</span></div>
         <div style="font-size:12px;color:#86909c;padding:0 6px 6px 10px;line-height:1.5;">
-          🧠 项目记忆已积累 · AI 熟悉本项目背景/术语/历史决策，任务间共享上下文
-        </div>
+          项目记忆已积累 · AI 熟悉本项目背景/术语/历史决策，任务间共享上下文
+ </div>
         <div class="task on"><span>Q3 数据复盘 PPT</span><span class="st run"></span></div>
         <div class="task"><span>SOP 线上化方案 v1.4</span><span class="st done"></span></div>
         <div class="task"><span>行业监管调研</span><span class="st int"></span></div>
         <div class="task" style="color:#86909c;"><span>＋ 在本项目新建任务</span></div>
         <div style="border-top:1px solid #f2f3f5;margin:8px 0;"></div>
 
-        <div class="proj">📂 金宇咨询项目 <span style="font-weight:400;color:#86909c;font-size:12px;">· 2 任务</span></div>
+        <div class="proj">金宇咨询项目 <span style="font-weight:400;color:#86909c;font-size:12px;">· 2 任务</span></div>
         <div class="task"><span>核心业务系统建设</span><span class="st done"></span></div>
         <div class="task"><span>组织架构梳理</span><span class="st done"></span></div>
         <div class="task" style="color:#86909c;"><span>＋ 在本项目新建任务</span></div>
@@ -298,64 +298,64 @@
         <div class="proj" style="color:#86909c;">＋ 新建项目</div>
 
         <div class="nav-group">资产</div>
-        <div class="nav-item">🧩 技能与工具</div>
-        <div class="nav-item">📝 agent.md 编辑</div>
-        <div class="nav-item">📚 项目记忆</div>
+        <div class="nav-item">技能与工具</div>
+        <div class="nav-item">agent.md 编辑</div>
+        <div class="nav-item">项目记忆</div>
 
         <div class="user-box">
           <div class="user-row" onclick="toggleUserMenu(event)">
             <div class="avatar">李</div>
             <div class="user-meta"><b>李长冰</b><span>企业管理员 · 在线</span></div>
-            <span class="gear" onclick="event.stopPropagation();go('p-settings');">⚙</span>
-          </div>
-        </div>
-      </div>
+            <span class="gear" onclick="event.stopPropagation();go('p-settings');"></span>
+ </div>
+ </div>
+ </div>
       <div class="col-m">
-        <div class="chat-head">📁 中新融创项目 · 共享项目记忆 ｜ 工作目录：server://workspaces/q3-review ｜ 专家：数据分析 ｜ 模型：内网旗舰（推荐）</div>
+        <div class="chat-head">中新融创项目 · 共享项目记忆 ｜ 工作目录：server://workspaces/q3-review ｜ 专家：数据分析 ｜ 模型：内网旗舰（推荐）</div>
         <div class="chat-body">
           <div class="bubble-user">帮我出一份 Q3 数据复盘 PPT，数据用 sales_2025.xlsx</div>
-          <div class="phase">🧠 <b>已加载项目记忆</b>：识别到本项目为 PE/VC 投研数字化转型项目，沿用此前确认的报告规范与术语表</div>
-          <div class="phase">📥 <b>已获取销售数据</b>：读取 sales_2025.xlsx，共 1,842 行季度流水</div>
-          <div class="phase">⚙️ <b>正在分析</b>：按季度汇总并剔除退款记录，对比去年同期…（3/5）</div>
-          <div class="phase-card">💡 <b>关键发现</b>：Q3 环比下降 32%，主要由华东区 9 月退款激增导致（占降幅 78%）</div>
-          <div class="phase">📤 <b>正在生成 PPT</b>：基于企业模板「公司汇报模板.pptx」排版 12 页…</div>
-        </div>
+          <div class="phase"><b>已加载项目记忆</b>：识别到本项目为 PE/VC 投研数字化转型项目，沿用此前确认的报告规范与术语表</div>
+          <div class="phase"><b>已获取销售数据</b>：读取 sales_2025.xlsx，共 1,842 行季度流水</div>
+          <div class="phase">️ <b>正在分析</b>：按季度汇总并剔除退款记录，对比去年同期…（3/5）</div>
+          <div class="phase-card"><b>关键发现</b>：Q3 环比下降 32%，主要由华东区 9 月退款激增导致（占降幅 78%）</div>
+          <div class="phase"><b>正在生成 PPT</b>：基于企业模板「公司汇报模板.pptx」排版 12 页…</div>
+ </div>
         <div class="chat-input">
           <div class="ph">输入消息，@ 引用文件，/ 使用技能…</div>
           <div class="chat-bar">
-            <span>📎 附件 ｜ 🛡️ 自动档 ｜ 🔔 开</span>
+            <span>附件 ｜ 自动档 ｜ 开</span>
             <span>DeepSeek-V4（内网）▲</span>
-          </div>
-        </div>
-      </div>
+ </div>
+ </div>
+ </div>
       <div class="col-r">
         <div class="prev-head"><span>成果预览</span><span style="font-weight:400;color:#86909c;">⬇ 下载</span></div>
         <div class="prev-body">
-          <div class="file-card"><div class="file-ic">📊</div><div><b>Q3数据复盘 v1.0.pptx</b><br><span style="color:#86909c;font-size:12px;">刚刚 · 12 页 · 2.4MB</span></div></div>
-          <div class="file-card"><div class="file-ic">📄</div><div><b>分析底稿 v1.0.docx</b><br><span style="color:#86909c;font-size:12px;">2 分钟前 · 6 页</span></div></div>
+          <div class="file-card"><div class="file-ic"></div><div><b>Q3数据复盘 v1.0.pptx</b><br><span style="color:#86909c;font-size:12px;">刚刚 · 12 页 · 2.4MB</span></div></div>
+          <div class="file-card"><div class="file-ic"></div><div><b>分析底稿 v1.0.docx</b><br><span style="color:#86909c;font-size:12px;">2 分钟前 · 6 页</span></div></div>
           <div style="margin-top:10px;">点击文件在此预览</div>
-        </div>
-      </div>
-    </div>
-  </div>
+ </div>
+ </div>
+ </div>
+ </div>
   <div class="proto-note">三栏：左=新对话+项目树+资产编辑入口 ｜ 中=对话（中文叙事主线+关键结论卡）｜ 右=成果预览（专职）</div>
 </div>
 
 <div class="user-menu" id="userMenu">
   <div style="padding:8px 12px;font-size:12px;color:#86909c;">lichangbing@company</div>
   <div class="um-sep"></div>
-  <div class="um-item" onclick="alert('原型演示：跳转个人资料（PRD-06 设置）')">👤 个人资料</div>
-  <div class="um-item">🔔 通知设置 <span style="font-size:11px;color:#86909c;">已开启</span></div>
-  <div class="um-item">🛡️ 权限档位 <span style="font-size:11px;color:#86909c;">自动档</span></div>
+  <div class="um-item" onclick="alert('原型演示：跳转个人资料（PRD-06 设置）')">个人资料</div>
+  <div class="um-item">通知设置 <span style="font-size:11px;color:#86909c;">已开启</span></div>
+  <div class="um-item">权限档位 <span style="font-size:11px;color:#86909c;">自动档</span></div>
   <div class="um-sep"></div>
   <div style="padding:6px 12px 2px;font-size:12px;color:#86909c;">界面主题</div>
   <div class="theme-row">
     <div class="theme-dot on" style="background:#fff;border-color:#1a56db;" title="浅色"></div>
     <div class="theme-dot" style="background:#1f2329;" title="深色" onclick="alert('原型演示：切换深色主题（PRD-06）')"></div>
     <div class="theme-dot" style="background:linear-gradient(90deg,#fff 50%,#1f2329 50%);" title="跟随系统"></div>
-  </div>
+ </div>
   <div class="um-sep"></div>
-  <div class="um-item danger" onclick="go('p-login');hideUserMenu()">⏻ 退出登录</div>
+  <div class="um-item danger" onclick="go('p-login');hideUserMenu()">退出登录</div>
 </div>
 
 <!-- ============ 6. 设置页（占位，完整规格见 PRD-06） ============ -->
@@ -371,7 +371,7 @@
       <div class="nav-item">关于与更新</div>
       <div style="flex:1"></div>
       <div class="nav-item" onclick="go('p-main')">← 返回主界面</div>
-    </div>
+ </div>
     <div class="main">
       <div class="main-title">通用设置</div>
       <div class="main-desc">完整功能规格见 PRD-06（此页为导航占位原型）</div>
@@ -383,10 +383,10 @@
         <tr><td>免打扰时段</td><td>22:00 - 08:00</td><td>期间任务通知静默、不丢失</td></tr>
         <tr><td>数据备份</td><td>—</td><td>一键备份/恢复（A08）</td></tr>
         <tr><td>检查更新</td><td>当前 v0.1.0</td><td>内网更新源（A07）</td></tr>
-      </table>
-      <div class="proto-note">入口：左栏底部用户区块 ⚙ 或用户菜单「个人资料」；退出登录在用户菜单底部</div>
-    </div>
-  </div>
+ </table>
+      <div class="proto-note">入口：左栏底部用户区块 或用户菜单「个人资料」；退出登录在用户菜单底部</div>
+ </div>
+ </div>
 </div>
 
 <script>
