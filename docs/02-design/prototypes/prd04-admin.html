@@ -58,6 +58,7 @@
   <a onclick="go('p6',this)">2 连接器向导</a>
   <a onclick="go('p7',this)">3 默认agent.md</a>
   <a onclick="go('p8',this)">4 审计日志</a>
+  <a onclick="go('p9',this)">5 公共技能编辑(后台)</a>
 </div>
 
 <!-- 5 模型管理 -->
@@ -168,6 +169,41 @@ version: 3
 <div class="note">M06/I03：危险操作完整可追溯；界外授权记录授权选项；导出 CSV</div>
 </div>
 
+
+<!-- 9 公共技能（后台编辑） -->
+<div class="pg" id="p9"><div class="frame">
+  <div class="sidebar"><div class="side-logo">WorkPivot 管理后台</div>
+    <div class="nav-item">用户与角色</div><div class="nav-item">模型管理</div><div class="nav-item">连接器配置</div><div class="nav-item">专家配置</div><div class="nav-item">默认 Agent 定义</div><div class="nav-item active">公共技能</div><div class="nav-item">文档模板</div><div class="nav-item">审计日志</div></div>
+  <div class="main">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <div><div class="h1" style="margin:0">公共技能 · 编辑：pe-due-diligence</div>
+      <div class="h2" style="margin:6px 0 12px;">复用技能编辑器（公共模式）——保存到企业公共库并推送；成员只读可复制</div></div>
+      <div style="display:flex;gap:8px;"><button class="btn ghost sm">试运行</button><button class="btn sm">保存并推送新版本</button></div></div>
+    <table style="margin-bottom:14px;"><tr><th>技能</th><th>来源</th><th>版本</th><th>范围</th><th>近7天调用</th><th>状态</th><th>操作</th></tr>
+      <tr><td><b>pe-due-diligence</b>（编辑中）</td><td><span class="tag ok">企业</span></td><td>v2 → 推送 v3</td><td>投资部</td><td>41</td><td><span class="tag ok">启用</span></td><td><a class="op">版本历史</a><a class="op">下架</a></td></tr>
+      <tr><td>fund-data-clean</td><td><span class="tag ok">企业</span></td><td>v1 · 08-26 推送 · 8 人更新</td><td>全员</td><td>63</td><td><span class="tag ok">启用</span></td><td><a class="op">编辑</a><a class="op">回滚 v0</a></td></tr>
+      <tr><td>excel-report</td><td><span class="tag blue">官方</span></td><td>随产品 v0.10.3</td><td>全员</td><td>102</td><td><span class="tag ok">启用</span></td><td><a class="op">复制定制</a></td></tr></table>
+
+    <div class="tabs"><div class="tab on">说明（SKILL.md）</div><div class="tab">文件（scripts…）</div></div>
+    <div class="row2" style="margin-bottom:10px;">
+      <div class="fld"><label>技能标识名</label><input value="pe-due-diligence"></div>
+      <div class="fld"><label>触发方式</label><select><option>自动</option><option>仅手动</option></select></div>
+      <div class="fld"><label>本版本说明（推送时展示给成员）</label><input value="补充投后管理检查项 3 条"></div></div>
+    <div class="fld"><label>显示描述（触发词）</label><input value="公司尽调标准流程：工商核验/财务勾稽/访谈；Triggers: 尽调, 尽职调查, due diligence"></div>
+    <div class="editor" style="height:190px;">## 触发条件
+对目标公司开展投资尽调时使用
+## 步骤
+1. 工商信息核验（登记/股权/变更）——依据《尽调操作手册 v3》第2章
+2. 财务三表勾稽复核（净额口径）
+3. 访谈提纲生成（输出物：提纲初稿）
++ 新增：投后管理检查项（本版修改）</div>
+    <div class="card" style="margin-top:12px;"><b>发布栏（公共模式独有）</b>
+      <div style="font-size:12px;color:#4e5969;margin-top:8px;">使用范围：<span class="pill on">投资部</span><span class="pill">＋添加部门/全员</span>
+      　配置型参数：<span class="pill">数据源=工商数据库(只读)</span>
+      <div style="font-size:11px;color:#86909c;margin-top:6px;">「保存并推送」后：市场卡片标「有更新」；已安装成员可选重新覆盖，不自动强制更新</div></div></div>
+  </div>
+</div><div class="note">后台技能编辑页=PRD-03 编辑器的公共模式：发布栏（范围/版本说明/推送）+ 配置型参数 + 版本回滚 + 官方技能复制定制</div>
+</div>
 
 <script>
 function go(id,el){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.idx a').forEach(a=>a.classList.remove('on'));if(el)el.classList.add('on');}
