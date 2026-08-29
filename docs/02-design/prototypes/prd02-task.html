@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>WorkPivot 原型 · 对话与任务（PRD-02）</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; font-family:"Microsoft YaHei","PingFang SC",sans-serif; }
+  body { background:#f5f6f8; color:#1f2329; }
+  .pg { display:none; }
+  .pg.active { display:block; }
+  .idx { position:fixed; left:12px; top:12px; background:#fff; border:1px solid #e5e6eb; border-radius:10px; padding:10px; z-index:50; font-size:12px; box-shadow:0 4px 14px rgba(31,35,41,.08); }
+  .idx a { display:block; padding:5px 8px; border-radius:6px; color:#4e5969; cursor:pointer; text-decoration:none; }
+  .idx a:hover, .idx a.on { background:#e8effb; color:#1a56db; }
+  .btn { height:36px; padding:0 18px; border:none; border-radius:8px; background:#1a56db; color:#fff; font-size:13px; cursor:pointer; }
+  .btn.ghost { background:#fff; border:1px solid #e5e6eb; color:#4e5969; }
+  .btn.bl { background:#f2f3f5; color:#1f2329; }
+
+  /* 卡片弹窗通用 */
+  .mask { position:fixed; inset:0; background:rgba(31,35,41,.4); display:none; align-items:center; justify-content:center; z-index:20; }
+  .mask.show { display:flex; }
+  .card { width:520px; background:#fff; border-radius:12px; padding:24px; }
+  .card h3 { font-size:16px; margin-bottom:6px; }
+  .card .sub { font-size:12px; color:#86909c; margin-bottom:16px; }
+  .foot { display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
+
+  /* 置顶等待卡（对话区内） */
+  .wait-card { max-width:640px; margin:0 auto 16px; background:#fffbe6; border:1px solid #f7ba1e66; border-radius:10px; padding:16px; font-size:13px; }
+  .wait-card .t { font-weight:700; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; }
+  .wait-card .warn { font-size:11px; color:#d25f00; background:#fff3e8; border-radius:8px; padding:2px 8px; }
+  .opt-row { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+  .opt { padding:8px 14px; border:1px solid #e5e6eb; border-radius:8px; background:#fff; font-size:13px; cursor:pointer; }
+  .opt:hover { border-color:#1a56db; color:#1a56db; }
+  .opt.pri { background:#1a56db; color:#fff; border-color:#1a56db; }
+  .path-box { background:#f7f8fa; border-radius:8px; padding:10px 12px; font-family:Consolas,monospace; font-size:12px; margin:8px 0; color:#4e5969; }
+
+  /* 步骤条 */
+  .steps { display:flex; gap:6px; margin:14px 0 20px; }
+  .st { flex:1; text-align:center; font-size:12px; color:#86909c; padding:6px 0; border-bottom:2px solid #e5e6eb; }
+  .st.on { color:#1a56db; border-color:#1a56db; font-weight:600; }
+  .fld { margin-bottom:14px; }
+  .fld label { display:block; font-size:12px; color:#4e5969; margin-bottom:5px; }
+  .fld input, .fld textarea, .fld select { width:100%; border:1px solid #e5e6eb; border-radius:8px; padding:9px 12px; font-size:13px; outline:none; font-family:inherit; }
+  .fld input:focus, .fld textarea:focus { border-color:#1a56db; }
+  .fld .tip { font-size:11px; color:#86909c; margin-top:4px; }
+  .chip { display:inline-flex; align-items:center; gap:6px; background:#f2f3f5; border-radius:14px; padding:5px 12px; font-size:12px; margin:0 6px 6px 0; }
+  .chip b { color:#1a56db; }
+  .drop { border:1px dashed #c9cdd4; border-radius:10px; padding:22px; text-align:center; font-size:12px; color:#86909c; }
+  .sumrow { display:flex; justify-content:space-between; padding:10px 12px; background:#f7f8fa; border-radius:8px; font-size:13px; margin-bottom:8px; }
+  .sumrow b { font-weight:600; }
+  .rec { font-size:11px; color:#1a56db; background:#e8effb; border-radius:6px; padding:1px 8px; }
+
+  /* 中栏模拟 */
+  .stage { display:flex; flex-direction:column; height:100vh; }
+  .top { height:44px; background:#fff; border-bottom:1px solid #e5e6eb; display:flex; align-items:center; gap:10px; padding:0 18px; font-size:12px; color:#4e5969; }
+  .top .bar { background:#fff7e8; color:#d25f00; border:1px solid #f7ba1e55; border-radius:8px; padding:4px 12px; font-size:12px; display:flex; gap:12px; align-items:center; }
+  .flow { flex:1; overflow:auto; padding:22px 26px; background:#fafbfc; }
+  .ph { max-width:78%; background:#fff; border:1px solid #e5e6eb; border-radius:10px; padding:12px 15px; margin-bottom:10px; font-size:13px; color:#4e5969; }
+  .ph b { color:#1f2329; }
+  .ph.det { background:#fff; border-style:dashed; color:#86909c; font-size:12px; }
+  .ph.det code { background:#f2f3f5; padding:1px 6px; border-radius:4px; font-size:11px; }
+  .kcard { max-width:78%; background:#fff8e6; border:1px solid #f7ba1e55; border-radius:10px; padding:13px 15px; margin-bottom:14px; font-size:13px; }
+  .src { max-width:78%; background:#f7f8fa; border-radius:10px; padding:12px 15px; font-size:12px; color:#4e5969; margin-bottom:10px; }
+  .src a { color:#1a56db; text-decoration:none; margin-right:10px; }
+  .inp { margin:12px 26px 18px; background:#fff; border:1px solid #e5e6eb; border-radius:12px; padding:12px 14px; }
+  .inp .ph2 { color:#86909c; font-size:13px; }
+  .inp .bar2 { display:flex; justify-content:space-between; font-size:11px; color:#86909c; margin-top:10px; }
+  .selbox { position:absolute; background:#fff; border:1px solid #e5e6eb; border-radius:10px; box-shadow:0 6px 20px rgba(31,35,41,.12); padding:6px; width:300px; font-size:12px; }
+  .selbox .it { padding:8px 10px; border-radius:7px; cursor:pointer; display:flex; justify-content:space-between; }
+  .selbox .it:hover { background:#f2f3f5; }
+  .badge-red { color:#f53f3f; font-size:11px; }
+
+  /* 表格 */
+  table { width:100%; border-collapse:collapse; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 1px 4px rgba(31,35,41,.05); }
+  th { background:#f7f8fa; text-align:left; font-size:12px; color:#4e5969; padding:10px 14px; }
+  td { padding:10px 14px; font-size:13px; border-top:1px solid #f2f3f5; }
+  .tag { padding:2px 8px; border-radius:9px; font-size:11px; }
+  .tag.ok { background:#e8ffea; color:#00b42a; } .tag.warn { background:#fff7e8; color:#d25f00; } .tag.gray { background:#f2f3f5; color:#86909c; }
+  .wrap { padding:28px 36px; height:100vh; overflow:auto; }
+  .h1 { font-size:19px; font-weight:700; margin-bottom:4px; }
+  .h2 { font-size:12px; color:#86909c; margin-bottom:20px; }
+
+  /* 右栏版本链 */
+  .cols { display:flex; height:100vh; }
+  .mid { flex:1; display:flex; flex-direction:column; background:#fafbfc; }
+  .right { width:300px; background:#fff; border-left:1px solid #e5e6eb; padding:16px; overflow:auto; }
+  .vfile { border:1px solid #e5e6eb; border-radius:10px; padding:12px; margin-bottom:8px; font-size:12px; position:relative; }
+  .vfile.cur { border-color:#1a56db; background:#f6f9ff; }
+  .vfile b { font-size:13px; display:block; margin-bottom:3px; }
+  .vfile .meta { color:#86909c; font-size:11px; display:flex; justify-content:space-between; }
+  .note { position:fixed; right:14px; bottom:14px; background:#1f2329; color:#fff; font-size:11px; padding:9px 12px; border-radius:8px; opacity:.85; max-width:240px; }
+</style>
+</head>
+<body>
+
+<div class="idx">
+  <a class="on" onclick="go('p1',this)">1 界外授权卡</a>
+  <a onclick="go('p2',this)">2 结构化提问卡</a>
+  <a onclick="go('p3',this)">3 任务中断横条</a>
+  <a onclick="go('p4',this)">4 新建任务向导</a>
+  <a onclick="go('p5',this)">5 模型选择器</a>
+  <a onclick="go('p6',this)">6 版本链(右栏)</a>
+  <a onclick="go('p7',this)">7 定时任务</a>
+</div>
+
+<!-- 1. 界外授权卡 -->
+<div class="pg active" id="p1">
+  <div class="stage">
+    <div class="top"><span>中新融创项目 · 共享项目记忆</span><span style="color:#c9cdd4">|</span><span>server://workspaces/q3</span><span style="color:#c9cdd4">|</span><span>专家：数据分析</span><span style="color:#c9cdd4">|</span><span>内网旗舰（推荐）</span></div>
+    <div class="flow">
+      <div class="wait-card">
+        <div class="t"><span>需要你的授权：访问工作目录之外的文件</span><span class="warn">任务暂停中</span></div>
+        <div>AI 正在补充行业对标数据，需要读取以下路径：</div>
+        <div class="path-box">D:\公司资料\行业报告\2025私募行业白皮书.pdf <span style="color:#86909c">（读取）</span></div>
+        <div style="color:#86909c;font-size:12px;">原因（AI 填写）：项目目录内缺少行业对标数据，此文件是 Q3 复盘的必要参照</div>
+        <div class="opt-row">
+          <div class="opt pri">仅此次允许</div>
+          <div class="opt">本会话记住此路径</div>
+          <div class="opt">永久加入白名单</div>
+          <div class="opt" style="color:#f53f3f;">拒绝</div>
+        </div>
+        <div style="margin-top:10px;font-size:11px;color:#86909c;">拒绝后 AI 会收到拒绝原因并尝试其他路径；本次决策将记入审计日志（I03）</div>
+      </div>
+      <div class="ph">已获取销售数据：读取 sales_2025.xlsx，共 1,842 行季度流水</div>
+      <div class="ph">正在分析：按季度汇总并剔除退款记录，对比去年同期（3/5）</div>
+    </div>
+    <div class="inp"><div class="ph2">输入消息，@ 引用文件，/ 使用技能…</div>
+      <div class="bar2"><span>附件 · 自动档（当前） · 通知开</span><span>内网旗舰 ▲</span></div></div>
+  </div>
+  <div class="note">I08 界外授权：路径+操作类型+原因+四选项；30 分钟无响应转中断并通知</div>
+</div>
+
+<!-- 2. 结构化提问卡 -->
+<div class="pg" id="p2">
+  <div class="stage">
+    <div class="top"><span>中新融创项目</span><span style="color:#c9cdd4">|</span><span>生成 PPT 前 AI 需要确认</span></div>
+    <div class="flow">
+      <div class="wait-card" style="background:#f0f7ff;border-color:#1a56db44;">
+        <div class="t"><span>AI 想和你确认一个选择</span><span class="warn" style="background:#e8effb;color:#1a56db;">单选</span></div>
+        <div style="font-size:14px;margin-bottom:4px;"><b>PPT 的数据口径按哪个基准呈现？</b></div>
+        <div style="color:#86909c;font-size:12px;margin-bottom:10px;">两种口径差异较大，影响全部 12 页图表</div>
+        <div class="opt-row">
+          <div class="opt pri">剔除退款的净额口径（推荐：与财务月报一致）</div>
+          <div class="opt">含退款的全额口径</div>
+        </div>
+        <div class="opt-row"><div class="opt">其他（自填）</div></div>
+      </div>
+      <div class="kcard">关键发现：Q3 环比下降 32%，主要由华东区 9 月退款激增导致（占降幅 78%）</div>
+    </div>
+    <div class="inp"><div class="ph2">输入消息…</div>
+      <div class="bar2"><span>附件 · 自动档 · 通知开</span><span>内网旗舰 ▲</span></div></div>
+  </div>
+  <div class="note">结构化提问卡：问题+选项+其他自填；选中即回传，任务继续</div>
+</div>
+
+<!-- 3. 中断横条 -->
+<div class="pg" id="p3">
+  <div class="stage">
+    <div class="top"><span>中新融创项目</span>
+      <div class="bar"><span>任务已中断（应用重启）——已完成 4/9 步</span>
+        <span class="btn" style="height:26px;padding:0 14px;font-size:12px;">从断点继续</span>
+        <span class="btn bl" style="height:26px;padding:0 14px;font-size:12px;">查看进度</span></div></div>
+    <div class="flow">
+      <div class="ph">从断点继续：上次完成至「季度汇总」，本次从「对标分析」开始（历史 4 步已折叠）</div>
+      <div class="ph">已获取销售数据：读取 sales_2025.xlsx（1,842 行）</div>
+      <div class="ph det">第 4 步 · 工具明细（折叠展开示例）：read_file <code>sales_2025.xlsx</code> · 耗时 1.2s · 详见转写</div>
+      <div class="ph" style="opacity:.55;">（中断前）正在分析：按季度汇总并剔除退款（3/5）…</div>
+    </div>
+    <div class="inp"><div class="ph2">输入消息…</div>
+      <div class="bar2"><span>附件 · 自动档 · 通知开</span><span>内网旗舰 ▲</span></div></div>
+  </div>
+  <div class="note">F04：状态实时落盘，中断可见，断点续跑不重做；服务端形态关浏览器任务照跑</div>
+</div>
+
+<!-- 4. 新建任务向导 -->
+<div class="pg" id="p4">
+  <div class="mask show" style="position:absolute;background:#f5f6f8;">
+    <div class="card" style="width:560px;">
+      <h3>新建任务</h3>
+      <div class="sub">快路径：输入描述后直接「开始」，其余默认；「更多选项」展开第 2-4 步</div>
+      <div class="steps"><div class="st on">1 描述任务</div><div class="st on">2 项目与目录</div><div class="st">3 添加上下文</div><div class="st">4 确认开始</div></div>
+
+      <div class="fld"><label>任务描述</label>
+        <textarea rows="3" placeholder="例：帮我出一份 Q3 数据复盘 PPT，重点分析退款激增的原因"></textarea>
+        <div class="tip">支持直接粘贴截图作为素材</div></div>
+
+      <div class="fld"><label>项目</label>
+        <select><option>中新融创项目（默认 · 最近）</option><option>金宇咨询项目</option><option>＋ 新建项目…</option></select>
+        <div class="tip">工作目录：server://workspaces/中新融创项目（服务端形态 · 不可改）</div></div>
+
+      <div class="fld"><label>上下文素材（可选）</label>
+        <div class="chip"><b>@</b> sales_2025.xlsx <span style="color:#86909c">×</span></div>
+        <div class="chip"><b>@</b> 公司汇报模板.pptx <span style="color:#86909c">×</span></div>
+        <div class="drop" style="margin-top:6px;">拖拽文件到此处，或点击上传本地素材（上传后存入服务端工作区，可被 @ 引用）</div></div>
+
+      <div class="sumrow"><span>专家</span><b>数据分析（按任务类型推荐）<span class="rec">推荐</span></b></div>
+      <div class="sumrow"><span>模型</span><b>内网旗舰 128k <span class="rec">推荐</span> · 健康度 近20次/18成</b></div>
+
+      <div class="foot">
+        <button class="btn ghost">更多选项</button>
+        <button class="btn">开始任务</button>
+      </div>
+    </div>
+  </div>
+  <div class="note">四步向导=快路径优先：描述即可开始；专家/模型按管理员推荐规则预选（C04），可改</div>
+</div>
+
+<!-- 5. 模型选择器 -->
+<div class="pg" id="p5">
+  <div class="stage">
+    <div class="top"><span>中新融创项目</span><span style="color:#c9cdd4">|</span><span>内网旗舰 ▲（点击展开）</span></div>
+    <div class="flow" style="position:relative;">
+      <div class="selbox" style="top:10px;left:40px;">
+        <div class="it"><span>内网旗舰 128k <span class="rec">推荐</span></span><span style="color:#86909c">近20次 18成</span></div>
+        <div class="it"><span>内网轻量 flash</span><span style="color:#86909c">近20次 20成</span></div>
+        <div class="it"><span>商用 DeepSeek-V4（审批）</span><span class="badge-red">连挂 2 次</span></div>
+        <div class="it" style="color:#86909c;cursor:default;"><span>列表=管理员开放范围（M03）</span><span>用户不可自配</span></div>
+      </div>
+      <div class="ph" style="margin-top:230px;">正在生成 PPT：基于企业模板排版 12 页（5/9）</div>
+      <div class="kcard">关键发现：Q3 环比下降 32%</div>
+    </div>
+    <div class="inp"><div class="ph2">输入消息…</div>
+      <div class="bar2"><span>附件 · 自动档 · 通知开</span><span>切换后下一轮生效</span></div></div>
+  </div>
+  <div class="note">C04：三层选择（全局/项目/对话覆盖）；推荐标注按管理员规则；健康账本连挂标红；切换下一轮生效</div>
+</div>
+
+<!-- 6. 版本链右栏 -->
+<div class="pg" id="p6">
+  <div class="cols">
+    <div class="mid">
+      <div class="top"><span>Q3 数据复盘 PPT · 已完成</span><span style="color:#c9cdd4">|</span><span>点击右侧文件预览</span></div>
+      <div class="flow">
+        <div class="kcard" style="background:#f0f7ff;border-color:#1a56db44;">
+          <b>任务完成</b><br>完成内容：Q3 复盘 PPT 12 页（净额口径）+ 分析底稿<br>
+          产出：Q3数据复盘 v1.2.pptx · 分析底稿 v1.0.docx<br>
+          下次继续：待补充华东区退款明细附录
+        </div>
+        <div class="ph">生成 PPT：基于「公司汇报模板.pptx」排版完成，共 12 页</div>
+        <div class="src">本回合参考来源：<a>私募行业白皮书2025.pdf</a><a>q3-sales 内部报表</a><a>finance-monthly-09.docx</a></div>
+      </div>
+    </div>
+    <div class="right">
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;">成果预览 <span style="font-weight:400;color:#1a56db;cursor:pointer;">下载 · 全部下载(zip)</span></div>
+      <div style="font-size:11px;color:#86909c;margin-bottom:10px;">Q3数据复盘（版本链 3 版）</div>
+      <div class="vfile cur"><b>v1.2 · 20260829</b><div class="meta"><span>12 页 · 2.6MB · 当前版</span><span style="color:#1a56db;cursor:pointer;">历史版本</span></div></div>
+      <div class="vfile"><b>v1.1 · 20260829</b><div class="meta"><span>10 页 · 2.1MB</span><span style="color:#86909c;cursor:pointer;">预览 · 恢复</span></div></div>
+      <div class="vfile"><b>v1.0 · 20260828</b><div class="meta"><span>8 页 · 1.8MB</span><span style="color:#86909c;cursor:pointer;">预览 · 恢复</span></div></div>
+      <div style="font-size:11px;color:#86909c;margin:12px 0 8px;">其他产物</div>
+      <div class="vfile"><b>分析底稿 v1.0.docx</b><div class="meta"><span>6 页 · 刚刚</span></div></div>
+    </div>
+  </div>
+  <div class="note">B02 版本链聚合 + B03 历史快照恢复（恢复为新版本）+ F02 收尾卡三要素 + 来源列表</div>
+</div>
+
+<!-- 7. 定时任务 -->
+<div class="pg" id="p7">
+  <div class="wrap">
+    <div class="h1">自动化 · 定时任务</div>
+    <div class="h2">错过自动补跑（重启后补执行一次）；结果推送通知（A06）；入口：左栏「自动化」</div>
+    <div style="margin-bottom:14px;"><button class="btn">＋ 新建定时任务</button></div>
+    <table>
+      <tr><th>名称</th><th>计划</th><th>下次执行</th><th>最近结果</th><th>状态</th><th>操作</th></tr>
+      <tr><td>每日行业晨报</td><td>每天 09:00</td><td>明天 09:00</td><td>今晨完成 · 产物 2 份</td><td><span class="tag ok">启用</span></td><td><a style="color:#1a56db;cursor:pointer;">编辑</a><a style="color:#1a56db;cursor:pointer;">历史</a><a style="color:#86909c;cursor:pointer;">停用</a></td></tr>
+      <tr><td>周度投研周报</td><td>每周一 08:30</td><td>周一 08:30</td><td>上周完成</td><td><span class="tag ok">启用</span></td><td><a style="color:#1a56db;cursor:pointer;">编辑</a><a style="color:#1a56db;cursor:pointer;">历史</a><a style="color:#86909c;cursor:pointer;">停用</a></td></tr>
+      <tr><td>监管政策监测</td><td>每天 18:00</td><td>今天 18:00</td><td><span class="tag warn">补跑</span> 今晨错过·已补</td><td><span class="tag ok">启用</span></td><td><a style="color:#1a56db;cursor:pointer;">编辑</a><a style="color:#1a56db;cursor:pointer;">历史</a><a style="color:#86909c;cursor:pointer;">停用</a></td></tr>
+      <tr><td>旧数据备份检查</td><td>每月 1 日</td><td>9月1日</td><td>—</td><td><span class="tag gray">停用</span></td><td><a style="color:#00b42a;cursor:pointer;">启用</a><a style="color:#1a56db;cursor:pointer;">编辑</a></td></tr>
+    </table>
+    <div style="margin-top:16px;font-size:12px;color:#86909c;">新建表单：名称 + 提示词 + 计划（每天/每周/每月/cron 高级）+ 推送通知开关；定时任务产生的会话在项目树中以任务形态出现（标「定时」）</div>
+  </div>
+</div>
+
+<script>
+function go(id,el){
+  document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.idx a').forEach(a=>a.classList.remove('on'));
+  if(el)el.classList.add('on');
+}
+</script>
+</body>
+</html>
