@@ -358,6 +358,37 @@
   <div class="um-item danger" onclick="go('p-login');hideUserMenu()">⏻ 退出登录</div>
 </div>
 
+<!-- ============ 6. 设置页（占位，完整规格见 PRD-06） ============ -->
+<div class="page" id="p-settings">
+  <div class="frame">
+    <div class="sidebar">
+      <div class="side-logo">WorkPivot 设置</div>
+      <div class="nav-item active">通用</div>
+      <div class="nav-item">外观与主题</div>
+      <div class="nav-item">通知</div>
+      <div class="nav-item">安全（锁屏/会话）</div>
+      <div class="nav-item">数据与备份</div>
+      <div class="nav-item">关于与更新</div>
+      <div style="flex:1"></div>
+      <div class="nav-item" onclick="go('p-main')">← 返回主界面</div>
+    </div>
+    <div class="main">
+      <div class="main-title">通用设置</div>
+      <div class="main-desc">完整功能规格见 PRD-06（此页为导航占位原型）</div>
+      <table>
+        <tr><th>设置项</th><th>当前值</th><th>说明</th></tr>
+        <tr><td>显示名称</td><td>李长冰</td><td>他人可见的名称</td></tr>
+        <tr><td>界面主题</td><td>浅色</td><td>浅色 / 深色 / 跟随系统</td></tr>
+        <tr><td>锁屏密码</td><td>关闭</td><td>开启后长时间无操作需重新验证（默认 30 分钟）</td></tr>
+        <tr><td>免打扰时段</td><td>22:00 - 08:00</td><td>期间任务通知静默、不丢失</td></tr>
+        <tr><td>数据备份</td><td>—</td><td>一键备份/恢复（A08）</td></tr>
+        <tr><td>检查更新</td><td>当前 v0.1.0</td><td>内网更新源（A07）</td></tr>
+      </table>
+      <div class="proto-note">入口：左栏底部用户区块 ⚙ 或用户菜单「个人资料」；退出登录在用户菜单底部</div>
+    </div>
+  </div>
+</div>
+
 <script>
   function toggleUserMenu(e){
     var m=document.getElementById('userMenu');
