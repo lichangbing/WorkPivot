@@ -142,7 +142,8 @@
       <div class="auth-foot" id="reg-link">还没有账号？<a onclick="go('p-reg')">注册管理员账号</a></div>
       <button class="feishu-btn" onclick="alert('原型演示：跳转飞书扫码授权页（J07，P1）')">
         <span style="color:#3370ff;font-weight:700;">飞</span> 使用飞书登录
- </button>
+      </button>
+      <div class="auth-foot" style="margin-top:12px;">原型演示：<a onclick="go('p-pwd')">首登强制改密（P3）</a></div>
  </div>
  </div>
   <div class="proto-note">原型说明：当系统无任何用户时显示「注册管理员账号」链接；已有用户后该链接消失（首个注册者=管理员）</div>
@@ -178,7 +179,33 @@
  </div>
 </div>
 
-<!-- ============ 3. 初始化引导 ============ -->
+<!-- ============ 3. 首登强制改密（P3） ============ -->
+<div class="page" id="p-pwd">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-logo">修改初始密码</div>
+      <div class="auth-sub">首次登录须修改初始密码后方可继续使用</div>
+      <div class="field">
+        <label>原密码（初始密码）</label>
+        <input type="password" placeholder="管理员创建账号时告知的初始密码">
+ </div>
+      <div class="field">
+        <label>新密码</label>
+        <input type="password" class="npwd" placeholder="至少 8 位，须含字母和数字" oninput="chkNewPwd()">
+        <div class="hint gray">强度：<span id="npwd-lv">—</span></div>
+ </div>
+      <div class="field">
+        <label>确认新密码</label>
+        <input type="password" placeholder="再次输入新密码">
+ </div>
+      <button class="btn" onclick="go('p-setup')">确认修改并继续</button>
+      <div class="auth-foot">新账户改密后进入初始化引导；此后登录直接进入主界面</div>
+ </div>
+ </div>
+  <div class="proto-note">P3 强制改密页：不可跳过（关闭应用重开仍停留此页）；新密码不得与原密码相同；改密成功后 must_change_password=false</div>
+</div>
+
+<!-- ============ 4. 初始化引导 ============ -->
 <div class="page" id="p-setup">
   <div class="auth-wrap">
     <div class="auth-card" style="width:460px;">
@@ -201,7 +228,7 @@
  </div>
 </div>
 
-<!-- ============ 4. 用户管理（后台/管理员） ============ -->
+<!-- ============ 5. 用户管理（后台/管理员） ============ -->
 <div class="page" id="p-users">
   <div class="frame">
     <div class="sidebar">
@@ -260,7 +287,7 @@
  </div>
 </div>
 
-<!-- ============ 5. 主界面（三栏） ============ -->
+<!-- ============ 6. 主界面（三栏） ============ -->
 <div class="page" id="p-main">
   <div class="ws">
     <div class="ws-top">
@@ -358,7 +385,7 @@
   <div class="um-item danger" onclick="go('p-login');hideUserMenu()">退出登录</div>
 </div>
 
-<!-- ============ 6. 设置页（占位，完整规格见 PRD-06） ============ -->
+<!-- ============ 7. 设置页（占位，完整规格见 PRD-06） ============ -->
 <div class="page" id="p-settings">
   <div class="frame">
     <div class="sidebar">
@@ -412,6 +439,13 @@
   function chkPwd(){
     var v=document.querySelector('#p-reg input[type=password]').value;
     var lv=document.getElementById('pwd-lv');
+    if(v.length>=8 && /[a-zA-Z]/.test(v) && /\d/.test(v)){ lv.textContent='强'; lv.style.color='#00b42a'; }
+    else if(v.length>=6){ lv.textContent='弱（须≥8位且含字母数字）'; lv.style.color='#f7ba1e'; }
+    else { lv.textContent='—'; lv.style.color='#86909c'; }
+  }
+  function chkNewPwd(){
+    var v=document.querySelector('#p-pwd input.npwd').value;
+    var lv=document.getElementById('npwd-lv');
     if(v.length>=8 && /[a-zA-Z]/.test(v) && /\d/.test(v)){ lv.textContent='强'; lv.style.color='#00b42a'; }
     else if(v.length>=6){ lv.textContent='弱（须≥8位且含字母数字）'; lv.style.color='#f7ba1e'; }
     else { lv.textContent='—'; lv.style.color='#86909c'; }
