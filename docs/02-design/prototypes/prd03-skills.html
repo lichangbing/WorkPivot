@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>WorkPivot 原型 · 技能专家(PRD-03) 与 后台管理(PRD-04)</title>
+<title>WorkPivot 原型 · 技能与专家(PRD-03)</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft YaHei","PingFang SC",sans-serif;}
   body{background:#f5f6f8;color:#1f2329;}
@@ -54,15 +54,10 @@
 <body>
 <div class="idx">
   <b>PRD-03 技能与专家</b>
-  <a class="on" onclick="go('p1',this)">1 技能列表</a>
+  <a class="on" onclick="go('p1',this)">1 技能中心(市场/我的)</a>
   <a onclick="go('p2',this)">2 技能编辑器</a>
   <a onclick="go('p3',this)">3 从文档生成</a>
   <a onclick="go('p4',this)">4 专家配置(后台)</a>
-  <b>PRD-04 后台管理</b>
-  <a onclick="go('p5',this)">5 模型管理</a>
-  <a onclick="go('p6',this)">6 连接器向导</a>
-  <a onclick="go('p7',this)">7 默认agent.md</a>
-  <a onclick="go('p8',this)">8 审计日志</a>
 </div>
 
 <!-- 1 技能中心：市场 + 我的 -->
@@ -98,6 +93,7 @@
   </div>
   <div class="note">两个独立 Tab：市场（官方+企业公共，卡片流，安装=复制副本）｜我的（项目+个人，含来源标记与市场更新提示）</div>
 </div></div>
+
 
 <!-- 2 技能编辑器 -->
 <div class="pg" id="p2"><div class="wrap">
@@ -148,6 +144,7 @@
   <div class="note">双 Tab 编辑器：MD 层（表单+高亮正文+预览）｜代码层（目录树+脚本高亮）；试运行抽屉含命中判定/注入预览/真执行（沙箱）</div>
 </div></div>
 
+
 <!-- 3 从文档生成 -->
 <div class="pg" id="p3"><div class="wrap">
   <div class="h1">从文档生成技能 · 第 2 步：抽取预览</div>
@@ -168,6 +165,7 @@
   </div>
   <div class="note">schema 强约束抽取→模板渲染；每字段标注原文依据；低置信标黄；编辑确认必经（同一文档重复生成结构一致）</div>
 </div></div>
+
 
 <!-- 4 专家配置(后台) -->
 <div class="pg" id="p4"><div class="frame">
@@ -196,114 +194,10 @@
 <div class="note">D02 后台配置制：人格+技能+数据源+开场提示；内置模板（调研/写作/数据/PPT）可改可停</div>
 </div>
 
-<!-- 5 模型管理 -->
-<div class="pg" id="p5"><div class="frame">
-  <div class="sidebar"><div class="side-logo">WorkPivot 管理后台</div>
-    <div class="nav-item">用户与角色</div><div class="nav-item active">模型管理</div><div class="nav-item">连接器配置</div><div class="nav-item">专家配置</div><div class="nav-item">默认 Agent 定义</div><div class="nav-item">公共技能</div><div class="nav-item">文档模板</div><div class="nav-item">审计日志</div>
-  </div>
-  <div class="main">
-    <div class="h1">模型管理</div>
-    <div class="h2">管理员唯一配置入口；OpenAI 接口模式为主（base_url+Key+模型ID）；保存前连通测试必过</div>
-    <div style="margin-bottom:12px;"><button class="btn">＋ 新增模型</button></div>
-    <table><tr><th>名称</th><th>协议</th><th>分组</th><th>可见范围</th><th>健康度</th><th>并发</th><th>状态</th><th>操作</th></tr>
-      <tr><td><b>内网旗舰 128k</b> <span class="tag blue">默认</span></td><td>OpenAI 兼容</td><td><span class="tag ok">本地池</span></td><td>全员</td><td>近20次 18成</td><td>5</td><td><span class="tag ok">启用</span></td><td><a class="op">编辑</a><a class="op">停用</a></td></tr>
-      <tr><td>内网轻量 flash</td><td>OpenAI 兼容</td><td><span class="tag ok">本地池</span></td><td>全员</td><td>近20次 20成</td><td>不限</td><td><span class="tag ok">启用</span></td><td><a class="op">编辑</a><a class="op">停用</a></td></tr>
-      <tr><td>商用 DeepSeek-V4</td><td>Anthropic</td><td><span class="tag gray">云池</span></td><td>研发部</td><td><span style="color:#f53f3f;">连挂 2 次</span></td><td>3</td><td><span class="tag gray">停用</span></td><td><a class="op">编辑</a><a class="op" style="color:#00b42a;">启用</a></td></tr></table>
-    <div class="card"><b>推荐规则（任务类型 → 模型）</b>
-      <table style="margin-top:8px;"><tr><th>任务类型</th><th>推荐模型</th><th>操作</th></tr>
-        <tr><td>文档生成</td><td>内网旗舰 128k</td><td><a class="op">改</a><a class="op">删</a></td></tr>
-        <tr><td>数据分析</td><td>内网轻量 flash</td><td><a class="op">改</a><a class="op">删</a></td></tr>
-        <tr><td>深度调研</td><td>内网旗舰 128k</td><td><a class="op">改</a><a class="op">删</a></td></tr>
-        <tr><td>＋ 添加类型（通用对话/自定义…）</td><td colspan="2"></td></tr></table></div>
-    <div class="card"><b>并发配置</b>：企业最大并发会话 <input value="20" style="width:60px;border:1px solid #e5e6eb;border-radius:6px;padding:4px 8px;"> ｜ 单用户并行任务上限 <input value="8" style="width:60px;border:1px solid #e5e6eb;border-radius:6px;padding:4px 8px;"> ｜（按模型分档见列表「并发」列）</div>
-  </div>
-</div>
-<div class="note">M03：Key 密文不回显；停用 60s 生效；推荐规则对用户透明标注「推荐」；健康连挂标红</div>
-</div>
-
-<!-- 6 连接器向导 -->
-<div class="pg" id="p6"><div class="wrap">
-  <div class="h1">新增连接器 · 类型：数据库（只读）</div>
-  <div class="h2">凭据存服务端加密库——成员端永不落盘（S02）；写操作默认禁用</div>
-  <div class="card">
-    <div class="row2"><div class="fld"><label>连接器名称</label><input value="生产数据库-只读"></div>
-      <div class="fld"><label>数据库类型</label><select><option>MySQL</option><option>PostgreSQL</option><option>SQL Server</option><option>SQLite</option></select></div></div>
-    <div class="row2"><div class="fld"><label>主机</label><input value="10.0.8.21"></div>
-      <div class="fld"><label>端口</label><input value="3306"></div>
-      <div class="fld"><label>库名</label><input value="fund_prod"></div></div>
-    <div class="row2"><div class="fld"><label>账号（建议只读账号）</label><input value="ro_workpivot"></div>
-      <div class="fld"><label>密码（I04 加密存储）</label><input type="password" value="********"></div></div>
-    <div class="fld"><label>表白名单（只勾选可查的表）</label>
-      <div><span class="pill">fund_info ✓</span><span class="pill">nav_history ✓</span><span class="pill">investor ✓</span><span class="pill" style="color:#c9cdd4;">user_creds ✗</span></div></div>
-    <div class="fld"><label>工具启停（自动发现）</label>
-      <table><tr><th>工具</th><th>说明</th><th>状态</th></tr>
-        <tr><td>db_query</td><td>白名单表只读查询</td><td><span class="tag ok">启用</span></td></tr>
-        <tr><td>db_schema</td><td>查看表结构</td><td><span class="tag ok">启用</span></td></tr>
-        <tr><td>db_write</td><td>写入/变更</td><td><span class="tag gray">默认禁用</span> <a class="op">启用需二次确认+审计加严</a></td></tr></table></div>
-    <div class="fld"><label>使用范围</label><select><option>全员</option><option>按部门：投资部</option><option>指定项目</option></select></div>
-    <div style="display:flex;justify-content:flex-end;gap:10px;"><button class="btn ghost">测试连接</button><button class="btn">保存</button></div>
-  </div>
-  <div class="note">S02：服务端公共连接器；启停 60s 生效；调用全审计（M06）；协作场景个人连接器自动禁用</div>
-</div></div>
-
-<!-- 7 默认agent.md -->
-<div class="pg" id="p7"><div class="frame">
-  <div class="sidebar"><div class="side-logo">WorkPivot 管理后台</div>
-    <div class="nav-item">用户与角色</div><div class="nav-item">模型管理</div><div class="nav-item">连接器配置</div><div class="nav-item">专家配置</div><div class="nav-item active">默认 Agent 定义</div><div class="nav-item">公共技能</div><div class="nav-item">文档模板</div><div class="nav-item">审计日志</div>
-  </div>
-  <div class="main">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;"><div class="h1" style="margin:0">默认 Agent 定义（企业层）</div>
-    <div><span class="ver">当前 v3 · 08-28 发布</span> <button class="btn ghost sm">历史版本</button> <button class="btn sm">保存为新版本</button></div></div>
-    <div class="h2">分层：平台基础层 → 企业层（本页，成员不可关闭）→ 用户个人层；新会话即时生效，进行中不中断</div>
-    <div class="fld"><label>agent.md（frontmatter + 正文；「不可覆盖」区块用标记包裹）</label>
-    <div class="editor" style="height:300px;">---
-name: company-default
-version: 3
----
-你是公司员工的工作助手，使用简体中文，回答务实、给依据。
-
-<span class="c">&lt;!-- wp:locked --&gt;</span>
-<span class="k">## 以下约束不可被个人层/专家层覆盖</span>
-- 全部金额两位小数，币种默认 CNY
-- 投资结论必须给「依据+来源」，单一来源标注「待核实」
-- 不讨论未公开项目信息；涉密内容拒绝并提示
-<span class="c">&lt;!-- /wp:locked --&gt;</span>
-
-## 输出规范
-- 报告类交付遵循文档模板；正文先结论后论证</div></div>
-    <div class="hit" style="max-width:520px;"><b>分层预览</b>：平台基础层（内置）→ <b>企业层（上述内容）</b> → 用户层（个人 agent.md，只读示意）。成员端可查看当前生效的企业指令（透明原则）。</div>
-  </div>
-</div>
-<div class="note">S03：版本化+回滚；红线区块锁定；成员可查看不可关闭</div>
-</div>
-
-<!-- 8 审计日志 -->
-<div class="pg" id="p8"><div class="frame">
-  <div class="sidebar"><div class="side-logo">WorkPivot 管理后台</div>
-    <div class="nav-item">用户与角色</div><div class="nav-item">模型管理</div><div class="nav-item">连接器配置</div><div class="nav-item">专家配置</div><div class="nav-item">默认 Agent 定义</div><div class="nav-item">公共技能</div><div class="nav-item">文档模板</div><div class="nav-item active">审计日志</div>
-  </div>
-  <div class="main">
-    <div class="h1">审计日志</div>
-    <div class="h2">六类事件统一查询；连接器调用页签对连接器管理员+企业管理员可见；支持导出 CSV</div>
-    <div style="margin-bottom:12px;display:flex;gap:8px;font-size:12px;">
-      <select style="border:1px solid #e5e6eb;border-radius:8px;padding:6px 10px;"><option>全部事件</option><option>登录</option><option>任务操作</option><option>危险命令</option><option>界外授权</option><option>连接器调用</option><option>后台操作</option></select>
-      <select style="border:1px solid #e5e6eb;border-radius:8px;padding:6px 10px;"><option>全部用户</option><option>wangfy</option><option>liuyq</option></select>
-      <input placeholder="时间范围" style="border:1px solid #e5e6eb;border-radius:8px;padding:6px 10px;width:180px;" value="今天">
-      <button class="btn sm">查询</button><button class="btn ghost sm">导出 CSV</button></div>
-    <table><tr><th>时间</th><th>用户</th><th>事件</th><th>对象</th><th>结果</th><th>详情</th></tr>
-      <tr><td>09:41</td><td>wangfy</td><td><span class="tag warn">界外授权</span></td><td>D:\公司资料\行业报告\白皮书.pdf</td><td><span class="tag ok">仅此次允许</span></td><td><a class="op">展开（原因/命令哈希）</a></td></tr>
-      <tr><td>09:38</td><td>wangfy</td><td><span class="tag blue">连接器调用</span></td><td>生产数据库-只读 · db_query</td><td><span class="tag ok">成功</span></td><td><a class="op">参数摘要</a></td></tr>
-      <tr><td>09:32</td><td>liuyq</td><td><span class="tag" style="background:#ffe8e6;color:#f53f3f;">危险命令拦截</span></td><td>rm -rf ./ 未确认目录</td><td><span class="tag" style="background:#ffe8e6;color:#f53f3f;">已拦截</span></td><td><a class="op">命令哈希</a></td></tr>
-      <tr><td>09:15</td><td>admin</td><td><span class="tag gray">后台操作</span></td><td>模型管理 · 新增「内网轻量 flash」</td><td><span class="tag ok">成功</span></td><td><a class="op">变更详情</a></td></tr>
-      <tr><td>09:02</td><td>chenj</td><td><span class="tag gray">登录</span></td><td>飞书扫码</td><td><span class="tag ok">成功</span></td><td><a class="op">来源 IP</a></td></tr></table>
-  </div>
-</div>
-<div class="note">M06/I03：危险操作完整可追溯；界外授权记录授权选项；导出 CSV</div>
-</div>
 
 <script>
-function sktab(i,el){document.getElementById('sk0').style.display=i?'none':'';document.getElementById('sk1').style.display=i?'':'none';document.querySelectorAll('#p1 .tabs .tab').forEach(t=>t.classList.remove('on'));el.classList.add('on');}
 function go(id,el){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.idx a').forEach(a=>a.classList.remove('on'));if(el)el.classList.add('on');}
+function sktab(i,el){document.getElementById('sk0').style.display=i?'none':'';document.getElementById('sk1').style.display=i?'':'none';document.querySelectorAll('#p1 .tabs .tab').forEach(t=>t.classList.remove('on'));el.classList.add('on');}
 </script>
 </body>
 </html>

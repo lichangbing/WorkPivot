@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>WorkPivot 原型 · 记忆管理(PRD-05)</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft YaHei","PingFang SC",sans-serif;}
+  body{background:#f5f6f8;color:#1f2329;}
+  .pg{display:none;height:100vh;overflow:auto}.pg.active{display:block}
+  .idx{position:fixed;left:12px;top:12px;background:#fff;border:1px solid #e5e6eb;border-radius:10px;padding:10px;z-index:60;font-size:12px;box-shadow:0 4px 14px rgba(31,35,41,.08)}
+  .idx b{display:block;padding:4px 8px;color:#86909c;font-size:11px}
+  .idx a{display:block;padding:5px 8px;border-radius:6px;color:#4e5969;cursor:pointer;text-decoration:none}
+  .idx a:hover,.idx a.on{background:#e8effb;color:#1a56db}
+  .btn{height:34px;padding:0 16px;border:none;border-radius:8px;background:#1a56db;color:#fff;font-size:13px;cursor:pointer}
+  .btn.ghost{background:#fff;border:1px solid #e5e6eb;color:#4e5969}.btn.sm{height:28px;padding:0 12px;font-size:12px}
+  .wrap{padding:26px 34px 26px 200px}
+  .h1{font-size:19px;font-weight:700;margin-bottom:4px}.h2{font-size:12px;color:#86909c;margin-bottom:18px}
+  .card{background:#fff;border:1px solid #e5e6eb;border-radius:12px;padding:18px;margin-bottom:14px}
+  .card h3{font-size:14px;margin-bottom:10px}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid #e5e6eb;margin-bottom:14px}
+  .tab{padding:8px 16px;font-size:13px;color:#4e5969;cursor:pointer;border-bottom:2px solid transparent}
+  .tab.on{color:#1a56db;border-color:#1a56db;font-weight:600}
+  table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(31,35,41,.05)}
+  th{background:#f7f8fa;text-align:left;font-size:12px;color:#4e5969;padding:10px 14px}
+  td{padding:10px 14px;font-size:13px;border-top:1px solid #f2f3f5}
+  a.op{color:#1a56db;font-size:13px;margin-right:10px;cursor:pointer;text-decoration:none}
+  .tag{padding:2px 8px;border-radius:9px;font-size:11px}
+  .tag.ok{background:#e8ffea;color:#00b42a}.tag.gray{background:#f2f3f5;color:#86909c}.tag.blue{background:#e8effb;color:#1a56db}.tag.warn{background:#fff7e8;color:#d25f00}
+  .editor{background:#1e2430;color:#d7dce5;border-radius:10px;padding:14px;font-family:Consolas,monospace;font-size:12px;line-height:1.8;white-space:pre}
+  .wait-card{max-width:640px;margin:0 auto 16px;background:#f0f7ff;border:1px solid #1a56db44;border-radius:10px;padding:16px;font-size:13px}
+  .wait-card .t{font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between}
+  .opt-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .opt{padding:8px 14px;border:1px solid #e5e6eb;border-radius:8px;background:#fff;font-size:13px;cursor:pointer}
+  .opt:hover{border-color:#1a56db;color:#1a56db}.opt.pri{background:#1a56db;color:#fff;border-color:#1a56db}
+  .bar-wrap{background:#f2f3f5;border-radius:8px;height:22px;display:flex;overflow:hidden;margin:10px 0 4px}
+  .bar-seg{height:100%;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;white-space:nowrap}
+  .memo{border:1px solid #e5e6eb;border-radius:10px;padding:12px 14px;margin-bottom:8px;font-size:13px;display:flex;justify-content:space-between;gap:10px;background:#fff}
+  .memo .src{color:#86909c;font-size:11px;flex-shrink:0}
+  .split{display:flex;gap:16px}
+  .drawer-r{width:340px;background:#fff;border-left:1px solid #e5e6eb;padding:16px;overflow:auto;font-size:12px;flex-shrink:0}
+  .kv{display:flex;justify-content:space-between;padding:9px 12px;background:#f7f8fa;border-radius:8px;font-size:13px;margin-bottom:8px}
+  .note{position:fixed;right:14px;bottom:14px;background:#1f2329;color:#fff;font-size:11px;padding:9px 12px;border-radius:8px;opacity:.85;max-width:250px}
+  .stage{display:flex;flex-direction:column;height:100vh}
+  .top{height:44px;background:#fff;border-bottom:1px solid #e5e6eb;display:flex;align-items:center;padding:0 18px;font-size:12px;color:#4e5969;gap:8px}
+  .flow{flex:1;overflow:auto;padding:22px 26px;background:#fafbfc}
+  .ph{max-width:78%;background:#fff;border:1px solid #e5e6eb;border-radius:10px;padding:12px 15px;margin-bottom:10px;font-size:13px;color:#4e5969}
+  .cols{display:flex;height:100vh}
+  .mid{flex:1;padding:22px 26px;overflow:auto;background:#fafbfc}
+</style>
+</head>
+<body>
+<div class="idx">
+  <b>PRD-05 记忆管理</b>
+  <a class="on" onclick="go('p1',this)">1 个人记忆管理</a>
+  <a onclick="go('p2',this)">2 晋升确认卡</a>
+  <a onclick="go('p3',this)">3 项目记忆面板</a>
+  <a onclick="go('p4',this)">4 上下文管理(/usage)</a>
+</div>
+
+<!-- 1 个人记忆管理 -->
+<div class="pg active" id="p1"><div class="wrap">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <div><div class="h1">记忆</div><div class="h2">记忆仅存本地/本企业服务器，不进任何遥测；手写区每轮会话自动注入</div></div>
+    <div style="display:flex;gap:10px;"><button class="btn ghost sm">导出 Markdown</button><button class="btn sm" style="background:#f53f3f;">关闭记忆功能</button></div>
+  </div>
+  <div class="card"><h3>手写区（MEMORY.md）—— 我要 AI 永远记住的</h3>
+    <div class="editor" style="height:150px;">## 沟通偏好
+- 用中文；报告先结论后论证；金额两位小数
+## 工作背景
+- 负责 PE/VC 投研；项目术语遵循《尽调操作手册 v3》
+## 长期约束
+- 数据口径默认净额（剔除退款），与财务月报一致</div>
+    <div style="margin-top:8px;font-size:11px;color:#86909c;">保存即时生效（下次会话）· 编辑带版本历史可回退</div></div>
+  <div class="card"><h3>条目区（AI 自动记录 · 默认静默，晋升需你确认）</h3>
+    <div style="margin-bottom:10px;font-size:12px;color:#86909c;">统计：手写区 3 条 ｜ 条目区 42 条 ｜ 本月新增 11 条 ｜ 上限 1000 条（超量丢最旧）</div>
+    <div class="memo"><div>用户偏好表格用三线表；引用来源必须带链接</div><span class="src">08-28 · 来自任务「行业监管调研」 <a class="op">编辑</a><a class="op" style="color:#f53f3f;">删除</a></span></div>
+    <div class="memo"><div>常用模板：公司汇报模板.pptx（Q3 任务确认）</div><span class="src">08-27 · 来自任务「Q3 复盘」 <a class="op">编辑</a><a class="op" style="color:#f53f3f;">删除</a></span></div>
+    <div class="memo"><div>金宇项目的数据负责人是陈尽职，取数先联系</div><span class="src">08-25 · 来自任务「组织架构梳理」 <a class="op">编辑</a><a class="op" style="color:#f53f3f;">删除</a></span></div>
+    <div style="font-size:12px;color:#86909c;margin-top:6px;"><a class="op">搜索条目</a><a class="op">查看抑制清单（不再询问晋升的同类内容）</a></div></div>
+  <div class="note">E01：双层记忆+总控（关闭/导出）；条目区可溯源到任务；晋升去确认卡（见页2）</div>
+</div></div>
+
+<!-- 2 晋升确认卡 -->
+<div class="pg" id="p2"><div class="stage">
+  <div class="top"><span>中新融创项目 · 任务进行中</span></div>
+  <div class="flow">
+    <div class="wait-card">
+      <div class="t"><span>AI 请求把一条经验晋升为长期记忆</span><span class="tag blue">可就地编辑</span></div>
+      <div class="kv"><span style="color:#86909c">拟晋升内容</span><span>「数据口径默认净额（剔除退款），与财务月报一致」</span></div>
+      <div class="kv"><span style="color:#86909c">理由（AI 填写）</span><span>连续 3 次任务主动询问同一口径，判断为稳定偏好</span></div>
+      <div class="kv"><span style="color:#86909c">去向</span><span>手写区 · 「工作背景」分区</span></div>
+      <div class="opt-row">
+        <div class="opt pri">晋升并保存</div>
+        <div class="opt">保留为条目（默认）</div>
+        <div class="opt" style="color:#f53f3f;">删除该条目</div>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:#86909c;"><input type="checkbox" checked> 同类内容以后不再询问（可在设置·抑制清单中恢复）　·　每会话最多 2 张晋升卡</div>
+    </div>
+    <div class="ph">正在生成 PPT：基于企业模板排版 12 页（5/9）…（任务不因晋升卡中断，确认后异步写入）</div>
+  </div>
+  <div class="note">晋升确认流：内容可编辑+理由透明+三选项+抑制清单；频率限制防打扰</div>
+</div></div>
+
+<!-- 3 项目记忆面板 -->
+<div class="pg" id="p3"><div class="wrap">
+  <div class="h1">项目记忆 · 中新融创项目</div>
+  <div class="h2">随项目目录走（拷目录即迁移）；今日+昨日日志自动注入每个任务</div>
+  <div class="tabs"><div class="tab on">长期记忆</div><div class="tab">按日日志</div><div class="tab">记忆使用情况</div></div>
+  <div class="card"><h3>MEMORY.md（项目背景/约束/决策）</h3>
+    <div class="editor" style="height:160px;">## 项目背景
+甲方：中新融创（私募，投前/投中/投后全链条）· 编号 ZXRC-202607-00332
+## 已确认决策
+- 报告输出 Word+PPT 双格式；版本号文件名交付
+- SOP 线上化范围：投资决策/立项/投后管理三流程
+## 约束
+- 大股东 TCL；术语以基金业协会规范为准</div></div>
+  <div class="card"><h3>按日日志（只读归档）</h3>
+    <table><tr><th>日期</th><th>摘要</th><th>操作</th></tr>
+    <tr><td>08-29</td><td>生成《岗位SOP手册》单表格版；确认模板采用基金文书</td><td><a class="op">查看</a></td></tr>
+    <tr><td>08-28</td><td>SOP 方案迭代 v1.2→v1.4；行业白皮书引用入资产库</td><td><a class="op">查看</a></td></tr>
+    <tr><td>08-27</td><td>监管新规调研：双源验证 2 条，1 条待核实</td><td><a class="op">查看</a></td></tr></table></div>
+  <div class="card"><h3>记忆使用情况（最近 20 次任务命中）</h3>
+    <table><tr><th>任务</th><th>命中片段</th><th>注入 token</th></tr>
+    <tr><td>Q3 数据复盘</td><td>「净额口径」「公司汇报模板」</td><td>312</td></tr>
+    <tr><td>SOP 线上化 v1.4</td><td>「三流程范围」「TCL 背景」</td><td>488</td></tr>
+    <tr><td>监管调研</td><td>「术语以协会规范为准」</td><td>156</td></tr></table>
+    <div style="font-size:11px;color:#86909c;margin-top:6px;">让用户看见记忆在干活（E03 透明性）；命中按混合检索（向量+关键词）</div></div>
+  <div class="note">三 Tab：长期记忆(可编辑)/按日日志(只读)/使用情况(命中透明)；入口=左栏「项目记忆」</div>
+</div></div>
+
+<!-- 4 上下文管理 -->
+<div class="pg" id="p4"><div class="cols">
+  <div class="mid">
+    <div class="h1">上下文管理 · 当前会话（/usage）</div>
+    <div class="h2">「AI 带着什么在思考」全透明；移除仅本会话生效；压缩摘要中文呈现</div>
+    <div class="card"><h3>Token 分解（模型 128k 窗口 · 已用 41k）</h3>
+      <div class="bar-wrap">
+        <div class="bar-seg" style="width:9%;background:#6aa1ff;">系统 11k</div>
+        <div class="bar-seg" style="width:5%;background:#3d7dea;">企业层 7k</div>
+        <div class="bar-seg" style="width:7%;background:#1a56db;">记忆 9k</div>
+        <div class="bar-seg" style="width:14%;background:#00b42a;">历史 18k</div>
+        <div class="bar-seg" style="width:5%;background:#f7ba1e;">工具 6k</div>
+      </div>
+      <div style="font-size:11px;color:#86909c;">系统提示 11k ｜ 企业默认层 7k（只读）｜ 记忆 9k ｜ 历史消息 18k ｜ 工具结果 6k</div>
+      <div style="margin-top:8px;"><button class="btn sm">手动压缩（/compress · 预估可释放 12k）</button> <span style="font-size:11px;color:#86909c;">自动压缩阈值 70%（管理员配置）</span></div></div>
+    <div class="card"><h3>组成清单（可操作）</h3>
+      <div class="memo"><div><span class="tag blue">手写记忆</span> 沟通偏好/工作背景/长期约束（3 条）</div><span class="src">注入 · <a class="op" style="color:#f53f3f;">本会话移除</a></span></div>
+      <div class="memo"><div><span class="tag blue">条目记忆</span> 三线表偏好 / 常用模板 / 金宇数据负责人（命中 3/42 条）</div><span class="src">检索注入 · <a class="op" style="color:#f53f3f;">单条移除</a></span></div>
+      <div class="memo"><div><span class="tag gray">项目记忆</span> 今日+昨日日志 + 长期记忆（E02）</div><span class="src">注入 · <a class="op" style="color:#f53f3f;">本会话移除</a></span></div>
+      <div class="memo"><div><span class="tag ok">@引用文件</span> sales_2025.xlsx / 公司汇报模板.pptx</div><span class="src"><a class="op" style="color:#f53f3f;">移除引用</a></span></div>
+      <div class="memo" style="opacity:.65;"><div><span class="tag gray">企业默认层</span> 公司红线与输出规范（S03）</div><span class="src">只读 · 不可移除</span></div></div>
+    <div class="card"><h3>压缩历史（本会话 1 次）</h3>
+      <div class="kv"><span>14:22 自动压缩</span><span>已将早期 15 次网页查询压缩为中文摘要，保留 3 个关键结论 · <a class="op">对照转写原文</a></span></div></div>
+  </div>
+  <div class="note">A10：分解条+组成清单单条移除+手动压缩+压缩摘要中文对照转写（PRD-02 §8 缓存支撑回看）</div>
+</div></div>
+
+<script>
+function go(id,el){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.idx a').forEach(a=>a.classList.remove('on'));if(el)el.classList.add('on');}
+</script>
+</body>
+</html>

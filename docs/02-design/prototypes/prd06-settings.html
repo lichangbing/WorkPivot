@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>WorkPivot 原型 · 设置(PRD-06)</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft YaHei","PingFang SC",sans-serif;}
+  body{background:#f5f6f8;color:#1f2329;}
+  .pg{display:none;height:100vh}.pg.active{display:block}
+  .idx{position:fixed;left:12px;top:12px;background:#fff;border:1px solid #e5e6eb;border-radius:10px;padding:10px;z-index:60;font-size:12px;box-shadow:0 4px 14px rgba(31,35,41,.08)}
+  .idx b{display:block;padding:4px 8px;color:#86909c;font-size:11px}
+  .idx a{display:block;padding:5px 8px;border-radius:6px;color:#4e5969;cursor:pointer;text-decoration:none}
+  .idx a:hover,.idx a.on{background:#e8effb;color:#1a56db}
+  .btn{height:34px;padding:0 16px;border:none;border-radius:8px;background:#1a56db;color:#fff;font-size:13px;cursor:pointer}
+  .btn.ghost{background:#fff;border:1px solid #e5e6eb;color:#4e5969}.btn.sm{height:28px;padding:0 12px;font-size:12px}
+  .frame{display:flex;height:100vh}
+  .sidebar{width:190px;background:#fff;border-right:1px solid #e5e6eb;padding:14px 10px;flex-shrink:0}
+  .side-logo{font-size:14px;font-weight:700;color:#1a56db;padding:6px 10px 16px}
+  .nav-item{padding:9px 12px;border-radius:8px;font-size:13px;color:#4e5969;cursor:pointer;margin-bottom:2px}
+  .nav-item:hover{background:#f2f3f5}.nav-item.active{background:#e8effb;color:#1a56db;font-weight:600}
+  .main{flex:1;overflow:auto;padding:24px 30px}
+  .h1{font-size:19px;font-weight:700;margin-bottom:4px}.h2{font-size:12px;color:#86909c;margin-bottom:18px}
+  .card{background:#fff;border:1px solid #e5e6eb;border-radius:12px;padding:18px;margin-bottom:14px}
+  .card h3{font-size:14px;margin-bottom:12px}
+  .row{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid #f2f3f5;font-size:13px}
+  .row:last-child{border-bottom:none}
+  .row .desc{font-size:11px;color:#86909c;margin-top:3px}
+  .row .right{display:flex;align-items:center;gap:10px;flex-shrink:0}
+  .toggle{width:36px;height:20px;border-radius:10px;background:#1a56db;position:relative;cursor:pointer;display:inline-block}
+  .toggle.off{background:#c9cdd4}
+  .toggle i{position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:2px;right:2px}
+  .toggle.off i{right:auto;left:2px}
+  .pill{font-size:12px;border:1px solid #e5e6eb;border-radius:14px;padding:3px 12px;color:#4e5969;margin-left:6px;cursor:pointer}
+  .pill.on{background:#e8effb;border-color:#1a56db;color:#1a56db}
+  .dev{display:flex;align-items:center;gap:10px;border:1px solid #e5e6eb;border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:13px}
+  .dev .now{color:#1a56db;font-size:11px}
+  .fld{margin-bottom:10px}.fld label{display:block;font-size:12px;color:#4e5969;margin-bottom:5px}
+  .fld input{width:100%;border:1px solid #e5e6eb;border-radius:8px;padding:8px 11px;font-size:13px;outline:none}
+  .note{position:fixed;right:14px;bottom:14px;background:#1f2329;color:#fff;font-size:11px;padding:9px 12px;border-radius:8px;opacity:.85;max-width:250px}
+  .tag{padding:2px 8px;border-radius:9px;font-size:11px}
+  .tag.ok{background:#e8ffea;color:#00b42a}.tag.gray{background:#f2f3f5;color:#86909c}.tag.warn{background:#fff7e8;color:#d25f00}
+  .progress{height:8px;background:#f2f3f5;border-radius:4px;overflow:hidden;margin:8px 0}
+  .progress div{height:100%;background:#1a56db;width:62%}
+</style>
+</head>
+<body>
+<div class="idx">
+  <b>PRD-06 设置</b>
+  <a class="on" onclick="go('p1',this)">1 通用与通知</a>
+  <a onclick="go('p2',this)">2 安全（设备管理）</a>
+  <a onclick="go('p3',this)">3 数据与备份</a>
+  <a onclick="go('p4',this)">4 关于与更新</a>
+</div>
+
+<!-- 1 通用与通知 -->
+<div class="pg active" id="p1"><div class="frame">
+  <div class="sidebar"><div class="side-logo">WorkPivot 设置</div>
+    <div class="nav-item active">通用</div><div class="nav-item">通知</div><div class="nav-item">安全</div>
+    <div class="nav-item">权限与执行</div><div class="nav-item">数据与备份</div><div class="nav-item">语音（即将支持）</div><div class="nav-item">关于与更新</div></div>
+  <div class="main">
+    <div class="h1">通用 · 通知</div><div class="h2">主题即时切换；免打扰期间通知静默但不丢（计入未读）</div>
+    <div class="card"><h3>通用</h3>
+      <div class="row"><div>显示名称<div class="desc">他人可见</div></div><div class="right"><input value="李长冰" style="border:1px solid #e5e6eb;border-radius:8px;padding:6px 10px;font-size:13px;"></div></div>
+      <div class="row"><div>界面主题</div><div class="right"><span class="pill on">浅色</span><span class="pill">深色</span><span class="pill">跟随系统</span></div></div>
+      <div class="row"><div>默认工作目录（单机形态）<div class="desc">新建任务的默认目录</div></div><div class="right" style="font-size:12px;color:#4e5969;">D:\WorkPivot\workspace <span class="pill">更改</span></div></div>
+      <div class="row"><div>语言</div><div class="right" style="font-size:12px;color:#86909c;">简体中文（多语言规划中）</div></div></div>
+    <div class="card"><h3>通知（A06）</h3>
+      <div class="row"><div>任务完成</div><div class="right"><span class="toggle"></span></div></div>
+      <div class="row"><div>任务失败</div><div class="right"><span class="toggle"></span></div></div>
+      <div class="row"><div>等待授权与提问<div class="desc">需要你决策的时刻（不因免打扰丢失）</div></div><div class="right"><span class="toggle"></span></div></div>
+      <div class="row"><div>免打扰时段</div><div class="right"><span class="toggle"></span> <span style="font-size:12px;color:#4e5969;">22:00 – 08:00</span></div></div>
+      <div class="row"><div>通知声音</div><div class="right"><span class="toggle off"></span></div></div></div>
+    <div class="card"><h3>权限与执行（I02）</h3>
+      <div class="row"><div>默认权限档位</div><div class="right"><span class="pill">只看不动</span><span class="pill">每步都问</span><span class="pill on">自动改文件</span><span class="pill">全自动</span></div></div>
+      <div class="row"><div>界外授权白名单<div class="desc">已加白 2 条路径（永久）</div></div><div class="right"><span class="pill">管理</span></div></div>
+      <div class="row"><div>高危命令二次确认<div class="desc">强制开启，不可关闭</div></div><div class="right"><span class="toggle" style="cursor:default;opacity:.7;"></span></div></div></div>
+  </div>
+</div><div class="note">企业强制档时档位锁定（M05）；免打扰不丢授权等待——应用内未读+任务状态兜底</div></div>
+
+<!-- 2 安全 -->
+<div class="pg" id="p2"><div class="frame">
+  <div class="sidebar"><div class="side-logo">WorkPivot 设置</div>
+    <div class="nav-item">通用</div><div class="nav-item">通知</div><div class="nav-item active">安全</div>
+    <div class="nav-item">权限与执行</div><div class="nav-item">数据与备份</div><div class="nav-item">语音（即将支持）</div><div class="nav-item">关于与更新</div></div>
+  <div class="main">
+    <div class="h1">安全</div><div class="h2">多端同时在线；下线仅影响所选设备；服务端任务不受影响</div>
+    <div class="card"><h3>修改密码</h3>
+      <div class="fld"><label>当前密码</label><input type="password"></div>
+      <div class="fld"><label>新密码（≥8 位含字母数字）</label><input type="password"></div>
+      <button class="btn sm">修改密码</button> <span style="font-size:11px;color:#86909c;">改密后重登一次，其他设备不受影响</span></div>
+    <div class="card"><h3>锁屏</h3>
+      <div class="row"><div>长时间无操作需解锁</div><div class="right"><span class="toggle off"></span></div></div>
+      <div class="row"><div>超时时间</div><div class="right"><span class="pill">10 分钟</span><span class="pill on">30 分钟</span><span class="pill">60 分钟</span></div></div></div>
+    <div class="card"><h3>登录设备（3 台在线）</h3>
+      <div class="dev"><b>本机 · Windows 桌面端</b> <span class="now">当前设备</span><div style="flex:1"></div></div>
+      <div class="dev"><b>Chrome 浏览器</b> <span style="color:#86909c;font-size:11px;">最近活跃：5 分钟前 · 出差笔记本</span><div style="flex:1"></div><span class="pill">下线</span></div>
+      <div class="dev"><b>Mac 桌面端</b> <span style="color:#86909c;font-size:11px;">最近活跃：昨天 18:40</span><div style="flex:1"></div><span class="pill">下线</span></div>
+      <div style="margin-top:10px;"><button class="btn ghost sm">全部其他设备下线</button></div></div>
+  </div>
+</div><div class="note">PRD-01 决策落地：多端在线/单端可踢/锁屏可配；会话 token 服务端 hash 存储</div></div>
+
+<!-- 3 数据与备份 -->
+<div class="pg" id="p3"><div class="frame">
+  <div class="sidebar"><div class="side-logo">WorkPivot 设置</div>
+    <div class="nav-item">通用</div><div class="nav-item">通知</div><div class="nav-item">安全</div>
+    <div class="nav-item">权限与执行</div><div class="nav-item active">数据与备份</div><div class="nav-item">语音（即将支持）</div><div class="nav-item">关于与更新</div></div>
+  <div class="main">
+    <div class="h1">数据与备份</div><div class="h2">A08：恢复前自动做 before-restore 安全备份；服务端形态由管理员统一执行</div>
+    <div class="card"><h3>备份</h3>
+      <div class="fld"><label>备份内容</label>
+        <div style="font-size:13px;"><span class="pill on">账户/会话/记忆/技能/配置</span> <span class="pill">工作目录（较大，可选）</span></div></div>
+      <div class="fld"><label>目标目录</label><input value="E:\backups\workpivot"></div>
+      <button class="btn sm">立即备份</button> <span style="font-size:11px;color:#86909c;">上次备份：08-28 20:11 · 412MB · workpivot-20260828.tar</span></div>
+    <div class="card"><h3>恢复</h3>
+      <div class="fld"><label>选择备份包</label><input value="workpivot-20260828.tar（版本 v0.9.2 · 兼容当前）"></div>
+      <button class="btn ghost sm">校验并恢复</button> <span style="font-size:11px;color:#86909c;">恢复前将自动创建 before-restore 备份；完成后需重启</span></div>
+    <div class="card"><h3>缓存治理（本地缓存 · PRD-02 §8）</h3>
+      <div class="row"><div>当前占用<div class="desc">任务列表/转写尾部/成果索引（服务端为权威源）</div></div><div class="right" style="font-size:13px;">312 MB / 上限 500 MB</div></div>
+      <div class="progress"><div style="width:62%;"></div></div>
+      <div class="row"><div>缓存上限</div><div class="right"><span class="pill">300MB</span><span class="pill on">500MB</span><span class="pill">1GB</span></div></div>
+      <div class="row"><div>登出时清理缓存<div class="desc">换人用机场景（企业合规建议开启）</div></div><div class="right"><span class="toggle"></span></div></div>
+      <div style="margin-top:8px;"><button class="btn ghost sm">立即清理</button></div></div>
+  </div>
+</div><div class="note">版本不兼容的备份包拒绝恢复并提示先升级；CLI workpivot backup 供运维 cron</div></div>
+
+<!-- 4 关于与更新 -->
+<div class="pg" id="p4"><div class="frame">
+  <div class="sidebar"><div class="side-logo">WorkPivot 设置</div>
+    <div class="nav-item">通用</div><div class="nav-item">通知</div><div class="nav-item">安全</div>
+    <div class="nav-item">权限与执行</div><div class="nav-item">数据与备份</div><div class="nav-item">语音（即将支持）</div><div class="nav-item active">关于与更新</div></div>
+  <div class="main">
+    <div class="h1">关于与更新</div><div class="h2">A07：内网自建更新源（管理员配置）；增量下载；保留上一版可回滚</div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
+        <div style="width:52px;height:52px;border-radius:12px;background:#1a56db;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;">WP</div>
+        <div><b style="font-size:16px;">WorkPivot</b> <span class="tag gray">v0.10.3</span><div class="desc" style="font-size:11px;color:#86909c;">构建 2026-08-28 · 企业版</div></div></div>
+      <div class="row"><div>更新源<div class="desc">由管理员配置（内网静态服务）</div></div><div class="right" style="font-size:12px;color:#4e5969;">http://update.corp.local/wp</div></div>
+      <div class="row"><div>检查更新</div><div class="right"><button class="btn sm">检查更新</button></div></div>
+      <div class="row"><div>回滚<div class="desc">保留的上一版本：v0.10.2</div></div><div class="right"><button class="btn ghost sm">回滚到上一版本</button></div></div>
+      <div class="row"><div>开源许可<div class="desc">第三方组件清单（THIRD_PARTY_NOTICES）</div></div><div class="right"><span class="pill">查看</span></div></div></div>
+    <div class="card" style="border-color:#1a56db44;background:#f6f9ff;"><h3>发现新版本 v0.11.0 <span class="tag ok">增量 18MB</span></h3>
+      <div style="font-size:12px;color:#4e5969;line-height:1.8;">· 新增：技能市场与安装机制<br>· 优化：上下文压缩摘要中文化<br>· 修复：弱网断流重连偶发丢失</div>
+      <div style="margin-top:10px;display:flex;gap:10px;"><button class="btn sm">下载并安装</button><button class="btn ghost sm">稍后</button></div>
+      <div style="font-size:11px;color:#86909c;margin-top:6px;">下载完成后提示重启安装，不打断进行中任务</div></div>
+  </div>
+</div><div class="note">更新包签名校验；断点续传；企业强制更新策略时仅显示「立即更新」</div></div>
+
+<script>
+function go(id,el){document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.idx a').forEach(a=>a.classList.remove('on'));if(el)el.classList.add('on');}
+</script>
+</body>
+</html>
