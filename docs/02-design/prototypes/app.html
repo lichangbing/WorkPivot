@@ -1,0 +1,1384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkPivot 原型 · 整体（六册 PRD 全流程）</title>
+<style>
+  /* ===== 基础 ===== */
+  * { margin:0; padding:0; box-sizing:border-box; font-family:"Microsoft YaHei","PingFang SC",sans-serif; }
+  body { background:#f5f6f8; color:#1f2329; }
+  .pg { display:none; min-height:100vh; }
+  .pg.active { display:block; }
+
+  /* ===== 全局目录（左下角按钮 + 抽屉） ===== */
+  .toc-btn { position:fixed; left:14px; bottom:14px; z-index:110; background:#1f2329; color:#fff; font-size:12px; padding:9px 14px; border-radius:8px; cursor:pointer; opacity:.85; user-select:none; }
+  .toc-btn:hover { opacity:1; }
+  .toc { position:fixed; left:0; top:0; bottom:0; width:252px; background:#fff; border-right:1px solid #e5e6eb; z-index:120; transform:translateX(-100%); transition:transform .2s; display:flex; flex-direction:column; box-shadow:4px 0 24px rgba(31,35,41,.12); }
+  .toc.open { transform:translateX(0); }
+  .toc-head { padding:14px 16px; border-bottom:1px solid #f2f3f5; display:flex; justify-content:space-between; align-items:center; }
+  .toc-head b { font-size:14px; color:#1a56db; }
+  .toc-head span { font-size:11px; color:#86909c; font-weight:400; }
+  .toc-head i { font-style:normal; color:#86909c; cursor:pointer; font-size:16px; padding:0 4px; }
+  .toc-body { flex:1; overflow:auto; padding:8px 10px 24px; font-size:12px; }
+  .toc-body b { display:block; padding:12px 8px 4px; color:#86909c; font-size:11px; }
+  .toc-body a { display:block; padding:6px 8px; border-radius:6px; color:#4e5969; cursor:pointer; text-decoration:none; }
+  .toc-body a:hover, .toc-body a.on { background:#e8effb; color:#1a56db; }
+
+  /* ===== 按钮 ===== */
+  .btn { height:34px; padding:0 16px; border:none; border-radius:8px; background:#1a56db; color:#fff; font-size:13px; cursor:pointer; }
+  .btn:hover { background:#164ba8; }
+  .btn.ghost { background:#fff; border:1px solid #e5e6eb; color:#4e5969; }
+  .btn.bl { background:#f2f3f5; color:#1f2329; }
+  .btn.sm { height:28px; padding:0 12px; font-size:12px; }
+  .btn-sm { height:36px; padding:0 16px; border:none; border-radius:8px; background:#1a56db; color:#fff; font-size:13px; cursor:pointer; }
+  .btn-sm.gray { background:#f2f3f5; color:#4e5969; }
+  .btn-sm.ghost { background:#fff; border:1px solid #e5e6eb; color:#4e5969; }
+
+  /* ===== 登录/注册/改密卡片（PRD-01） ===== */
+  .auth-wrap { display:flex; align-items:center; justify-content:center; min-height:100vh; background:linear-gradient(135deg,#eef2f7 0%,#e3ebf5 100%); }
+  .auth-card { width:400px; background:#fff; border-radius:12px; padding:40px; box-shadow:0 8px 30px rgba(31,35,41,.08); }
+  .auth-logo { text-align:center; margin-bottom:8px; font-size:22px; font-weight:700; color:#1a56db; }
+  .auth-sub { text-align:center; font-size:13px; color:#86909c; margin-bottom:28px; }
+  .auth-card .btn { width:100%; height:42px; font-size:15px; }
+  .auth-card .btn.sec { background:#f2f3f5; color:#1f2329; margin-top:10px; }
+  .auth-card .btn.sec:hover { background:#e5e6eb; }
+  .auth-foot { text-align:center; margin-top:20px; font-size:13px; color:#86909c; }
+  .auth-foot a { color:#1a56db; cursor:pointer; text-decoration:none; }
+  .feishu-btn { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; height:42px; border:1px solid #e5e6eb; border-radius:8px; background:#fff; font-size:14px; cursor:pointer; margin-top:12px; color:#1f2329; }
+  .feishu-btn:hover { border-color:#1a56db; color:#1a56db; }
+  .field { margin-bottom:16px; }
+  .field label { display:block; font-size:13px; color:#4e5969; margin-bottom:6px; }
+  .field input { width:100%; height:40px; border:1px solid #e5e6eb; border-radius:8px; padding:0 12px; font-size:14px; outline:none; transition:border .2s; }
+  .field input:focus { border-color:#1a56db; }
+  .field .hint { font-size:12px; margin-top:4px; }
+  .hint.ok { color:#00b42a; } .hint.err { color:#f53f3f; } .hint.gray { color:#86909c; }
+  .setup-steps { display:flex; gap:8px; justify-content:center; margin-bottom:28px; }
+  .step-dot { width:28px; height:6px; border-radius:3px; background:#e5e6eb; }
+  .step-dot.on { background:#1a56db; }
+
+  /* ===== 框架页（后台/设置侧栏） ===== */
+  .frame { display:flex; height:100vh; overflow:hidden; }
+  .sidebar { width:200px; background:#fff; border-right:1px solid #e5e6eb; padding:14px 10px 58px; display:flex; flex-direction:column; flex-shrink:0; }
+  .side-logo { font-size:14px; font-weight:700; color:#1a56db; padding:6px 10px 16px; }
+  .nav-item { padding:9px 12px; border-radius:8px; font-size:13px; color:#4e5969; cursor:pointer; margin-bottom:2px; }
+  .nav-item:hover { background:#f2f3f5; }
+  .nav-item.active { background:#e8effb; color:#1a56db; font-weight:600; }
+  .nav-group { font-size:11px; color:#86909c; padding:14px 12px 4px; }
+  .main { flex:1; overflow:auto; padding:24px 30px; }
+  .main-title { font-size:20px; font-weight:700; margin-bottom:4px; }
+  .main-desc { font-size:13px; color:#86909c; margin-bottom:24px; }
+  .toolbar { display:flex; gap:10px; margin-bottom:16px; }
+  .toolbar input { height:36px; border:1px solid #e5e6eb; border-radius:8px; padding:0 12px; width:260px; font-size:13px; outline:none; }
+
+  /* ===== 通用内容页 ===== */
+  .wrap { padding:26px 36px; min-height:100vh; }
+  .h1 { font-size:19px; font-weight:700; margin-bottom:4px; }
+  .h2 { font-size:12px; color:#86909c; margin-bottom:18px; }
+  .backlink { color:#1a56db; cursor:pointer; font-size:12px; text-decoration:none; display:inline-block; margin-bottom:10px; }
+  .card { background:#fff; border:1px solid #e5e6eb; border-radius:12px; padding:18px; margin-bottom:14px; }
+  .card h3 { font-size:14px; margin-bottom:12px; }
+  table { width:100%; border-collapse:collapse; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 1px 4px rgba(31,35,41,.05); margin-bottom:14px; }
+  th { background:#f7f8fa; text-align:left; font-size:12px; color:#4e5969; padding:10px 14px; }
+  td { padding:11px 14px; font-size:13px; border-top:1px solid #f2f3f5; }
+  a.op { color:#1a56db; font-size:13px; margin-right:10px; cursor:pointer; text-decoration:none; }
+
+  /* ===== 标签 ===== */
+  .tag { display:inline-block; padding:2px 8px; border-radius:9px; font-size:11px; background:#f2f3f5; color:#4e5969; }
+  .tag.admin { background:#e8effb; color:#1a56db; }
+  .tag.ok { background:#e8ffea; color:#00b42a; }
+  .tag.off { background:#f2f3f5; color:#86909c; }
+  .tag.conn { background:#fff3e8; color:#d25f00; }
+  .tag.gray { background:#f2f3f5; color:#86909c; }
+  .tag.blue { background:#e8effb; color:#1a56db; }
+  .tag.warn { background:#fff7e8; color:#d25f00; }
+
+  /* ===== 弹窗（PRD-01 modal / PRD-02 mask） ===== */
+  .modal-mask { position:fixed; inset:0; background:rgba(31,35,41,.4); display:none; align-items:center; justify-content:center; z-index:60; }
+  .modal-mask.show { display:flex; }
+  .modal { width:420px; background:#fff; border-radius:12px; padding:28px; }
+  .modal h3 { font-size:16px; margin-bottom:20px; }
+  .modal .row { display:flex; gap:12px; }
+  .modal .row .field { flex:1; }
+  .modal-foot { display:flex; justify-content:flex-end; gap:10px; margin-top:8px; }
+  .mask { position:fixed; inset:0; background:rgba(31,35,41,.4); display:none; align-items:center; justify-content:center; z-index:60; }
+  .mask.show { display:flex; }
+  .mcard { width:520px; background:#fff; border-radius:12px; padding:24px; }
+  .mcard h3 { font-size:16px; margin-bottom:6px; }
+  .mcard .sub { font-size:12px; color:#86909c; margin-bottom:16px; }
+  .foot { display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
+
+  /* ===== 等待卡：授权/提问/晋升 ===== */
+  .wait-card { max-width:640px; margin:0 auto 16px; background:#fffbe6; border:1px solid #f7ba1e66; border-radius:10px; padding:16px; font-size:13px; }
+  .wait-card .t { font-weight:700; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; }
+  .wait-card .warn { font-size:11px; color:#d25f00; background:#fff3e8; border-radius:8px; padding:2px 8px; }
+  .opt-row { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+  .opt { padding:8px 14px; border:1px solid #e5e6eb; border-radius:8px; background:#fff; font-size:13px; cursor:pointer; }
+  .opt:hover { border-color:#1a56db; color:#1a56db; }
+  .opt.pri { background:#1a56db; color:#fff; border-color:#1a56db; }
+  .path-box { background:#f7f8fa; border-radius:8px; padding:10px 12px; font-family:Consolas,monospace; font-size:12px; margin:8px 0; color:#4e5969; }
+
+  /* ===== 向导表单（PRD-02） ===== */
+  .steps { display:flex; gap:6px; margin:14px 0 20px; }
+  .steps .st { flex:1; text-align:center; font-size:12px; color:#86909c; padding:6px 0; border-bottom:2px solid #e5e6eb; }
+  .steps .st.on { color:#1a56db; border-color:#1a56db; font-weight:600; }
+  .fld { margin-bottom:14px; }
+  .fld label { display:block; font-size:12px; color:#4e5969; margin-bottom:5px; }
+  .fld input, .fld textarea, .fld select { width:100%; border:1px solid #e5e6eb; border-radius:8px; padding:9px 12px; font-size:13px; outline:none; font-family:inherit; }
+  .fld input:focus, .fld textarea:focus { border-color:#1a56db; }
+  .fld .tip { font-size:11px; color:#86909c; margin-top:4px; }
+  .chip { display:inline-flex; align-items:center; gap:6px; background:#f2f3f5; border-radius:14px; padding:5px 12px; font-size:12px; margin:0 6px 6px 0; }
+  .chip b { color:#1a56db; }
+  .drop { border:1px dashed #c9cdd4; border-radius:10px; padding:22px; text-align:center; font-size:12px; color:#86909c; }
+  .sumrow { display:flex; justify-content:space-between; padding:10px 12px; background:#f7f8fa; border-radius:8px; font-size:13px; margin-bottom:8px; }
+  .sumrow b { font-weight:600; }
+  .rec { font-size:11px; color:#1a56db; background:#e8effb; border-radius:6px; padding:1px 8px; }
+
+  /* ===== 对话舞台（PRD-02/05 场景页） ===== */
+  .stage { display:flex; flex-direction:column; height:100vh; }
+  .top { height:44px; background:#fff; border-bottom:1px solid #e5e6eb; display:flex; align-items:center; gap:10px; padding:0 18px; font-size:12px; color:#4e5969; }
+  .top .bar { background:#fff7e8; color:#d25f00; border:1px solid #f7ba1e55; border-radius:8px; padding:4px 12px; font-size:12px; display:flex; gap:12px; align-items:center; }
+  .flow { flex:1; overflow:auto; padding:22px 26px; background:#fafbfc; }
+  .ph { max-width:78%; background:#fff; border:1px solid #e5e6eb; border-radius:10px; padding:12px 15px; margin-bottom:10px; font-size:13px; color:#4e5969; }
+  .ph b { color:#1f2329; }
+  .ph.det { background:#fff; border-style:dashed; color:#86909c; font-size:12px; }
+  .ph.det code { background:#f2f3f5; padding:1px 6px; border-radius:4px; font-size:11px; }
+  .kcard { max-width:78%; background:#fff8e6; border:1px solid #f7ba1e55; border-radius:10px; padding:13px 15px; margin-bottom:14px; font-size:13px; }
+  .src { max-width:78%; background:#f7f8fa; border-radius:10px; padding:12px 15px; font-size:12px; color:#4e5969; margin-bottom:10px; }
+  .src a { color:#1a56db; text-decoration:none; margin-right:10px; cursor:pointer; }
+  .inp { margin:12px 26px 18px; background:#fff; border:1px solid #e5e6eb; border-radius:12px; padding:12px 14px; }
+  .inp .ph2 { color:#86909c; font-size:13px; }
+  .inp .bar2 { display:flex; justify-content:space-between; font-size:11px; color:#86909c; margin-top:10px; }
+  .selbox { position:absolute; background:#fff; border:1px solid #e5e6eb; border-radius:10px; box-shadow:0 6px 20px rgba(31,35,41,.12); padding:6px; width:300px; font-size:12px; z-index:5; }
+  .selbox .it { padding:8px 10px; border-radius:7px; cursor:pointer; display:flex; justify-content:space-between; }
+  .selbox .it:hover { background:#f2f3f5; }
+  .badge-red { color:#f53f3f; font-size:11px; }
+
+  /* ===== 版本链右栏（PRD-02） ===== */
+  .cols { display:flex; height:100vh; }
+  .midcol { flex:1; display:flex; flex-direction:column; background:#fafbfc; }
+  .mid { flex:1; padding:22px 26px; overflow:auto; background:#fafbfc; }
+  .right { width:300px; background:#fff; border-left:1px solid #e5e6eb; padding:16px; overflow:auto; flex-shrink:0; }
+  .vfile { border:1px solid #e5e6eb; border-radius:10px; padding:12px; margin-bottom:8px; font-size:12px; position:relative; }
+  .vfile.cur { border-color:#1a56db; background:#f6f9ff; }
+  .vfile b { font-size:13px; display:block; margin-bottom:3px; }
+  .vfile .meta { color:#86909c; font-size:11px; display:flex; justify-content:space-between; }
+
+  /* ===== 三栏主界面（PRD-01） ===== */
+  .ws { display:flex; flex-direction:column; height:100vh; }
+  .ws-top { height:48px; background:#fff; border-bottom:1px solid #e5e6eb; display:flex; align-items:center; padding:0 16px; gap:8px; }
+  .ws-tab { padding:6px 14px; border-radius:6px; font-size:13px; background:#f2f3f5; color:#4e5969; }
+  .ws-tab.on { background:#e8effb; color:#1a56db; font-weight:600; }
+  .ws-cols { flex:1; display:flex; overflow:hidden; }
+  .col-l { width:230px; background:#fff; border-right:1px solid #e5e6eb; padding:14px 14px 58px; flex-shrink:0; display:flex; flex-direction:column; overflow:hidden; }
+  .col-scroll { flex:1; overflow:auto; }
+  .new-chat { width:100%; height:38px; border-radius:8px; background:#1a56db; color:#fff; font-size:14px; cursor:pointer; border:none; margin-bottom:14px; }
+  .proj { font-size:13px; font-weight:600; color:#1f2329; padding:8px 6px; }
+  .task { font-size:13px; color:#4e5969; padding:6px 6px 6px 18px; border-radius:6px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
+  .task:hover { background:#f2f3f5; }
+  .task.on { background:#e8effb; color:#1a56db; }
+  .st { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .st.run { background:#00b42a; } .st.done { background:#c9cdd4; } .st.int { background:#f7ba1e; }
+  .col-m { flex:1; display:flex; flex-direction:column; background:#fafbfc; }
+  .chat-head { padding:12px 20px; font-size:13px; color:#86909c; background:#fff; border-bottom:1px solid #e5e6eb; }
+  .chat-body { flex:1; padding:24px; overflow:auto; }
+  .bubble-user { margin-left:auto; max-width:70%; background:#1a56db; color:#fff; padding:12px 16px; border-radius:12px 12px 2px 12px; font-size:14px; margin-bottom:20px; width:fit-content; }
+  .phase { max-width:86%; background:#fff; border:1px solid #e5e6eb; border-radius:10px; padding:14px 16px; margin-bottom:12px; font-size:13px; color:#4e5969; }
+  .phase b { color:#1f2329; }
+  .phase-card { max-width:86%; background:#fff8e6; border:1px solid #f7ba1e55; border-radius:10px; padding:14px 16px; margin-bottom:20px; font-size:13px; }
+  .chat-input { margin:16px 24px 20px; background:#fff; border:1px solid #e5e6eb; border-radius:12px; padding:12px 14px; }
+  .chat-input .ph { max-width:none; background:none; border:none; padding:0; margin:0; color:#86909c; font-size:14px; }
+  .chat-bar { display:flex; justify-content:space-between; align-items:center; margin-top:10px; font-size:12px; color:#86909c; }
+  .col-r { width:320px; background:#fff; border-left:1px solid #e5e6eb; display:flex; flex-direction:column; flex-shrink:0; }
+  .prev-head { padding:12px 16px; font-size:13px; font-weight:600; border-bottom:1px solid #e5e6eb; display:flex; justify-content:space-between; }
+  .prev-body { flex:1; padding:20px; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#86909c; font-size:13px; gap:10px; }
+  .file-card { width:90%; background:#f7f8fa; border:1px solid #e5e6eb; border-radius:10px; padding:14px; font-size:13px; display:flex; gap:10px; align-items:center; }
+  .file-ic { width:36px; height:36px; border-radius:8px; background:#e8effb; display:flex; align-items:center; justify-content:center; font-size:16px; }
+
+  /* ===== 编辑器/目录树/抽屉（PRD-03/04/05） ===== */
+  .tabs { display:flex; gap:4px; border-bottom:1px solid #e5e6eb; margin-bottom:16px; }
+  .tab { padding:8px 16px; font-size:13px; color:#4e5969; cursor:pointer; border-bottom:2px solid transparent; }
+  .tab.on { color:#1a56db; border-color:#1a56db; font-weight:600; }
+  .row2 { display:flex; gap:12px; }
+  .row2 .fld { flex:1; }
+  .editor { background:#1e2430; color:#d7dce5; border-radius:10px; padding:16px; font-family:Consolas,monospace; font-size:12px; line-height:1.8; white-space:pre; overflow:auto; }
+  .editor .c { color:#7d8799; } .editor .k { color:#7db3ff; } .editor .s { color:#a8d98a; }
+  .filetree { width:200px; border-right:1px solid #f2f3f5; padding-right:10px; font-size:12px; color:#4e5969; line-height:2; }
+  .filetree .dir { font-weight:600; color:#1f2329; }
+  .filetree .f { padding-left:14px; cursor:pointer; }
+  .filetree .f.on { color:#1a56db; }
+  .split { display:flex; gap:16px; }
+  .warnbox { background:#fff7e8; border:1px solid #f7ba1e55; border-radius:8px; padding:8px 12px; font-size:12px; color:#d25f00; margin-bottom:12px; }
+  .drawer { width:330px; background:#fff; border-left:1px solid #e5e6eb; padding:16px; overflow:auto; font-size:12px; flex-shrink:0; }
+  .drawer h4 { font-size:13px; margin-bottom:10px; }
+  .hit { background:#f0f7ff; border:1px solid #1a56db44; border-radius:8px; padding:8px 10px; margin-bottom:8px; }
+  .miss { background:#fff2f0; border:1px solid #f53f3f44; border-radius:8px; padding:8px 10px; margin-bottom:8px; }
+  .ver { font-size:11px; color:#86909c; }
+  .pill { display:inline-block; font-size:12px; border:1px solid #e5e6eb; border-radius:14px; padding:3px 12px; color:#4e5969; margin:0 3px; cursor:pointer; }
+  .pill.on { background:#e8effb; border-color:#1a56db; color:#1a56db; }
+
+  /* ===== 记忆（PRD-05） ===== */
+  .kv { display:flex; justify-content:space-between; padding:9px 12px; background:#f7f8fa; border-radius:8px; font-size:13px; margin-bottom:8px; }
+  .memo { border:1px solid #e5e6eb; border-radius:10px; padding:12px 14px; margin-bottom:8px; font-size:13px; display:flex; justify-content:space-between; gap:10px; background:#fff; }
+  .memo .src { color:#86909c; font-size:11px; flex-shrink:0; }
+  .bar-wrap { background:#f2f3f5; border-radius:8px; height:22px; display:flex; overflow:hidden; margin:10px 0 4px; }
+  .bar-seg { height:100%; display:flex; align-items:center; justify-content:center; font-size:10px; color:#fff; white-space:nowrap; }
+
+  /* ===== 设置（PRD-06） ===== */
+  .row { display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid #f2f3f5; font-size:13px; }
+  .row:last-child { border-bottom:none; }
+  .row .desc { font-size:11px; color:#86909c; margin-top:3px; }
+  .row .right { display:flex; align-items:center; gap:10px; flex-shrink:0; }
+  .toggle { width:36px; height:20px; border-radius:10px; background:#1a56db; position:relative; cursor:pointer; display:inline-block; }
+  .toggle.off { background:#c9cdd4; }
+  .toggle i { position:absolute; width:16px; height:16px; border-radius:50%; background:#fff; top:2px; right:2px; }
+  .toggle.off i { right:auto; left:2px; }
+  .dev { display:flex; align-items:center; gap:10px; border:1px solid #e5e6eb; border-radius:10px; padding:10px 12px; margin-bottom:8px; font-size:13px; }
+  .dev .now { color:#1a56db; font-size:11px; }
+  .progress { height:8px; background:#f2f3f5; border-radius:4px; overflow:hidden; margin:8px 0; }
+  .progress div { height:100%; background:#1a56db; width:62%; }
+
+  /* ===== 用户菜单（PRD-01） ===== */
+  .user-box { margin-top:auto; border-top:1px solid #f2f3f5; padding-top:10px; }
+  .user-row { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px; cursor:pointer; }
+  .user-row:hover { background:#f2f3f5; }
+  .avatar { width:32px; height:32px; border-radius:50%; background:#1a56db; color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; }
+  .user-meta { flex:1; }
+  .user-meta b { display:block; font-size:13px; }
+  .user-meta span { font-size:11px; color:#86909c; }
+  .gear { color:#86909c; font-size:14px; padding:4px; border-radius:6px; }
+  .gear:hover { background:#e5e6eb; color:#1f2329; }
+  .user-menu { position:fixed; background:#fff; border:1px solid #e5e6eb; border-radius:10px; box-shadow:0 6px 20px rgba(31,35,41,.12); padding:6px; width:200px; z-index:70; display:none; }
+  .user-menu.show { display:block; }
+  .um-item { padding:9px 12px; border-radius:7px; font-size:13px; color:#4e5969; cursor:pointer; display:flex; justify-content:space-between; align-items:center; }
+  .um-item:hover { background:#f2f3f5; }
+  .um-item.danger { color:#f53f3f; }
+  .um-sep { border-top:1px solid #f2f3f5; margin:5px 8px; }
+  .theme-row { display:flex; gap:8px; padding:6px 12px; }
+  .theme-dot { width:22px; height:22px; border-radius:50%; cursor:pointer; border:2px solid transparent; }
+  .theme-dot.on { border-color:#1a56db; }
+
+  /* ===== 浮层说明 ===== */
+  .note { position:fixed; right:14px; bottom:14px; background:#1f2329; color:#fff; font-size:11px; padding:9px 12px; border-radius:8px; opacity:.85; max-width:250px; z-index:50; }
+</style>
+</head>
+<body>
+
+<!-- ===== 全局目录 ===== -->
+<div class="toc-btn" onclick="toggleToc()">目录</div>
+<div class="toc" id="toc">
+  <div class="toc-head"><b>WorkPivot 整体原型</b><span>六册 PRD · 全流程跳转</span><i onclick="closeToc()">×</i></div>
+  <div class="toc-body">
+    <b>PRD-01 登录与账户</b>
+    <a data-pg="pg-login" onclick="go('pg-login')">登录页</a>
+    <a data-pg="pg-reg" onclick="go('pg-reg')">注册管理员</a>
+    <a data-pg="pg-pwd" onclick="go('pg-pwd')">首登强制改密（P3）</a>
+    <a data-pg="pg-setup" onclick="go('pg-setup')">初始化引导</a>
+    <a data-pg="pg-main" onclick="go('pg-main')">主界面（三栏）</a>
+    <a data-pg="pg-users" onclick="go('pg-users')">用户与角色（后台）</a>
+    <b>PRD-02 对话与任务</b>
+    <a data-pg="pg-authcard" onclick="go('pg-authcard')">界外授权卡</a>
+    <a data-pg="pg-askcard" onclick="go('pg-askcard')">结构化提问卡</a>
+    <a data-pg="pg-interrupt" onclick="go('pg-interrupt')">中断续跑横条</a>
+    <a data-pg="pg-newtask" onclick="go('pg-newtask')">新建任务向导</a>
+    <a data-pg="pg-modelsel" onclick="go('pg-modelsel')">模型选择器</a>
+    <a data-pg="pg-version" onclick="go('pg-version')">版本链 · 成果预览</a>
+    <a data-pg="pg-cron" onclick="go('pg-cron')">定时任务</a>
+    <b>PRD-03 技能与专家</b>
+    <a data-pg="pg-skills" onclick="go('pg-skills')">技能中心（市场/我的）</a>
+    <a data-pg="pg-skedit" onclick="go('pg-skedit')">技能编辑器</a>
+    <a data-pg="pg-skgene" onclick="go('pg-skgene')">从文档生成技能</a>
+    <a data-pg="pg-expert" onclick="go('pg-expert')">专家配置（后台）</a>
+    <b>PRD-04 后台管理</b>
+    <a data-pg="pg-models" onclick="go('pg-models')">模型管理</a>
+    <a data-pg="pg-conn" onclick="go('pg-conn')">连接器向导</a>
+    <a data-pg="pg-agent" onclick="go('pg-agent')">默认 agent.md</a>
+    <a data-pg="pg-pubskill" onclick="go('pg-pubskill')">公共技能编辑</a>
+    <a data-pg="pg-audit" onclick="go('pg-audit')">审计日志</a>
+    <b>PRD-05 记忆管理</b>
+    <a data-pg="pg-memory" onclick="go('pg-memory')">个人记忆管理</a>
+    <a data-pg="pg-promote" onclick="go('pg-promote')">晋升确认卡</a>
+    <a data-pg="pg-promem" onclick="go('pg-promem')">项目记忆面板</a>
+    <a data-pg="pg-usage" onclick="go('pg-usage')">上下文管理（/usage）</a>
+    <b>PRD-06 设置</b>
+    <a data-pg="pg-set-general" onclick="go('pg-set-general')">通用与通知</a>
+    <a data-pg="pg-set-sec" onclick="go('pg-set-sec')">安全 · 设备管理</a>
+    <a data-pg="pg-set-backup" onclick="go('pg-set-backup')">数据与备份</a>
+    <a data-pg="pg-set-about" onclick="go('pg-set-about')">关于与更新</a>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PRD-01 登录与账户 -->
+<!-- ============================================================ -->
+
+<!-- 1. 登录页 -->
+<div class="pg active" id="pg-login">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-logo">WorkPivot</div>
+      <div class="auth-sub">企业智能工作台</div>
+      <div class="field">
+        <label>用户名</label>
+        <input placeholder="请输入用户名">
+      </div>
+      <div class="field">
+        <label>密码</label>
+        <input type="password" placeholder="请输入密码">
+      </div>
+      <button class="btn" onclick="go('pg-main')">登 录</button>
+      <div class="auth-foot" id="reg-link">还没有账号？<a onclick="go('pg-reg')">注册管理员账号</a></div>
+      <button class="feishu-btn" onclick="alert('原型演示：跳转飞书扫码授权页（J07，P1）')">
+        <span style="color:#3370ff;font-weight:700;">飞</span> 使用飞书登录
+      </button>
+      <div class="auth-foot" style="margin-top:12px;">原型演示：<a onclick="go('pg-pwd')">首登强制改密（P3）</a></div>
+    </div>
+  </div>
+  <div class="note">登录页：系统无任何用户时显示「注册管理员账号」链接；已有用户后消失（首个注册者=管理员）。登录后进入主界面</div>
+</div>
+
+<!-- 2. 注册页（首个管理员） -->
+<div class="pg" id="pg-reg">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-logo">注册管理员</div>
+      <div class="auth-sub">首个账号将自动成为管理员</div>
+      <div class="field">
+        <label>用户名</label>
+        <input placeholder="4-32 位，字母/数字/下划线" oninput="chkPwd(this)">
+        <div class="hint gray" id="reg-u-hint">字母开头，字母/数字/下划线</div>
+      </div>
+      <div class="field">
+        <label>密码</label>
+        <input type="password" placeholder="至少 8 位，须含字母和数字" oninput="chkPwd(this)">
+        <div class="hint gray">强度：<span id="pwd-lv">—</span></div>
+      </div>
+      <div class="field">
+        <label>确认密码</label>
+        <input type="password" placeholder="再次输入密码">
+      </div>
+      <div class="field">
+        <label>显示名称（可选）</label>
+        <input placeholder="如：张工">
+      </div>
+      <button class="btn" onclick="go('pg-setup')">注册并成为管理员</button>
+      <div class="auth-foot"><a onclick="go('pg-login')">返回登录</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- 3. 首登强制改密（P3） -->
+<div class="pg" id="pg-pwd">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-logo">修改初始密码</div>
+      <div class="auth-sub">首次登录须修改初始密码后方可继续使用</div>
+      <div class="field">
+        <label>原密码（初始密码）</label>
+        <input type="password" placeholder="管理员创建账号时告知的初始密码">
+      </div>
+      <div class="field">
+        <label>新密码</label>
+        <input type="password" class="npwd" placeholder="至少 8 位，须含字母和数字" oninput="chkNewPwd()">
+        <div class="hint gray">强度：<span id="npwd-lv">—</span></div>
+      </div>
+      <div class="field">
+        <label>确认新密码</label>
+        <input type="password" placeholder="再次输入新密码">
+      </div>
+      <button class="btn" onclick="go('pg-setup')">确认修改并继续</button>
+      <div class="auth-foot">新账户改密后进入初始化引导；此后登录直接进入主界面</div>
+    </div>
+  </div>
+  <div class="note">P3 强制改密页：不可跳过（关闭应用重开仍停留此页）；新密码不得与原密码相同；改密成功后 must_change_password=false</div>
+</div>
+
+<!-- 4. 初始化引导 -->
+<div class="pg" id="pg-setup">
+  <div class="auth-wrap">
+    <div class="auth-card" style="width:460px;">
+      <div class="auth-logo">欢迎使用 WorkPivot</div>
+      <div class="auth-sub">完成 2 步初始化（可跳过，稍后在设置中配置）</div>
+      <div class="setup-steps"><div class="step-dot on"></div><div class="step-dot on"></div><div class="step-dot"></div></div>
+      <div class="field">
+        <label>模型服务地址（OpenAI 兼容 base_url）</label>
+        <input placeholder="如 http://内网服务器:8000/v1">
+        <div class="hint gray">由管理员配置，成员无需操作</div>
+      </div>
+      <div class="field">
+        <label>API Key</label>
+        <input placeholder="sk-...">
+        <div class="hint ok">连通测试通过（保存前自动验活）</div>
+      </div>
+      <button class="btn" onclick="go('pg-main')">完成并进入</button>
+      <button class="btn sec" onclick="go('pg-main')">暂不配置，跳过</button>
+    </div>
+  </div>
+</div>
+
+<!-- 5. 用户与角色（后台） -->
+<div class="pg" id="pg-users">
+  <div class="frame">
+    <div class="sidebar">
+      <div class="side-logo">WorkPivot 管理后台</div>
+      <div class="nav-item active">用户与角色</div>
+      <div class="nav-item" onclick="go('pg-models')">模型管理</div>
+      <div class="nav-item" onclick="go('pg-conn')">连接器配置</div>
+      <div class="nav-item" onclick="go('pg-expert')">专家配置</div>
+      <div class="nav-item" onclick="go('pg-agent')">默认 Agent 定义</div>
+      <div class="nav-item" onclick="go('pg-pubskill')">公共技能</div>
+      <div class="nav-item" onclick="alert('文档模板（H01）：Word/PPT 企业模板库管理，规格见 PRD-04 §7（原型暂未出独立页）')">文档模板</div>
+      <div class="nav-item" onclick="go('pg-audit')">审计日志</div>
+      <div style="flex:1"></div>
+      <div class="nav-item" onclick="go('pg-main')">← 返回主界面</div>
+      <div class="nav-item" onclick="go('pg-login')">退出登录</div>
+    </div>
+    <div class="main">
+      <div class="main-title">用户与角色</div>
+      <div class="main-desc">管理员分配账户制：用户由管理员创建后才能登录（J07）；支持飞书组织架构同步（P1）</div>
+      <div class="toolbar">
+        <input placeholder="搜索用户名 / 显示名称">
+        <button class="btn-sm" onclick="showModal()">＋ 新增用户</button>
+        <button class="btn-sm gray">批量导入 CSV</button>
+        <button class="btn-sm gray">飞书同步</button>
+      </div>
+      <table>
+        <tr><th>用户名</th><th>显示名称</th><th>角色</th><th>状态</th><th>最近登录</th><th>操作</th></tr>
+        <tr><td>admin</td><td>李长冰</td><td><span class="tag admin">管理员</span></td><td><span class="tag ok">启用</span></td><td>今天 09:12</td><td><a class="op">重置密码</a><a class="op">编辑</a></td></tr>
+        <tr><td>wangfy</td><td>王分析</td><td><span class="tag">成员</span></td><td><span class="tag ok">启用</span></td><td>昨天 18:40</td><td><a class="op">重置密码</a><a class="op">停用</a></td></tr>
+        <tr><td>liuyq</td><td>刘研究</td><td><span class="tag">成员</span></td><td><span class="tag ok">启用</span></td><td>3 天前</td><td><a class="op">重置密码</a><a class="op">停用</a></td></tr>
+        <tr><td>chenj</td><td>陈尽职</td><td><span class="tag conn">连接器管理员</span></td><td><span class="tag off">已停用</span></td><td>30 天前</td><td><a class="op" style="color:#00b42a">启用</a><a class="op">编辑</a></td></tr>
+      </table>
+      <div class="note">交互细节：停用 → 二次确认「停用后该用户 30 秒内会话失效」；重置密码 → 生成临时密码展示一次（下次登录走 P3 强制改密）</div>
+    </div>
+  </div>
+</div>
+
+<!-- 6. 主界面（三栏，全局枢纽） -->
+<div class="pg" id="pg-main">
+  <div class="ws">
+    <div class="ws-top">
+      <span style="font-weight:700;color:#1a56db;margin-right:12px;">WorkPivot</span>
+      <span class="ws-tab on">帮我出一份Q3数据复盘PPT</span>
+      <span class="ws-tab" onclick="go('pg-newtask')" style="cursor:pointer;">＋</span>
+      <div style="flex:1"></div>
+      <span style="font-size:13px;color:#4e5969;">李长冰（管理员）</span>
+      <span style="font-size:13px;color:#86909c;cursor:pointer;" onclick="go('pg-models')">后台管理</span>
+    </div>
+    <div class="ws-cols">
+      <div class="col-l">
+        <div class="col-scroll">
+        <button class="new-chat" onclick="go('pg-newtask')">＋ 新对话</button>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:0 6px 6px;">
+          <span style="font-size:12px;color:#86909c;">项目</span>
+          <span style="font-size:14px;color:#86909c;cursor:pointer;" title="新建项目">＋</span>
+        </div>
+
+        <div class="proj">中新融创项目 <span style="font-weight:400;color:#86909c;font-size:12px;">· 3 任务</span></div>
+        <div style="font-size:12px;color:#86909c;padding:0 6px 6px 10px;line-height:1.5;">
+          项目记忆已积累 · AI 熟悉本项目背景/术语/历史决策，任务间共享上下文
+        </div>
+        <div class="task on"><span>Q3 数据复盘 PPT</span><span class="st run"></span></div>
+        <div class="task" onclick="go('pg-version')"><span>SOP 线上化方案 v1.4</span><span class="st done"></span></div>
+        <div class="task" onclick="go('pg-authcard')"><span>行业监管调研</span><span class="st int"></span></div>
+        <div class="task" style="color:#86909c;" onclick="go('pg-newtask')"><span>＋ 在本项目新建任务</span></div>
+        <div style="border-top:1px solid #f2f3f5;margin:8px 0;"></div>
+
+        <div class="proj">金宇咨询项目 <span style="font-weight:400;color:#86909c;font-size:12px;">· 2 任务</span></div>
+        <div class="task"><span>核心业务系统建设</span><span class="st done"></span></div>
+        <div class="task"><span>组织架构梳理</span><span class="st done"></span></div>
+        <div class="task" style="color:#86909c;" onclick="go('pg-newtask')"><span>＋ 在本项目新建任务</span></div>
+        <div style="border-top:1px solid #f2f3f5;margin:8px 0;"></div>
+
+        <div class="proj" style="color:#86909c;">＋ 新建项目</div>
+
+        <div class="nav-group">资产</div>
+        <div class="nav-item" onclick="go('pg-skills')">技能与工具</div>
+        <div class="nav-item" onclick="alert('个人层 agent.md 编辑：与技能编辑器同款 Markdown 编辑器，三层分层（平台/企业/个人）见 PRD-04 §5')">agent.md 编辑</div>
+        <div class="nav-item" onclick="go('pg-promem')">项目记忆</div>
+        <div class="nav-item" onclick="go('pg-cron')">自动化 · 定时任务</div>
+        </div>
+
+        <div class="user-box">
+          <div class="user-row" onclick="toggleUserMenu(event)">
+            <div class="avatar">李</div>
+            <div class="user-meta"><b>李长冰</b><span>企业管理员 · 在线</span></div>
+            <span class="gear" onclick="event.stopPropagation();go('pg-set-general');"></span>
+          </div>
+        </div>
+      </div>
+      <div class="col-m">
+        <div class="chat-head">中新融创项目 · 共享项目记忆 ｜ 工作目录：server://workspaces/q3-review ｜ 专家：数据分析 ｜ 模型：内网旗舰（推荐）</div>
+        <div class="chat-body">
+          <div class="bubble-user">帮我出一份 Q3 数据复盘 PPT，数据用 sales_2025.xlsx</div>
+          <div class="phase"><b>已加载项目记忆</b>：识别到本项目为 PE/VC 投研数字化转型项目，沿用此前确认的报告规范与术语表</div>
+          <div class="phase"><b>已获取销售数据</b>：读取 sales_2025.xlsx，共 1,842 行季度流水</div>
+          <div class="phase"><b>正在分析</b>：按季度汇总并剔除退款记录，对比去年同期…（3/5）</div>
+          <div class="phase-card"><b>关键发现</b>：Q3 环比下降 32%，主要由华东区 9 月退款激增导致（占降幅 78%）</div>
+          <div class="phase"><b>正在生成 PPT</b>：基于企业模板「公司汇报模板.pptx」排版 12 页…</div>
+        </div>
+        <div class="chat-input">
+          <div class="ph">输入消息，@ 引用文件，/ 使用技能…</div>
+          <div class="chat-bar">
+            <span>附件 ｜ 自动档 ｜ <u style="cursor:pointer;color:#1a56db;" onclick="go('pg-usage')">上下文 /usage</u></span>
+            <span style="cursor:pointer;" onclick="go('pg-modelsel')">内网旗舰（内网）▲</span>
+          </div>
+        </div>
+      </div>
+      <div class="col-r">
+        <div class="prev-head"><span>成果预览</span><span style="font-weight:400;color:#86909c;cursor:pointer;">⬇ 下载</span></div>
+        <div class="prev-body">
+          <div class="file-card" onclick="go('pg-version')" style="cursor:pointer;"><div class="file-ic"></div><div><b>Q3数据复盘 v1.0.pptx</b><br><span style="color:#86909c;font-size:12px;">刚刚 · 12 页 · 2.4MB</span></div></div>
+          <div class="file-card" onclick="go('pg-version')" style="cursor:pointer;"><div class="file-ic"></div><div><b>分析底稿 v1.0.docx</b><br><span style="color:#86909c;font-size:12px;">2 分钟前 · 6 页</span></div></div>
+          <div style="margin-top:10px;">点击文件在此预览（跳转版本链页）</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="note">三栏主界面=全流程枢纽：左栏=项目树+资产入口（技能/记忆/定时）｜中=对话主线｜右=成果预览（点击跳版本链）</div>
+</div>
+
+<!-- 用户菜单（主界面） -->
+<div class="user-menu" id="userMenu">
+  <div style="padding:8px 12px;font-size:12px;color:#86909c;">lichangbing@company</div>
+  <div class="um-sep"></div>
+  <div class="um-item" onclick="go('pg-set-general');hideUserMenu()">个人资料</div>
+  <div class="um-item" onclick="go('pg-set-general');hideUserMenu()">通知设置 <span style="font-size:11px;color:#86909c;">已开启</span></div>
+  <div class="um-item" onclick="go('pg-set-general');hideUserMenu()">权限档位 <span style="font-size:11px;color:#86909c;">自动档</span></div>
+  <div class="um-sep"></div>
+  <div style="padding:6px 12px 2px;font-size:12px;color:#86909c;">界面主题</div>
+  <div class="theme-row">
+    <div class="theme-dot on" style="background:#fff;border-color:#1a56db;" title="浅色"></div>
+    <div class="theme-dot" style="background:#1f2329;" title="深色" onclick="alert('原型演示：切换深色主题（PRD-06）')"></div>
+    <div class="theme-dot" style="background:linear-gradient(90deg,#fff 50%,#1f2329 50%);" title="跟随系统"></div>
+  </div>
+  <div class="um-sep"></div>
+  <div class="um-item danger" onclick="go('pg-login');hideUserMenu()">退出登录</div>
+</div>
+
+<!-- 新增用户弹窗（用户与角色页） -->
+<div class="modal-mask" id="m-add">
+  <div class="modal">
+    <h3>新增用户</h3>
+    <div class="field"><label>用户名</label><input placeholder="4-32 位字母/数字/下划线"></div>
+    <div class="row">
+      <div class="field"><label>初始密码</label><input type="password" placeholder="≥8 位含字母数字"></div>
+      <div class="field"><label>显示名称</label><input placeholder="如：王分析"></div>
+    </div>
+    <div class="field"><label>角色</label>
+      <div style="display:flex;gap:14px;font-size:13px;color:#4e5969;padding-top:4px;">
+        <label><input type="radio" name="role" checked> 成员</label>
+        <label><input type="radio" name="role"> 连接器管理员</label>
+        <label><input type="radio" name="role"> 企业管理员</label>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-sm ghost" onclick="hideModal()">取消</button>
+      <button class="btn-sm" onclick="hideModal();alert('原型演示：创建成功，将初始密码告知用户（首次登录走 P3 强制改密）')">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PRD-02 对话与任务 -->
+<!-- ============================================================ -->
+
+<!-- 1. 界外授权卡 -->
+<div class="pg" id="pg-authcard">
+  <div class="stage">
+    <div class="top"><span>中新融创项目 · 共享项目记忆</span><span style="color:#c9cdd4">|</span><span>server://workspaces/q3</span><span style="color:#c9cdd4">|</span><span>专家：数据分析</span><span style="color:#c9cdd4">|</span><span>内网旗舰（推荐）</span><span style="flex:1"></span><a class="backlink" onclick="go('pg-main')">← 主界面</a></div>
+    <div class="flow">
+      <div class="wait-card">
+        <div class="t"><span>需要你的授权：访问工作目录之外的文件</span><span class="warn">任务暂停中</span></div>
+        <div>AI 正在补充行业对标数据，需要读取以下路径：</div>
+        <div class="path-box">D:\公司资料\行业报告\2025私募行业白皮书.pdf <span style="color:#86909c">（读取）</span></div>
+        <div style="color:#86909c;font-size:12px;">原因（AI 填写）：项目目录内缺少行业对标数据，此文件是 Q3 复盘的必要参照</div>
+        <div class="opt-row">
+          <div class="opt pri">仅此次允许</div>
+          <div class="opt">本会话记住此路径</div>
+          <div class="opt">永久加入白名单</div>
+          <div class="opt" style="color:#f53f3f;">拒绝</div>
+        </div>
+        <div style="margin-top:10px;font-size:11px;color:#86909c;">拒绝后 AI 会收到拒绝原因并尝试其他路径；本次决策将记入审计日志（I03）</div>
+      </div>
+      <details class="ph det" open style="border-style:solid;border-color:#e5e6eb;">
+        <summary style="cursor:pointer;color:#4e5969;font-weight:600;">思考中 · 4s（实时）</summary>
+        <div style="margin-top:8px;color:#86909c;line-height:1.7;">用户要 Q3 复盘，数据源是 sales_2025.xlsx。先确认数据口径——上月项目记忆里记录过该公司月报采用净额口径，应与之一致。退款集中在 9 月华东，需要拉出明细验证是否为同一批项目……验证后按「总量→区域→归因」三层展开，PPT 12 页够用。</div>
+      </details>
+      <details class="ph det">
+        <summary style="cursor:pointer;color:#86909c;">已思考 6s · 点击展开</summary>
+      </details>
+      <div class="ph">已获取销售数据：读取 sales_2025.xlsx，共 1,842 行季度流水</div>
+      <div class="ph">正在分析：按季度汇总并剔除退款记录，对比去年同期（3/5）</div>
+    </div>
+    <div class="inp"><div class="ph2">输入消息，@ 引用文件，/ 使用技能…</div>
+      <div class="bar2"><span>附件 · 自动档（当前） · 通知开 · <u style="cursor:pointer;">思考显示：开</u></span><span style="cursor:pointer;" onclick="go('pg-modelsel')">内网旗舰 ▲</span></div></div>
+  </div>
+  <div class="note">I08 界外授权：路径+操作类型+原因+四选项；30 分钟无响应转中断并通知</div>
+</div>
+
+<!-- 2. 结构化提问卡 -->
+<div class="pg" id="pg-askcard">
+  <div class="stage">
+    <div class="top"><span>中新融创项目</span><span style="color:#c9cdd4">|</span><span>生成 PPT 前 AI 需要确认</span><span style="flex:1"></span><a class="backlink" onclick="go('pg-main')">← 主界面</a></div>
+    <div class="flow">
+      <div class="wait-card" style="background:#f0f7ff;border-color:#1a56db44;">
+        <div class="t"><span>AI 想和你确认一个选择</span><span class="warn" style="background:#e8effb;color:#1a56db;">单选</span></div>
+        <div style="font-size:14px;margin-bottom:4px;"><b>PPT 的数据口径按哪个基准呈现？</b></div>
+        <div style="color:#86909c;font-size:12px;margin-bottom:10px;">两种口径差异较大，影响全部 12 页图表</div>
+        <div class="opt-row">
+          <div class="opt pri">剔除退款的净额口径（推荐：与财务月报一致）</div>
+          <div class="opt">含退款的全额口径</div>
+        </div>
+        <div class="opt-row"><div class="opt">其他（自填）</div></div>
+      </div>
+      <div class="kcard">关键发现：Q3 环比下降 32%，主要由华东区 9 月退款激增导致（占降幅 78%）</div>
+    </div>
+    <div class="inp"><div class="ph2">输入消息…</div>
+      <div class="bar2"><span>附件 · 自动档 · 通知开</span><span style="cursor:pointer;" onclick="go('pg-modelsel')">内网旗舰 ▲</span></div></div>
+  </div>
+  <div class="note">结构化提问卡：问题+选项+其他自填；选中即回传，任务继续</div>
+</div>
+
+<!-- 3. 中断续跑横条 -->
+<div class="pg" id="pg-interrupt">
+  <div class="stage">
+    <div class="top"><span>中新融创项目</span>
+      <div class="bar"><span>任务已中断（应用重启）——已完成 4/9 步</span>
+        <span class="btn" style="height:26px;padding:0 14px;font-size:12px;">从断点继续</span>
+        <span class="btn bl" style="height:26px;padding:0 14px;font-size:12px;">查看进度</span></div>
+      <span style="flex:1"></span><a class="backlink" onclick="go('pg-main')">← 主界面</a></div>
+    <div class="flow">
+      <div class="ph">从断点继续：上次完成至「季度汇总」，本次从「对标分析」开始（历史 4 步已折叠）</div>
+      <div class="ph">已获取销售数据：读取 sales_2025.xlsx（1,842 行）</div>
+      <div class="ph det">第 4 步 · 工具明细（折叠展开示例）：read_file <code>sales_2025.xlsx</code> · 耗时 1.2s · 详见转写</div>
+      <div class="ph" style="opacity:.55;">（中断前）正在分析：按季度汇总并剔除退款（3/5）…</div>
+    </div>
+    <div class="inp"><div class="ph2">输入消息…</div>
+      <div class="bar2"><span>附件 · 自动档 · 通知开</span><span style="cursor:pointer;" onclick="go('pg-modelsel')">内网旗舰 ▲</span></div></div>
+  </div>
+  <div class="note">F04：状态实时落盘，中断可见，断点续跑不重做；服务端形态关浏览器任务照跑</div>
+</div>
+
+<!-- 4. 新建任务向导 -->
+<div class="pg" id="pg-newtask">
+  <div class="mask show" style="position:absolute;background:#f5f6f8;">
+    <div class="mcard" style="width:560px;">
+      <h3>新建任务</h3>
+      <div class="sub">快路径：输入描述后直接「开始」，其余默认；「更多选项」展开第 2-4 步</div>
+      <div class="steps"><div class="st on">1 描述任务</div><div class="st on">2 项目与目录</div><div class="st">3 添加上下文</div><div class="st">4 确认开始</div></div>
+
+      <div class="fld"><label>任务描述</label>
+        <textarea rows="3" placeholder="例：帮我出一份 Q3 数据复盘 PPT，重点分析退款激增的原因"></textarea>
+        <div class="tip">支持直接粘贴截图作为素材</div></div>
+
+      <div class="fld"><label>项目</label>
+        <select><option>中新融创项目（默认 · 最近）</option><option>金宇咨询项目</option><option>＋ 新建项目…</option></select>
+        <div class="tip">工作目录：server://workspaces/中新融创项目（服务端形态 · 不可改）</div></div>
+
+      <div class="fld"><label>上下文素材（可选）</label>
+        <div class="chip"><b>@</b> sales_2025.xlsx <span style="color:#86909c">×</span></div>
+        <div class="chip"><b>@</b> 公司汇报模板.pptx <span style="color:#86909c">×</span></div>
+        <div class="drop" style="margin-top:6px;">拖拽文件到此处，或点击上传本地素材（上传后存入服务端工作区，可被 @ 引用）</div></div>
+
+      <div class="sumrow"><span>专家</span><b>数据分析（按任务类型推荐）<span class="rec">推荐</span></b></div>
+      <div class="sumrow"><span>模型</span><b>内网旗舰 128k <span class="rec">推荐</span> · 健康度 近20次/18成</b></div>
+
+      <div class="foot">
+        <button class="btn ghost" onclick="go('pg-main')">← 取消返回</button>
+        <button class="btn ghost">更多选项</button>
+        <button class="btn" onclick="go('pg-main')">开始任务</button>
+      </div>
+    </div>
+  </div>
+  <div class="note">四步向导=快路径优先：描述即可开始；专家/模型按管理员推荐规则预选（C04），可改。开始后进入主界面对话</div>
+</div>
+
+<!-- 5. 模型选择器 -->
+<div class="pg" id="pg-modelsel">
+  <div class="stage">
+    <div class="top"><span>中新融创项目</span><span style="color:#c9cdd4">|</span><span>内网旗舰 ▲（点击展开）</span><span style="flex:1"></span><a class="backlink" onclick="go('pg-main')">← 主界面</a></div>
+    <div class="flow" style="position:relative;">
+      <div class="selbox" style="top:10px;left:40px;">
+        <div class="it"><span>内网旗舰 128k <span class="rec">推荐</span></span><span style="color:#86909c">近20次 18成</span></div>
+        <div class="it"><span>内网轻量 flash</span><span style="color:#86909c">近20次 20成</span></div>
+        <div class="it"><span>商用 DeepSeek-V4（审批）</span><span class="badge-red">连挂 2 次</span></div>
+        <div class="it" style="color:#86909c;cursor:default;"><span>列表=管理员开放范围（M03）</span><span>用户不可自配</span></div>
+      </div>
+      <div class="ph" style="margin-top:230px;">正在生成 PPT：基于企业模板排版 12 页（5/9）</div>
+      <div class="kcard">关键发现：Q3 环比下降 32%</div>
+    </div>
+    <div class="inp"><div class="ph2">输入消息…</div>
+      <div class="bar2"><span>附件 · 自动档 · 通知开</span><span>切换后下一轮生效</span></div></div>
+  </div>
+  <div class="note">C04：三层选择（全局/项目/对话覆盖）；推荐标注按管理员规则；健康账本连挂标红；切换下一轮生效</div>
+</div>
+
+<!-- 6. 版本链 · 成果预览 -->
+<div class="pg" id="pg-version">
+  <div class="cols">
+    <div class="midcol">
+      <div class="top"><span>Q3 数据复盘 PPT · 已完成</span><span style="color:#c9cdd4">|</span><span>点击右侧文件预览</span><span style="flex:1"></span><a class="backlink" onclick="go('pg-main')">← 主界面</a></div>
+      <div class="flow">
+        <div class="kcard" style="background:#f0f7ff;border-color:#1a56db44;">
+          <b>任务完成</b><br>完成内容：Q3 复盘 PPT 12 页（净额口径）+ 分析底稿<br>
+          产出：Q3数据复盘 v1.2.pptx · 分析底稿 v1.0.docx<br>
+          下次继续：待补充华东区退款明细附录
+        </div>
+        <div class="ph">生成 PPT：基于「公司汇报模板.pptx」排版完成，共 12 页</div>
+        <div class="src">本回合参考来源：<a>私募行业白皮书2025.pdf</a><a>q3-sales 内部报表</a><a>finance-monthly-09.docx</a></div>
+      </div>
+    </div>
+    <div class="right">
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;">成果预览 <span style="font-weight:400;color:#1a56db;cursor:pointer;">下载 · 全部下载(zip)</span></div>
+      <div style="font-size:11px;color:#86909c;margin-bottom:10px;">Q3数据复盘（版本链 3 版）</div>
+      <div class="vfile cur"><b>v1.2 · 20260829</b><div class="meta"><span>12 页 · 2.6MB · 当前版</span><span style="color:#1a56db;cursor:pointer;">历史版本</span></div></div>
+      <div class="vfile"><b>v1.1 · 20260829</b><div class="meta"><span>10 页 · 2.1MB</span><span style="color:#86909c;cursor:pointer;">预览 · 恢复</span></div></div>
+      <div class="vfile"><b>v1.0 · 20260828</b><div class="meta"><span>8 页 · 1.8MB</span><span style="color:#86909c;cursor:pointer;">预览 · 恢复</span></div></div>
+      <div style="font-size:11px;color:#86909c;margin:12px 0 8px;">其他产物</div>
+      <div class="vfile"><b>分析底稿 v1.0.docx</b><div class="meta"><span>6 页 · 刚刚</span></div></div>
+    </div>
+  </div>
+  <div class="note">B02 版本链聚合 + B03 历史快照恢复（恢复为新版本）+ F02 收尾卡三要素 + 来源列表</div>
+</div>
+
+<!-- 7. 定时任务 -->
+<div class="pg" id="pg-cron">
+  <div class="wrap">
+    <a class="backlink" onclick="go('pg-main')">← 返回主界面</a>
+    <div class="h1">自动化 · 定时任务</div>
+    <div class="h2">错过自动补跑（重启后补执行一次）；结果推送通知（A06）；入口：左栏「自动化」</div>
+    <div style="margin-bottom:14px;"><button class="btn">＋ 新建定时任务</button></div>
+    <table>
+      <tr><th>名称</th><th>计划</th><th>下次执行</th><th>最近结果</th><th>状态</th><th>操作</th></tr>
+      <tr><td>每日行业晨报</td><td>每天 09:00</td><td>明天 09:00</td><td>今晨完成 · 产物 2 份</td><td><span class="tag ok">启用</span></td><td><a class="op">编辑</a><a class="op">历史</a><a class="op" style="color:#86909c;">停用</a></td></tr>
+      <tr><td>周度投研周报</td><td>每周一 08:30</td><td>周一 08:30</td><td>上周完成</td><td><span class="tag ok">启用</span></td><td><a class="op">编辑</a><a class="op">历史</a><a class="op" style="color:#86909c;">停用</a></td></tr>
+      <tr><td>监管政策监测</td><td>每天 18:00</td><td>今天 18:00</td><td><span class="tag warn">补跑</span> 今晨错过·已补</td><td><span class="tag ok">启用</span></td><td><a class="op">编辑</a><a class="op">历史</a><a class="op" style="color:#86909c;">停用</a></td></tr>
+      <tr><td>旧数据备份检查</td><td>每月 1 日</td><td>9月1日</td><td>—</td><td><span class="tag gray">停用</span></td><td><a class="op" style="color:#00b42a;">启用</a><a class="op">编辑</a></td></tr>
+    </table>
+    <div style="margin-top:16px;font-size:12px;color:#86909c;">新建表单：名称 + 提示词 + 计划（每天/每周/每月/cron 高级）+ 推送通知开关；定时任务产生的会话在项目树中以任务形态出现（标「定时」）</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PRD-03 技能与专家 -->
+<!-- ============================================================ -->
+
+<!-- 1. 技能中心：市场 + 我的 -->
+<div class="pg" id="pg-skills"><div class="wrap">
+  <a class="backlink" onclick="go('pg-main')">← 返回主界面</a>
+  <div class="h1">技能与工具</div>
+  <div class="h2">两部分拆分：市场=官方与企业公共技能（只读安装）；我的=个人与项目技能（全权）</div>
+  <div class="tabs"><div class="tab on" onclick="sktab(0,this)">技能市场</div><div class="tab" onclick="sktab(1,this)">我的技能</div></div>
+
+  <div id="sk0">
+  <div style="margin-bottom:12px;display:flex;gap:10px;">
+    <input placeholder="搜索市场技能" style="height:34px;border:1px solid #e5e6eb;border-radius:8px;padding:0 12px;width:220px;">
+    <span class="pill on">全部</span><span class="pill">文档</span><span class="pill">调研</span><span class="pill">数据</span><span class="pill">设计</span></div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+    <div class="card" style="margin:0;"><span class="tag blue">官方</span> <b>deep-research</b><br><span class="ver">深度调研：双源交叉验证+结构化报告+来源清单</span><div style="margin-top:10px;"><button class="btn sm">安装到我的技能</button></div></div>
+    <div class="card" style="margin:0;"><span class="tag blue">官方</span> <b>excel-report</b><br><span class="ver">Excel 报表：多 sheet+公式+图表，数据可追溯</span><div style="margin-top:10px;"><button class="btn sm">安装到我的技能</button></div></div>
+    <div class="card" style="margin:0;"><span class="tag blue">官方</span> <b>ppt-design</b> <span class="tag warn">有更新</span><br><span class="ver">PPT 设计系统：母版/版式配方/一页一论点</span><div style="margin-top:10px;"><button class="btn sm">安装到我的技能</button></div></div>
+    <div class="card" style="margin:0;"><span class="tag ok">企业</span> <b>pe-due-diligence</b><br><span class="ver">公司尽调标准流程（管理员发布 · 投资部定制）</span><div style="margin-top:10px;"><button class="btn sm">安装到我的技能</button></div></div>
+    <div class="card" style="margin:0;"><span class="tag ok">企业</span> <b>fund-data-clean</b><br><span class="ver">基金数据清洗（含沙箱脚本）</span><div style="margin-top:10px;"><button class="btn sm">安装到我的技能</button></div></div>
+    <div class="card" style="margin:0;"><span class="tag blue">官方</span> <b>weekly-report</b><br><span class="ver">周报生成：汇总本周任务与产出</span><div style="margin-top:10px;"><button class="btn sm">安装到我的技能</button></div></div>
+  </div>
+  <div style="margin-top:12px;font-size:12px;color:#86909c;">市场技能只读；「安装」=复制为个人副本独立演进，市场更新仅提示不自动覆盖；用户自己的技能不在市场展示。企业公共技能的后台发布与推送见 <a class="op" onclick="go('pg-pubskill')">后台 · 公共技能</a></div>
+  </div>
+
+  <div id="sk1" style="display:none;">
+  <div style="margin-bottom:12px;display:flex;gap:10px;">
+    <input placeholder="搜索我的技能" style="height:34px;border:1px solid #e5e6eb;border-radius:8px;padding:0 12px;width:220px;">
+    <button class="btn" onclick="go('pg-skedit')">新建技能</button><button class="btn ghost" onclick="go('pg-skgene')">从文档生成</button></div>
+  <table><tr><th>分组</th><th>技能</th><th>触发方式</th><th>来源</th><th>更新</th><th>操作</th></tr>
+  <tr><td><span class="tag gray">项目</span></td><td><b>pe-legal-check</b><br><span class="ver">本项目法务条款核查清单</span></td><td><span class="tag">自动</span></td><td>自建</td><td>昨天</td><td><a class="op" onclick="go('pg-skedit')">编辑</a><a class="op">试运行</a><a class="op" style="color:#f53f3f;">删除</a></td></tr>
+  <tr><td rowspan="3"><span class="tag ok">我的</span></td><td><b>q3-ppt-style</b><br><span class="ver">Q3 汇报 PPT 版式（公司模板+一页一论点）</span></td><td><span class="tag">仅手动</span></td><td>从对话沉淀</td><td>刚刚</td><td><a class="op" onclick="go('pg-skedit')">编辑</a><a class="op">试运行</a><a class="op">导出</a></td></tr>
+  <tr><td><b>deep-research</b> <span class="tag blue">已装自市场</span> <span class="tag warn">市场有新版</span><br><span class="ver">深度调研（安装后自行修改过）</span></td><td><span class="tag">自动</span></td><td>市场安装</td><td>08-20</td><td><a class="op" onclick="go('pg-skedit')">编辑</a><a class="op">重新安装覆盖</a></td></tr>
+  <tr><td><b>fund-data-clean</b><br><span class="ver">基金数据清洗（沙箱脚本）</span></td><td><span class="tag">自动</span></td><td>从文档生成</td><td>2 天前</td><td><a class="op" onclick="go('pg-skedit')">编辑</a><a class="op">试运行</a></td></tr></table>
+  </div>
+  <div class="note">两个独立 Tab：市场（官方+企业公共，卡片流，安装=复制副本）｜我的（项目+个人，含来源标记与市场更新提示）</div>
+</div></div>
+
+<!-- 2. 技能编辑器 -->
+<div class="pg" id="pg-skedit"><div class="wrap">
+  <a class="backlink" onclick="go('pg-skills')">← 返回技能中心</a>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+    <div class="h1" style="margin:0">编辑技能：q3-ppt-style</div>
+    <div><button class="btn ghost sm">试运行</button> <button class="btn sm">保存（热生效）</button></div>
+  </div>
+  <div class="h2">保存即热生效——下一条任务立即使用新版本；左 Tab=说明(MD)，右 Tab=文件(代码层)</div>
+  <div class="tabs"><div class="tab on">说明（SKILL.md）</div><div class="tab">文件（scripts/references…）</div></div>
+  <div class="row2" style="margin-bottom:12px;">
+    <div class="fld"><label>技能标识名</label><input value="q3-ppt-style"></div>
+    <div class="fld"><label>触发方式</label><select><option>自动（AI 按描述触发词自主调用）</option><option>仅手动（用户 /斜杠 触发）</option></select></div>
+    <div class="fld"><label>适用范围</label><select><option>全局（我的技能）</option><option>仅当前项目</option></select></div>
+  </div>
+  <div class="fld"><label>显示描述（触发词写在这里——空则永不自动触发）</label>
+    <input value="生成 Q3 汇报 PPT：基于公司模板，一页一论点，含图表；Triggers: 汇报PPT, 季度PPT, Q3 PPT"></div>
+  <div class="split">
+    <div style="flex:1">
+      <div class="fld"><label>正文（Markdown，模板骨架：触发条件→编号步骤→注意事项→验证步骤）</label>
+      <div class="editor" style="height:280px;"><span class="c"># Q3 汇报 PPT 生成</span>
+
+<span class="k">## 触发条件</span>
+用户要生成季度汇报/复盘类 PPT，且未指定其他版式技能
+
+<span class="k">## 步骤</span>
+1. 确认数据口径：<span class="s">净额（剔除退款）</span>，与财务月报一致
+2. 先产出大纲（每页一个论点），经用户确认后再生成
+3. 使用模板 <span class="s">templates/公司汇报模板.pptx</span>
+4. 图表用 gen_diagram 生成后插入
+
+<span class="k">## 注意事项</span>
+- 中文用思源黑体；数字保留两位小数
+- 每页 bullet ≤6 条，每条 ≤20 字</div></div>
+    </div>
+    <div class="drawer">
+      <h4>目录（代码层 Tab 预览）</h4>
+      <div class="filetree">
+        <div class="dir">q3-ppt-style/</div>
+        <div class="f on">SKILL.md</div>
+        <div class="dir" style="padding-left:0;">templates/</div><div class="f">公司汇报模板.pptx</div>
+        <div class="dir" style="padding-left:0;">scripts/</div><div class="f">check_font.py</div>
+        <div class="dir" style="padding-left:0;">references/</div><div class="f">chart-spec.md</div>
+      </div>
+      <div class="warnbox">scripts/ 脚本将始终在沙箱内执行（I01）；企业策略可禁用成员脚本</div>
+      <div class="hit"><b>试运行 · 命中判定</b><br>输入「帮我做Q3汇报PPT」→ 命中触发词「Q3 PPT / 汇报PPT」<br>目录注入形态：name + description（渐进披露）</div>
+    </div>
+  </div>
+  <div class="note">双 Tab 编辑器：MD 层（表单+高亮正文+预览）｜代码层（目录树+脚本高亮）；试运行抽屉含命中判定/注入预览/真执行（沙箱）</div>
+</div></div>
+
+<!-- 3. 从文档生成技能 -->
+<div class="pg" id="pg-skgene"><div class="wrap">
+  <a class="backlink" onclick="go('pg-skills')">← 返回技能中心</a>
+  <div class="h1">从文档生成技能 · 第 2 步：抽取预览</div>
+  <div class="h2">来源：《尽调操作手册 v3.docx》(2.1MB)；AI 只出草稿，你确认并编辑后才保存（可控性原则）</div>
+  <div class="card">
+    <div class="row2"><div class="fld"><label>技能名（可改）</label><input value="due-diligence-flow"></div>
+      <div class="fld"><label>置信度</label><div style="padding-top:8px;"><span class="tag ok">整体高</span> <span class="tag warn">2 个字段建议核对</span></div></div></div>
+    <div class="fld"><label>适用场景 <span class="tag ok">依据：第1.2节</span></label><input value="对目标公司开展投资尽调时的标准流程执行"></div>
+    <div class="fld" style="background:#fff7e8;border-radius:8px;padding:10px;"><label style="color:#d25f00;">前置条件（低置信·请重点核对）<span class="tag warn">依据推断：第3章零散提及</span></label>
+      <input value="已获取目标公司近三年财务数据与工商信息" style="border-color:#f7ba1e;"></div>
+    <div class="fld"><label>步骤序列 <span class="tag ok">依据：第2章流程图 + 2.1-2.6节</span></label>
+      <table><tr><th>#</th><th>动作</th><th>输入</th><th>输出</th></tr>
+      <tr><td>1</td><td>工商信息核验（登记/股权/变更）</td><td>企业名称</td><td>核验清单</td></tr>
+      <tr><td>2</td><td>财务三表勾稽复核</td><td>近三年财报</td><td>差异说明表</td></tr>
+      <tr><td>3</td><td> <span style="color:#d25f00;">访谈提纲生成（手册未明确定义输出物——建议核对）</span></td><td>业务范围</td><td>提纲初稿</td></tr></table></div>
+    <div class="fld"><label>验证方法 <span class="tag ok">依据：附录A检查表</span></label><input value="对照附录A的37项检查表逐项打勾"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;"><button class="btn ghost">重新抽取</button><button class="btn" onclick="go('pg-skedit')">进入编辑器核对并保存（必经）</button></div>
+  </div>
+  <div class="note">schema 强约束抽取→模板渲染；每字段标注原文依据；低置信标黄；编辑确认必经（同一文档重复生成结构一致）</div>
+</div></div>
+
+<!-- 4. 专家配置（后台） -->
+<div class="pg" id="pg-expert">
+  <div class="frame">
+    <div class="sidebar"><div class="side-logo">WorkPivot 管理后台</div>
+      <div class="nav-item" onclick="go('pg-users')">用户与角色</div>
+      <div class="nav-item" onclick="go('pg-models')">模型管理</div>
+      <div class="nav-item" onclick="go('pg-conn')">连接器配置</div>
+      <div class="nav-item active">专家配置</div>
+      <div class="nav-item" onclick="go('pg-agent')">默认 Agent 定义</div>
+      <div class="nav-item" onclick="go('pg-pubskill')">公共技能</div>
+      <div class="nav-item" onclick="alert('文档模板（H01）：Word/PPT 企业模板库管理，规格见 PRD-04 §7（原型暂未出独立页）')">文档模板</div>
+      <div class="nav-item" onclick="go('pg-audit')">审计日志</div>
+      <div style="flex:1"></div>
+      <div class="nav-item" onclick="go('pg-main')">← 返回主界面</div>
+      <div class="nav-item" onclick="go('pg-login')">退出登录</div>
+    </div>
+    <div class="main">
+      <div class="h1">编辑专家：尽调助手</div>
+      <div class="h2">数量不设限；停用后用户端 60 秒内不可选；人格叠加在企业默认 agent.md 之上（红线不可覆盖）</div>
+      <div class="row2"><div class="fld"><label>名称（用户端下拉可见）</label><input value="尽调助手"></div>
+        <div class="fld"><label>maxTurns 会话预算</label><input value="50"></div>
+        <div class="fld"><label>状态</label><select><option>启用</option><option>停用</option></select></div></div>
+      <div class="fld"><label>显示描述</label><input value="按公司尽调方法论执行投资尽调全流程"></div>
+      <div class="fld"><label>人格提示词（agent.md 正文，支持上传 .md）</label>
+        <div class="editor" style="height:150px;">你是本公司的资深尽调专家。遵循《尽调操作手册 v3》流程……
+<span class="c"># 不可覆盖（S03 企业红线自动叠加，此处只读提示）</span>
+- 所有金额保留两位小数；结论必须给依据引用</div></div>
+      <div class="row2">
+        <div class="fld"><label>绑定技能</label><div><span class="pill">due-diligence-flow ×</span><span class="pill">deep-research ×</span><span class="pill">＋ 添加</span></div></div>
+        <div class="fld"><label>绑定数据源</label><div><span class="pill">工商数据库(只读) ×</span><span class="pill">公司知识库(RAG) ×</span><span class="pill">＋ 添加</span></div></div></div>
+      <div class="fld"><label>开场提示（可选，用户选该专家新建任务时的默认首句）</label><input value="请提供目标公司名称，我将启动尽调流程"></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;"><button class="btn ghost">取消</button><button class="btn">保存</button></div>
+    </div>
+  </div>
+  <div class="note">D02 后台配置制：人格+技能+数据源+开场提示；内置模板（调研/写作/数据/PPT）可改可停</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PRD-04 后台管理 -->
+<!-- ============================================================ -->
+
+<!-- 1. 模型管理 -->
+<div class="pg" id="pg-models">
+  <div class="frame">
+    <div class="sidebar"><div class="side-logo">WorkPivot 管理后台</div>
+      <div class="nav-item" onclick="go('pg-users')">用户与角色</div>
+      <div class="nav-item active">模型管理</div>
+      <div class="nav-item" onclick="go('pg-conn')">连接器配置</div>
+      <div class="nav-item" onclick="go('pg-expert')">专家配置</div>
+      <div class="nav-item" onclick="go('pg-agent')">默认 Agent 定义</div>
+      <div class="nav-item" onclick="go('pg-pubskill')">公共技能</div>
+      <div class="nav-item" onclick="alert('文档模板（H01）：Word/PPT 企业模板库管理，规格见 PRD-04 §7（原型暂未出独立页）')">文档模板</div>
+      <div class="nav-item" onclick="go('pg-audit')">审计日志</div>
+      <div style="flex:1"></div>
+      <div class="nav-item" onclick="go('pg-main')">← 返回主界面</div>
+      <div class="nav-item" onclick="go('pg-login')">退出登录</div>
+    </div>
+    <div class="main">
+      <div class="h1">模型管理</div>
+      <div class="h2">管理员唯一配置入口；OpenAI 接口模式为主（base_url+Key+模型ID）；保存前连通测试必过</div>
+      <div style="margin-bottom:12px;"><button class="btn">＋ 新增模型</button></div>
+      <table><tr><th>名称</th><th>协议</th><th>分组</th><th>可见范围</th><th>健康度</th><th>并发</th><th>状态</th><th>操作</th></tr>
+        <tr><td><b>内网旗舰 128k</b> <span class="tag blue">默认</span></td><td>OpenAI 兼容</td><td><span class="tag ok">本地池</span></td><td>全员</td><td>近20次 18成</td><td>5</td><td><span class="tag ok">启用</span></td><td><a class="op">编辑</a><a class="op">停用</a></td></tr>
+        <tr><td>内网轻量 flash</td><td>OpenAI 兼容</td><td><span class="tag ok">本地池</span></td><td>全员</td><td>近20次 20成</td><td>不限</td><td><span class="tag ok">启用</span></td><td><a class="op">编辑</a><a class="op">停用</a></td></tr>
+        <tr><td>商用 DeepSeek-V4</td><td>Anthropic</td><td><span class="tag gray">云池</span></td><td>研发部</td><td><span style="color:#f53f3f;">连挂 2 次</span></td><td>3</td><td><span class="tag gray">停用</span></td><td><a class="op">编辑</a><a class="op" style="color:#00b42a;">启用</a></td></tr></table>
+      <div class="card"><b>推荐规则（任务类型 → 模型）</b>
+        <table style="margin-top:8px;"><tr><th>任务类型</th><th>推荐模型</th><th>操作</th></tr>
+          <tr><td>文档生成</td><td>内网旗舰 128k</td><td><a class="op">改</a><a class="op">删</a></td></tr>
+          <tr><td>数据分析</td><td>内网轻量 flash</td><td><a class="op">改</a><a class="op">删</a></td></tr>
+          <tr><td>深度调研</td><td>内网旗舰 128k</td><td><a class="op">改</a><a class="op">删</a></td></tr>
+          <tr><td>＋ 添加类型（通用对话/自定义…）</td><td colspan="2"></td></tr></table></div>
+      <div class="card"><b>并发配置</b>：企业最大并发会话 <input value="20" style="width:60px;border:1px solid #e5e6eb;border-radius:6px;padding:4px 8px;"> ｜ 单用户并行任务上限 <input value="8" style="width:60px;border:1px solid #e5e6eb;border-radius:6px;padding:4px 8px;"> ｜（按模型分档见列表「并发」列）</div>
+    </div>
+  </div>
+  <div class="note">M03：Key 密文不回显；停用 60s 生效；推荐规则对用户透明标注「推荐」；健康连挂标红</div>
+</div>
+
+<!-- 2. 连接器向导 -->
+<div class="pg" id="pg-conn"><div class="wrap">
+  <a class="backlink" onclick="go('pg-models')">← 返回后台</a>
+  <div class="h1">新增连接器 · 类型：数据库（只读）</div>
+  <div class="h2">凭据存服务端加密库——成员端永不落盘（S02）；写操作默认禁用</div>
+  <div class="card">
+    <div class="row2"><div class="fld"><label>连接器名称</label><input value="生产数据库-只读"></div>
+      <div class="fld"><label>数据库类型</label><select><option>MySQL</option><option>PostgreSQL</option><option>SQL Server</option><option>SQLite</option></select></div></div>
+    <div class="row2"><div class="fld"><label>主机</label><input value="10.0.8.21"></div>
+      <div class="fld"><label>端口</label><input value="3306"></div>
+      <div class="fld"><label>库名</label><input value="fund_prod"></div></div>
+    <div class="row2"><div class="fld"><label>账号（建议只读账号）</label><input value="ro_workpivot"></div>
+      <div class="fld"><label>密码（I04 加密存储）</label><input type="password" value="********"></div></div>
+    <div class="fld"><label>表白名单（只勾选可查的表）</label>
+      <div><span class="pill">fund_info ✓</span><span class="pill">nav_history ✓</span><span class="pill">investor ✓</span><span class="pill" style="color:#c9cdd4;">user_creds ✗</span></div></div>
+    <div class="fld"><label>工具启停（自动发现）</label>
+      <table><tr><th>工具</th><th>说明</th><th>状态</th></tr>
+        <tr><td>db_query</td><td>白名单表只读查询</td><td><span class="tag ok">启用</span></td></tr>
+        <tr><td>db_schema</td><td>查看表结构</td><td><span class="tag ok">启用</span></td></tr>
+        <tr><td>db_write</td><td>写入/变更</td><td><span class="tag gray">默认禁用</span> <a class="op">启用需二次确认+审计加严</a></td></tr></table></div>
+    <div class="fld"><label>使用范围</label><select><option>全员</option><option>按部门：投资部</option><option>指定项目</option></select></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;"><button class="btn ghost">测试连接</button><button class="btn">保存</button></div>
+  </div>
+  <div class="note">S02：服务端公共连接器；启停 60s 生效；调用全审计（M06）；协作场景个人连接器自动禁用</div>
+</div></div>
+
+<!-- 3. 默认 agent.md -->
+<div class="pg" id="pg-agent">
+  <div class="frame">
+    <div class="sidebar"><div class="side-logo">WorkPivot 管理后台</div>
+      <div class="nav-item" onclick="go('pg-users')">用户与角色</div>
+      <div class="nav-item" onclick="go('pg-models')">模型管理</div>
+      <div class="nav-item" onclick="go('pg-conn')">连接器配置</div>
+      <div class="nav-item" onclick="go('pg-expert')">专家配置</div>
+      <div class="nav-item active">默认 Agent 定义</div>
+      <div class="nav-item" onclick="go('pg-pubskill')">公共技能</div>
+      <div class="nav-item" onclick="alert('文档模板（H01）：Word/PPT 企业模板库管理，规格见 PRD-04 §7（原型暂未出独立页）')">文档模板</div>
+      <div class="nav-item" onclick="go('pg-audit')">审计日志</div>
+      <div style="flex:1"></div>
+      <div class="nav-item" onclick="go('pg-main')">← 返回主界面</div>
+      <div class="nav-item" onclick="go('pg-login')">退出登录</div>
+    </div>
+    <div class="main">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;"><div class="h1" style="margin:0">默认 Agent 定义（企业层）</div>
+        <div><span class="ver">当前 v3 · 08-28 发布</span> <button class="btn ghost sm">历史版本</button> <button class="btn sm">保存为新版本</button></div></div>
+      <div class="h2">分层：平台基础层 → 企业层（本页，成员不可关闭）→ 用户个人层；新会话即时生效，进行中不中断</div>
+      <div class="fld"><label>agent.md（frontmatter + 正文；「不可覆盖」区块用标记包裹）</label>
+        <div class="editor" style="height:300px;">---
+name: company-default
+version: 3
+---
+你是公司员工的工作助手，使用简体中文，回答务实、给依据。
+
+<span class="c">&lt;!-- wp:locked --&gt;</span>
+<span class="k">## 以下约束不可被个人层/专家层覆盖</span>
+- 全部金额两位小数，币种默认 CNY
+- 投资结论必须给「依据+来源」，单一来源标注「待核实」
+- 不讨论未公开项目信息；涉密内容拒绝并提示
+<span class="c">&lt;!-- /wp:locked --&gt;</span>
+
+## 输出规范
+- 报告类交付遵循文档模板；正文先结论后论证</div></div>
+      <div class="hit" style="max-width:520px;"><b>分层预览</b>：平台基础层（内置）→ <b>企业层（上述内容）</b> → 用户层（个人 agent.md，只读示意）。成员端可查看当前生效的企业指令（透明原则）。</div>
+    </div>
+  </div>
+  <div class="note">S03：版本化+回滚；红线区块锁定；成员可查看不可关闭</div>
+</div>
+
+<!-- 4. 审计日志 -->
+<div class="pg" id="pg-audit">
+  <div class="frame">
+    <div class="sidebar"><div class="side-logo">WorkPivot 管理后台</div>
+      <div class="nav-item" onclick="go('pg-users')">用户与角色</div>
+      <div class="nav-item" onclick="go('pg-models')">模型管理</div>
+      <div class="nav-item" onclick="go('pg-conn')">连接器配置</div>
+      <div class="nav-item" onclick="go('pg-expert')">专家配置</div>
+      <div class="nav-item" onclick="go('pg-agent')">默认 Agent 定义</div>
+      <div class="nav-item" onclick="go('pg-pubskill')">公共技能</div>
+      <div class="nav-item" onclick="alert('文档模板（H01）：Word/PPT 企业模板库管理，规格见 PRD-04 §7（原型暂未出独立页）')">文档模板</div>
+      <div class="nav-item active">审计日志</div>
+      <div style="flex:1"></div>
+      <div class="nav-item" onclick="go('pg-main')">← 返回主界面</div>
+      <div class="nav-item" onclick="go('pg-login')">退出登录</div>
+    </div>
+    <div class="main">
+      <div class="h1">审计日志</div>
+      <div class="h2">六类事件统一查询；连接器调用页签对连接器管理员+企业管理员可见；支持导出 CSV</div>
+      <div style="margin-bottom:12px;display:flex;gap:8px;font-size:12px;">
+        <select style="border:1px solid #e5e6eb;border-radius:8px;padding:6px 10px;"><option>全部事件</option><option>登录</option><option>任务操作</option><option>危险命令</option><option>界外授权</option><option>连接器调用</option><option>后台操作</option></select>
+        <select style="border:1px solid #e5e6eb;border-radius:8px;padding:6px 10px;"><option>全部用户</option><option>wangfy</option><option>liuyq</option></select>
+        <input placeholder="时间范围" style="border:1px solid #e5e6eb;border-radius:8px;padding:6px 10px;width:180px;" value="今天">
+        <button class="btn sm">查询</button><button class="btn ghost sm">导出 CSV</button></div>
+      <table><tr><th>时间</th><th>用户</th><th>事件</th><th>对象</th><th>结果</th><th>详情</th></tr>
+        <tr><td>09:41</td><td>wangfy</td><td><span class="tag warn">界外授权</span></td><td>D:\公司资料\行业报告\白皮书.pdf</td><td><span class="tag ok">仅此次允许</span></td><td><a class="op">展开（原因/命令哈希）</a></td></tr>
+        <tr><td>09:38</td><td>wangfy</td><td><span class="tag blue">连接器调用</span></td><td>生产数据库-只读 · db_query</td><td><span class="tag ok">成功</span></td><td><a class="op">参数摘要</a></td></tr>
+        <tr><td>09:32</td><td>liuyq</td><td><span class="tag" style="background:#ffe8e6;color:#f53f3f;">危险命令拦截</span></td><td>rm -rf ./ 未确认目录</td><td><span class="tag" style="background:#ffe8e6;color:#f53f3f;">已拦截</span></td><td><a class="op">命令哈希</a></td></tr>
+        <tr><td>09:15</td><td>admin</td><td><span class="tag gray">后台操作</span></td><td>模型管理 · 新增「内网轻量 flash」</td><td><span class="tag ok">成功</span></td><td><a class="op">变更详情</a></td></tr>
+        <tr><td>09:02</td><td>chenj</td><td><span class="tag gray">登录</span></td><td>飞书扫码</td><td><span class="tag ok">成功</span></td><td><a class="op">来源 IP</a></td></tr></table>
+    </div>
+  </div>
+  <div class="note">M06/I03：危险操作完整可追溯；界外授权记录授权选项；导出 CSV</div>
+</div>
+
+<!-- 5. 公共技能编辑（后台） -->
+<div class="pg" id="pg-pubskill">
+  <div class="frame">
+    <div class="sidebar"><div class="side-logo">WorkPivot 管理后台</div>
+      <div class="nav-item" onclick="go('pg-users')">用户与角色</div>
+      <div class="nav-item" onclick="go('pg-models')">模型管理</div>
+      <div class="nav-item" onclick="go('pg-conn')">连接器配置</div>
+      <div class="nav-item" onclick="go('pg-expert')">专家配置</div>
+      <div class="nav-item" onclick="go('pg-agent')">默认 Agent 定义</div>
+      <div class="nav-item active">公共技能</div>
+      <div class="nav-item" onclick="alert('文档模板（H01）：Word/PPT 企业模板库管理，规格见 PRD-04 §7（原型暂未出独立页）')">文档模板</div>
+      <div class="nav-item" onclick="go('pg-audit')">审计日志</div>
+      <div style="flex:1"></div>
+      <div class="nav-item" onclick="go('pg-main')">← 返回主界面</div>
+      <div class="nav-item" onclick="go('pg-login')">退出登录</div>
+    </div>
+    <div class="main">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <div><div class="h1" style="margin:0">公共技能 · 编辑：pe-due-diligence</div>
+          <div class="h2" style="margin:6px 0 12px;">复用技能编辑器（公共模式）——保存到企业公共库并推送；成员只读可复制</div></div>
+        <div style="display:flex;gap:8px;"><button class="btn ghost sm">试运行</button><button class="btn sm">保存并推送新版本</button></div></div>
+      <table style="margin-bottom:14px;"><tr><th>技能</th><th>来源</th><th>版本</th><th>范围</th><th>近7天调用</th><th>状态</th><th>操作</th></tr>
+        <tr><td><b>pe-due-diligence</b>（编辑中）</td><td><span class="tag ok">企业</span></td><td>v2 → 推送 v3</td><td>投资部</td><td>41</td><td><span class="tag ok">启用</span></td><td><a class="op">版本历史</a><a class="op">下架</a></td></tr>
+        <tr><td>fund-data-clean</td><td><span class="tag ok">企业</span></td><td>v1 · 08-26 推送 · 8 人更新</td><td>全员</td><td>63</td><td><span class="tag ok">启用</span></td><td><a class="op">编辑</a><a class="op">回滚 v0</a></td></tr>
+        <tr><td>excel-report</td><td><span class="tag blue">官方</span></td><td>随产品 v0.10.3</td><td>全员</td><td>102</td><td><span class="tag ok">启用</span></td><td><a class="op">复制定制</a></td></tr></table>
+
+      <div class="tabs"><div class="tab on">说明（SKILL.md）</div><div class="tab">文件（scripts…）</div></div>
+      <div class="row2" style="margin-bottom:10px;">
+        <div class="fld"><label>技能标识名</label><input value="pe-due-diligence"></div>
+        <div class="fld"><label>触发方式</label><select><option>自动</option><option>仅手动</option></select></div>
+        <div class="fld"><label>本版本说明（推送时展示给成员）</label><input value="补充投后管理检查项 3 条"></div></div>
+      <div class="fld"><label>显示描述（触发词）</label><input value="公司尽调标准流程：工商核验/财务勾稽/访谈；Triggers: 尽调, 尽职调查, due diligence"></div>
+      <div class="editor" style="height:190px;">## 触发条件
+对目标公司开展投资尽调时使用
+## 步骤
+1. 工商信息核验（登记/股权/变更）——依据《尽调操作手册 v3》第2章
+2. 财务三表勾稽复核（净额口径）
+3. 访谈提纲生成（输出物：提纲初稿）
++ 新增：投后管理检查项（本版修改）</div>
+      <div class="card" style="margin-top:12px;"><b>发布栏（公共模式独有）</b>
+        <div style="font-size:12px;color:#4e5969;margin-top:8px;">使用范围：<span class="pill on">投资部</span><span class="pill">＋添加部门/全员</span>
+          　配置型参数：<span class="pill">数据源=工商数据库(只读)</span>
+          <div style="font-size:11px;color:#86909c;margin-top:6px;">「保存并推送」后：市场卡片标「有更新」；已安装成员可选重新覆盖，不自动强制更新</div></div></div>
+    </div>
+  </div>
+  <div class="note">后台技能编辑页=PRD-03 编辑器的公共模式：发布栏（范围/版本说明/推送）+ 配置型参数 + 版本回滚 + 官方技能复制定制</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PRD-05 记忆管理 -->
+<!-- ============================================================ -->
+
+<!-- 1. 个人记忆管理（入口：设置 → 记忆） -->
+<div class="pg" id="pg-memory"><div class="wrap">
+  <a class="backlink" onclick="go('pg-set-general')">← 返回设置</a>
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <div><div class="h1">记忆</div><div class="h2">记忆仅存本地/本企业服务器，不进任何遥测；手写区每轮会话自动注入</div></div>
+    <div style="display:flex;gap:10px;"><button class="btn ghost sm">导出 Markdown</button><button class="btn sm" style="background:#f53f3f;">关闭记忆功能</button></div>
+  </div>
+  <div class="card"><h3>手写区（MEMORY.md）—— 我要 AI 永远记住的</h3>
+    <div class="editor" style="height:150px;">## 沟通偏好
+- 用中文；报告先结论后论证；金额两位小数
+## 工作背景
+- 负责 PE/VC 投研；项目术语遵循《尽调操作手册 v3》
+## 长期约束
+- 数据口径默认净额（剔除退款），与财务月报一致</div>
+    <div style="margin-top:8px;font-size:11px;color:#86909c;">保存即时生效（下次会话）· 编辑带版本历史可回退</div></div>
+  <div class="card"><h3>条目区（AI 自动记录 · 默认静默，晋升需你确认）</h3>
+    <div style="margin-bottom:10px;font-size:12px;color:#86909c;">统计：手写区 3 条 ｜ 条目区 42 条 ｜ 本月新增 11 条 ｜ 上限 1000 条（超量丢最旧）</div>
+    <div class="memo"><div>用户偏好表格用三线表；引用来源必须带链接</div><span class="src">08-28 · 来自任务「行业监管调研」 <a class="op">编辑</a><a class="op" style="color:#f53f3f;">删除</a></span></div>
+    <div class="memo"><div>常用模板：公司汇报模板.pptx（Q3 任务确认）</div><span class="src">08-27 · 来自任务「Q3 复盘」 <a class="op">编辑</a><a class="op" style="color:#f53f3f;">删除</a></span></div>
+    <div class="memo"><div>金宇项目的数据负责人是陈尽职，取数先联系</div><span class="src">08-25 · 来自任务「组织架构梳理」 <a class="op">编辑</a><a class="op" style="color:#f53f3f;">删除</a></span></div>
+    <div style="font-size:12px;color:#86909c;margin-top:6px;"><a class="op">搜索条目</a><a class="op">查看抑制清单（不再询问晋升的同类内容）</a></div></div>
+  <div class="note">E01：双层记忆+总控（关闭/导出）；条目区可溯源到任务；晋升去确认卡（见目录「晋升确认卡」页）</div>
+</div></div>
+
+<!-- 2. 晋升确认卡（对话内） -->
+<div class="pg" id="pg-promote">
+  <div class="stage">
+    <div class="top"><span>中新融创项目 · 任务进行中</span><span style="flex:1"></span><a class="backlink" onclick="go('pg-main')">← 主界面</a></div>
+    <div class="flow">
+      <div class="wait-card">
+        <div class="t"><span>AI 请求把一条经验晋升为长期记忆</span><span class="tag blue">可就地编辑</span></div>
+        <div class="kv"><span style="color:#86909c">拟晋升内容</span><span>「数据口径默认净额（剔除退款），与财务月报一致」</span></div>
+        <div class="kv"><span style="color:#86909c">理由（AI 填写）</span><span>连续 3 次任务主动询问同一口径，判断为稳定偏好</span></div>
+        <div class="kv"><span style="color:#86909c">去向</span><span>手写区 · 「工作背景」分区</span></div>
+        <div class="opt-row">
+          <div class="opt pri">晋升并保存</div>
+          <div class="opt">保留为条目（默认）</div>
+          <div class="opt" style="color:#f53f3f;">删除该条目</div>
+        </div>
+        <div style="margin-top:10px;font-size:11px;color:#86909c;"><input type="checkbox" checked> 同类内容以后不再询问（可在设置·抑制清单中恢复）　·　每会话最多 2 张晋升卡</div>
+      </div>
+      <div class="ph">正在生成 PPT：基于企业模板排版 12 页（5/9）…（任务不因晋升卡中断，确认后异步写入）</div>
+    </div>
+  </div>
+  <div class="note">晋升确认流：内容可编辑+理由透明+三选项+抑制清单；频率限制防打扰</div>
+</div>
+
+<!-- 3. 项目记忆面板（入口：左栏「项目记忆」） -->
+<div class="pg" id="pg-promem"><div class="wrap">
+  <a class="backlink" onclick="go('pg-main')">← 返回主界面</a>
+  <div class="h1">项目记忆 · 中新融创项目</div>
+  <div class="h2">随项目目录走（拷目录即迁移）；今日+昨日日志自动注入每个任务</div>
+  <div class="tabs"><div class="tab on">长期记忆</div><div class="tab">按日日志</div><div class="tab">记忆使用情况</div></div>
+  <div class="card"><h3>MEMORY.md（项目背景/约束/决策）</h3>
+    <div class="editor" style="height:160px;">## 项目背景
+甲方：中新融创（私募，投前/投中/投后全链条）· 编号 ZXRC-202607-00332
+## 已确认决策
+- 报告输出 Word+PPT 双格式；版本号文件名交付
+- SOP 线上化范围：投资决策/立项/投后管理三流程
+## 约束
+- 大股东 TCL；术语以基金业协会规范为准</div></div>
+  <div class="card"><h3>按日日志（只读归档）</h3>
+    <table><tr><th>日期</th><th>摘要</th><th>操作</th></tr>
+      <tr><td>08-29</td><td>生成《岗位SOP手册》单表格版；确认模板采用基金文书</td><td><a class="op">查看</a></td></tr>
+      <tr><td>08-28</td><td>SOP 方案迭代 v1.2→v1.4；行业白皮书引用入资产库</td><td><a class="op">查看</a></td></tr>
+      <tr><td>08-27</td><td>监管新规调研：双源验证 2 条，1 条待核实</td><td><a class="op">查看</a></td></tr></table></div>
+  <div class="card"><h3>记忆使用情况（最近 20 次任务命中）</h3>
+    <table><tr><th>任务</th><th>命中片段</th><th>注入 token</th></tr>
+      <tr><td>Q3 数据复盘</td><td>「净额口径」「公司汇报模板」</td><td>312</td></tr>
+      <tr><td>SOP 线上化 v1.4</td><td>「三流程范围」「TCL 背景」</td><td>488</td></tr>
+      <tr><td>监管调研</td><td>「术语以协会规范为准」</td><td>156</td></tr></table>
+    <div style="font-size:11px;color:#86909c;margin-top:6px;">让用户看见记忆在干活（E03 透明性）；命中按混合检索（向量+关键词）</div></div>
+  <div class="note">三 Tab：长期记忆(可编辑)/按日日志(只读)/使用情况(命中透明)；入口=左栏「项目记忆」</div>
+</div></div>
+
+<!-- 4. 上下文管理（入口：对话输入栏 /usage） -->
+<div class="pg" id="pg-usage">
+  <div class="cols">
+    <div class="mid">
+      <a class="backlink" onclick="go('pg-main')">← 返回主界面</a>
+      <div class="h1">上下文管理 · 当前会话（/usage）</div>
+      <div class="h2">「AI 带着什么在思考」全透明；移除仅本会话生效；压缩摘要中文呈现</div>
+      <div class="card"><h3>Token 分解（模型 128k 窗口 · 已用 41k）</h3>
+        <div class="bar-wrap">
+          <div class="bar-seg" style="width:9%;background:#6aa1ff;">系统 11k</div>
+          <div class="bar-seg" style="width:5%;background:#3d7dea;">企业层 7k</div>
+          <div class="bar-seg" style="width:7%;background:#1a56db;">记忆 9k</div>
+          <div class="bar-seg" style="width:14%;background:#00b42a;">历史 18k</div>
+          <div class="bar-seg" style="width:5%;background:#f7ba1e;">工具 6k</div>
+        </div>
+        <div style="font-size:11px;color:#86909c;">系统提示 11k ｜ 企业默认层 7k（只读）｜ 记忆 9k ｜ 历史消息 18k ｜ 工具结果 6k</div>
+        <div style="margin-top:8px;"><button class="btn sm">手动压缩（/compress · 预估可释放 12k）</button> <span style="font-size:11px;color:#86909c;">自动压缩阈值 70%（管理员配置）</span></div></div>
+      <div class="card"><h3>组成清单（可操作）</h3>
+        <div class="memo"><div><span class="tag blue">手写记忆</span> 沟通偏好/工作背景/长期约束（3 条）</div><span class="src">注入 · <a class="op" style="color:#f53f3f;">本会话移除</a></span></div>
+        <div class="memo"><div><span class="tag blue">条目记忆</span> 三线表偏好 / 常用模板 / 金宇数据负责人（命中 3/42 条）</div><span class="src">检索注入 · <a class="op" style="color:#f53f3f;">单条移除</a></span></div>
+        <div class="memo"><div><span class="tag gray">项目记忆</span> 今日+昨日日志 + 长期记忆（E02）</div><span class="src">注入 · <a class="op" style="color:#f53f3f;">本会话移除</a></span></div>
+        <div class="memo"><div><span class="tag ok">@引用文件</span> sales_2025.xlsx / 公司汇报模板.pptx</div><span class="src"><a class="op" style="color:#f53f3f;">移除引用</a></span></div>
+        <div class="memo" style="opacity:.65;"><div><span class="tag gray">企业默认层</span> 公司红线与输出规范（S03）</div><span class="src">只读 · 不可移除</span></div></div>
+      <div class="card"><h3>压缩历史（本会话 1 次）</h3>
+        <div class="kv"><span>14:22 自动压缩</span><span>已将早期 15 次网页查询压缩为中文摘要，保留 3 个关键结论 · <a class="op">对照转写原文</a></span></div></div>
+    </div>
+  </div>
+  <div class="note">A10：分解条+组成清单单条移除+手动压缩+压缩摘要中文对照转写（PRD-02 §8 缓存支撑回看）</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PRD-06 设置 -->
+<!-- ============================================================ -->
+
+<!-- 1. 通用与通知（含权限与执行） -->
+<div class="pg" id="pg-set-general"><div class="frame">
+  <div class="sidebar"><div class="side-logo">WorkPivot 设置</div>
+    <div class="nav-item active">通用</div><div class="nav-item" onclick="go('pg-set-general')">通知</div><div class="nav-item" onclick="go('pg-set-sec')">安全</div>
+    <div class="nav-item" onclick="go('pg-set-general')">权限与执行</div><div class="nav-item" onclick="go('pg-memory')">记忆</div>
+    <div class="nav-item" onclick="go('pg-set-backup')">数据与备份</div><div class="nav-item" onclick="alert('语音输入（A09）为 P2 占位：P1 版仅显示「即将支持」')">语音（即将支持）</div><div class="nav-item" onclick="go('pg-set-about')">关于与更新</div>
+    <div style="flex:1"></div>
+    <div class="nav-item" onclick="go('pg-main')">← 返回主界面</div></div>
+  <div class="main">
+    <div class="h1">通用 · 通知</div><div class="h2">主题即时切换；免打扰期间通知静默但不丢（计入未读）</div>
+    <div class="card"><h3>通用</h3>
+      <div class="row"><div>显示名称<div class="desc">他人可见</div></div><div class="right"><input value="李长冰" style="border:1px solid #e5e6eb;border-radius:8px;padding:6px 10px;font-size:13px;"></div></div>
+      <div class="row"><div>界面主题</div><div class="right"><span class="pill on">浅色</span><span class="pill">深色</span><span class="pill">跟随系统</span></div></div>
+      <div class="row"><div>默认工作目录（单机形态）<div class="desc">新建任务的默认目录</div></div><div class="right" style="font-size:12px;color:#4e5969;">D:\WorkPivot\workspace <span class="pill">更改</span></div></div>
+      <div class="row"><div>语言</div><div class="right" style="font-size:12px;color:#86909c;">简体中文（多语言规划中）</div></div></div>
+    <div class="card"><h3>通知（A06）</h3>
+      <div class="row"><div>任务完成</div><div class="right"><span class="toggle"></span></div></div>
+      <div class="row"><div>任务失败</div><div class="right"><span class="toggle"></span></div></div>
+      <div class="row"><div>等待授权与提问<div class="desc">需要你决策的时刻（不因免打扰丢失）</div></div><div class="right"><span class="toggle"></span></div></div>
+      <div class="row"><div>免打扰时段</div><div class="right"><span class="toggle"></span> <span style="font-size:12px;color:#4e5969;">22:00 – 08:00</span></div></div>
+      <div class="row"><div>通知声音</div><div class="right"><span class="toggle off"></span></div></div></div>
+    <div class="card"><h3>权限与执行（I02）</h3>
+      <div class="row"><div>默认权限档位</div><div class="right"><span class="pill">只看不动</span><span class="pill">每步都问</span><span class="pill on">自动改文件</span><span class="pill">全自动</span></div></div>
+      <div class="row"><div>界外授权白名单<div class="desc">已加白 2 条路径（永久）</div></div><div class="right"><span class="pill">管理</span></div></div>
+      <div class="row"><div>高危命令二次确认<div class="desc">强制开启，不可关闭</div></div><div class="right"><span class="toggle" style="cursor:default;opacity:.7;"></span></div></div></div>
+  </div>
+</div><div class="note">企业强制档时档位锁定（M05）；免打扰不丢授权等待——应用内未读+任务状态兜底</div></div>
+
+<!-- 2. 安全（设备管理） -->
+<div class="pg" id="pg-set-sec"><div class="frame">
+  <div class="sidebar"><div class="side-logo">WorkPivot 设置</div>
+    <div class="nav-item" onclick="go('pg-set-general')">通用</div><div class="nav-item" onclick="go('pg-set-general')">通知</div><div class="nav-item active">安全</div>
+    <div class="nav-item" onclick="go('pg-set-general')">权限与执行</div><div class="nav-item" onclick="go('pg-memory')">记忆</div>
+    <div class="nav-item" onclick="go('pg-set-backup')">数据与备份</div><div class="nav-item" onclick="alert('语音输入（A09）为 P2 占位：P1 版仅显示「即将支持」')">语音（即将支持）</div><div class="nav-item" onclick="go('pg-set-about')">关于与更新</div>
+    <div style="flex:1"></div>
+    <div class="nav-item" onclick="go('pg-main')">← 返回主界面</div></div>
+  <div class="main">
+    <div class="h1">安全</div><div class="h2">多端同时在线；下线仅影响所选设备；服务端任务不受影响</div>
+    <div class="card"><h3>修改密码</h3>
+      <div class="fld"><label>当前密码</label><input type="password"></div>
+      <div class="fld"><label>新密码（≥8 位含字母数字）</label><input type="password"></div>
+      <button class="btn sm">修改密码</button> <span style="font-size:11px;color:#86909c;">改密后重登一次，其他设备不受影响</span></div>
+    <div class="card"><h3>锁屏</h3>
+      <div class="row"><div>长时间无操作需解锁</div><div class="right"><span class="toggle off"></span></div></div>
+      <div class="row"><div>超时时间</div><div class="right"><span class="pill">10 分钟</span><span class="pill on">30 分钟</span><span class="pill">60 分钟</span></div></div></div>
+    <div class="card"><h3>登录设备（3 台在线）</h3>
+      <div class="dev"><b>本机 · Windows 桌面端</b> <span class="now">当前设备</span><div style="flex:1"></div></div>
+      <div class="dev"><b>Chrome 浏览器</b> <span style="color:#86909c;font-size:11px;">最近活跃：5 分钟前 · 出差笔记本</span><div style="flex:1"></div><span class="pill">下线</span></div>
+      <div class="dev"><b>Mac 桌面端</b> <span style="color:#86909c;font-size:11px;">最近活跃：昨天 18:40</span><div style="flex:1"></div><span class="pill">下线</span></div>
+      <div style="margin-top:10px;"><button class="btn ghost sm">全部其他设备下线</button></div></div>
+  </div>
+</div><div class="note">PRD-01 决策落地：多端在线/单端可踢/锁屏可配；会话 token 服务端 hash 存储</div></div>
+
+<!-- 3. 数据与备份 -->
+<div class="pg" id="pg-set-backup"><div class="frame">
+  <div class="sidebar"><div class="side-logo">WorkPivot 设置</div>
+    <div class="nav-item" onclick="go('pg-set-general')">通用</div><div class="nav-item" onclick="go('pg-set-general')">通知</div><div class="nav-item" onclick="go('pg-set-sec')">安全</div>
+    <div class="nav-item" onclick="go('pg-set-general')">权限与执行</div><div class="nav-item" onclick="go('pg-memory')">记忆</div>
+    <div class="nav-item active">数据与备份</div><div class="nav-item" onclick="alert('语音输入（A09）为 P2 占位：P1 版仅显示「即将支持」')">语音（即将支持）</div><div class="nav-item" onclick="go('pg-set-about')">关于与更新</div>
+    <div style="flex:1"></div>
+    <div class="nav-item" onclick="go('pg-main')">← 返回主界面</div></div>
+  <div class="main">
+    <div class="h1">数据与备份</div><div class="h2">A08：恢复前自动做 before-restore 安全备份；服务端形态由管理员统一执行</div>
+    <div class="card"><h3>备份</h3>
+      <div class="fld"><label>备份内容</label>
+        <div style="font-size:13px;"><span class="pill on">账户/会话/记忆/技能/配置</span> <span class="pill">工作目录（较大，可选）</span></div></div>
+      <div class="fld"><label>目标目录</label><input value="E:\backups\workpivot"></div>
+      <button class="btn sm">立即备份</button> <span style="font-size:11px;color:#86909c;">上次备份：08-28 20:11 · 412MB · workpivot-20260828.tar</span></div>
+    <div class="card"><h3>恢复</h3>
+      <div class="fld"><label>选择备份包</label><input value="workpivot-20260828.tar（版本 v0.9.2 · 兼容当前）"></div>
+      <button class="btn ghost sm">校验并恢复</button> <span style="font-size:11px;color:#86909c;">恢复前将自动创建 before-restore 备份；完成后需重启</span></div>
+    <div class="card"><h3>缓存治理（本地缓存 · PRD-02 §8）</h3>
+      <div class="row"><div>当前占用<div class="desc">任务列表/转写尾部/成果索引（服务端为权威源）</div></div><div class="right" style="font-size:13px;">312 MB / 上限 500 MB</div></div>
+      <div class="progress"><div style="width:62%;"></div></div>
+      <div class="row"><div>缓存上限</div><div class="right"><span class="pill">300MB</span><span class="pill on">500MB</span><span class="pill">1GB</span></div></div>
+      <div class="row"><div>登出时清理缓存<div class="desc">换人用机场景（企业合规建议开启）</div></div><div class="right"><span class="toggle"></span></div></div>
+      <div style="margin-top:8px;"><button class="btn ghost sm">立即清理</button></div></div>
+  </div>
+</div><div class="note">版本不兼容的备份包拒绝恢复并提示先升级；CLI workpivot backup 供运维 cron</div></div>
+
+<!-- 4. 关于与更新 -->
+<div class="pg" id="pg-set-about"><div class="frame">
+  <div class="sidebar"><div class="side-logo">WorkPivot 设置</div>
+    <div class="nav-item" onclick="go('pg-set-general')">通用</div><div class="nav-item" onclick="go('pg-set-general')">通知</div><div class="nav-item" onclick="go('pg-set-sec')">安全</div>
+    <div class="nav-item" onclick="go('pg-set-general')">权限与执行</div><div class="nav-item" onclick="go('pg-memory')">记忆</div>
+    <div class="nav-item" onclick="go('pg-set-backup')">数据与备份</div><div class="nav-item" onclick="alert('语音输入（A09）为 P2 占位：P1 版仅显示「即将支持」')">语音（即将支持）</div><div class="nav-item active">关于与更新</div>
+    <div style="flex:1"></div>
+    <div class="nav-item" onclick="go('pg-main')">← 返回主界面</div></div>
+  <div class="main">
+    <div class="h1">关于与更新</div><div class="h2">A07：内网自建更新源（管理员配置）；增量下载；保留上一版可回滚</div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
+        <div style="width:52px;height:52px;border-radius:12px;background:#1a56db;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;">WP</div>
+        <div><b style="font-size:16px;">WorkPivot</b> <span class="tag gray">v0.10.3</span><div class="desc" style="font-size:11px;color:#86909c;">构建 2026-08-28 · 企业版</div></div></div>
+      <div class="row"><div>更新源<div class="desc">由管理员配置（内网静态服务）</div></div><div class="right" style="font-size:12px;color:#4e5969;">http://update.corp.local/wp</div></div>
+      <div class="row"><div>检查更新</div><div class="right"><button class="btn sm">检查更新</button></div></div>
+      <div class="row"><div>回滚<div class="desc">保留的上一版本：v0.10.2</div></div><div class="right"><button class="btn ghost sm">回滚到上一版本</button></div></div>
+      <div class="row"><div>开源许可<div class="desc">第三方组件清单（THIRD_PARTY_NOTICES）</div></div><div class="right"><span class="pill">查看</span></div></div></div>
+    <div class="card" style="border-color:#1a56db44;background:#f6f9ff;"><h3>发现新版本 v0.11.0 <span class="tag ok">增量 18MB</span></h3>
+      <div style="font-size:12px;color:#4e5969;line-height:1.8;">· 新增：技能市场与安装机制<br>· 优化：上下文压缩摘要中文化<br>· 修复：弱网断流重连偶发丢失</div>
+      <div style="margin-top:10px;display:flex;gap:10px;"><button class="btn sm">下载并安装</button><button class="btn ghost sm">稍后</button></div>
+      <div style="font-size:11px;color:#86909c;margin-top:6px;">下载完成后提示重启安装，不打断进行中任务</div></div>
+  </div>
+</div><div class="note">更新包签名校验；断点续传；企业强制更新策略时仅显示「立即更新」</div></div>
+
+<script>
+/* ===== hash 路由：go() 跳转，浏览器前进/后退可用，#页ID 可直达 ===== */
+function apply(id){
+  var el = document.getElementById(id);
+  if(!el) id = 'pg-login';
+  document.querySelectorAll('.pg').forEach(function(p){ p.classList.toggle('active', p.id===id); });
+  document.querySelectorAll('.toc a').forEach(function(a){ a.classList.toggle('on', a.getAttribute('data-pg')===id); });
+  window.scrollTo(0,0);
+}
+function go(id){
+  closeToc();
+  if(('#'+id)===location.hash){ apply(id); }
+  else { location.hash = id; }
+}
+window.addEventListener('hashchange', function(){ apply(location.hash.slice(1)||'pg-login'); });
+apply(location.hash.slice(1)||'pg-login');
+
+/* ===== 全局目录抽屉 ===== */
+function toggleToc(){ document.getElementById('toc').classList.toggle('open'); }
+function closeToc(){ document.getElementById('toc').classList.remove('open'); }
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeToc(); });
+
+/* ===== 技能中心双 Tab ===== */
+function sktab(i,el){
+  document.getElementById('sk0').style.display = i?'none':'';
+  document.getElementById('sk1').style.display = i?'':'none';
+  document.querySelectorAll('#pg-skills .tabs .tab').forEach(function(t){ t.classList.remove('on'); });
+  el.classList.add('on');
+}
+
+/* ===== 主界面用户菜单 ===== */
+function toggleUserMenu(e){
+  var m = document.getElementById('userMenu');
+  var r = e.currentTarget.getBoundingClientRect();
+  m.style.left = r.left+'px';
+  m.style.top = (r.top-m.offsetHeight-8)+'px';
+  m.classList.toggle('show');
+  e.stopPropagation();
+}
+function hideUserMenu(){ document.getElementById('userMenu').classList.remove('show'); }
+document.addEventListener('click', function(e){
+  var m = document.getElementById('userMenu');
+  if(m && !m.contains(e.target)) hideUserMenu();
+});
+
+/* ===== 弹窗与密码强度 ===== */
+function showModal(){ document.getElementById('m-add').classList.add('show'); }
+function hideModal(){ document.getElementById('m-add').classList.remove('show'); }
+function chkPwd(input){
+  var v = input.value;
+  var lv = document.getElementById('pwd-lv');
+  if(v.length>=8 && /[a-zA-Z]/.test(v) && /\d/.test(v)){ lv.textContent='强'; lv.style.color='#00b42a'; }
+  else if(v.length>=6){ lv.textContent='弱（须≥8位且含字母数字）'; lv.style.color='#f7ba1e'; }
+  else { lv.textContent='—'; lv.style.color='#86909c'; }
+}
+function chkNewPwd(){
+  var v = document.querySelector('#pg-pwd input.npwd').value;
+  var lv = document.getElementById('npwd-lv');
+  if(v.length>=8 && /[a-zA-Z]/.test(v) && /\d/.test(v)){ lv.textContent='强'; lv.style.color='#00b42a'; }
+  else if(v.length>=6){ lv.textContent='弱（须≥8位且含字母数字）'; lv.style.color='#f7ba1e'; }
+  else { lv.textContent='—'; lv.style.color='#86909c'; }
+}
+</script>
+</body>
+</html>
