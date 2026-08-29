@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkPivot 原型 · 登录与账户（PRD-01）</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; font-family:"Microsoft YaHei","PingFang SC",sans-serif; }
+  body { background:#f5f6f8; color:#1f2329; }
+  .page { display:none; min-height:100vh; }
+  .page.active { display:block; }
+
+  /* ===== 登录/注册页 ===== */
+  .auth-wrap { display:flex; align-items:center; justify-content:center; min-height:100vh; background:linear-gradient(135deg,#eef2f7 0%,#e3ebf5 100%); }
+  .auth-card { width:400px; background:#fff; border-radius:12px; padding:40px; box-shadow:0 8px 30px rgba(31,35,41,.08); }
+  .auth-logo { text-align:center; margin-bottom:8px; font-size:22px; font-weight:700; color:#1a56db; }
+  .auth-sub { text-align:center; font-size:13px; color:#86909c; margin-bottom:28px; }
+  .field { margin-bottom:16px; }
+  .field label { display:block; font-size:13px; color:#4e5969; margin-bottom:6px; }
+  .field input { width:100%; height:40px; border:1px solid #e5e6eb; border-radius:8px; padding:0 12px; font-size:14px; outline:none; transition:border .2s; }
+  .field input:focus { border-color:#1a56db; }
+  .field .hint { font-size:12px; margin-top:4px; }
+  .hint.ok { color:#00b42a; } .hint.err { color:#f53f3f; } .hint.gray { color:#86909c; }
+  .btn { width:100%; height:42px; border:none; border-radius:8px; background:#1a56db; color:#fff; font-size:15px; cursor:pointer; transition:background .2s; }
+  .btn:hover { background:#164ba8; }
+  .btn.sec { background:#f2f3f5; color:#1f2329; margin-top:10px; }
+  .btn.sec:hover { background:#e5e6eb; }
+  .auth-foot { text-align:center; margin-top:20px; font-size:13px; color:#86909c; }
+  .auth-foot a { color:#1a56db; cursor:pointer; text-decoration:none; }
+  .feishu-btn { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; height:42px; border:1px solid #e5e6eb; border-radius:8px; background:#fff; font-size:14px; cursor:pointer; margin-top:12px; color:#1f2329; }
+  .feishu-btn:hover { border-color:#1a56db; color:#1a56db; }
+
+  /* ===== 初始化引导 ===== */
+  .setup-steps { display:flex; gap:8px; justify-content:center; margin-bottom:28px; }
+  .step-dot { width:28px; height:6px; border-radius:3px; background:#e5e6eb; }
+  .step-dot.on { background:#1a56db; }
+
+  /* ===== 主框架（用户管理/主界面共用） ===== */
+  .frame { display:flex; height:100vh; overflow:hidden; }
+  .sidebar { width:220px; background:#fff; border-right:1px solid #e5e6eb; padding:16px 12px; display:flex; flex-direction:column; }
+  .side-logo { font-size:16px; font-weight:700; color:#1a56db; padding:8px 12px 20px; }
+  .nav-item { padding:10px 12px; border-radius:8px; font-size:14px; color:#4e5969; cursor:pointer; margin-bottom:2px; }
+  .nav-item:hover { background:#f2f3f5; }
+  .nav-item.active { background:#e8effb; color:#1a56db; font-weight:600; }
+  .nav-group { font-size:12px; color:#86909c; padding:16px 12px 6px; }
+  .main { flex:1; overflow:auto; padding:28px 32px; }
+  .main-title { font-size:20px; font-weight:700; margin-bottom:4px; }
+  .main-desc { font-size:13px; color:#86909c; margin-bottom:24px; }
+  .toolbar { display:flex; gap:10px; margin-bottom:16px; }
+  .toolbar input { height:36px; border:1px solid #e5e6eb; border-radius:8px; padding:0 12px; width:260px; font-size:13px; outline:none; }
+  .btn-sm { height:36px; padding:0 16px; border:none; border-radius:8px; background:#1a56db; color:#fff; font-size:13px; cursor:pointer; }
+  .btn-sm.gray { background:#f2f3f5; color:#4e5969; }
+  table { width:100%; border-collapse:collapse; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 1px 4px rgba(31,35,41,.05); }
+  th { background:#f7f8fa; text-align:left; font-size:13px; color:#4e5969; padding:12px 16px; }
+  td { padding:12px 16px; font-size:13px; border-top:1px solid #f2f3f5; }
+  .tag { display:inline-block; padding:2px 10px; border-radius:10px; font-size:12px; }
+  .tag.admin { background:#e8effb; color:#1a56db; }
+  .tag.ok { background:#e8ffea; color:#00b42a; }
+  .tag.off { background:#f2f3f5; color:#86909c; }
+  .tag.conn { background:#fff3e8; color:#d25f00; }
+  a.op { color:#1a56db; font-size:13px; margin-right:10px; cursor:pointer; text-decoration:none; }
+
+  /* ===== 三栏主界面 ===== */
+  .ws { display:flex; flex-direction:column; height:100vh; }
+  .ws-top { height:48px; background:#fff; border-bottom:1px solid #e5e6eb; display:flex; align-items:center; padding:0 16px; gap:8px; }
+  .ws-tab { padding:6px 14px; border-radius:6px; font-size:13px; background:#f2f3f5; color:#4e5969; }
+  .ws-tab.on { background:#e8effb; color:#1a56db; font-weight:600; }
+  .ws-cols { flex:1; display:flex; overflow:hidden; }
+  .col-l { width:230px; background:#fff; border-right:1px solid #e5e6eb; padding:14px; overflow:auto; }
+  .new-chat { width:100%; height:38px; border-radius:8px; background:#1a56db; color:#fff; font-size:14px; cursor:pointer; border:none; margin-bottom:14px; }
+  .proj { font-size:13px; font-weight:600; color:#1f2329; padding:8px 6px; }
+  .task { font-size:13px; color:#4e5969; padding:6px 6px 6px 18px; border-radius:6px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
+  .task:hover { background:#f2f3f5; }
+  .task.on { background:#e8effb; color:#1a56db; }
+  .st { width:8px; height:8px; border-radius:50%; }
+  .st.run { background:#00b42a; } .st.done { background:#c9cdd4; } .st.int { background:#f7ba1e; }
+  .col-m { flex:1; display:flex; flex-direction:column; background:#fafbfc; }
+  .chat-head { padding:12px 20px; font-size:13px; color:#86909c; background:#fff; border-bottom:1px solid #e5e6eb; }
+  .chat-body { flex:1; padding:24px; overflow:auto; }
+  .bubble-user { margin-left:auto; max-width:70%; background:#1a56db; color:#fff; padding:12px 16px; border-radius:12px 12px 2px 12px; font-size:14px; margin-bottom:20px; width:fit-content; }
+  .phase { max-width:86%; background:#fff; border:1px solid #e5e6eb; border-radius:10px; padding:14px 16px; margin-bottom:12px; font-size:13px; color:#4e5969; }
+  .phase b { color:#1f2329; }
+  .phase-card { max-width:86%; background:#fff8e6; border:1px solid #f7ba1e55; border-radius:10px; padding:14px 16px; margin-bottom:20px; font-size:13px; }
+  .chat-input { margin:16px 24px 20px; background:#fff; border:1px solid #e5e6eb; border-radius:12px; padding:12px 14px; }
+  .chat-input .ph { color:#86909c; font-size:14px; }
+  .chat-bar { display:flex; justify-content:space-between; align-items:center; margin-top:10px; font-size:12px; color:#86909c; }
+  .col-r { width:320px; background:#fff; border-left:1px solid #e5e6eb; display:flex; flex-direction:column; }
+  .prev-head { padding:12px 16px; font-size:13px; font-weight:600; border-bottom:1px solid #e5e6eb; display:flex; justify-content:space-between; }
+  .prev-body { flex:1; padding:20px; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#86909c; font-size:13px; gap:10px; }
+  .file-card { width:90%; background:#f7f8fa; border:1px solid #e5e6eb; border-radius:10px; padding:14px; font-size:13px; display:flex; gap:10px; align-items:center; }
+  .file-ic { width:36px; height:36px; border-radius:8px; background:#e8effb; display:flex; align-items:center; justify-content:center; font-size:16px; }
+
+  /* ===== 弹窗 ===== */
+  .modal-mask { position:fixed; inset:0; background:rgba(31,35,41,.4); display:none; align-items:center; justify-content:center; z-index:10; }
+  .modal-mask.show { display:flex; }
+  .modal { width:420px; background:#fff; border-radius:12px; padding:28px; }
+  .modal h3 { font-size:16px; margin-bottom:20px; }
+  .modal .row { display:flex; gap:12px; }
+  .modal .row .field { flex:1; }
+  .modal-foot { display:flex; justify-content:flex-end; gap:10px; margin-top:8px; }
+  .btn-sm.ghost { background:#fff; border:1px solid #e5e6eb; color:#4e5969; }
+
+  .proto-note { position:fixed; right:16px; bottom:16px; background:#1f2329; color:#fff; font-size:12px; padding:10px 14px; border-radius:8px; opacity:.85; max-width:260px; }
+</style>
+</head>
+<body>
+
+<!-- ============ 1. 登录页 ============ -->
+<div class="page active" id="p-login">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-logo">WorkPivot</div>
+      <div class="auth-sub">企业智能工作台</div>
+      <div class="field">
+        <label>用户名</label>
+        <input placeholder="请输入用户名">
+      </div>
+      <div class="field">
+        <label>密码</label>
+        <input type="password" placeholder="请输入密码">
+      </div>
+      <button class="btn" onclick="go('p-main')">登 录</button>
+      <div class="auth-foot" id="reg-link">还没有账号？<a onclick="go('p-reg')">注册管理员账号</a></div>
+      <button class="feishu-btn" onclick="alert('原型演示：跳转飞书扫码授权页（J07，P1）')">
+        <span style="color:#3370ff;font-weight:700;">飞</span> 使用飞书登录
+      </button>
+    </div>
+  </div>
+  <div class="proto-note">原型说明：当系统无任何用户时显示「注册管理员账号」链接；已有用户后该链接消失（首个注册者=管理员）</div>
+</div>
+
+<!-- ============ 2. 注册页 ============ -->
+<div class="page" id="p-reg">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-logo">注册管理员</div>
+      <div class="auth-sub">首个账号将自动成为管理员</div>
+      <div class="field">
+        <label>用户名</label>
+        <input placeholder="4-32 位，字母/数字/下划线" oninput="v1=this.value">
+        <div class="hint gray" id="reg-u-hint">字母开头，字母/数字/下划线</div>
+      </div>
+      <div class="field">
+        <label>密码</label>
+        <input type="password" placeholder="至少 8 位，须含字母和数字" oninput="chkPwd()">
+        <div class="hint gray" id="pwd-hint">强度：<span id="pwd-lv">—</span></div>
+      </div>
+      <div class="field">
+        <label>确认密码</label>
+        <input type="password" placeholder="再次输入密码">
+      </div>
+      <div class="field">
+        <label>显示名称（可选）</label>
+        <input placeholder="如：张工">
+      </div>
+      <button class="btn" onclick="go('p-setup')">注册并成为管理员</button>
+      <div class="auth-foot"><a onclick="go('p-login')">返回登录</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 3. 初始化引导 ============ -->
+<div class="page" id="p-setup">
+  <div class="auth-wrap">
+    <div class="auth-card" style="width:460px;">
+      <div class="auth-logo">欢迎使用 WorkPivot</div>
+      <div class="auth-sub">完成 2 步初始化（可跳过，稍后在设置中配置）</div>
+      <div class="setup-steps"><div class="step-dot on"></div><div class="step-dot on"></div><div class="step-dot"></div></div>
+      <div class="field">
+        <label>模型服务地址（OpenAI 兼容 base_url）</label>
+        <input placeholder="如 http://内网服务器:8000/v1">
+        <div class="hint gray">由管理员配置，成员无需操作</div>
+      </div>
+      <div class="field">
+        <label>API Key</label>
+        <input placeholder="sk-...">
+        <div class="hint ok">✓ 连通测试通过（保存前自动验活）</div>
+      </div>
+      <button class="btn" onclick="go('p-main')">完成并进入</button>
+      <button class="btn sec" onclick="go('p-main')">暂不配置，跳过</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 4. 用户管理（后台/管理员） ============ -->
+<div class="page" id="p-users">
+  <div class="frame">
+    <div class="sidebar">
+      <div class="side-logo">WorkPivot 管理后台</div>
+      <div class="nav-item">仪表盘</div>
+      <div class="nav-item active">用户与角色</div>
+      <div class="nav-item">模型管理</div>
+      <div class="nav-item">连接器与 Skill</div>
+      <div class="nav-item">专家配置</div>
+      <div class="nav-item">默认 Agent 定义</div>
+      <div class="nav-item">审计日志</div>
+      <div style="flex:1"></div>
+      <div class="nav-item" onclick="go('p-login')">退出登录</div>
+    </div>
+    <div class="main">
+      <div class="main-title">用户与角色</div>
+      <div class="main-desc">管理员分配账户制：用户由管理员创建后才能登录（J07）；支持飞书组织架构同步（P1）</div>
+      <div class="toolbar">
+        <input placeholder="搜索用户名 / 显示名称">
+        <button class="btn-sm" onclick="showModal()">＋ 新增用户</button>
+        <button class="btn-sm gray">批量导入 CSV</button>
+        <button class="btn-sm gray">飞书同步</button>
+      </div>
+      <table>
+        <tr><th>用户名</th><th>显示名称</th><th>角色</th><th>状态</th><th>最近登录</th><th>操作</th></tr>
+        <tr><td>admin</td><td>李长冰</td><td><span class="tag admin">管理员</span></td><td><span class="tag ok">启用</span></td><td>今天 09:12</td><td><a class="op">重置密码</a><a class="op">编辑</a></td></tr>
+        <tr><td>wangfy</td><td>王分析</td><td><span class="tag">成员</span></td><td><span class="tag ok">启用</span></td><td>昨天 18:40</td><td><a class="op">重置密码</a><a class="op">停用</a></td></tr>
+        <tr><td>liuyq</td><td>刘研究</td><td><span class="tag">成员</span></td><td><span class="tag ok">启用</span></td><td>3 天前</td><td><a class="op">重置密码</a><a class="op">停用</a></td></tr>
+        <tr><td>chenj</td><td>陈尽职</td><td><span class="tag conn">连接器管理员</span></td><td><span class="tag off">已停用</span></td><td>30 天前</td><td><a class="op" style="color:#00b42a">启用</a><a class="op">编辑</a></td></tr>
+      </table>
+      <div class="proto-note">交互细节：停用 → 二次确认「停用后该用户 30 秒内会话失效」；重置密码 → 生成临时密码展示一次</div>
+    </div>
+  </div>
+</div>
+
+<!-- 新增用户弹窗 -->
+<div class="modal-mask" id="m-add">
+  <div class="modal">
+    <h3>新增用户</h3>
+    <div class="field"><label>用户名</label><input placeholder="4-32 位字母/数字/下划线"></div>
+    <div class="row">
+      <div class="field"><label>初始密码</label><input type="password" placeholder="≥8 位含字母数字"></div>
+      <div class="field"><label>显示名称</label><input placeholder="如：王分析"></div>
+    </div>
+    <div class="field"><label>角色</label>
+      <div style="display:flex;gap:14px;font-size:13px;color:#4e5969;padding-top:4px;">
+        <label><input type="radio" name="role" checked> 成员</label>
+        <label><input type="radio" name="role"> 连接器管理员</label>
+        <label><input type="radio" name="role"> 企业管理员</label>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-sm ghost" onclick="hideModal()">取消</button>
+      <button class="btn-sm" onclick="hideModal();alert('原型演示：创建成功，将初始密码告知用户（首次登录需修改）')">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 5. 主界面（三栏） ============ -->
+<div class="page" id="p-main">
+  <div class="ws">
+    <div class="ws-top">
+      <span style="font-weight:700;color:#1a56db;margin-right:12px;">WorkPivot</span>
+      <span class="ws-tab on">帮我出一份Q3数据复盘PPT</span>
+      <span class="ws-tab">＋</span>
+      <div style="flex:1"></div>
+      <span style="font-size:13px;color:#4e5969;">李长冰（管理员）</span>
+      <span style="font-size:13px;color:#86909c;cursor:pointer;" onclick="go('p-users')">后台管理</span>
+    </div>
+    <div class="ws-cols">
+      <div class="col-l">
+        <button class="new-chat">＋ 新对话</button>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:0 6px 6px;">
+          <span style="font-size:12px;color:#86909c;">项目</span>
+          <span style="font-size:14px;color:#86909c;cursor:pointer;" title="新建项目">＋</span>
+        </div>
+
+        <div class="proj">📂 中新融创项目 <span style="font-weight:400;color:#86909c;font-size:12px;">· 3 任务</span></div>
+        <div style="font-size:12px;color:#86909c;padding:0 6px 6px 10px;line-height:1.5;">
+          🧠 项目记忆已积累 · AI 熟悉本项目背景/术语/历史决策，任务间共享上下文
+        </div>
+        <div class="task on"><span>Q3 数据复盘 PPT</span><span class="st run"></span></div>
+        <div class="task"><span>SOP 线上化方案 v1.4</span><span class="st done"></span></div>
+        <div class="task"><span>行业监管调研</span><span class="st int"></span></div>
+        <div class="task" style="color:#86909c;"><span>＋ 在本项目新建任务</span></div>
+        <div style="border-top:1px solid #f2f3f5;margin:8px 0;"></div>
+
+        <div class="proj">📂 金宇咨询项目 <span style="font-weight:400;color:#86909c;font-size:12px;">· 2 任务</span></div>
+        <div class="task"><span>核心业务系统建设</span><span class="st done"></span></div>
+        <div class="task"><span>组织架构梳理</span><span class="st done"></span></div>
+        <div class="task" style="color:#86909c;"><span>＋ 在本项目新建任务</span></div>
+        <div style="border-top:1px solid #f2f3f5;margin:8px 0;"></div>
+
+        <div class="proj" style="color:#86909c;">＋ 新建项目</div>
+
+        <div class="nav-group">资产</div>
+        <div class="nav-item">🧩 技能与工具</div>
+        <div class="nav-item">📝 agent.md 编辑</div>
+        <div class="nav-item">📚 项目记忆</div>
+      </div>
+      <div class="col-m">
+        <div class="chat-head">📁 中新融创项目 · 共享项目记忆 ｜ 工作目录：server://workspaces/q3-review ｜ 专家：数据分析 ｜ 模型：内网旗舰（推荐）</div>
+        <div class="chat-body">
+          <div class="bubble-user">帮我出一份 Q3 数据复盘 PPT，数据用 sales_2025.xlsx</div>
+          <div class="phase">🧠 <b>已加载项目记忆</b>：识别到本项目为 PE/VC 投研数字化转型项目，沿用此前确认的报告规范与术语表</div>
+          <div class="phase">📥 <b>已获取销售数据</b>：读取 sales_2025.xlsx，共 1,842 行季度流水</div>
+          <div class="phase">⚙️ <b>正在分析</b>：按季度汇总并剔除退款记录，对比去年同期…（3/5）</div>
+          <div class="phase-card">💡 <b>关键发现</b>：Q3 环比下降 32%，主要由华东区 9 月退款激增导致（占降幅 78%）</div>
+          <div class="phase">📤 <b>正在生成 PPT</b>：基于企业模板「公司汇报模板.pptx」排版 12 页…</div>
+        </div>
+        <div class="chat-input">
+          <div class="ph">输入消息，@ 引用文件，/ 使用技能…</div>
+          <div class="chat-bar">
+            <span>📎 附件 ｜ 🛡️ 自动档 ｜ 🔔 开</span>
+            <span>DeepSeek-V4（内网）▲</span>
+          </div>
+        </div>
+      </div>
+      <div class="col-r">
+        <div class="prev-head"><span>成果预览</span><span style="font-weight:400;color:#86909c;">⬇ 下载</span></div>
+        <div class="prev-body">
+          <div class="file-card"><div class="file-ic">📊</div><div><b>Q3数据复盘 v1.0.pptx</b><br><span style="color:#86909c;font-size:12px;">刚刚 · 12 页 · 2.4MB</span></div></div>
+          <div class="file-card"><div class="file-ic">📄</div><div><b>分析底稿 v1.0.docx</b><br><span style="color:#86909c;font-size:12px;">2 分钟前 · 6 页</span></div></div>
+          <div style="margin-top:10px;">点击文件在此预览</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="proto-note">三栏：左=新对话+项目树+资产编辑入口 ｜ 中=对话（中文叙事主线+关键结论卡）｜ 右=成果预览（专职）</div>
+</div>
+
+<script>
+  function go(id){
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    window.scrollTo(0,0);
+  }
+  function showModal(){ document.getElementById('m-add').classList.add('show'); }
+  function hideModal(){ document.getElementById('m-add').classList.remove('show'); }
+  function chkPwd(){
+    var v=document.querySelector('#p-reg input[type=password]').value;
+    var lv=document.getElementById('pwd-lv');
+    if(v.length>=8 && /[a-zA-Z]/.test(v) && /\d/.test(v)){ lv.textContent='强'; lv.style.color='#00b42a'; }
+    else if(v.length>=6){ lv.textContent='弱（须≥8位且含字母数字）'; lv.style.color='#f7ba1e'; }
+    else { lv.textContent='—'; lv.style.color='#86909c'; }
+  }
+</script>
+</body>
+</html>
