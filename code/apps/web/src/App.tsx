@@ -19,6 +19,10 @@ export default function App(): React.JSX.Element {
   const [providers, setProviders] = useState<PublicProvider[]>([]);
   const [rightPanel, setRightPanel] = useState<{ directory: string; files: string[] } | null>(null);
   const [serverOk, setServerOk] = useState<boolean | null>(null);
+  const [creatingTask, setCreatingTask] = useState(false);
+  const [newTaskName, setNewTaskName] = useState('');
+  const [newTaskDir, setNewTaskDir] = useState('');
+  const [createError, setCreateError] = useState<string | null>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   const refreshTasks = useCallback(async (): Promise<void> => {
@@ -35,6 +39,26 @@ export default function App(): React.JSX.Element {
     setChat(detail.history.map((m: HistoryMessage) => ({ kind: m.role, text: m.content })));
     setRightPanel(await api.getFiles(task.id));
   }, []);
+
+  // 注意：Electron 不支持 window.prompt()（调用即抛异常），创建任务用内联表单
+  const createTask = useCallback(async (): Promise<void> => {
+    const name = newTaskName.trim();
+    if (name === '') {
+      setCreateError('任务名称必填');
+      return;
+    }
+    setCreateError(null);
+    try {
+      const { task } = await api.createTask(name, newTaskDir.trim() || undefined);
+      setCreatingTask(false);
+      setNewTaskName('');
+      setNewTaskDir('');
+      await refreshTasks();
+      await openTask(task);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : String(err));
+    }
+  }, [newTaskName, newTaskDir, refreshTasks, openTask]);
 
   useEffect(() => {
     void refreshTasks();
@@ -99,19 +123,51 @@ export default function App(): React.JSX.Element {
           <span className="text-sm font-semibold text-neutral-300">任务</span>
           <button
             className="rounded bg-neutral-800 px-2 py-1 text-xs hover:bg-neutral-700"
-            onClick={() => {
-              const name = window.prompt('任务名称：');
-              if (name !== null && name.trim() !== '') {
-                void api.createTask(name.trim()).then(async ({ task }) => {
-                  await refreshTasks();
-                  await openTask(task);
-                });
-              }
-            }}
+            onClick={() => setCreatingTask((v) => !v)}
           >
             ＋ 新建
           </button>
         </div>
+        {creatingTask && (
+          <div className="space-y-2 border-y border-neutral-800 px-3 py-2">
+            <input
+              autoFocus
+              className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-neutral-500"
+              placeholder="任务名称（必填）"
+              value={newTaskName}
+              onChange={(e) => setNewTaskName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void createTask();
+                if (e.key === 'Escape') setCreatingTask(false);
+              }}
+            />
+            <input
+              className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-xs outline-none focus:border-neutral-500"
+              placeholder="工作目录（留空则自动创建）"
+              value={newTaskDir}
+              onChange={(e) => setNewTaskDir(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void createTask();
+              }}
+            />
+            {createError && <p className="text-xs text-red-400">{createError}</p>}
+            <div className="flex gap-2">
+              <button
+                className="rounded bg-blue-600 px-2 py-1 text-xs hover:bg-blue-500 disabled:opacity-40"
+                disabled={newTaskName.trim() === ''}
+                onClick={() => void createTask()}
+              >
+                创建
+              </button>
+              <button
+                className="rounded bg-neutral-800 px-2 py-1 text-xs hover:bg-neutral-700"
+                onClick={() => setCreatingTask(false)}
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto">
           {tasks.length === 0 && <p className="px-4 py-2 text-xs text-neutral-500">尚无任务，点击「＋ 新建」创建</p>}
           {tasks.map((task) => (
