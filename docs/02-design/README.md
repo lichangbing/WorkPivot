@@ -10,16 +10,18 @@
 - [x] MVP 功能范围建议（需求清单 P0 分层）
 - [x] 后端技术栈与桌面端框架的选型结论（全栈 TS / Electron / Cordis 方向均已定案）
 
-## PRD 分册索引（2026-08-29 · 6 册全部完成，配套原型在 `../prototypes/`）
+## PRD 分册索引（2026-08-29 · 6 册全部完成，配套原型在 `prototypes/`）
+
+> **整体原型：[app.html](prototypes/app.html)** —— 六册 PRD 全部界面（30 页）合一，全局目录抽屉 + hash 路由 + 按产品流程的页面间点击跳转；分册原型保留作单册参考。
 
 | PRD | 范围 | 原型 |
 |-----|------|------|
-| [PRD-01 登录与账户](product/PRD-01-登录与账户.md) | 登录/注册管理员/首登改密/引导/用户管理 | [prd01-login.html](../prototypes/prd01-login.html) |
-| [PRD-02 对话与任务](product/PRD-02-对话与任务.md) | 三栏主界面/状态机/过程主线/授权卡/续跑/定时任务/本地缓存 | [prd02-task.html](../prototypes/prd02-task.html) |
-| [PRD-03 技能与专家](product/PRD-03-技能与专家.md) | 技能市场+我的技能/编辑器/试运行/文档生成/专家配置 | [prd03-skills.html](../prototypes/prd03-skills.html) |
-| [PRD-04 后台管理](product/PRD-04-后台管理.md) | 模型管理/连接器/RAG/默认agent.md/公共技能/审计 | [prd04-admin.html](../prototypes/prd04-admin.html) |
-| [PRD-05 记忆管理](product/PRD-05-记忆管理.md) | 双层记忆/晋升确认卡/项目记忆/上下文管理 | [prd05-memory.html](../prototypes/prd05-memory.html) |
-| [PRD-06 设置](product/PRD-06-设置.md) | 通用/通知/安全设备/备份/更新回滚 | [prd06-settings.html](../prototypes/prd06-settings.html) |
+| [PRD-01 登录与账户](product/PRD-01-登录与账户.md) | 登录/注册管理员/首登改密/引导/用户管理 | [prd01-login.html](prototypes/prd01-login.html) |
+| [PRD-02 对话与任务](product/PRD-02-对话与任务.md) | 三栏主界面/状态机/过程主线/授权卡/续跑/定时任务/本地缓存 | [prd02-task.html](prototypes/prd02-task.html) |
+| [PRD-03 技能与专家](product/PRD-03-技能与专家.md) | 技能市场+我的技能/编辑器/试运行/文档生成/专家配置 | [prd03-skills.html](prototypes/prd03-skills.html) |
+| [PRD-04 后台管理](product/PRD-04-后台管理.md) | 模型管理/连接器/RAG/默认agent.md/公共技能/审计 | [prd04-admin.html](prototypes/prd04-admin.html) |
+| [PRD-05 记忆管理](product/PRD-05-记忆管理.md) | 双层记忆/晋升确认卡/项目记忆/上下文管理 | [prd05-memory.html](prototypes/prd05-memory.html) |
+| [PRD-06 设置](product/PRD-06-设置.md) | 通用/通知/安全设备/备份/更新回滚 | [prd06-settings.html](prototypes/prd06-settings.html) |
 
 ## 目录说明
 
