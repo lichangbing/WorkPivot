@@ -10,6 +10,13 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "noUncheckedIndexedAccess": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    "baseUrl": ".",
+    "paths": {
+      "@workpivot/shared": ["packages/shared/src/index.ts"],
+      "@workpivot/shared/node": ["packages/shared/src/node.ts"],
+      "@workpivot/core": ["packages/core/src/index.ts"],
+      "@workpivot/server": ["packages/server/src/index.ts"]
+    }
   }
 }
