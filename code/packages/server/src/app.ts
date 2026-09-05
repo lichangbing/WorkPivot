@@ -4,7 +4,7 @@
  */
 import express, { type Express, type Request } from 'express';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { join, resolve as resolvePath } from 'node:path';
+import { delimiter, join, resolve as resolvePath } from 'node:path';
 import {
   BUILTIN_TOOLS,
   MAX_STEPS_DEFAULT,
@@ -14,6 +14,9 @@ import {
   type ToolAccessRequest,
 } from '@workpivot/core';
 import { verifyClaimedFiles } from './chat-gate.js';
+import { findSkillBySlash, listSkills, renderSkillDirectory } from './skills.js';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   needsSetup,
   registerFirstAdmin,
@@ -49,6 +52,15 @@ const PUBLIC_PATHS = new Set(['/health', '/auth/state', '/auth/login', '/auth/re
 export function createApp(opts: AppOptions = {}): Express {
   const app = express();
   app.use(express.json({ limit: '4mb' }));
+
+  // T4-02：bash 子进程的 NODE_PATH——让技能脚本 require 应用内置依赖（如 docx）
+  const serverModuleDir = dirname(fileURLToPath(import.meta.url));
+  const nodePathCandidates = [
+    join(serverModuleDir, 'node_modules'),
+    join(serverModuleDir, '..', 'node_modules'),
+    join(serverModuleDir, '..', '..', 'node_modules'),
+  ].filter(existsSync);
+  const bashNodePath = nodePathCandidates.join(delimiter);
 
   // ---- 认证（T2-01）：除公开路径外全部要求 Bearer 令牌 ----
   app.use('/api', (req, res, next) => {
@@ -221,8 +233,20 @@ export function createApp(opts: AppOptions = {}): Express {
       res.write(`data: ${JSON.stringify(payload)}\n\n`);
     };
 
+    // T4-01：技能热加载（每任务重读磁盘）+ 斜杠激活
+    const skills = listSkills(task.directory);
+    let effectiveContent = content;
+    const activeSkill = findSkillBySlash(skills, content);
+    if (activeSkill) {
+      effectiveContent = `【技能 ${activeSkill.name} 已激活——严格按以下技能说明执行】
+${activeSkill.content}
+
+【用户消息】
+${content}`;
+    }
+
     // @文件引用（T2-02）：把引用文件内容展开进消息
-    const expanded = expandFileRefs(content, task.directory);
+    const expanded = expandFileRefs(effectiveContent, task.directory);
 
     const history: ChatMessage[] = readHistory(task.id).map((m) => ({ role: m.role, content: m.content }));
     history.push({ role: 'user', content: expanded });
@@ -237,7 +261,7 @@ export function createApp(opts: AppOptions = {}): Express {
       running.delete(task.id);
     });
 
-    const system = buildSystemPrompt(task.directory, getTier());
+    const system = buildSystemPrompt(task.directory, getTier()) + renderSkillDirectory(skills);
 
     const requestAccess: (req: ToolAccessRequest) => Promise<boolean> = async (access) => {
       const result = await evaluateAccess(
@@ -281,6 +305,7 @@ export function createApp(opts: AppOptions = {}): Express {
         maxSteps,
         maxDurationMs,
         stashResult,
+        extraEnv: bashNodePath ? { NODE_PATH: bashNodePath } : undefined,
         signal: controller.signal,
         onEvent: (event) => {
           send(event);

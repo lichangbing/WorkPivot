@@ -15,6 +15,8 @@ export interface ToolContext {
   requestAccess?: (req: ToolAccessRequest) => Promise<boolean>;
   /** 本次执行被授权的界外路径（纵深防御的白名单） */
   extraAllowedDirs?: string[];
+  /** bash 子进程附加环境变量（如 NODE_PATH，指向应用内置依赖） */
+  extraEnv?: Record<string, string>;
 }
 
 export interface ToolAccessRequest {
@@ -172,6 +174,7 @@ export const bashTool: Tool = {
         cwd: ctx.taskDir,
         windowsHide: true,
         timeout: BASH_TIMEOUT_MS,
+        env: ctx.extraEnv ? { ...process.env, ...ctx.extraEnv } : undefined,
       });
       let out = '';
       child.stdout?.on('data', (d: Buffer) => {

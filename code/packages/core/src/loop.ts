@@ -35,6 +35,8 @@ export interface RunAgentOptions {
   maxDurationMs?: number;
   /** 工具结果超预算时的落盘钩子：返回替换后的引用文本（K04/T3-06） */
   stashResult?: (content: string) => Promise<string>;
+  /** bash 子进程附加环境变量（NODE_PATH 等） */
+  extraEnv?: Record<string, string>;
   onEvent?: (event: AgentEvent) => void;
   signal?: AbortSignal;
 }
@@ -77,6 +79,7 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
     signal,
     requestAccess: options.requestAccess,
     extraAllowedDirs: [],
+    extraEnv: options.extraEnv,
   };
 
   const startedAt = Date.now();

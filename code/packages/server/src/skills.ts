@@ -1,0 +1,130 @@
+/**
+ * T4-01/D01：SKILL.md 技能发现/校验/注入（agentskills.io 规范的 M0 子集）。
+ * 三层发现（后者覆盖同名前者）：内置（随应用发行）→ 全局 ~/.workpivot/skills → 项目 <taskDir>/.workpivot/skills。
+ * 渐进披露：系统提示词只注入 目录（name+description，总预算 8000 字符）；
+ * 内置技能额外注入全文；用户/项目技能以 /技能名 斜杠触发时注入全文。
+ * 热加载：每次任务执行前重读磁盘，无缓存。
+ */
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { ensureWorkpivotDir } from './store.js';
+
+export interface Skill {
+  name: string;
+  description: string;
+  /** SKILL.md 全文（渐进披露第三层，按需注入） */
+  content: string;
+  /** 技能根目录（供"打开所在目录"等后续功能） */
+  dir: string;
+  source: 'builtin' | 'global' | 'project';
+}
+
+const NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+/** 极简 frontmatter 解析：'---' 围栏内逐行 key: value。 */
+function parseFrontmatter(text: string): { fields: Record<string, string>; body: string } {
+  const normalized = text.replace(/\r\n/g, '\n');
+  if (!normalized.startsWith('---\n')) return { fields: {}, body: normalized };
+  const end = normalized.indexOf('\n---\n', 4);
+  if (end < 0) return { fields: {}, body: normalized };
+  const header = normalized.slice(4, end);
+  const body = normalized.slice(end + 5);
+  const fields: Record<string, string> = {};
+  for (const line of header.split('\n')) {
+    const idx = line.indexOf(':');
+    if (idx <= 0) continue;
+    const key = line.slice(0, idx).trim();
+    const value = line.slice(idx + 1).trim();
+    if (key) fields[key] = value;
+  }
+  return { fields, body };
+}
+
+/** 规范校验（agentskills.io M0 子集）：name 必填且等于目录名；description 必填；长度上限。 */
+function validate(dirName: string, fields: Record<string, string>): { ok: boolean; error?: string } {
+  const name = fields['name'] ?? '';
+  const description = fields['description'] ?? '';
+  if (!name) return { ok: false, error: '缺少 name' };
+  if (name.length > 64) return { ok: false, error: 'name 超过 64 字符' };
+  if (!NAME_RE.test(name)) return { ok: false, error: `name 非法（需小写字母/数字/连字符）：${name}` };
+  if (name !== dirName) return { ok: false, error: `name(${name}) 与目录名(${dirName})不一致` };
+  if (!description || description.length > 1024) return { ok: false, error: 'description 缺失或超 1024 字符' };
+  return { ok: true };
+}
+
+function loadSkillDir(skillsRoot: string, source: Skill['source']): Skill[] {
+  if (!existsSync(skillsRoot)) return [];
+  const skills: Skill[] = [];
+  for (const dirName of readdirSync(skillsRoot)) {
+    const skillFile = join(skillsRoot, dirName, 'SKILL.md');
+    if (!existsSync(skillFile)) continue;
+    try {
+      const text = readFileSync(skillFile, 'utf8');
+      const { fields } = parseFrontmatter(text);
+      const check = validate(dirName, fields);
+      if (!check.ok) {
+        console.warn(`[skills] 跳过无效技能 ${dirName}(${source})：${check.error}`);
+        continue;
+      }
+      skills.push({
+        name: fields['name']!,
+        description: fields['description']!,
+        content: text,
+        dir: join(skillsRoot, dirName),
+        source,
+      });
+    } catch (err) {
+      console.warn(`[skills] 读取失败 ${dirName}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  return skills;
+}
+
+function builtinSkillsRoot(): string {
+  // 源码态：code/packages/server/skills；开发运行以模块位置回溯
+  return join(dirname(fileURLToPath(import.meta.url)), '..', 'skills');
+}
+
+/** 每次任务执行前调用：重读磁盘（D01 热加载）。 */
+export function listSkills(taskDir: string): Skill[] {
+  const byName = new Map<string, Skill>();
+  const layers: Array<{ root: string; source: Skill['source'] }> = [
+    { root: builtinSkillsRoot(), source: 'builtin' },
+    { root: join(ensureWorkpivotDir('skills'), ''), source: 'global' },
+    { root: join(taskDir, '.workpivot', 'skills'), source: 'project' },
+  ];
+  for (const { root, source } of layers) {
+    for (const skill of loadSkillDir(root === '' ? root : root, source)) {
+      byName.set(skill.name, { ...skill, source }); // 项目覆盖全局覆盖内置
+    }
+  }
+  return [...byName.values()];
+}
+
+/** 全局技能目录（数据目录规范）。 */
+export function globalSkillsDir(): string {
+  return join(ensureWorkpivotDir('skills'), '');
+}
+
+/** 系统提示词注入：目录列表（1% 上下文预算的 M0 近似：总 8000 字符，单条 250 字符）。 */
+export function renderSkillDirectory(skills: Skill[]): string {
+  if (skills.length === 0) return '';
+  const BUDGET = 8000;
+  const lines: string[] = [];
+  let used = 0;
+  for (const skill of skills) {
+    const line = `- ${skill.name}：${skill.description.slice(0, 250)}`;
+    if (used + line.length > BUDGET) break;
+    lines.push(line);
+    used += line.length;
+  }
+  return ['\n# 可用技能', '以下是可用技能目录。需要某技能的完整说明时,用 read 工具读取其 SKILL.md 路径。', ...lines].join('\n');
+}
+
+/** 斜杠触发：消息以 /技能名 开头时返回该技能全文（拼入消息上下文）。 */
+export function findSkillBySlash(skills: Skill[], message: string): Skill | null {
+  if (!message.startsWith('/')) return null;
+  const name = message.slice(1).split(/\s+/)[0] ?? '';
+  return skills.find((s) => s.name === name) ?? null;
+}

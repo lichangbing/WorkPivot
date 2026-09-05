@@ -14,10 +14,14 @@
     "dev:web": "pnpm --filter @workpivot/web dev",
     "eval:w1": "tsx eval/W1-smoke.mts",
     "eval:w2": "tsx eval/W2-smoke.mts",
-    "eval:w3": "tsx eval/W3-smoke.mts"
+    "eval:w3": "tsx eval/W3-smoke.mts",
+    "check:deps": "depcruise apps/web --config .dependency-cruiser.cjs",
+    "eval": "tsx eval/run-all.mts",
+    "eval:w4": "tsx eval/W4-smoke.mts"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
+    "dependency-cruiser": "^18.2.0",
     "eslint": "^9.35.0",
     "tsx": "^4.23.13",
     "typescript": "^5.9.2",
