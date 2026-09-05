@@ -1,29 +1,85 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { api, streamChat, type ChatEvent, type HistoryMessage, type PublicProvider, type Task } from './api';
+import {
+  api,
+  clearToken,
+  getToken,
+  streamChat,
+  type ChatEvent,
+  type HistoryMessage,
+  type PublicProvider,
+  type PublicUser,
+  type Task,
+  type Tier,
+} from './api';
+import { LoginView } from './LoginView';
 import { ProviderModal } from './ProviderModal';
+import { UsersModal } from './UsersModal';
 
 interface ChatItem {
-  kind: 'user' | 'assistant' | 'tool' | 'error';
+  kind: 'user' | 'assistant' | 'tool' | 'error' | 'permission';
   text: string;
+  request?: {
+    id: string;
+    tool: string;
+    reason: string;
+    command?: string;
+    paths: Array<{ path: string; mode: string }>;
+    hasPaths: boolean;
+    scope: string;
+  };
 }
 
 export default function App(): React.JSX.Element {
+  const [authState, setAuthState] = useState<'loading' | 'guest' | 'authed'>('loading');
+  const [currentUser, setCurrentUser] = useState<PublicUser | null>(null);
+  const [needsSetup, setNeedsSetup] = useState(false);
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [chat, setChat] = useState<ChatItem[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [providerModalOpen, setProviderModalOpen] = useState(false);
+  const [usersModalOpen, setUsersModalOpen] = useState(false);
   const [providers, setProviders] = useState<PublicProvider[]>([]);
+  const [tier, setTier] = useState<Tier>('workdir');
+  const [tierLabels, setTierLabels] = useState<Record<string, string>>({});
   const [rightPanel, setRightPanel] = useState<{ directory: string; files: string[] } | null>(null);
   const [serverOk, setServerOk] = useState<boolean | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [creatingTask, setCreatingTask] = useState(false);
   const [newTaskName, setNewTaskName] = useState('');
   const [newTaskDir, setNewTaskDir] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  const showToast = useCallback((text: string): void => {
+    setToast(text);
+    setTimeout(() => setToast(null), 5000);
+  }, []);
+
+  const refreshAuth = useCallback(async (): Promise<void> => {
+    if (getToken() === null) {
+      setAuthState('guest');
+      return;
+    }
+    try {
+      const state = await api.authState();
+      if (state.authenticated && state.user) {
+        setCurrentUser(state.user);
+        setAuthState('authed');
+      } else {
+        clearToken();
+        setNeedsSetup(state.needsSetup);
+        setAuthState('guest');
+      }
+    } catch {
+      setServerOk(false);
+      setAuthState('guest');
+    }
+  }, []);
 
   const refreshTasks = useCallback(async (): Promise<void> => {
     setTasks((await api.listTasks()).tasks);
@@ -40,7 +96,52 @@ export default function App(): React.JSX.Element {
     setRightPanel(await api.getFiles(task.id));
   }, []);
 
-  // 注意：Electron 不支持 window.prompt()（调用即抛异常），创建任务用内联表单
+  const loadWorkspaceData = useCallback(async (): Promise<void> => {
+    await refreshTasks();
+    await refreshProviders();
+    const settings = await api.getSettings();
+    setTier(settings.permissionTier);
+    setTierLabels(settings.tierLabels);
+    setServerOk(true);
+  }, [refreshTasks, refreshProviders]);
+
+  useEffect(() => {
+    void refreshAuth();
+  }, [refreshAuth]);
+
+  useEffect(() => {
+    if (authState !== 'authed') return;
+    void loadWorkspaceData().catch((err: unknown) => {
+      showToast(err instanceof Error ? err.message : String(err));
+    });
+    // 渲染层全局错误提示（不再静默）
+    const onError = (event: ErrorEvent): void => showToast(`页面错误：${event.message}`);
+    const onRejection = (event: PromiseRejectionEvent): void => showToast(`未处理异常：${String(event.reason)}`);
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
+    };
+  }, [authState, loadWorkspaceData, showToast]);
+
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chat]);
+
+  const changeTier = useCallback(
+    async (next: Tier): Promise<void> => {
+      try {
+        const result = await api.setTier(next);
+        setTier(result.permissionTier);
+        showToast(`权限档位已切换：${tierLabels[next] ?? next}`);
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [tierLabels, showToast],
+  );
+
   const createTask = useCallback(async (): Promise<void> => {
     const name = newTaskName.trim();
     if (name === '') {
@@ -60,19 +161,6 @@ export default function App(): React.JSX.Element {
     }
   }, [newTaskName, newTaskDir, refreshTasks, openTask]);
 
-  useEffect(() => {
-    void refreshTasks();
-    void refreshProviders();
-    void api
-      .health()
-      .then(() => setServerOk(true))
-      .catch(() => setServerOk(false));
-  }, [refreshTasks, refreshProviders]);
-
-  useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chat]);
-
   const send = useCallback(async (): Promise<void> => {
     const content = input.trim();
     if (content === '' || !activeTask || streaming) return;
@@ -90,6 +178,20 @@ export default function App(): React.JSX.Element {
             next.push({ kind: 'tool', text: `🔧 ${event.toolName} ${JSON.stringify(event.args ?? {})}` });
           } else if (event.type === 'tool_result') {
             next.push({ kind: 'tool', text: `${event.ok ? '✓' : '✗'} ${event.toolName}: ${event.message ?? ''}` });
+          } else if (event.type === 'permission_request') {
+            next.push({
+              kind: 'permission',
+              text: event.reason,
+              request: {
+                id: event.id,
+                tool: event.tool,
+                reason: event.reason,
+                command: event.command,
+                paths: event.paths,
+                hasPaths: event.paths.length > 0,
+                scope: event.scope,
+              },
+            });
           } else if (event.type === 'error') {
             next.push({ kind: 'error', text: `出错：${event.message}` });
           } else if (event.type === 'done') {
@@ -105,7 +207,44 @@ export default function App(): React.JSX.Element {
       setStreaming(false);
       void refreshTasks();
     }
-  }, [input, activeTask, streaming, refreshTasks]);
+  }, [input, activeTask, streaming, refreshTasks, showToast]);
+
+  const decide = useCallback(
+    async (item: ChatItem, decision: 'allow' | 'deny' | 'session' | 'forever'): Promise<void> => {
+      if (!activeTask || !item.request) return;
+      try {
+        await api.decidePermission(activeTask.id, item.request.id, decision);
+        setChat((prev) =>
+          prev.map((c) =>
+            c === item
+              ? {
+                  ...c,
+                  kind: 'tool',
+                  text: `${decision === 'deny' ? '⛔ 已拒绝' : '✅ 已授权（' + decision + '）'}：${item.request!.tool}`,
+                }
+              : c,
+          ),
+        );
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [activeTask, showToast],
+  );
+
+  const logout = useCallback(async (): Promise<void> => {
+    await api.logout().catch(() => undefined);
+    clearToken();
+    setAuthState('guest');
+    setCurrentUser(null);
+  }, []);
+
+  if (authState === 'loading') {
+    return <div className="flex h-screen items-center justify-center bg-neutral-950 text-neutral-500">加载中…</div>;
+  }
+  if (authState === 'guest') {
+    return <LoginView needsSetup={needsSetup} onAuthed={() => void refreshAuth()} />;
+  }
 
   const activeProvider = providers.find((p) => p.active);
 
@@ -117,180 +256,245 @@ export default function App(): React.JSX.Element {
         </div>
       )}
       <div className="flex min-h-0 flex-1">
-      {/* 左栏：任务列表 */}
-      <aside className="flex w-64 shrink-0 flex-col border-r border-neutral-800">
-        <div className="flex items-center justify-between px-4 py-3">
-          <span className="text-sm font-semibold text-neutral-300">任务</span>
-          <button
-            className="rounded bg-neutral-800 px-2 py-1 text-xs hover:bg-neutral-700"
-            onClick={() => setCreatingTask((v) => !v)}
-          >
-            ＋ 新建
-          </button>
-        </div>
-        {creatingTask && (
-          <div className="space-y-2 border-y border-neutral-800 px-3 py-2">
-            <input
-              autoFocus
-              className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-neutral-500"
-              placeholder="任务名称（必填）"
-              value={newTaskName}
-              onChange={(e) => setNewTaskName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void createTask();
-                if (e.key === 'Escape') setCreatingTask(false);
-              }}
-            />
-            <input
-              className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-xs outline-none focus:border-neutral-500"
-              placeholder="工作目录（留空则自动创建）"
-              value={newTaskDir}
-              onChange={(e) => setNewTaskDir(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void createTask();
-              }}
-            />
-            {createError && <p className="text-xs text-red-400">{createError}</p>}
-            <div className="flex gap-2">
-              <button
-                className="rounded bg-blue-600 px-2 py-1 text-xs hover:bg-blue-500 disabled:opacity-40"
-                disabled={newTaskName.trim() === ''}
-                onClick={() => void createTask()}
-              >
-                创建
-              </button>
-              <button
-                className="rounded bg-neutral-800 px-2 py-1 text-xs hover:bg-neutral-700"
-                onClick={() => setCreatingTask(false)}
-              >
-                取消
-              </button>
-            </div>
-          </div>
-        )}
-        <div className="flex-1 overflow-y-auto">
-          {tasks.length === 0 && <p className="px-4 py-2 text-xs text-neutral-500">尚无任务，点击「＋ 新建」创建</p>}
-          {tasks.map((task) => (
+        {/* 左栏：任务列表 */}
+        <aside className="flex w-64 shrink-0 flex-col border-r border-neutral-800">
+          <div className="flex items-center justify-between px-4 py-3">
+            <span className="text-sm font-semibold text-neutral-300">任务</span>
             <button
-              key={task.id}
-              className={`block w-full px-4 py-2 text-left text-sm hover:bg-neutral-900 ${
-                activeTask?.id === task.id ? 'bg-neutral-900' : ''
-              }`}
-              onClick={() => void openTask(task)}
+              className="rounded bg-neutral-800 px-2 py-1 text-xs hover:bg-neutral-700"
+              onClick={() => setCreatingTask((v) => !v)}
             >
-              <span
-                className={`mr-2 inline-block h-2 w-2 rounded-full ${
-                  task.status === 'running'
-                    ? 'animate-pulse bg-amber-400'
-                    : task.status === 'idle'
-                      ? 'bg-emerald-500'
-                      : 'bg-red-500'
-                }`}
-              />
-              {task.name}
-            </button>
-          ))}
-        </div>
-      </aside>
-
-      {/* 中栏：对话流 */}
-      <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-neutral-800 px-4 py-2.5">
-          <span className="text-sm text-neutral-400">{activeTask ? activeTask.name : '未选择任务'}</span>
-          <div className="flex items-center gap-2 text-xs">
-            <span className={activeProvider ? 'text-neutral-500' : 'font-medium text-red-400'}>
-              {activeProvider ? `模型：${activeProvider.name} / ${activeProvider.modelId}` : '⚠ 尚未配置模型——点右侧「模型设置」'}
-            </span>
-            <button
-              className="rounded bg-neutral-800 px-2 py-1 hover:bg-neutral-700"
-              onClick={() => setProviderModalOpen(true)}
-            >
-              模型设置
+              ＋ 新建
             </button>
           </div>
-        </header>
-
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          {chat.length === 0 && (
-            <p className="mt-10 text-center text-sm text-neutral-500">选择或新建一个任务，发送第一条消息开始工作</p>
-          )}
-          {chat.map((item, i) =>
-            item.kind === 'user' ? (
-              <div key={i} className="mb-3 flex justify-end">
-                <div className="max-w-[75%] whitespace-pre-wrap rounded-lg bg-neutral-800 px-3 py-2 text-sm">
-                  {item.text}
-                </div>
-              </div>
-            ) : item.kind === 'assistant' ? (
-              <div key={i} className="prose prose-invert prose-sm mb-3 max-w-[85%] text-sm leading-relaxed">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text || '…'}</ReactMarkdown>
-              </div>
-            ) : (
-              <div
-                key={i}
-                className={`mb-2 font-mono text-xs ${item.kind === 'error' ? 'text-red-400' : 'text-neutral-500'}`}
-              >
-                {item.text}
-              </div>
-            ),
-          )}
-          <div ref={chatBottomRef} />
-        </div>
-
-        <div className="border-t border-neutral-800 p-3">
-          <div className="flex items-end gap-2">
-            <textarea
-              className="max-h-40 min-h-[44px] flex-1 resize-y rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm outline-none focus:border-neutral-500"
-              placeholder={activeTask ? '输入消息，Enter 发送' : '请先新建/选择任务'}
-              value={input}
-              disabled={!activeTask || streaming}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  void send();
-                }
-              }}
-            />
-            {streaming ? (
-              <button
-                className="rounded-lg bg-red-900 px-4 py-2 text-sm hover:bg-red-800"
-                onClick={() => {
-                  if (activeTask) void api.stop(activeTask.id);
+          {creatingTask && (
+            <div className="space-y-2 border-y border-neutral-800 px-3 py-2">
+              <input
+                autoFocus
+                className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-neutral-500"
+                placeholder="任务名称（必填）"
+                value={newTaskName}
+                onChange={(e) => setNewTaskName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void createTask();
+                  if (e.key === 'Escape') setCreatingTask(false);
                 }}
-              >
-                停止
-              </button>
-            ) : (
+              />
+              <input
+                className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-xs outline-none focus:border-neutral-500"
+                placeholder="工作目录（留空则自动创建）"
+                value={newTaskDir}
+                onChange={(e) => setNewTaskDir(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void createTask();
+                }}
+              />
+              {createError && <p className="text-xs text-red-400">{createError}</p>}
+              <div className="flex gap-2">
+                <button
+                  className="rounded bg-blue-600 px-2 py-1 text-xs hover:bg-blue-500 disabled:opacity-40"
+                  disabled={newTaskName.trim() === ''}
+                  onClick={() => void createTask()}
+                >
+                  创建
+                </button>
+                <button
+                  className="rounded bg-neutral-800 px-2 py-1 text-xs hover:bg-neutral-700"
+                  onClick={() => setCreatingTask(false)}
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
+          <div className="flex-1 overflow-y-auto">
+            {tasks.length === 0 && <p className="px-4 py-2 text-xs text-neutral-500">尚无任务，点击「＋ 新建」创建</p>}
+            {tasks.map((task) => (
               <button
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm hover:bg-blue-500 disabled:opacity-40"
-                disabled={!activeTask || streaming || input.trim() === ''}
-                onClick={() => void send()}
+                key={task.id}
+                className={`block w-full px-4 py-2 text-left text-sm hover:bg-neutral-900 ${
+                  activeTask?.id === task.id ? 'bg-neutral-900' : ''
+                }`}
+                onClick={() => void openTask(task)}
               >
-                发送
+                <span
+                  className={`mr-2 inline-block h-2 w-2 rounded-full ${
+                    task.status === 'running'
+                      ? 'animate-pulse bg-amber-400'
+                      : task.status === 'idle'
+                        ? 'bg-emerald-500'
+                        : 'bg-red-500'
+                  }`}
+                />
+                {task.name}
               </button>
-            )}
-          </div>
-        </div>
-      </main>
-
-      {/* 右栏：成果区（W1 占位：目录+文件清单） */}
-      <aside className="flex w-72 shrink-0 flex-col border-l border-neutral-800">
-        <div className="px-4 py-3 text-sm font-semibold text-neutral-300">成果区</div>
-        {rightPanel ? (
-          <div className="flex-1 overflow-y-auto px-4 text-xs">
-            <p className="mb-2 break-all text-neutral-500">{rightPanel.directory}</p>
-            {rightPanel.files.length === 0 && <p className="text-neutral-600">（空）</p>}
-            {rightPanel.files.map((f) => (
-              <p key={f} className="mb-1 break-all text-neutral-300">
-                📄 {f}
-              </p>
             ))}
           </div>
-        ) : (
-          <p className="px-4 text-xs text-neutral-600">选择任务后展示产物</p>
-        )}
-      </aside>
+        </aside>
+
+        {/* 中栏：对话流 */}
+        <main className="flex min-w-0 flex-1 flex-col">
+          <header className="flex items-center justify-between border-b border-neutral-800 px-4 py-2.5">
+            <span className="text-sm text-neutral-400">{activeTask ? activeTask.name : '未选择任务'}</span>
+            <div className="flex items-center gap-3 text-xs">
+              <label className="flex items-center gap-1 text-neutral-500">
+                权限档位
+                <select
+                  className="rounded border border-neutral-700 bg-neutral-900 px-1.5 py-1"
+                  value={tier}
+                  onChange={(e) => void changeTier(e.target.value as Tier)}
+                >
+                  {Object.entries(tierLabels).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <span className={activeProvider ? 'text-neutral-500' : 'font-medium text-red-400'}>
+                {activeProvider ? `模型：${activeProvider.name} / ${activeProvider.modelId}` : '⚠ 尚未配置模型——点右侧「模型设置」'}
+              </span>
+              <button
+                className="rounded bg-neutral-800 px-2 py-1 hover:bg-neutral-700"
+                onClick={() => setProviderModalOpen(true)}
+              >
+                模型设置
+              </button>
+              {currentUser?.role === 'admin' && (
+                <button
+                  className="rounded bg-neutral-800 px-2 py-1 hover:bg-neutral-700"
+                  onClick={() => setUsersModalOpen(true)}
+                >
+                  用户管理
+                </button>
+              )}
+              <span className="text-neutral-500">{currentUser?.username}</span>
+              <button className="text-neutral-500 hover:text-neutral-200" onClick={() => void logout()}>
+                退出
+              </button>
+            </div>
+          </header>
+
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            {chat.length === 0 && (
+              <p className="mt-10 text-center text-sm text-neutral-500">选择或新建一个任务，发送第一条消息开始工作</p>
+            )}
+            {chat.map((item, i) =>
+              item.kind === 'user' ? (
+                <div key={i} className="mb-3 flex justify-end">
+                  <div className="max-w-[75%] whitespace-pre-wrap rounded-lg bg-neutral-800 px-3 py-2 text-sm">
+                    {item.text}
+                  </div>
+                </div>
+              ) : item.kind === 'assistant' ? (
+                <div key={i} className="prose prose-invert prose-sm mb-3 max-w-[85%] text-sm leading-relaxed">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text || '…'}</ReactMarkdown>
+                </div>
+              ) : item.kind === 'permission' && item.request ? (
+                <div key={i} className="mb-3 rounded-lg border border-amber-600/60 bg-amber-950/40 p-3 text-sm">
+                  <p className="mb-1 font-medium text-amber-300">🔐 授权请求：{item.request.reason}</p>
+                  {item.request.command && (
+                    <p className="mb-1 font-mono text-xs text-neutral-300">$ {item.request.command}</p>
+                  )}
+                  {item.request.paths.length > 0 && (
+                    <p className="mb-2 font-mono text-xs text-neutral-400">
+                      路径：{item.request.paths.map((p) => `${p.mode === 'write' ? '[写]' : '[读]'}${p.path}`).join('、')}
+                    </p>
+                  )}
+                  <div className="flex gap-2 text-xs">
+                    <button
+                      className="rounded bg-emerald-700 px-2 py-1 hover:bg-emerald-600"
+                      onClick={() => void decide(item, 'allow')}
+                    >
+                      仅此次允许
+                    </button>
+                    {item.request.scope === 'session-or-forever' && (
+                      <>
+                        <button
+                          className="rounded bg-neutral-700 px-2 py-1 hover:bg-neutral-600"
+                          onClick={() => void decide(item, 'session')}
+                        >
+                          本会话记住
+                        </button>
+                        <button
+                          className="rounded bg-neutral-700 px-2 py-1 hover:bg-neutral-600"
+                          onClick={() => void decide(item, 'forever')}
+                        >
+                          永久白名单
+                        </button>
+                      </>
+                    )}
+                    <button className="rounded bg-red-900 px-2 py-1 hover:bg-red-800" onClick={() => void decide(item, 'deny')}>
+                      拒绝
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  key={i}
+                  className={`mb-2 font-mono text-xs ${item.kind === 'error' ? 'text-red-400' : 'text-neutral-500'}`}
+                >
+                  {item.text}
+                </div>
+              ),
+            )}
+            <div ref={chatBottomRef} />
+          </div>
+
+          <div className="border-t border-neutral-800 p-3">
+            <div className="flex items-end gap-2">
+              <textarea
+                className="max-h-40 min-h-[44px] flex-1 resize-y rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm outline-none focus:border-neutral-500"
+                placeholder={activeTask ? '输入消息；可用 @文件名 引用任务目录内文件，Enter 发送' : '请先新建/选择任务'}
+                value={input}
+                disabled={!activeTask || streaming}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    void send();
+                  }
+                }}
+              />
+              {streaming ? (
+                <button
+                  className="rounded-lg bg-red-900 px-4 py-2 text-sm hover:bg-red-800"
+                  onClick={() => {
+                    if (activeTask) void api.stop(activeTask.id);
+                  }}
+                >
+                  停止
+                </button>
+              ) : (
+                <button
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm hover:bg-blue-500 disabled:opacity-40"
+                  disabled={!activeTask || streaming || input.trim() === ''}
+                  onClick={() => void send()}
+                >
+                  发送
+                </button>
+              )}
+            </div>
+          </div>
+        </main>
+
+        {/* 右栏：成果区 */}
+        <aside className="flex w-72 shrink-0 flex-col border-l border-neutral-800">
+          <div className="px-4 py-3 text-sm font-semibold text-neutral-300">成果区</div>
+          {rightPanel ? (
+            <div className="flex-1 overflow-y-auto px-4 text-xs">
+              <p className="mb-2 break-all text-neutral-500">{rightPanel.directory}</p>
+              {rightPanel.files.length === 0 && <p className="text-neutral-600">（空）</p>}
+              {rightPanel.files.map((f) => (
+                <p key={f} className="mb-1 break-all text-neutral-300">
+                  📄 {f}
+                </p>
+              ))}
+            </div>
+          ) : (
+            <p className="px-4 text-xs text-neutral-600">选择任务后展示产物</p>
+          )}
+        </aside>
       </div>
 
       {providerModalOpen && (
@@ -301,6 +505,13 @@ export default function App(): React.JSX.Element {
             void refreshProviders();
           }}
         />
+      )}
+      {usersModalOpen && <UsersModal onClose={() => setUsersModalOpen(false)} onSaved={() => undefined} />}
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-neutral-800 px-4 py-2 text-sm shadow-xl">
+          {toast}
+        </div>
       )}
     </div>
   );

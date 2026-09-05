@@ -82,8 +82,18 @@ await new Promise<void>((resolve) => mock.listen(MOCK_PORT, '127.0.0.1', resolve
 const server = await startServer({ port: 39910, webDistDir: undefined });
 const base = `http://127.0.0.1:${server.port}`;
 
+// T2-01：注册首个管理员（隔离环境内），后续请求全部带 Bearer 令牌
+const reg = await fetch(`${base}/api/auth/register`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ username: 'admin', password: 'w1-smoke-123' }),
+});
+if (!reg.ok) throw new Error(`管理员注册失败 HTTP ${reg.status}`);
+const { token } = (await reg.json()) as { token: string };
+const auth = { authorization: `Bearer ${token}` };
+
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(base + path, { headers: { 'content-type': 'application/json' }, ...init });
+  const response = await fetch(base + path, { headers: { 'content-type': 'application/json', ...auth }, ...init });
   if (!response.ok) throw new Error(`${path} → HTTP ${response.status}: ${await response.text()}`);
   return (await response.json()) as T;
 }
@@ -115,7 +125,7 @@ try {
   const events: Array<Record<string, unknown>> = [];
   const response = await fetch(`${base}/api/tasks/${task.id}/messages`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...auth },
     body: JSON.stringify({ content: '请读取 简介.txt 并总结' }),
   });
   assert('SSE 响应 200 且为 event-stream', response.status === 200 && (response.headers.get('content-type') ?? '').includes('event-stream'));
@@ -168,6 +178,8 @@ try {
     ? readFileSync(join(home, 'config', 'providers.json'), 'utf8')
     : '';
   assert('I04 providers.json 无明文 key', !providersFile.includes('sk-') && !providersFile.includes('apiKey'));
+} catch (err) {
+  assert('执行无未捕获异常', false, err instanceof Error ? err.message : String(err));
 } finally {
   await server.close();
   mock.close();

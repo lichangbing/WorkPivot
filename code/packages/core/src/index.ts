@@ -13,7 +13,7 @@ export {
   type RunAgentResult,
   type StopReason,
 } from './loop.js';
-export { BUILTIN_TOOLS, lsTool, readTool, writeTool, type Tool, type ToolContext } from './tools.js';
+export { BUILTIN_TOOLS, lsTool, readTool, writeTool, bashTool, grepTool, findTool, type Tool, type ToolContext, type ToolAccessRequest } from './tools.js';
 export {
   createOpenAICompatibleClient,
   verifyProvider,
