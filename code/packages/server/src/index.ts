@@ -4,7 +4,7 @@
  */
 import type { Server } from 'node:http';
 import type { Express } from 'express';
-import { createApp, type AppOptions } from './app.js';
+import { createApp } from './app.js';
 
 export const SERVER_PORT_DEFAULT = 39800;
 
@@ -28,7 +28,7 @@ function listenOn(app: Express, port: number): Promise<Server> {
 }
 
 /** 端口从 WORKPIVOT_PORT 或默认值起尝试，被占用则向后顺延（最多 10 个）。 */
-export async function startServer(opts: AppOptions & { port?: number } = {}): Promise<ServerHandle> {
+export async function startServer(opts: Parameters<typeof createApp>[0] & { port?: number } = {}): Promise<ServerHandle> {
   const envPort = process.env['WORKPIVOT_PORT'];
   const base = opts.port ?? (envPort !== undefined && envPort !== '' ? Number(envPort) : SERVER_PORT_DEFAULT);
   const app = createApp(opts);
@@ -54,4 +54,5 @@ export async function startServer(opts: AppOptions & { port?: number } = {}): Pr
   throw lastErr;
 }
 
-export { createApp, type AppOptions };
+export { setSecretBox, type SecretBox, type SecretEnvelope } from './secret.js';
+export { createApp, type AppOptions } from './app.js';
