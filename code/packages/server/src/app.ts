@@ -53,14 +53,22 @@ export function createApp(opts: AppOptions = {}): Express {
   const app = express();
   app.use(express.json({ limit: '4mb' }));
 
-  // T4-02：bash 子进程的 NODE_PATH——让技能脚本 require 应用内置依赖（如 docx）
-  const serverModuleDir = dirname(fileURLToPath(import.meta.url));
-  const nodePathCandidates = [
-    join(serverModuleDir, 'node_modules'),
-    join(serverModuleDir, '..', 'node_modules'),
-    join(serverModuleDir, '..', '..', 'node_modules'),
-  ].filter(existsSync);
-  const bashNodePath = nodePathCandidates.join(delimiter);
+  // T4-02：bash 子进程的 NODE_PATH——让技能脚本 require 应用内置依赖（如 docx）。
+  // 桌面打包态 import.meta 不可用：由 Electron 主进程注入 WORKPIVOT_NODE_PATH；其余走模块位置/工作目录回退。
+  let bashNodePath = process.env['WORKPIVOT_NODE_PATH'] ?? '';
+  if (bashNodePath === '') {
+    try {
+      const serverModuleDir = dirname(fileURLToPath(import.meta.url));
+      const nodePathCandidates = [
+        join(serverModuleDir, 'node_modules'),
+        join(serverModuleDir, '..', 'node_modules'),
+        join(serverModuleDir, '..', '..', 'node_modules'),
+      ].filter(existsSync);
+      bashNodePath = nodePathCandidates.join(delimiter);
+    } catch {
+      bashNodePath = '';
+    }
+  }
 
   // ---- 认证（T2-01）：除公开路径外全部要求 Bearer 令牌 ----
   app.use('/api', (req, res, next) => {

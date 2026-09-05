@@ -82,8 +82,24 @@ function loadSkillDir(skillsRoot: string, source: Skill['source']): Skill[] {
 }
 
 function builtinSkillsRoot(): string {
-  // 源码态：code/packages/server/skills；开发运行以模块位置回溯
-  return join(dirname(fileURLToPath(import.meta.url)), '..', 'skills');
+  // 桌面打包态（esbuild CJS）下 import.meta 不可用，优先用宿主注入的环境变量
+  const fromEnv = process.env['WORKPIVOT_BUILTIN_SKILLS'];
+  if (fromEnv && existsSync(join(fromEnv, 'docx-report', 'SKILL.md'))) return fromEnv;
+  let moduleDir: string | null = null;
+  try {
+    moduleDir = dirname(fileURLToPath(import.meta.url));
+  } catch {
+    moduleDir = null;
+  }
+  const candidates = [
+    ...(moduleDir ? [join(moduleDir, '..', 'skills'), join(moduleDir, '..', '..', 'skills')] : []),
+    join(process.cwd(), 'packages', 'server', 'skills'),
+    join(process.cwd(), 'skills'),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(join(candidate, 'docx-report', 'SKILL.md'))) return candidate;
+  }
+  return candidates[0] ?? 'skills';
 }
 
 /** 每次任务执行前调用：重读磁盘（D01 热加载）。 */
