@@ -1,38 +1,53 @@
-# 源代码
+# 源代码（pnpm monorepo）
 
-> ⚠️ 本目录为**占位**：后端技术栈与整体架构待 `docs/01-research/tech/` 调研定案
->（并落 ADR 于 `docs/02-design/decisions/`）后，再按结论建立实际工程目录。
+> 工程于 2026-09-05 建立（M0 竖切开工，T1-01）。依据：ADR-002（编排内核=自研微内核）、
+> [数据目录规范](../docs/02-design/architecture/数据目录规范.md)、plan-2026 / tasks-m0。
 
-## 已确定的技术约束（截至 2026-08-28）
-
-- **交付模式**：私有化部署（架构须支持内网环境、离线安装交付）
-- **客户端**：桌面端必有，**框架已定 Electron**（MVP 用「主进程同居」形态起步，按压力信号演进到「运行时拆子进程」形态，见 docs/01-research/tech/02）
-- **技术栈**：**全栈 TypeScript/Node（已定）**；编排内核=**自研微内核**（可逆注册+事件总线，数百行；2026-08-28 定，Cordis/jiti 移出首版栈，留作 D09 二期候选）；技能=SKILL.md 目录扫描热加载
-- **内核能力要求（2026-08-28 定）**：① 一切能力动态加载（热装卸）② Agent 自动生成的技能/插件经用户确认后加载 ③ 记忆等生成内容同样走确认流
-- **Web 端 / IM 接入**：待定（见需求清单开放问题 Q2/Q3）
-- **认证基线（2026-08-28 v2）**：**标准 OAuth 2.0/OIDC 认证体系接入为主体通用能力**（任意标准 IdP 经统一认证适配层接入），飞书为首个深度适配（含组织架构同步），无外部 IdP 时用内置账户管理；**管理员分配账户制（无自主注册）**；此为企业封闭账户体系而非 SaaS 多租户（需求清单 J07）
-- **沙箱基线（2026-08-28）**：以「项目绑定工作目录」为权限主边界，界内按档位放行、**界外访问须用户授权**（可记忆白名单），叠加 symlink 防逃逸与删除保护（需求清单 I08）
-
-## 建议的 monorepo 布局（定案后参考，非最终结论）
+## 当前结构（M0 · 形态 A：服务层与 Electron 主进程同进程）
 
 ```
 code/
-├── apps/                  # 客户端应用
-│   ├── desktop/           #   桌面端（必有）
-│   ├── web/               #   Web 端（管理台/工作台，待定）
-│   └── im-bot/            #   IM 机器人接入（企业微信/钉钉/飞书，待定）
-├── services/              # 后端服务（按域拆分，技术栈待定）
-│   ├── gateway/           #   API 网关 / BFF
-│   ├── auth/              #   认证与租户管理
-│   ├── agent/             #   Agent 编排与任务执行
-│   ├── knowledge/         #   知识库 / RAG
-│   └── model-gateway/     #   多模型接入网关
-├── packages/              # 跨端共享库（类型定义、SDK、UI 组件）
-└── deploy/                # 部署编排（docker-compose / k8s / helm，私有化交付的核心）
+├── apps/
+│   ├── desktop/           # 桌面端 Electron 主进程（窗口/托盘/更新 + 挂载服务层，T1-02）
+│   └── web/               # 前端：React + Tailwind + Vite（三栏 UI，仅经 localhost HTTP/SSE 通信）
+├── packages/
+│   ├── server/            # 服务层：HTTP/SSE、任务、审计（前端禁 import，拆分边界纪律 A01.3）
+│   ├── core/              # agent 编排内核（T1-04：循环/工具注册/事件流；ADR-002 自研）
+│   └── shared/            # 共享类型/常量/日志（浏览器入口 . 与 Node 入口 ./node 分离）
+├── eval/                  # 评测题库（K01：任务验收的机器断言脚本）
+├── scripts/               # 工程脚本（check-licenses.mjs = K05 许可黑名单）
+├── eslint.config.js / tsconfig.base.json / pnpm-workspace.yaml
 ```
 
-## 建库时的注意事项
+M0 不建 `services/`（后端按域拆分）与 `deploy/`（部署编排）——它们属于拓扑二（服务端集中部署，P1），
+届时服务层从 `packages/server` 演进而来；`im-bot` 属 Q3 未定项。演进路线见 plan-2026 架构澄清节。
 
-1. 技术栈定案后，首个动作是落 ADR，然后按本文件建议布局建立工程并更新本 README
-2. 私有化交付要求所有依赖可离线获取（镜像、包仓库需可镜像化）
-3. `deploy/` 与 `releases/` 的关系：deploy 存编排源文件（入库），releases 存发布产物（大文件不入库）
+## 已定技术决策
+
+- **栈**：全栈 TypeScript/Node 22（ESM）；前端 React + Tailwind（2026-09-05 确认）；Electron 37
+- **内核**：自研微内核（ADR-002，2026-09-05 定案；pi-agent-core 仅作退化选项，触发条件见 ADR）
+- **存储**：M0 纯文件 JSONL + store 三原语（原子写/.bak/坏文件隔离，T1-08）；SQLite 见数据目录规范 §5 触发器
+- **技能**：SKILL.md 目录扫描热加载（D01）；**认证**：OAuth2/OIDC 主体 + 飞书首适配 + 管理员分配制（J07，M1）
+- **沙箱基线**：项目绑定工作目录为权限主边界，界外须授权（I08）
+
+## 工程纪律
+
+1. **前端禁 import 服务层/内核**——只走 localhost HTTP/SSE（C05，W4 进 CI）
+2. **业务持久化必经 store 层**（K02，T1-08 起强制）；日志允许直接追加
+3. **`pnpm check:licenses` 是硬门禁**（K05：AGPL/PolyForm 一票否决）；参考仓库（codex/claude-code-leak 等）只读，代码与提示词原文不进本仓库
+4. 每任务一 commit（message 带 T 编号），完成即更新 [tasks-m0.md](../docs/03-project/tasks-m0.md) 状态看板
+
+## 常用命令
+
+```bash
+pnpm install
+pnpm typecheck         # 全 workspace 类型检查
+pnpm lint              # ESLint
+pnpm check:licenses    # K05 许可黑名单
+pnpm dev:web           # 前端 dev server（T1-02 起并入桌面壳启动链）
+```
+
+## 私有化交付注意（承占位版约定）
+
+1. 所有依赖可离线获取（npm 镜像化；Electron 二进制走内网镜像，A07 自建更新源）
+2. `deploy/`（编排源文件，入库）与根 `releases/`（发布产物，大文件不入库）的关系不变

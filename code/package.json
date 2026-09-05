@@ -1,0 +1,22 @@
+{
+  "name": "workpivot",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.22.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc -p packages/shared && tsc -p packages/core && tsc -p packages/server && tsc -p apps/web",
+    "lint": "eslint .",
+    "check:licenses": "node scripts/check-licenses.mjs",
+    "dev:web": "pnpm --filter @workpivot/web dev"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "eslint": "^9.35.0",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.43.0"
+  }
+}
