@@ -43,6 +43,7 @@ async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  health: (): Promise<{ ok: boolean }> => jsonFetch('/api/health'),
   listTasks: (): Promise<{ tasks: Task[] }> => jsonFetch('/api/tasks'),
   createTask: (name: string, directory?: string): Promise<{ task: Task }> =>
     jsonFetch('/api/tasks', { method: 'POST', body: JSON.stringify({ name, directory }) }),

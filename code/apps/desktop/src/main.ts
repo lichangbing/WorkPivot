@@ -125,7 +125,12 @@ async function boot(): Promise<void> {
     void server?.close();
   });
 
-  createTray();
+  // A01.4：托盘是装饰性能力，失败不阻塞启动
+  try {
+    createTray();
+  } catch (err) {
+    logger.error('托盘创建失败（不影响其他功能）', err instanceof Error ? err.message : String(err));
+  }
 
   if (SMOKE) {
     logger.info('SMOKE OK——自动退出');

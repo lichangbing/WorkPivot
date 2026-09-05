@@ -18,6 +18,7 @@ export default function App(): React.JSX.Element {
   const [providerModalOpen, setProviderModalOpen] = useState(false);
   const [providers, setProviders] = useState<PublicProvider[]>([]);
   const [rightPanel, setRightPanel] = useState<{ directory: string; files: string[] } | null>(null);
+  const [serverOk, setServerOk] = useState<boolean | null>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   const refreshTasks = useCallback(async (): Promise<void> => {
@@ -38,6 +39,10 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     void refreshTasks();
     void refreshProviders();
+    void api
+      .health()
+      .then(() => setServerOk(true))
+      .catch(() => setServerOk(false));
   }, [refreshTasks, refreshProviders]);
 
   useEffect(() => {
@@ -81,7 +86,13 @@ export default function App(): React.JSX.Element {
   const activeProvider = providers.find((p) => p.active);
 
   return (
-    <div className="flex h-screen bg-neutral-950 text-neutral-100">
+    <div className="flex h-screen flex-col bg-neutral-950 text-neutral-100">
+      {serverOk === false && (
+        <div className="bg-red-900/80 px-4 py-1.5 text-xs text-red-100">
+          ⚠ 服务层未连接：请确认桌面应用已启动（或单独启动服务层），然后刷新本页。
+        </div>
+      )}
+      <div className="flex min-h-0 flex-1">
       {/* 左栏：任务列表 */}
       <aside className="flex w-64 shrink-0 flex-col border-r border-neutral-800">
         <div className="flex items-center justify-between px-4 py-3">
@@ -131,8 +142,8 @@ export default function App(): React.JSX.Element {
         <header className="flex items-center justify-between border-b border-neutral-800 px-4 py-2.5">
           <span className="text-sm text-neutral-400">{activeTask ? activeTask.name : '未选择任务'}</span>
           <div className="flex items-center gap-2 text-xs">
-            <span className="text-neutral-500">
-              模型：{activeProvider ? `${activeProvider.name} / ${activeProvider.modelId}` : '未配置'}
+            <span className={activeProvider ? 'text-neutral-500' : 'font-medium text-red-400'}>
+              {activeProvider ? `模型：${activeProvider.name} / ${activeProvider.modelId}` : '⚠ 尚未配置模型——点右侧「模型设置」'}
             </span>
             <button
               className="rounded bg-neutral-800 px-2 py-1 hover:bg-neutral-700"
@@ -224,6 +235,7 @@ export default function App(): React.JSX.Element {
           <p className="px-4 text-xs text-neutral-600">选择任务后展示产物</p>
         )}
       </aside>
+      </div>
 
       {providerModalOpen && (
         <ProviderModal

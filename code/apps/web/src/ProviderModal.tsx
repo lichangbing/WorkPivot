@@ -16,6 +16,9 @@ export function ProviderModal({ providers, onClose, onSaved }: Props): React.JSX
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const nameReady = name.trim() !== '';
+  const formReady = nameReady && baseUrl.trim() !== '' && modelId.trim() !== '';
+
   const save = async (verify: boolean): Promise<void> => {
     setBusy(true);
     setMessage(null);
@@ -23,8 +26,10 @@ export function ProviderModal({ providers, onClose, onSaved }: Props): React.JSX
       await api.saveProvider({ name, baseUrl, modelId, apiKey: apiKey || undefined, verify });
       setMessage({ ok: true, text: verify ? '已保存（验活通过）' : '已保存' });
       onSaved();
+      // 成功即关闭：主界面 header 会立即显示新模型，避免"看起来没反应"
+      setTimeout(onClose, 400);
     } catch (err) {
-      setMessage({ ok: false, text: err instanceof Error ? err.message : String(err) });
+      setMessage({ ok: false, text: `保存失败：${err instanceof Error ? err.message : String(err)}` });
     } finally {
       setBusy(false);
     }
@@ -67,24 +72,34 @@ export function ProviderModal({ providers, onClose, onSaved }: Props): React.JSX
         )}
 
         <div className="space-y-3 text-sm">
-          <div className="grid grid-cols-[80px_1fr] items-center gap-2">
-            <label className="text-neutral-400">名称</label>
+          <div className="grid grid-cols-[110px_1fr] items-center gap-2">
+            <label className="text-neutral-400">
+              <span className="text-red-400">*</span> 名称
+            </label>
             <input
-              className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5 outline-none focus:border-neutral-500"
-              placeholder="如：本地 Ollama"
+              className={`rounded border bg-neutral-800 px-2 py-1.5 outline-none focus:border-neutral-500 ${
+                nameReady ? 'border-neutral-700' : 'border-red-500/60'
+              }`}
+              placeholder="如：DeepSeek（必填）"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
-            <label className="text-neutral-400">Base URL</label>
+            <label className="text-neutral-400">
+              <span className="text-red-400">*</span> Base URL
+            </label>
             <input
               className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5 outline-none focus:border-neutral-500"
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
             />
-            <label className="text-neutral-400">模型 ID</label>
+            <label className="text-neutral-400">
+              <span className="text-red-400">*</span> 模型 ID
+            </label>
             <input
-              className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5 outline-none focus:border-neutral-500"
-              placeholder="如：qwen3:14b"
+              className={`rounded border bg-neutral-800 px-2 py-1.5 outline-none focus:border-neutral-500 ${
+                modelId.trim() !== '' ? 'border-neutral-700' : 'border-red-500/60'
+              }`}
+              placeholder="如：deepseek-v4-flash（必填）"
               value={modelId}
               onChange={(e) => setModelId(e.target.value)}
             />
@@ -92,27 +107,30 @@ export function ProviderModal({ providers, onClose, onSaved }: Props): React.JSX
             <input
               className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5 outline-none focus:border-neutral-500"
               type="password"
-              placeholder="本地模型可留空"
+              placeholder="本地模型可留空；sk-… 将加密存储"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
             />
           </div>
 
           {message && (
-            <p className={`text-xs ${message.ok ? 'text-emerald-400' : 'text-red-400'}`}>{message.text}</p>
+            <p className={`text-sm font-medium ${message.ok ? 'text-emerald-400' : 'text-red-400'}`}>{message.text}</p>
+          )}
+          {!formReady && (
+            <p className="text-xs text-neutral-500">带 * 为必填；按钮在必填项未填满时不可点。</p>
           )}
 
           <div className="flex justify-end gap-2 pt-1">
             <button
-              className="rounded bg-neutral-800 px-3 py-1.5 text-xs hover:bg-neutral-700 disabled:opacity-40"
-              disabled={busy || name.trim() === '' || baseUrl.trim() === '' || modelId.trim() === ''}
+              className="rounded bg-neutral-800 px-3 py-1.5 text-xs hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={busy || !formReady}
               onClick={() => void save(true)}
             >
               验活并保存
             </button>
             <button
-              className="rounded bg-blue-600 px-3 py-1.5 text-xs hover:bg-blue-500 disabled:opacity-40"
-              disabled={busy || name.trim() === '' || baseUrl.trim() === '' || modelId.trim() === ''}
+              className="rounded bg-blue-600 px-3 py-1.5 text-xs hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={busy || !formReady}
               onClick={() => void save(false)}
             >
               直接保存
