@@ -31,6 +31,8 @@ import { evaluateAccess, getTier, resolvePendingRequest, setTier, TIER_LABELS, l
 import { appendTranscript, createTask, getTask, listTasks, readHistory, readTranscript, updateTaskStatus } from './tasks.js';
 import { audit, argsHash } from './audit.js';
 import { listProviders, resolveActiveProvider, saveProvider, setActiveProvider } from './providers.js';
+import { buildMemoryTools, resolveMemoryConfirm } from './memory-tools.js';
+import { initProjectMemory, memoryView, renderMemoryInjection, setMemoryEnabled } from './memory.js';
 
 export interface AppOptions {
   /** 前端构建产物目录（apps/web/dist）。存在则托管静态资源并提供 SPA 回退。 */
@@ -197,6 +199,7 @@ export function createApp(opts: AppOptions = {}): Express {
     const { name, directory } = req.body as { name?: string; directory?: string };
     if (!name || name.trim() === '') return res.status(400).json({ error: 'name 必填' });
     const task = createTask(name, directory);
+    initProjectMemory(task.directory);
     audit({ event: 'task_created', taskId: task.id, detail: task.directory });
     res.json({ task });
   });
@@ -269,7 +272,16 @@ ${content}`;
       running.delete(task.id);
     });
 
-    const system = buildSystemPrompt(task.directory, getTier()) + renderSkillDirectory(skills);
+    let system = buildSystemPrompt(task.directory, getTier()) + renderSkillDirectory(skills);
+    system += renderMemoryInjection(user?.id ?? 'local', task.directory);
+    system += [
+
+      '# 记忆纪律',
+      '用户明确要求记住信息时,用 remember 工具保存(条目区,静默生效)。',
+      '把信息写入长期记忆(手写区)用 promote_memory 工具,调用后会弹出确认卡,用户可拒绝。',
+      '用户要求忘掉某事时用 forget 工具。',
+      '项目的长期信息写入 .workpivot/memory/MEMORY.md(用 write 工具),随项目目录走。',
+    ].join('\n');
 
     const requestAccess: (req: ToolAccessRequest) => Promise<boolean> = async (access) => {
       const result = await evaluateAccess(
@@ -305,7 +317,7 @@ ${content}`;
     const runWithGate = async (attempt: number, baseMessages: ChatMessage[]): Promise<{ stopReason: string; steps: number }> => {
       const result = await runAgentLoop({
         client,
-        tools: BUILTIN_TOOLS,
+        tools: [...BUILTIN_TOOLS, ...memoryTools],
         system,
         messages: baseMessages,
         taskDir: task.directory,
@@ -351,6 +363,8 @@ ${content}`;
       return { stopReason: result.stopReason, steps: result.steps };
     }
 
+    const memoryTools = buildMemoryTools(user?.id ?? 'local', task.id, send);
+
     void runWithGate(0, history)
       .then((result) => {
         updateTaskStatus(task.id, result.stopReason === 'completed' ? 'idle' : 'interrupted');
@@ -365,6 +379,32 @@ ${content}`;
         running.delete(task.id);
         res.end();
       });
+  });
+
+  // M1/E01：记忆确认卡回填 + 查看/开关
+  app.post('/api/tasks/:id/memory/confirm', (req, res) => {
+    const { id: confirmId, approve } = req.body as { id?: string; approve?: boolean };
+    if (!confirmId || approve === undefined) return res.status(400).json({ error: 'id/approve 必填' });
+    const ok = resolveMemoryConfirm(confirmId, Boolean(approve));
+    audit({ user: (req as AuthedRequest).user?.username, taskId: req.params['id'], event: 'memory_confirm', decision: approve ? 'allow' : 'deny', detail: confirmId });
+    if (ok) res.json({ ok: true });
+    else res.status(404).json({ error: '确认请求不存在或已处理' });
+  });
+
+  app.get('/api/memory', (req, res) => {
+    const user = (req as AuthedRequest).user;
+    if (!user) return res.status(401).json({ error: '未登录' });
+    const taskId = req.query['taskId'] as string | undefined;
+    const taskDir = taskId ? (getTask(taskId)?.directory ?? '') : '';
+    res.json(memoryView(user.id, taskDir));
+  });
+
+  app.post('/api/memory/toggle', (req, res) => {
+    const { enabled } = req.body as { enabled?: boolean };
+    if (enabled === undefined) return res.status(400).json({ error: 'enabled 必填' });
+    setMemoryEnabled(enabled);
+    audit({ user: (req as AuthedRequest).user?.username, event: 'memory_toggled', decision: enabled ? 'on' : 'off' });
+    res.json({ enabled });
   });
 
   // T3-01：转写查看器数据源

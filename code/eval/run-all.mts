@@ -10,6 +10,7 @@ const suites: Array<[string, string]> = [
   ['W2', 'eval/W2-smoke.mts'],
   ['W3', 'eval/W3-smoke.mts'],
   ['W4', 'eval/W4-smoke.mts'],
+  ['W5', 'eval/W5-memory.mts'],
 ];
 
 const results: Record<string, string> = {};

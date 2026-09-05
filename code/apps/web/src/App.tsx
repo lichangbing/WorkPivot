@@ -19,7 +19,7 @@ import { TranscriptModal } from './TranscriptModal';
 import { UsersModal } from './UsersModal';
 
 interface ChatItem {
-  kind: 'user' | 'assistant' | 'tool' | 'error' | 'permission' | 'done' | 'gate';
+  kind: 'user' | 'assistant' | 'tool' | 'error' | 'permission' | 'done' | 'gate' | 'memory';
   text: string;
   request?: {
     id: string;
@@ -238,6 +238,12 @@ export default function App(): React.JSX.Element {
                 scope: event.scope,
               },
             });
+          } else if (event.type === 'memory_confirm') {
+            next.push({
+              kind: 'memory',
+              text: `🧠 记忆写入确认：${event.content}`,
+              request: { id: event.id, tool: 'memory_promote', reason: event.content, paths: [], hasPaths: false, scope: 'once' },
+            });
           } else if (event.type === 'gate_reject') {
             next.push({
               kind: 'gate',
@@ -271,6 +277,17 @@ export default function App(): React.JSX.Element {
     async (item: ChatItem, decision: 'allow' | 'deny' | 'session' | 'forever'): Promise<void> => {
       if (!activeTask || !item.request) return;
       try {
+        if (item.kind === 'memory') {
+          await api.confirmMemory(activeTask.id, item.request.id, decision !== 'deny');
+          setChat((prev) =>
+            prev.map((c) =>
+              c === item
+                ? { ...c, kind: 'tool', text: `${decision === 'deny' ? '⛔ 已拒绝写入' : '🧠 已写入长期记忆'}：${item.request!.reason}` }
+                : c,
+            ),
+          );
+          return;
+        }
         await api.decidePermission(activeTask.id, item.request.id, decision);
         setChat((prev) =>
           prev.map((c) =>
@@ -510,6 +527,22 @@ export default function App(): React.JSX.Element {
                   }`}
                 >
                   {item.text}
+                </div>
+              ) : item.kind === 'memory' && item.request ? (
+                <div key={i} className="mb-3 rounded-lg border border-blue-600/60 bg-blue-950/40 p-3 text-sm">
+                  <p className="mb-2 text-blue-300">🧠 记忆写入确认</p>
+                  <p className="mb-2 text-neutral-200">{item.request.reason}</p>
+                  <div className="flex gap-2 text-xs">
+                    <button
+                      className="rounded bg-emerald-700 px-2 py-1 hover:bg-emerald-600"
+                      onClick={() => void decide(item, 'allow')}
+                    >
+                      写入长期记忆
+                    </button>
+                    <button className="rounded bg-red-900 px-2 py-1 hover:bg-red-800" onClick={() => void decide(item, 'deny')}>
+                      拒绝
+                    </button>
+                  </div>
                 </div>
               ) : item.kind === 'gate' ? (
                 <div key={i} className="mb-2 rounded border border-amber-600/60 bg-amber-950/30 px-3 py-2 text-xs text-amber-300">

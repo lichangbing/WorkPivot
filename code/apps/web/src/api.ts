@@ -31,6 +31,7 @@ export type ChatEvent =
   | { type: 'tool_use'; toolName: string; args?: unknown }
   | { type: 'tool_result'; toolName: string; ok?: boolean; message?: string }
   | { type: 'permission_request'; id: string; tool: string; kind: 'read' | 'write' | 'bash'; paths: Array<{ path: string; mode: string }>; command?: string; reason: string; scope: string }
+  | { type: 'memory_confirm'; id: string; content: string; taskId: string }
   | { type: 'gate_reject'; missing: string[]; final?: boolean }
   | { type: 'error'; message: string }
   | { type: 'done'; stopReason: string; steps: number };
@@ -105,6 +106,12 @@ export const api = {
   stop: (id: string): Promise<{ ok: boolean }> => jsonFetch(`/api/tasks/${id}/stop`, { method: 'POST' }),
   decidePermission: (taskId: string, id: string, decision: 'allow' | 'deny' | 'session' | 'forever'): Promise<{ ok: boolean }> =>
     jsonFetch(`/api/tasks/${taskId}/permission`, { method: 'POST', body: JSON.stringify({ id, decision }) }),
+  confirmMemory: (taskId: string, id: string, approve: boolean): Promise<{ ok: boolean }> =>
+    jsonFetch(`/api/tasks/${taskId}/memory/confirm`, { method: 'POST', body: JSON.stringify({ id, approve }) }),
+  memoryView: (taskId?: string): Promise<{ handbook: string; entries: Array<{ id: string; content: string }>; project: string; enabled: boolean }> =>
+    jsonFetch(`/api/memory${taskId ? `?taskId=${encodeURIComponent(taskId)}` : ''}`),
+  memoryToggle: (enabled: boolean): Promise<{ enabled: boolean }> =>
+    jsonFetch('/api/memory/toggle', { method: 'POST', body: JSON.stringify({ enabled }) }),
   listProviders: (): Promise<{ providers: PublicProvider[]; activeId?: string }> => jsonFetch('/api/providers'),
   saveProvider: (input: { name: string; baseUrl: string; modelId: string; apiKey?: string; verify?: boolean }): Promise<{ provider: PublicProvider }> =>
     jsonFetch('/api/providers', { method: 'POST', body: JSON.stringify(input) }),
