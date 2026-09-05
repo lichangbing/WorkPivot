@@ -3,15 +3,17 @@
  * W1：供应商/任务/SSE 对话；W2：登录门/权限档位/授权卡/审计/@引用/并行上限。
  */
 import express, { type Express, type Request } from 'express';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve as resolvePath } from 'node:path';
 import {
   BUILTIN_TOOLS,
+  MAX_STEPS_DEFAULT,
   createOpenAICompatibleClient,
   runAgentLoop,
   type ChatMessage,
   type ToolAccessRequest,
 } from '@workpivot/core';
+import { verifyClaimedFiles } from './chat-gate.js';
 import {
   needsSetup,
   registerFirstAdmin,
@@ -23,7 +25,7 @@ import {
   type Role,
 } from './auth.js';
 import { evaluateAccess, getTier, resolvePendingRequest, setTier, TIER_LABELS, listAllowDirs, type Decision, type Tier } from './permissions.js';
-import { appendTranscript, createTask, getTask, listTasks, readHistory, updateTaskStatus } from './tasks.js';
+import { appendTranscript, createTask, getTask, listTasks, readHistory, readTranscript, updateTaskStatus } from './tasks.js';
 import { audit, argsHash } from './audit.js';
 import { listProviders, resolveActiveProvider, saveProvider, setActiveProvider } from './providers.js';
 
@@ -254,30 +256,70 @@ export function createApp(opts: AppOptions = {}): Express {
       return result.allowed;
     };
 
-    void runAgentLoop({
-      client,
-      tools: BUILTIN_TOOLS,
-      system,
-      messages: history,
-      taskDir: task.directory,
-      requestAccess,
-      signal: controller.signal,
-      onEvent: (event) => {
-        send(event);
-        if (event.type === 'tool_use') {
-          appendTranscript(task.id, 'tool_use', { toolName: event.toolName, args: event.args });
-          audit({ user: user?.username, taskId: task.id, event: 'tool_use', tool: event.toolName, argsHash: argsHash(event.args) });
+    // T3-06/K04：大结果落盘到任务目录 .workpivot/results/，模型只拿预览+路径
+    const stashResult = async (content: string): Promise<string> => {
+      const dir = join(task.directory, '.workpivot', 'results');
+      mkdirSync(dir, { recursive: true });
+      const file = join(dir, `result-${Date.now()}.txt`);
+      writeFileSync(file, content, 'utf8');
+      appendTranscript(task.id, 'meta', { event: 'result_stashed', path: file, size: content.length });
+      return `（工具结果过大已落盘:${file}。可用 read 工具读取完整内容。）\n前 2000 字符预览:\n${content.slice(0, 2000)}`;
+    };
+
+    const maxSteps = Number(process.env['WORKPIVOT_MAX_STEPS']) || MAX_STEPS_DEFAULT;
+    const maxDurationMs = (Number(process.env['WORKPIVOT_MAX_MINUTES']) || 30) * 60_000;
+
+    // T3-03/F02：带核验闸门的执行——声称产出但文件缺失 → 打回重做（≤2 次）
+    const runWithGate = async (attempt: number, baseMessages: ChatMessage[]): Promise<{ stopReason: string; steps: number }> => {
+      const result = await runAgentLoop({
+        client,
+        tools: BUILTIN_TOOLS,
+        system,
+        messages: baseMessages,
+        taskDir: task.directory,
+        requestAccess,
+        maxSteps,
+        maxDurationMs,
+        stashResult,
+        signal: controller.signal,
+        onEvent: (event) => {
+          send(event);
+          if (event.type === 'tool_use') {
+            appendTranscript(task.id, 'tool_use', { toolName: event.toolName, args: event.args });
+            audit({ user: user?.username, taskId: task.id, event: 'tool_use', tool: event.toolName, argsHash: argsHash(event.args) });
+          }
+          if (event.type === 'tool_result') {
+            appendTranscript(task.id, 'tool_result', { toolName: event.toolName, ok: event.ok, summary: event.message });
+          }
+        },
+      });
+
+      const finalText = [...result.messages]
+        .reverse()
+        .find((m) => m.role === 'assistant' && typeof m.content === 'string' && m.content.length > 0)?.content;
+      if (typeof finalText === 'string' && finalText.length > 0) {
+        appendTranscript(task.id, 'assistant_message', { content: finalText });
+      }
+
+      if (result.stopReason === 'completed' && typeof finalText === 'string' && finalText.length > 0) {
+        const { missing } = verifyClaimedFiles(finalText, task.directory);
+        if (missing.length > 0 && attempt < 2) {
+          audit({ user: user?.username, taskId: task.id, event: 'gate_reject', decision: 'retry', detail: missing.join('、') });
+          send({ type: 'gate_reject', missing });
+          const note = `核验失败:以下声称产出的文件在任务目录中不存在或为空:${missing.join('、')}。请用 write 工具实际生成这些文件,然后重新给出总结。`;
+          appendTranscript(task.id, 'user_message', { content: note });
+          baseMessages.push({ role: 'user', content: note });
+          return runWithGate(attempt + 1, baseMessages);
         }
-        if (event.type === 'tool_result') {
-          appendTranscript(task.id, 'tool_result', { toolName: event.toolName, ok: event.ok, summary: event.message });
+        if (missing.length > 0) {
+          send({ type: 'gate_reject', missing, final: true });
         }
-      },
-    })
+      }
+      return { stopReason: result.stopReason, steps: result.steps };
+    }
+
+    void runWithGate(0, history)
       .then((result) => {
-        const lastAssistant = [...result.messages]
-          .reverse()
-          .find((m) => m.role === 'assistant' && typeof m.content === 'string' && m.content.length > 0);
-        if (lastAssistant) appendTranscript(task.id, 'assistant_message', { content: lastAssistant.content });
         updateTaskStatus(task.id, result.stopReason === 'completed' ? 'idle' : 'interrupted');
         audit({ user: user?.username, taskId: task.id, event: 'task_done', decision: result.stopReason, detail: `${result.steps} 步` });
         send({ type: 'done', stopReason: result.stopReason, steps: result.steps });
@@ -290,6 +332,13 @@ export function createApp(opts: AppOptions = {}): Express {
         running.delete(task.id);
         res.end();
       });
+  });
+
+  // T3-01：转写查看器数据源
+  app.get('/api/tasks/:id/transcript', (req, res) => {
+    const task = getTask(req.params['id'] ?? '');
+    if (!task) return res.status(404).json({ error: '任务不存在' });
+    res.json({ rows: readTranscript(task.id) });
   });
 
   // 授权卡决策（T2-05）：渲染层回填，唤醒等待中的工具调用

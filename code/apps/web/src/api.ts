@@ -31,8 +31,16 @@ export type ChatEvent =
   | { type: 'tool_use'; toolName: string; args?: unknown }
   | { type: 'tool_result'; toolName: string; ok?: boolean; message?: string }
   | { type: 'permission_request'; id: string; tool: string; kind: 'read' | 'write' | 'bash'; paths: Array<{ path: string; mode: string }>; command?: string; reason: string; scope: string }
+  | { type: 'gate_reject'; missing: string[]; final?: boolean }
   | { type: 'error'; message: string }
   | { type: 'done'; stopReason: string; steps: number };
+
+export interface TranscriptRow {
+  ts: string;
+  ordinal: number;
+  kind: string;
+  payload: Record<string, unknown>;
+}
 
 export interface HistoryMessage {
   role: 'user' | 'assistant';
@@ -92,6 +100,7 @@ export const api = {
   createTask: (name: string, directory?: string): Promise<{ task: Task }> =>
     jsonFetch('/api/tasks', { method: 'POST', body: JSON.stringify({ name, directory }) }),
   getTask: (id: string): Promise<{ task: Task; history: HistoryMessage[] }> => jsonFetch(`/api/tasks/${id}`),
+  getTranscript: (id: string): Promise<{ rows: TranscriptRow[] }> => jsonFetch(`/api/tasks/${id}/transcript`),
   getFiles: (id: string): Promise<{ directory: string; files: string[] }> => jsonFetch(`/api/tasks/${id}/files`),
   stop: (id: string): Promise<{ ok: boolean }> => jsonFetch(`/api/tasks/${id}/stop`, { method: 'POST' }),
   decidePermission: (taskId: string, id: string, decision: 'allow' | 'deny' | 'session' | 'forever'): Promise<{ ok: boolean }> =>

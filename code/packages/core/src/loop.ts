@@ -1,8 +1,9 @@
 /**
- * T1-04：agent 循环（自研微内核，ADR-002）。
- * 朴素 while 主循环＋工具回填；循环信号=流中组装出的 tool_calls；
- * 每次续转带 stopReason 便于调试审计；错误恢复从简（M0）。
+ * T1-04/T3：agent 循环（自研微内核，ADR-002）。
+ * W3 韧性：强制收尾（步数/时长上限→无工具请求答三件事）、卡循环检测（3 提醒/5 拦截）、
+ *          工具结果预算（>50k 交 stashResult 落盘）、循环信号=流中 tool_calls（竞品实证）。
  */
+import { createHash } from 'node:crypto';
 import type { ModelClient, ChatMessage, ToolCall, ToolSchema } from './model/openai.js';
 import type { Tool, ToolContext, ToolAccessRequest } from './tools.js';
 
@@ -17,7 +18,7 @@ export interface AgentEvent {
   message?: string;
 }
 
-export type StopReason = 'completed' | 'max_steps' | 'aborted' | 'error';
+export type StopReason = 'completed' | 'max_steps' | 'time_limit' | 'aborted' | 'error';
 
 export interface RunAgentOptions {
   client: ModelClient;
@@ -28,7 +29,12 @@ export interface RunAgentOptions {
   taskDir: string;
   /** 权限判定钩子（服务层实现：档位+授权卡）。缺省 = 全部放行（信任环境）。 */
   requestAccess?: (req: ToolAccessRequest) => Promise<boolean>;
+  /** 最大模型采样轮数（默认 200） */
   maxSteps?: number;
+  /** 最大执行时长 ms（默认不限；超限触发强制收尾） */
+  maxDurationMs?: number;
+  /** 工具结果超预算时的落盘钩子：返回替换后的引用文本（K04/T3-06） */
+  stashResult?: (content: string) => Promise<string>;
   onEvent?: (event: AgentEvent) => void;
   signal?: AbortSignal;
 }
@@ -39,11 +45,31 @@ export interface RunAgentResult {
   stopReason: StopReason;
 }
 
-const MAX_STEPS_DEFAULT = 200;
+export const MAX_STEPS_DEFAULT = 200;
+export const MAX_DURATION_DEFAULT_MS = 30 * 60_000;
+/** 工具结果预算（K04）：超过该字符数的结果交给 stashResult 落盘，模型只拿预览 */
+export const RESULT_STASH_THRESHOLD = 50_000;
+
+const FORCED_WRAP_PROMPT =
+  '任务执行预算已用尽,请立即停止调用任何工具,只用一段话回答三点:1) 已完成了什么;2) 实际产出了哪些真实文件(给出相对路径);3) 下次从哪里继续。';
+
+function fingerprint(text: string): string {
+  return createHash('sha1').update(text).digest('hex').slice(0, 12);
+}
+
+function safeParse(json: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
 
 export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentResult> {
   const { client, tools, system, signal, taskDir } = options;
   const maxSteps = options.maxSteps ?? MAX_STEPS_DEFAULT;
+  const maxDurationMs = options.maxDurationMs ?? MAX_DURATION_DEFAULT_MS;
   const messages: ChatMessage[] = [{ role: 'system', content: system }, ...options.messages];
   const toolSchemas: ToolSchema[] = tools.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters }));
   const ctx: ToolContext = {
@@ -53,16 +79,50 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
     extraAllowedDirs: [],
   };
 
+  const startedAt = Date.now();
   let steps = 0;
   let stopReason: StopReason = 'completed';
+  let wrapAttempted = false;
+
+  // 卡循环检测（T3-05/F05）：同工具+同入参+同结果 连续计数
+  let lastCallFp = '';
+  let lastResultFp = '';
+  let identicalCount = 0;
 
   while (true) {
     if (signal?.aborted) {
       stopReason = 'aborted';
       break;
     }
-    if (steps >= maxSteps) {
-      stopReason = 'max_steps';
+    const overSteps = steps >= maxSteps;
+    const overTime = Date.now() - startedAt > maxDurationMs;
+    if ((overSteps || overTime) && !wrapAttempted) {
+      // F03 强制收尾：追加一次无工具请求，只答三件事
+      wrapAttempted = true;
+      stopReason = overSteps ? 'max_steps' : 'time_limit';
+      messages.push({ role: 'user', content: FORCED_WRAP_PROMPT });
+      options.onEvent?.({ type: 'assistant_delta', text: '\n\n⚠ 预算已用尽,强制收尾:\n' });
+      let finalText = '';
+      try {
+        for await (const event of client.streamChat(messages, [], signal)) {
+          if (event.type === 'delta') {
+            finalText += event.text;
+            options.onEvent?.({ type: 'assistant_delta', text: event.text });
+          }
+        }
+        messages.push({ role: 'assistant', content: finalText });
+      } catch (err) {
+        if (signal?.aborted) {
+          stopReason = 'aborted';
+        } else {
+          options.onEvent?.({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+          stopReason = 'error';
+        }
+      }
+      break;
+    }
+    if (overSteps || overTime) {
+      stopReason = overSteps ? 'max_steps' : 'time_limit';
       break;
     }
     steps += 1;
@@ -93,7 +153,6 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
       break; // 纯文本回复 → 循环完成
     }
 
-    // 有工具调用：先落 assistant（含 tool_calls），再逐个执行回填
     messages.push({ role: 'assistant', content: assistantText || null, tool_calls: toolCalls });
     for (const call of toolCalls) {
       if (signal?.aborted) {
@@ -104,15 +163,22 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
       options.onEvent?.({ type: 'tool_use', toolName: call.function.name, args: safeParse(call.function.arguments) });
       let resultText: string;
       let ok = true;
+      const argFp = fingerprint(`${call.function.name}:${call.function.arguments}`);
       if (!tool) {
         ok = false;
         resultText = `错误：未知工具 ${call.function.name}`;
+      } else if (argFp === lastCallFp && identicalCount >= 4) {
+        // F05：已连续 4 次相同调用与结果，第 5 次直接拦截，不再执行
+        ok = false;
+        resultText =
+          '错误:已连续多次产生完全相同的调用与结果,本次执行被拦截。请必须更换思路、修改参数,或向用户说明情况。';
       } else {
         try {
           // 权限判定（T2-04/05）：声明访问 → 钩子判定；拒绝则以错误回填，不执行
           let allowed = true;
+          let request: ToolAccessRequest | null = null;
           if (ctx.requestAccess && tool.access) {
-            const request = tool.access(safeParse(call.function.arguments), ctx);
+            request = tool.access(safeParse(call.function.arguments), ctx);
             allowed = await ctx.requestAccess(request);
             if (allowed) ctx.extraAllowedDirs = request.paths.map((p) => p.path);
           }
@@ -127,6 +193,26 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
           resultText = `错误：${err instanceof Error ? err.message : String(err)}`;
         }
       }
+
+      // 卡循环计数更新（仅在真实执行后）
+      if (ok) {
+        const resultFp = fingerprint(resultText);
+        if (argFp === lastCallFp && resultFp === lastResultFp) {
+          identicalCount += 1;
+        } else {
+          identicalCount = 1;
+          lastCallFp = argFp;
+          lastResultFp = resultFp;
+        }
+      }
+      if (ok && identicalCount >= 3 && identicalCount < 5) {
+        resultText = `[系统] 注意:这是第 ${identicalCount} 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\n${resultText}`;
+      }
+
+      // 工具结果预算（K04/T3-06）：超阈值先落盘，再以预览回填/外发
+      if (options.stashResult && resultText.length > RESULT_STASH_THRESHOLD) {
+        resultText = await options.stashResult(resultText);
+      }
       options.onEvent?.({ type: 'tool_result', toolName: call.function.name, ok, message: resultText.slice(0, 200) });
       messages.push({ role: 'tool', tool_call_id: call.id, content: resultText });
     }
@@ -134,13 +220,4 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
   }
 
   return { messages, steps, stopReason };
-}
-
-function safeParse(json: string): Record<string, unknown> {
-  try {
-    const parsed: unknown = JSON.parse(json);
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
 }

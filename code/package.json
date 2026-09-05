@@ -13,7 +13,8 @@
     "check:licenses": "node scripts/check-licenses.mjs",
     "dev:web": "pnpm --filter @workpivot/web dev",
     "eval:w1": "tsx eval/W1-smoke.mts",
-    "eval:w2": "tsx eval/W2-smoke.mts"
+    "eval:w2": "tsx eval/W2-smoke.mts",
+    "eval:w3": "tsx eval/W3-smoke.mts"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

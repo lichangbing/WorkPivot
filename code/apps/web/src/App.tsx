@@ -15,10 +15,11 @@ import {
 } from './api';
 import { LoginView } from './LoginView';
 import { ProviderModal } from './ProviderModal';
+import { TranscriptModal } from './TranscriptModal';
 import { UsersModal } from './UsersModal';
 
 interface ChatItem {
-  kind: 'user' | 'assistant' | 'tool' | 'error' | 'permission';
+  kind: 'user' | 'assistant' | 'tool' | 'error' | 'permission' | 'done' | 'gate';
   text: string;
   request?: {
     id: string;
@@ -30,6 +31,10 @@ interface ChatItem {
     scope: string;
   };
 }
+
+/** F04 断点续跑的固定指令（用户点「继续任务」时发送） */
+const RESUME_MESSAGE =
+  '请从断点继续之前的任务:先读取 PROGRESS.md(如存在),不重做已完成的部分,继续完成剩余工作。';
 
 export default function App(): React.JSX.Element {
   const [authState, setAuthState] = useState<'loading' | 'guest' | 'authed'>('loading');
@@ -53,7 +58,48 @@ export default function App(): React.JSX.Element {
   const [newTaskName, setNewTaskName] = useState('');
   const [newTaskDir, setNewTaskDir] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  /** B02 版本链：按 `{标题} v{X.Y} …` 分组，最新版本在前 */
+  const renderVersionChain = (files: string[]): React.JSX.Element[] => {
+    const versioned: Array<{ title: string; version: string; file: string }> = [];
+    const plain: string[] = [];
+    const versionRe = /^(.+) v(\d+\.\d+)( \d{4}-\d{2}-\d{2})?\.([^.]+)$/;
+    for (const file of files) {
+      const m = versionRe.exec(file);
+      if (m) versioned.push({ title: m[1] ?? '', version: m[2] ?? '', file });
+      else plain.push(file);
+    }
+    const groups = new Map<string, Array<{ version: string; file: string }>>();
+    for (const v of versioned) {
+      const list = groups.get(v.title) ?? [];
+      list.push({ version: v.version, file: v.file });
+      groups.set(v.title, list);
+    }
+    const nodes: React.JSX.Element[] = [];
+    for (const [title, list] of groups) {
+      const sorted = [...list].sort((a, b) => (a.version < b.version ? 1 : -1));
+      nodes.push(
+        <div key={title} className="mb-3">
+          <p className="mb-1 font-medium text-neutral-200">📄 {title}</p>
+          {sorted.map((v) => (
+            <p key={v.file} className="mb-0.5 break-all pl-3 text-neutral-400">
+              v{v.version} —— {v.file}
+            </p>
+          ))}
+        </div>,
+      );
+    }
+    for (const f of plain) {
+      nodes.push(
+        <p key={f} className="mb-1 break-all text-neutral-300">
+          📄 {f}
+        </p>,
+      );
+    }
+    return nodes;
+  };
 
   const showToast = useCallback((text: string): void => {
     setToast(text);
@@ -161,8 +207,8 @@ export default function App(): React.JSX.Element {
     }
   }, [newTaskName, newTaskDir, refreshTasks, openTask]);
 
-  const send = useCallback(async (): Promise<void> => {
-    const content = input.trim();
+  const send = useCallback(async (override?: string): Promise<void> => {
+    const content = (override ?? input).trim();
     if (content === '' || !activeTask || streaming) return;
     setInput('');
     setStreaming(true);
@@ -192,9 +238,21 @@ export default function App(): React.JSX.Element {
                 scope: event.scope,
               },
             });
+          } else if (event.type === 'gate_reject') {
+            next.push({
+              kind: 'gate',
+              text: `⚠ 成果核验未通过——缺少文件:${event.missing.join('、')}${event.final ? '(已达重试上限,请人工确认)' : ',已打回重做'}`,
+            });
           } else if (event.type === 'error') {
             next.push({ kind: 'error', text: `出错：${event.message}` });
           } else if (event.type === 'done') {
+            next.push({
+              kind: 'done',
+              text:
+                event.stopReason === 'completed'
+                  ? `✅ 任务完成（${event.steps} 步）`
+                  : `⚠ 任务结束（${event.stopReason}，${event.steps} 步）`,
+            });
             void refreshTasks();
             void api.getFiles(activeTask.id).then(setRightPanel);
           }
@@ -335,7 +393,20 @@ export default function App(): React.JSX.Element {
         {/* 中栏：对话流 */}
         <main className="flex min-w-0 flex-1 flex-col">
           <header className="flex items-center justify-between border-b border-neutral-800 px-4 py-2.5">
-            <span className="text-sm text-neutral-400">{activeTask ? activeTask.name : '未选择任务'}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-neutral-400">{activeTask ? activeTask.name : '未选择任务'}</span>
+              {activeTask?.status === 'interrupted' && (
+                <button
+                  className="rounded bg-amber-700 px-2 py-1 text-xs hover:bg-amber-600"
+                  onClick={() => {
+                    setInput(RESUME_MESSAGE);
+                    void send(RESUME_MESSAGE);
+                  }}
+                >
+                  ▶ 继续任务
+                </button>
+              )}
+            </div>
             <div className="flex items-center gap-3 text-xs">
               <label className="flex items-center gap-1 text-neutral-500">
                 权限档位
@@ -429,11 +500,27 @@ export default function App(): React.JSX.Element {
                     </button>
                   </div>
                 </div>
-              ) : (
+              ) : item.kind === 'done' ? (
                 <div
                   key={i}
-                  className={`mb-2 font-mono text-xs ${item.kind === 'error' ? 'text-red-400' : 'text-neutral-500'}`}
+                  className={`mb-3 rounded-lg border px-3 py-2 text-sm ${
+                    item.text.startsWith('✅')
+                      ? 'border-emerald-700 bg-emerald-950/50 text-emerald-300'
+                      : 'border-amber-700 bg-amber-950/40 text-amber-300'
+                  }`}
                 >
+                  {item.text}
+                </div>
+              ) : item.kind === 'gate' ? (
+                <div key={i} className="mb-2 rounded border border-amber-600/60 bg-amber-950/30 px-3 py-2 text-xs text-amber-300">
+                  {item.text}
+                </div>
+              ) : item.kind === 'error' ? (
+                <div key={i} className="mb-2 text-xs text-red-400">
+                  {item.text}
+                </div>
+              ) : (
+                <div key={i} className="mb-2 font-mono text-xs text-neutral-500">
                   {item.text}
                 </div>
               ),
@@ -478,18 +565,24 @@ export default function App(): React.JSX.Element {
           </div>
         </main>
 
-        {/* 右栏：成果区 */}
+        {/* 右栏：成果区（B02 版本链 + 转写查看器入口） */}
         <aside className="flex w-72 shrink-0 flex-col border-l border-neutral-800">
-          <div className="px-4 py-3 text-sm font-semibold text-neutral-300">成果区</div>
+          <div className="flex items-center justify-between px-4 py-3">
+            <span className="text-sm font-semibold text-neutral-300">成果区</span>
+            {activeTask && (
+              <button
+                className="rounded bg-neutral-800 px-2 py-1 text-xs hover:bg-neutral-700"
+                onClick={() => setTranscriptOpen(true)}
+              >
+                转写查看
+              </button>
+            )}
+          </div>
           {rightPanel ? (
             <div className="flex-1 overflow-y-auto px-4 text-xs">
               <p className="mb-2 break-all text-neutral-500">{rightPanel.directory}</p>
               {rightPanel.files.length === 0 && <p className="text-neutral-600">（空）</p>}
-              {rightPanel.files.map((f) => (
-                <p key={f} className="mb-1 break-all text-neutral-300">
-                  📄 {f}
-                </p>
-              ))}
+              {renderVersionChain(rightPanel.files)}
             </div>
           ) : (
             <p className="px-4 text-xs text-neutral-600">选择任务后展示产物</p>
@@ -507,6 +600,9 @@ export default function App(): React.JSX.Element {
         />
       )}
       {usersModalOpen && <UsersModal onClose={() => setUsersModalOpen(false)} onSaved={() => undefined} />}
+      {transcriptOpen && activeTask && (
+        <TranscriptModal taskId={activeTask.id} onClose={() => setTranscriptOpen(false)} />
+      )}
 
       {toast && (
         <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-neutral-800 px-4 py-2 text-sm shadow-xl">

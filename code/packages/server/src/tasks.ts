@@ -62,7 +62,24 @@ export function updateTaskStatus(taskId: string, status: TaskStatus): void {
   const task = getTask(taskId);
   if (!task) return;
   writeAtomic(taskFile(taskId), JSON.stringify({ ...task, status }, null, 2));
+  if (existsSync(transcriptFile(taskId))) {
+    appendTranscript(taskId, 'meta', { event: 'status', status });
+  }
 }
+
+/** T3-02/F04：服务启动时扫描——上次进程中断遗留的 running → interrupted（断点续跑的前置）。 */
+export function markRunningTasksInterrupted(): number {
+  let count = 0;
+  for (const task of listTasks()) {
+    if (task.status === 'running') {
+      updateTaskStatus(task.id, 'interrupted');
+      count += 1;
+    }
+  }
+  return count;
+}
+
+/** T3-02/F04：服务启动时扫描——上次进程中断遗留的 running → interrupted（断点续跑的前置）。 */
 
 export function listTasks(): Task[] {
   const root = tasksRoot();

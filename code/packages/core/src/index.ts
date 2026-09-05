@@ -7,6 +7,9 @@ export const CORE_VERSION = '0.0.0';
 
 export {
   runAgentLoop,
+  MAX_STEPS_DEFAULT,
+  MAX_DURATION_DEFAULT_MS,
+  RESULT_STASH_THRESHOLD,
   type AgentEvent,
   type AgentEventType,
   type RunAgentOptions,
