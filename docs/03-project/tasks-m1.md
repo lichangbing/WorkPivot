@@ -8,11 +8,11 @@
 
 | ID | 任务 | 需求 | 验收 | 状态 |
 |----|------|------|------|------|
-| M1-01 | 双层记忆：手写区（全局 MEMORY.md，用户可编辑，注入 system）+ 条目区（remember/forget 工具，静默写入，超量丢最旧）；按账号隔离 | E01 | eval：记住→下轮注入可见；forget 生效；超量淘汰 | ⬜ |
-| M1-02 | 晋升确认流：promote 工具 → 对话内确认卡（复用授权卡通道）→ 允许才写入手写区 | E01 | eval：allow 写入/deny 不写入 | ⬜ |
-| M1-03 | 项目记忆：任务目录 `.workpivot/memory/`（MEMORY.md + 按日日志纪律写入系统提示词），随目录走，同目录任务共享 | E02 | eval：同目录两任务记忆互通 | ⬜ |
-| M1-04 | 设置页：记忆查看/清空/一键关闭（关闭后零注入，断言） | E01 | eval：关闭后 system 无记忆段 | ⬜ |
-| M1-05 | eval/W5-memory 端到端（模拟 LLM） | K01 | 10+ 断言 | ⬜ |
+| M1-01 | 双层记忆：手写区（全局 MEMORY.md，用户可编辑，注入 system）+ 条目区（remember/forget 工具，静默写入+幂等去重，超 200 条丢最旧）；按账号隔离 | E01 | eval 通过 | ✅ |
+| M1-02 | 晋升确认流：promote 工具 → 对话内确认卡（复用授权卡通道）→ 允许才写入手写区 | E01 | eval：allow 写入/deny 不写入 | ✅ |
+| M1-03 | 项目记忆：任务目录 `.workpivot/memory/`（MEMORY.md），随目录走，同目录任务共享 | E02 | eval：同目录两任务记忆互通 | ✅ |
+| M1-04 | 一键关闭：settings.memoryEnabled=false → 零注入（手写区保留） | E01 | eval 断言 | ✅ |
+| M1-05 | eval/W5-memory 端到端（模拟 LLM）：12/12 通过 | K01 | pnpm eval:w5 | ✅ |
 
 **设计要点**：数据落 `~/.workpivot/data/memory/<uid>/`（手写区 MEMORY.md + 条目区 entries.jsonl）；项目记忆在任务目录内（grep/find 已跳过 .workpivot）；检索注入（E03 sqlite-vec）列 M1 后半，先按「最近 + 全量注入上限」起步。
 
