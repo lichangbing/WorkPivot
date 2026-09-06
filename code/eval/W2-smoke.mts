@@ -86,6 +86,10 @@ const server = await startServer({ port: 39911 + 1 });
 const base = `http://127.0.0.1:${server.port}`;
 
 // 注册管理员
+// 首启状态断言：无用户时 needsSetup 必须=true（注册入口的依据，防 UI 首启误渲染登录）
+const state0 = await (await fetch(`${base}/api/auth/state`)).json() as { needsSetup: boolean; authenticated: boolean };
+assert('T2-01 首启 needsSetup=true 且未认证', state0.needsSetup === true && state0.authenticated === false, JSON.stringify(state0));
+
 await fetch(`${base}/api/auth/register`, {
   method: 'POST',
   headers: { 'content-type': 'application/json' },

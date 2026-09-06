@@ -113,18 +113,16 @@ export default function App(): React.JSX.Element {
   }, []);
 
   const refreshAuth = useCallback(async (): Promise<void> => {
-    if (getToken() === null) {
-      setAuthState('guest');
-      return;
-    }
+    // 无论有无令牌都要取 auth/state：首启（无令牌）也必须拿到 needsSetup，
+    // 否则默认 false 会把「注册管理员」界面误渲染成登录（首启注册入口被挡的根因）。
     try {
       const state = await api.authState();
+      setNeedsSetup(state.needsSetup);
       if (state.authenticated && state.user) {
         setCurrentUser(state.user);
         setAuthState('authed');
       } else {
         clearToken();
-        setNeedsSetup(state.needsSetup);
         setAuthState('guest');
       }
     } catch {
