@@ -252,6 +252,28 @@ try {
   const tasksAfterDel = await admin.get<{ tasks: Array<{ id: string }> }>(`/api/tasks`);
   assert('F2 删除后不在列表', !tasksAfterDel.body.tasks.some((t) => t.id === tempTask.body.task.id));
 
+  // M1-10/B03：删除进回收站（工作目录与应用数据目录移入 trash，含 manifest）
+  const trashList = await admin.get<{ items: Array<{ name: string; originalPath?: string }> }>('/api/trash');
+  const trashNames = trashList.body.items.map((it) => it.name);
+  assert('B03 回收站含临时任务工作目录', trashNames.some((n) => n.startsWith(`temp-${tempTask.body.task.id}`)), JSON.stringify(trashNames));
+  assert('B03 回收站含任务应用数据目录', trashNames.some((n) => n.startsWith(`taskdata-${tempTask.body.task.id}`)));
+  assert('B03 回收站条目记录原路径', trashList.body.items.every((it) => typeof it.originalPath === 'string' && it.originalPath.length > 0));
+
+  // M1-10/I03：审计查看/导出权限面
+  const auditDenied = await member.get<{ error?: string }>('/api/audit');
+  assert('I03 member 看审计被拒（403）', auditDenied.status === 403);
+  const auditView = await admin.get<{ rows: Array<{ event?: string }> }>('/api/audit');
+  assert('I03 审计可查看（含用户创建事件）', auditView.status === 200 && auditView.body.rows.some((r) => r.event === 'user_created'));
+  const auditExportResp = await fetch(`http://127.0.0.1:${portA}/api/audit/export`, {
+    headers: { authorization: `Bearer ${adminToken}` },
+  });
+  const auditExportText = await auditExportResp.text();
+  assert(
+    'I03 审计导出为 JSONL（每行可解析）',
+    auditExportResp.status === 200 && auditExportText.split('\n').every((l) => l.trim() === '' || l.startsWith('{')),
+    `${auditExportText.length} 字符`,
+  );
+
   // F3 Skill 启停
   const skills0 = await admin.get<{ skills: Array<{ name: string; disabled: boolean }> }>('/api/skills');
   assert('F3 技能列表含内置 docx-report', skills0.body.skills.some((s) => s.name === 'docx-report' && !s.disabled));

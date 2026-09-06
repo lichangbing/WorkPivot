@@ -104,6 +104,15 @@ export function removeEntries(userId: string, query: string): number {
   return removed;
 }
 
+/** M1-11：按 id 删除单条条目（设置页记忆面板用）。 */
+export function removeEntryById(userId: string, id: string): boolean {
+  const rows = loadEntries(userId);
+  const kept = rows.filter((r) => r.id !== id);
+  if (kept.length === rows.length) return false;
+  saveEntries(userId, kept);
+  return true;
+}
+
 export function listEntries(userId: string): MemoryEntry[] {
   return loadEntries(userId);
 }

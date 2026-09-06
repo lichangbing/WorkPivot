@@ -13,6 +13,7 @@ export type Role = 'admin' | 'member';
 export interface User {
   id: string;
   username: string;
+  email?: string;
   hash: string;
   role: Role;
   createdAt: string;
@@ -44,6 +45,14 @@ function loadUsers(): UsersFile {
   return readJsonSafe<UsersFile>(usersPath(), EMPTY_USERS).value;
 }
 
+function normalizeEmail(email: string | null | undefined, file: UsersFile, excludeUserId?: string): string | undefined {
+  const value = email?.trim();
+  if (!value) return undefined;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw new Error('邮箱格式不正确');
+  if (file.users.some((u) => u.id !== excludeUserId && u.email === value)) throw new Error('邮箱已被其他用户使用');
+  return value;
+}
+
 export function needsSetup(): boolean {
   return loadUsers().users.length === 0;
 }
@@ -54,35 +63,44 @@ export function registerFirstAdmin(username: string, password: string): { token:
   return createUserAndToken(file, username, password, 'admin');
 }
 
-export function createUser(username: string, password: string, role: Role): PublicUser {
+export function createUser(username: string, password: string, role: Role, email?: string): PublicUser {
   const file = loadUsers();
   if (file.users.length === 0) throw new Error('尚无用户：请先通过注册创建管理员');
   if (file.users.some((u) => u.username === username)) throw new Error(`用户名已存在：${username}`);
-  const { user } = createUserAndToken(file, username, password, role);
-  return { id: user.id, username: user.username, role: user.role };
+  const { user } = createUserAndToken(file, username, password, role, email);
+  return { id: user.id, username: user.username, email: user.email, role: user.role };
 }
 
-function createUserAndToken(file: UsersFile, username: string, password: string, role: Role): { token: string; user: PublicUser } {
+function createUserAndToken(
+  file: UsersFile,
+  username: string,
+  password: string,
+  role: Role,
+  email?: string,
+): { token: string; user: PublicUser } {
   if (username.trim().length < 2) throw new Error('用户名至少 2 个字符');
   if (password.length < 6) throw new Error('密码至少 6 位');
   if (file.users.some((u) => u.username === username)) throw new Error(`用户名已存在：${username}`);
+  const normalizedEmail = normalizeEmail(email, file);
   const user: User = {
     id: randomUUID(),
     username: username.trim(),
+    email: normalizedEmail,
     hash: bcrypt.hashSync(password, 10),
     role,
     createdAt: new Date().toISOString(),
   };
   file.users.push(user);
   writeAtomic(usersPath(), JSON.stringify(file, null, 2));
-  appendLine(join(ensureWorkpivotDir('audit'), `audit-${localDate()}.jsonl`), JSON.stringify({ ts: new Date().toISOString(), event: 'user_created', user: user.username, role }));
+  appendLine(join(ensureWorkpivotDir('audit'), `audit-${localDate()}.jsonl`), JSON.stringify({ ts: new Date().toISOString(), event: 'user_created', user: user.username, role, email: normalizedEmail ?? null }));
   const token = issueToken(user.id);
-  return { token, user: { id: user.id, username: user.username, role: user.role } };
+  return { token, user: { id: user.id, username: user.username, email: user.email, role: user.role } };
 }
 
 export interface PublicUser {
   id: string;
   username: string;
+  email?: string;
   role: Role;
   createdAt?: string;
   lastLoginTime?: string;
@@ -95,7 +113,7 @@ export function login(username: string, password: string): { token: string; user
   user.lastLoginTime = new Date().toISOString();
   writeAtomic(usersPath(), JSON.stringify(file, null, 2));
   const token = issueToken(user.id);
-  return { token, user: { id: user.id, username: user.username, role: user.role, lastLoginTime: user.lastLoginTime } };
+  return { token, user: { id: user.id, username: user.username, email: user.email, role: user.role, lastLoginTime: user.lastLoginTime } };
 }
 
 function issueToken(userId: string): string {
@@ -113,7 +131,7 @@ export function resolveToken(token: string | undefined | null): PublicUser | nul
   const entry = file.tokens.find((t) => t.token === token);
   if (!entry) return null;
   const user = loadUsers().users.find((u) => u.id === entry.userId);
-  return user ? { id: user.id, username: user.username, role: user.role } : null;
+  return user ? { id: user.id, username: user.username, email: user.email, role: user.role } : null;
 }
 
 export function deleteUser(userId: string, currentUserId: string): { ok: boolean; error?: string } {
@@ -121,31 +139,60 @@ export function deleteUser(userId: string, currentUserId: string): { ok: boolean
   const file = loadUsers();
   const idx = file.users.findIndex((u) => u.id === userId);
   if (idx < 0) return { ok: false, error: '用户不存在' };
-  const target = file.users[idx];
-  if (target && target.role === 'admin' && file.users.filter((u) => u.role === 'admin').length <= 1) {
+  const target = file.users[idx]!;
+  if (target.role === 'admin' && file.users.filter((u) => u.role === 'admin').length <= 1) {
     return { ok: false, error: '至少保留一个管理员账户' };
   }
   const removed = file.users.splice(idx, 1)[0]!;
-  
   writeAtomic(usersPath(), JSON.stringify(file, null, 2));
   appendLine(join(ensureWorkpivotDir('audit'), `audit-${localDate()}.jsonl`), JSON.stringify({ ts: new Date().toISOString(), event: 'user_deleted', user: removed.username }));
   return { ok: true };
 }
 
+export function updateUserProfile(userId: string, email: string | null | undefined): { ok: boolean; error?: string } {
+  const file = loadUsers();
+  const user = file.users.find((u) => u.id === userId);
+  if (!user) return { ok: false, error: '用户不存在' };
+  try {
+    user.email = normalizeEmail(email, file, userId);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+  writeAtomic(usersPath(), JSON.stringify(file, null, 2));
+  appendLine(join(ensureWorkpivotDir('audit'), `audit-${localDate()}.jsonl`), JSON.stringify({ ts: new Date().toISOString(), event: 'user_updated', user: user.username, email: user.email ?? null }));
+  return { ok: true };
+}
+
 export function updateUserRole(userId: string, role: Role): { ok: boolean; error?: string } {
   const file = loadUsers();
-  const user = file.users.find((u) => u.id === userId)!;
+  const user = file.users.find((u) => u.id === userId);
   if (!user) return { ok: false, error: '用户不存在' };
+  if (user.role === 'admin' && role === 'member' && file.users.filter((u) => u.role === 'admin').length <= 1) {
+    return { ok: false, error: '至少保留一个管理员账户' };
+  }
   user.role = role;
   writeAtomic(usersPath(), JSON.stringify(file, null, 2));
   appendLine(join(ensureWorkpivotDir('audit'), `audit-${localDate()}.jsonl`), JSON.stringify({ ts: new Date().toISOString(), event: 'user_role_changed', user: user.username, role }));
   return { ok: true };
 }
 
-export function listUsers(): Array<PublicUser & { createdAt?: string; lastLoginTime?: string }> {
+export function changePassword(userId: string, currentPassword: string, newPassword: string): { ok: boolean; error?: string } {
+  const file = loadUsers();
+  const user = file.users.find((u) => u.id === userId);
+  if (!user) return { ok: false, error: '用户不存在' };
+  if (!currentPassword || !bcrypt.compareSync(currentPassword, user.hash)) return { ok: false, error: '当前密码不正确' };
+  if (newPassword.length < 6) return { ok: false, error: '新密码至少 6 位' };
+  user.hash = bcrypt.hashSync(newPassword, 10);
+  writeAtomic(usersPath(), JSON.stringify(file, null, 2));
+  appendLine(join(ensureWorkpivotDir('audit'), `audit-${localDate()}.jsonl`), JSON.stringify({ ts: new Date().toISOString(), event: 'password_changed', user: user.username }));
+  return { ok: true };
+}
+
+export function listUsers(): PublicUser[] {
   return loadUsers().users.map((u) => ({
     id: u.id,
     username: u.username,
+    email: u.email,
     role: u.role,
     createdAt: u.createdAt,
     lastLoginTime: u.lastLoginTime,

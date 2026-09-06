@@ -170,13 +170,36 @@ export const bashTool: Tool = {
     if (command === '') return '错误：command 必填';
     const isWin = process.platform === 'win32';
     return new Promise((resolve) => {
+      // I01：POSIX 用进程组（detached），Windows 用 taskkill /T——终止时整树带走，防孤儿进程
       const child = spawn(isWin ? 'cmd.exe' : '/bin/sh', isWin ? ['/d', '/s', '/c', command] : ['-c', command], {
         cwd: ctx.taskDir,
         windowsHide: true,
-        timeout: BASH_TIMEOUT_MS,
+        ...(isWin ? {} : { detached: true }),
         env: ctx.extraEnv ? { ...process.env, ...ctx.extraEnv } : undefined,
       });
+      /** 整棵进程树强制终止（超时/中止时；不再依赖 spawn 的 timeout 只杀直接子进程）。 */
+      const killTree = (): void => {
+        if (child.killed || child.exitCode !== null) return;
+        if (isWin) {
+          spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true });
+        } else if (child.pid) {
+          try {
+            process.kill(-child.pid, 'SIGKILL');
+          } catch {
+            child.kill('SIGKILL');
+          }
+        } else {
+          child.kill('SIGKILL');
+        }
+      };
+      const timer = setTimeout(() => {
+        timedOut = true;
+        killTree();
+      }, BASH_TIMEOUT_MS);
+      const onAbort = (): void => killTree();
+      ctx.signal?.addEventListener('abort', onAbort, { once: true });
       let out = '';
+      let timedOut = false;
       child.stdout?.on('data', (d: Buffer) => {
         if (out.length < BASH_OUTPUT_CAP) out += d.toString();
       });
@@ -185,8 +208,11 @@ export const bashTool: Tool = {
       });
       child.on('error', (err) => resolve(`执行失败：${err.message}`));
       child.on('close', (code, signal) => {
+        clearTimeout(timer);
+        ctx.signal?.removeEventListener('abort', onAbort);
+        if (ctx.signal?.aborted) return resolve('（已中止：命令随任务停止被终止）');
         const head = out.length > 0 ? `\n${out.slice(0, BASH_OUTPUT_CAP)}` : '\n（无输出）';
-        resolve(`exit=${code ?? signal ?? '?'}${head}`);
+        resolve(`${timedOut ? '超时强制终止（整棵进程树已结束）' : `exit=${code ?? signal ?? '?'}`}${head}`);
       });
     });
   },

@@ -38,22 +38,57 @@ const mock: Server = createHttpServer((req, res) => {
     const send = (payload: unknown): void => {
       res.write(`data: ${JSON.stringify(payload)}\n\n`);
     };
-    // 收集请求体判断是否带 tool 结果（第二轮回最终答案）
+    // 收集请求体判断轮次（tool 结果回填计数）
     let body = '';
     req.on('data', (chunk: Buffer) => {
       body += chunk.toString();
     });
     req.on('end', () => {
-      const hasToolResult = body.includes('"role":"tool"');
-      if (!hasToolResult) {
-        // 第一轮：发起 read 工具调用
+      const toolResultCount = (body.match(/"role":"tool"/g) ?? []).length;
+      if (toolResultCount === 0) {
         send({ choices: [{ delta: { role: 'assistant' } }] });
         send({
           choices: [
             {
               delta: {
                 tool_calls: [
-                  { index: 0, id: 'call_w1_1', function: { name: 'read', arguments: '{"path": "简介.txt"}' } },
+                  {
+                    index: 0,
+                    id: 'call_w1_plan1',
+                    function: {
+                      name: 'update_plan',
+                      arguments: JSON.stringify({ steps: [
+                        { step: '读取简介文件', status: 'in_progress' },
+                        { step: '输出总结', status: 'pending' },
+                      ] }),
+                    },
+                  },
+                  { index: 1, id: 'call_w1_1', function: { name: 'read', arguments: '{"path": "简介.txt"}' } },
+                ],
+              },
+            },
+          ],
+        });
+        send('data: [DONE]');
+        res.end();
+      } else if (toolResultCount === 2) {
+        // 第二轮（update_plan+read 两个结果回填）：计划推进（读取完成→总结进行中）
+        send({
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'call_w1_plan2',
+                    function: {
+                      name: 'update_plan',
+                      arguments: JSON.stringify({ steps: [
+                        { step: '读取简介文件', status: 'completed' },
+                        { step: '输出总结', status: 'in_progress' },
+                      ] }),
+                    },
+                  },
                 ],
               },
             },
@@ -62,7 +97,7 @@ const mock: Server = createHttpServer((req, res) => {
         send('data: [DONE]');
         res.end();
       } else {
-        // 第二轮：流式最终答案
+        // 第三轮（计划推进结果回填，3 个 tool 结果）：流式最终答案
         for (const text of ['读取完成。', '该文件介绍了 WorkPivot 的定位：', '面向企业的私有化智能工作台。']) {
           send({ choices: [{ delta: { content: text } }] });
         }
@@ -152,16 +187,23 @@ try {
     console.log('（调试）全部事件类型：', events.map((e) => e['type']).join(','));
   }
   const fullText = deltas.map((d) => d.text).join('');
-  const toolUse = events.find((e) => e['type'] === 'tool_use') as { toolName?: string; args?: { path?: string } } | undefined;
-  const toolResult = events.find((e) => e['type'] === 'tool_result') as { ok?: boolean; message?: string } | undefined;
+  const toolUse = events.find((e) => e['type'] === 'tool_use' && (e as { toolName?: string }).toolName === 'read') as { toolName?: string; args?: { path?: string } } | undefined;
+  const toolResult = events.find((e) => e['type'] === 'tool_result' && (e as { toolName?: string }).toolName === 'read') as { ok?: boolean; message?: string } | undefined;
   const done = events.find((e) => e['type'] === 'done') as { stopReason?: string } | undefined;
 
-  assert('T1-04 循环：两轮采样（工具轮+总结轮）', modelCalls === 2, `modelCalls=${modelCalls}`);
+  assert('T1-04 循环：三轮采样（计划轮+读取轮+总结轮）', modelCalls === 3, `modelCalls=${modelCalls}`);
   assert('T1-05 read 工具被调用', toolUse?.toolName === 'read' && toolUse.args?.['path'] === '简介.txt');
   assert('T1-05 工具真实读到了文件内容', toolResult?.ok === true && (toolResult.message ?? '').includes('私有化智能工作台'), toolResult?.message?.slice(0, 60));
   assert('T1-06 流式输出 deltas', deltas.length >= 3, `${deltas.length} 个增量`);
   assert('最终总结内容完整', fullText.includes('读取完成') && fullText.includes('私有化智能工作台'), fullText.slice(0, 60));
   assert('F03 雏形：done 事件且 stopReason=completed', done?.stopReason === 'completed');
+
+  // M1-12/A03：计划工具链路
+  const planEvents = events.filter((e) => e['type'] === 'plan_update') as Array<{ steps: Array<{ step: string; status: string }> }>;
+  assert('A03 update_plan 推送 plan_update 事件（两次）', planEvents.length === 2, `${planEvents.length} 次`);
+  assert('A03 计划事件含阶段条目', planEvents[0]?.steps?.some((s) => s.step === '读取简介文件' && s.status === 'in_progress') === true, JSON.stringify(planEvents[0]?.steps));
+  const planView = await json<{ steps: Array<{ step: string; status: string }> }>(`/api/tasks/${task.id}/plan`);
+  assert('A03 计划落盘可回读（最终状态）', planView.steps.some((s) => s.step === '读取简介文件' && s.status === 'completed') === true, JSON.stringify(planView.steps));
 
   // 4. 转写落盘（F01 v0）
   const transcriptPath = join(home, 'data', 'tasks', task.id, 'transcript.jsonl');

@@ -8,9 +8,13 @@ import { delimiter, join, resolve as resolvePath } from 'node:path';
 import {
   BUILTIN_TOOLS,
   MAX_STEPS_DEFAULT,
+  createAnthropicClient,
   createOpenAICompatibleClient,
   runAgentLoop,
+  verifyAnthropicProvider,
+  verifyProvider,
   type ChatMessage,
+  type ModelClient,
   type ToolAccessRequest,
 } from '@workpivot/core';
 import { verifyClaimedFiles } from './chat-gate.js';
@@ -24,15 +28,18 @@ import {
   resolveToken,
   createUser,
   deleteUser,
+  changePassword,
   updateUserRole,
+  updateUserProfile,
   listUsers,
   type PublicUser,
   type Role,
 } from './auth.js';
 import { evaluateAccess, getTier, resolvePendingRequest, setTier, TIER_LABELS, listAllowDirs, type Decision, type Tier } from './permissions.js';
 import { appendTranscript, createTask, getTask, listTasks, readHistory, readTranscript, updateTaskStatus } from './tasks.js';
-import { audit, argsHash } from './audit.js';
+import { audit, argsHash, readAllAudit } from './audit.js';
 import { deleteProvider, listProviders, resolveActiveProvider, saveProvider, setActiveProvider, updateProvider } from './providers.js';
+import { listTrash } from './trash.js';
 import {
   DEFAULT_PROJECT_ID,
   createProject,
@@ -44,7 +51,8 @@ import {
 } from './projects.js';
 import { deleteTempTask, workspaceRoot } from './tasks.js';
 import { buildMemoryTools, resolveMemoryConfirm } from './memory-tools.js';
-import { initProjectMemory, memoryView, renderMemoryInjection, setMemoryEnabled } from './memory.js';
+import { buildPlanTool, readPlan } from './plan.js';
+import { initProjectMemory, memoryView, removeEntryById, renderMemoryInjection, setMemoryEnabled, writeHandbook } from './memory.js';
 
 export interface AppOptions {
   /** 前端构建产物目录（apps/web/dist）。存在则托管静态资源并提供 SPA 回退。 */
@@ -86,7 +94,7 @@ export function createApp(opts: AppOptions = {}): Express {
 
   // ---- 认证（T2-01）：除公开路径外全部要求 Bearer 令牌 ----
   app.use('/api', (req, res, next) => {
-    if (PUBLIC_PATHS.has(req.path) || req.path.startsWith('/auth/')) return next();
+    if (PUBLIC_PATHS.has(req.path)) return next();
     const header = req.headers.authorization;
     const user = resolveToken(header?.startsWith('Bearer ') ? header.slice(7) : undefined);
     if (!user) return res.status(401).json({ error: '未登录或会话已过期' });
@@ -134,6 +142,16 @@ export function createApp(opts: AppOptions = {}): Express {
     res.json({ ok: true });
   });
 
+  app.post('/api/auth/password', (req, res) => {
+    const user = (req as AuthedRequest).user;
+    if (!user) return res.status(401).json({ error: '未登录或会话已过期' });
+    const { currentPassword, newPassword } = req.body as { currentPassword?: string; newPassword?: string };
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: 'currentPassword/newPassword 必填' });
+    const result = changePassword(user.id, currentPassword, newPassword);
+    if (result.ok) res.json({ ok: true });
+    else res.status(400).json({ error: result.error });
+  });
+
   // ---- 用户管理（仅管理员）----
   app.get('/api/users', (req, res) => {
     if (!requireAdmin(req as AuthedRequest)) return res.status(403).json({ error: '仅管理员可查看用户' });
@@ -166,13 +184,23 @@ export function createApp(opts: AppOptions = {}): Express {
     }
   });
 
+  app.patch('/api/users/:id', (req, res) => {
+    const admin = requireAdmin(req as AuthedRequest);
+    if (!admin) return res.status(403).json({ error: '仅管理员可修改用户' });
+    const { email } = req.body as { email?: string | null };
+    if (email === undefined) return res.status(400).json({ error: 'email 必填' });
+    const result = updateUserProfile(req.params['id'] ?? '', email);
+    if (result.ok) res.json({ ok: true });
+    else res.status(400).json({ error: result.error });
+  });
+
   app.post('/api/users', (req, res) => {
     const admin = requireAdmin(req as AuthedRequest);
     if (!admin) return res.status(403).json({ error: '仅管理员可创建用户' });
-    const { username, password, role } = req.body as { username?: string; password?: string; role?: Role };
+    const { username, password, role, email } = req.body as { username?: string; password?: string; role?: Role; email?: string };
     if (!username || !password || !role) return res.status(400).json({ error: 'username/password/role 必填' });
     try {
-      const user = createUser(username, password, role === 'admin' ? 'admin' : 'member');
+      const user = createUser(username, password, role === 'admin' ? 'admin' : 'member', email);
       audit({ user: admin.username, event: 'user_created', detail: `${user.username}(${user.role})` });
       res.json({ user });
     } catch (err) {
@@ -216,21 +244,22 @@ export function createApp(opts: AppOptions = {}): Express {
   });
 
   app.post('/api/providers/verify', async (req, res) => {
-    const { baseUrl, apiKey } = req.body as { baseUrl?: string; apiKey?: string };
+    const { baseUrl, apiKey, protocol } = req.body as { baseUrl?: string; apiKey?: string; protocol?: string };
     if (!baseUrl) return res.status(400).json({ error: 'baseUrl 必填' });
-    const { verifyProvider } = await import('@workpivot/core');
-    res.json(await verifyProvider(baseUrl, apiKey));
+    // M1-06：按协议分流验活
+    const result = protocol === 'anthropic' ? await verifyAnthropicProvider(baseUrl, apiKey) : await verifyProvider(baseUrl, apiKey);
+    res.json(result);
   });
 
   app.post('/api/providers', async (req, res) => {
     // F3：模型配置收敛到管理后台——仅管理员（桌面成员 403）
     if (requireAdmin(req as AuthedRequest) === null) return res.status(403).json({ error: '仅管理员可配置模型' });
-    const { name, baseUrl, modelId, apiKey, verify } = req.body as {
-      name?: string; baseUrl?: string; modelId?: string; apiKey?: string; verify?: boolean;
+    const { name, baseUrl, modelId, apiKey, verify, protocol } = req.body as {
+      name?: string; baseUrl?: string; modelId?: string; apiKey?: string; verify?: boolean; protocol?: string;
     };
     if (!name || !baseUrl || !modelId) return res.status(400).json({ error: 'name/baseUrl/modelId 必填' });
     try {
-      const result = await saveProvider({ name, baseUrl, modelId, apiKey, verify });
+      const result = await saveProvider({ name, baseUrl, modelId, apiKey, verify, protocol });
       res.json(result);
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
@@ -240,12 +269,12 @@ export function createApp(opts: AppOptions = {}): Express {
   app.put('/api/providers/:id', async (req, res) => {
     // F3：编辑供应商（仅管理员；apiKey 留空 = 保留原 key）
     if (requireAdmin(req as AuthedRequest) === null) return res.status(403).json({ error: '仅管理员可配置模型' });
-    const { name, baseUrl, modelId, apiKey, verify } = req.body as {
-      name?: string; baseUrl?: string; modelId?: string; apiKey?: string; verify?: boolean;
+    const { name, baseUrl, modelId, apiKey, verify, protocol } = req.body as {
+      name?: string; baseUrl?: string; modelId?: string; apiKey?: string; verify?: boolean; protocol?: string;
     };
     if (!name || !baseUrl || !modelId) return res.status(400).json({ error: 'name/baseUrl/modelId 必填' });
     try {
-      const result = await updateProvider(req.params['id'] ?? '', { name, baseUrl, modelId, apiKey, verify });
+      const result = await updateProvider(req.params['id'] ?? '', { name, baseUrl, modelId, apiKey, verify, protocol });
       audit({ user: (req as AuthedRequest).user?.username, event: 'provider_updated', detail: name });
       res.json(result);
     } catch (err) {
@@ -380,9 +409,11 @@ export function createApp(opts: AppOptions = {}): Express {
     if (running.has(task.id)) return res.status(409).json({ error: '该任务正在运行中' });
     if (running.size >= PARALLEL_LIMIT) return res.status(429).json({ error: `并行任务已达上限 ${PARALLEL_LIMIT} 个` });
 
-    let client: ReturnType<typeof createOpenAICompatibleClient>;
+    let client: ModelClient;
     try {
-      client = createOpenAICompatibleClient(resolveActiveProvider());
+      // M1-06：按供应商协议选客户端（openai 兼容 / anthropic Messages）
+      const cfg = resolveActiveProvider();
+      client = cfg.protocol === 'anthropic' ? createAnthropicClient(cfg) : createOpenAICompatibleClient(cfg);
     } catch (err) {
       return res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
     }
@@ -444,12 +475,14 @@ ${capped}
     let system = buildSystemPrompt(task.directory, getTier()) + renderSkillDirectory(skills);
     system += renderMemoryInjection(user?.id ?? 'local', task.directory);
     system += [
-
+      '',
       '# 记忆纪律',
       '用户明确要求记住信息时,用 remember 工具保存(条目区,静默生效)。',
       '把信息写入长期记忆(手写区)用 promote_memory 工具,调用后会弹出确认卡,用户可拒绝。',
       '用户要求忘掉某事时用 forget 工具。',
       '项目的长期信息写入 .workpivot/memory/MEMORY.md(用 write 工具),随项目目录走。',
+      '# 计划纪律（A03）',
+      '多步任务（预计 ≥3 步）开工前先用 update_plan 建立阶段计划；每完成一个阶段或计划调整时全量更新；阶段全部完成后收尾。',
     ].join('\n');
 
     const requestAccess: (req: ToolAccessRequest) => Promise<boolean> = async (access) => {
@@ -486,7 +519,7 @@ ${capped}
     const runWithGate = async (attempt: number, baseMessages: ChatMessage[]): Promise<{ stopReason: string; steps: number }> => {
       const result = await runAgentLoop({
         client,
-        tools: [...BUILTIN_TOOLS, ...memoryTools],
+        tools: [...BUILTIN_TOOLS, ...memoryTools, planTool],
         system,
         messages: baseMessages,
         taskDir: task.directory,
@@ -533,6 +566,7 @@ ${capped}
     }
 
     const memoryTools = buildMemoryTools(user?.id ?? 'local', task.id, send);
+    const planTool = buildPlanTool(task.id, send);
 
     void runWithGate(0, history)
       .then((result) => {
@@ -576,6 +610,49 @@ ${capped}
     res.json({ enabled });
   });
 
+  // M1-11：设置页记忆面板——手写区编辑（MEMORY.md 全量替换，长度封顶防滥用）
+  app.put('/api/memory/handbook', (req, res) => {
+    const user = (req as AuthedRequest).user;
+    if (!user) return res.status(401).json({ error: '未登录' });
+    const { content } = req.body as { content?: string };
+    if (typeof content !== 'string') return res.status(400).json({ error: 'content 必填（字符串）' });
+    if (content.length > 20_000) return res.status(400).json({ error: '手写区超过 20000 字符上限' });
+    writeHandbook(user.id, content);
+    audit({ user: user.username, event: 'memory_handbook_edited', detail: `${content.length} 字符` });
+    res.json({ ok: true });
+  });
+
+  // M1-11：设置页记忆面板——按 id 删除单条条目
+  app.delete('/api/memory/entries/:id', (req, res) => {
+    const user = (req as AuthedRequest).user;
+    if (!user) return res.status(401).json({ error: '未登录' });
+    const ok = removeEntryById(user.id, req.params['id'] ?? '');
+    if (!ok) return res.status(404).json({ error: '条目不存在' });
+    audit({ user: user.username, event: 'memory_entry_deleted', detail: req.params['id'] });
+    res.json({ ok: true });
+  });
+
+  // ---- M1-10：审计查看/导出（I03）+ 回收站清单（B03），仅管理员 ----
+  app.get('/api/audit', (req, res) => {
+    if (requireAdmin(req as AuthedRequest) === null) return res.status(403).json({ error: '仅管理员可查看审计' });
+    const rows = readAllAudit().slice(-500).map((line) => JSON.parse(line) as Record<string, unknown>);
+    res.json({ rows });
+  });
+
+  app.get('/api/audit/export', (req, res) => {
+    if (requireAdmin(req as AuthedRequest) === null) return res.status(403).json({ error: '仅管理员可导出审计' });
+    const rows = readAllAudit();
+    audit({ user: (req as AuthedRequest).user?.username, event: 'audit_exported', detail: `${rows.length} 行` });
+    res.setHeader('content-type', 'application/jsonl; charset=utf-8');
+    res.setHeader('content-disposition', `attachment; filename="workpivot-audit-${new Date().toISOString().slice(0, 10)}.jsonl"`);
+    res.send(rows.join('\n'));
+  });
+
+  app.get('/api/trash', (req, res) => {
+    if (requireAdmin(req as AuthedRequest) === null) return res.status(403).json({ error: '仅管理员可查看回收站' });
+    res.json({ items: listTrash() });
+  });
+
   // ---- F1 项目（两级结构）----
   app.get('/api/projects', (_req, res) => {
     res.json({ projects: listProjects(), defaultProjectId: DEFAULT_PROJECT_ID });
@@ -609,6 +686,13 @@ ${capped}
     const task = getTask(req.params['id'] ?? '');
     if (!task) return res.status(404).json({ error: '任务不存在' });
     res.json({ rows: readTranscript(task.id) });
+  });
+
+  // M1-12/A03：任务计划（update_plan 工具落盘，前端打开任务时回显）
+  app.get('/api/tasks/:id/plan', (req, res) => {
+    const task = getTask(req.params['id'] ?? '');
+    if (!task) return res.status(404).json({ error: '任务不存在' });
+    res.json({ steps: readPlan(task.id) });
   });
 
   // 授权卡决策（T2-05）：渲染层回填，唤醒等待中的工具调用

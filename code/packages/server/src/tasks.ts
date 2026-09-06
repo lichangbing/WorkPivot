@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:f
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { appendLine, ensureWorkpivotDir, readJsonSafe, writeAtomic } from './store.js';
+import { moveToTrash } from './trash.js';
 
 export type TaskStatus = 'running' | 'idle' | 'interrupted' | 'stopped';
 
@@ -108,16 +109,16 @@ export function setTaskProject(taskId: string, projectId: string | null): void {
   writeAtomic(taskFile(taskId), JSON.stringify({ ...task, projectId: projectId ?? undefined }, null, 2));
 }
 
-/** F2：删除临时任务（应用数据目录 + 临时工作目录一并清理；非临时任务拒绝）。 */
+/** F2：删除临时任务（B03 回收站：工作目录与应用数据目录移入 trash，可恢复）。 */
 export function deleteTempTask(taskId: string): { ok: boolean; error?: string } {
   const task = getTask(taskId);
   if (!task) return { ok: false, error: '任务不存在' };
   if (!task.temp) return { ok: false, error: '仅临时任务可删除' };
   const tempRoot = join(workspaceRoot(), '_temp');
   if (existsSync(task.directory) && task.directory.startsWith(tempRoot)) {
-    rmSync(task.directory, { recursive: true, force: true });
+    moveToTrash(task.directory, `temp-${taskId}`);
   }
-  rmSync(taskDir(taskId), { recursive: true, force: true });
+  moveToTrash(taskDir(taskId), `taskdata-${taskId}`);
   return { ok: true };
 }
 

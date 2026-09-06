@@ -3,6 +3,7 @@
  * 覆盖 DeepSeek/Qwen/GLM/Kimi/Ollama/LM Studio 等一切 OpenAI 兼容端点。
  * 循环信号依据竞品实证：只认流中组装出的 tool_calls，不依赖 finish_reason。
  */
+import { parseSSEStream } from './sse.js';
 
 export interface ToolCall {
   id: string;
@@ -46,24 +47,6 @@ interface AccumulatedToolCall {
   id: string;
   name: string;
   arguments: string;
-}
-
-async function* parseSSEStream(body: ReadableStream<Uint8Array>, signal?: AbortSignal): AsyncGenerator<string> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  while (true) {
-    if (signal?.aborted) throw new Error('aborted');
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let idx: number;
-    while ((idx = buffer.indexOf('\n')) >= 0) {
-      const line = buffer.slice(0, idx).trimEnd();
-      buffer = buffer.slice(idx + 1);
-      if (line.startsWith('data:')) yield line.slice(5).trim();
-    }
-  }
 }
 
 export function createOpenAICompatibleClient(options: ModelClientOptions): ModelClient {

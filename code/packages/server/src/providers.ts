@@ -1,18 +1,22 @@
 /**
  * T1-06/C02/C03：模型供应商注册表。
  * M0 单机：管理员=本机用户；key 经 SecretBox 加密落盘（I04），接口返回永远打码。
+ * M1-06：protocol 字段区分协议客户端（openai=兼容端点 / anthropic=Messages 协议）。
  */
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import { verifyProvider } from '@workpivot/core';
+import { verifyAnthropicProvider, verifyProvider } from '@workpivot/core';
 import { ensureWorkpivotDir, readJsonSafe, writeAtomicWithBackup } from './store.js';
 import { getSecretBox } from './secret.js';
+
+export type ProviderProtocol = 'openai' | 'anthropic';
 
 export interface Provider {
   id: string;
   name: string;
   baseUrl: string;
   modelId: string;
+  protocol?: ProviderProtocol;
   apiKey?: { enc: 'safeStorage' | 'b64'; data: string };
   verified?: boolean;
   createdAt: string;
@@ -43,6 +47,7 @@ export interface PublicProvider {
   name: string;
   baseUrl: string;
   modelId: string;
+  protocol: ProviderProtocol;
   verified?: boolean;
   hasApiKey: boolean;
   active: boolean;
@@ -54,6 +59,7 @@ function toPublic(p: Provider, activeId?: string): PublicProvider {
     name: p.name,
     baseUrl: p.baseUrl,
     modelId: p.modelId,
+    protocol: p.protocol ?? 'openai',
     verified: p.verified,
     hasApiKey: Boolean(p.apiKey),
     active: p.id === activeId,
@@ -72,15 +78,28 @@ export interface SaveProviderInput {
   name: string;
   baseUrl: string;
   modelId: string;
+  protocol?: string;
   apiKey?: string;
   verify?: boolean;
 }
 
+/** 协议字段规范化：只认 openai/anthropic，缺省 openai。 */
+function normalizeProtocol(raw?: string): ProviderProtocol {
+  return raw === 'anthropic' ? 'anthropic' : 'openai';
+}
+
+/** M1-06：按协议分流验活（openai→GET /models Bearer；anthropic→GET /v1/models x-api-key）。 */
+async function verifyByProtocol(input: SaveProviderInput): Promise<void> {
+  const protocol = normalizeProtocol(input.protocol);
+  const result =
+    protocol === 'anthropic'
+      ? await verifyAnthropicProvider(input.baseUrl, input.apiKey)
+      : await verifyProvider(input.baseUrl, input.apiKey);
+  if (!result.ok) throw new Error(`验活失败：${result.detail}`);
+}
+
 export async function saveProvider(input: SaveProviderInput): Promise<{ provider: PublicProvider; verify?: { ok: boolean; detail: string } }> {
-  if (input.verify) {
-    const result = await verifyProvider(input.baseUrl, input.apiKey);
-    if (!result.ok) throw new Error(`验活失败：${result.detail}`);
-  }
+  if (input.verify) await verifyByProtocol(input);
   const registry = load();
   const existing = registry.providers.find((p) => p.name === input.name);
   const provider: Provider = {
@@ -88,6 +107,7 @@ export async function saveProvider(input: SaveProviderInput): Promise<{ provider
     name: input.name,
     baseUrl: input.baseUrl,
     modelId: input.modelId,
+    protocol: normalizeProtocol(input.protocol),
     createdAt: existing?.createdAt ?? new Date().toISOString(),
     verified: true,
   };
@@ -110,13 +130,11 @@ export async function updateProvider(id: string, input: SaveProviderInput): Prom
   const registry = load();
   const existing = registry.providers.find((p) => p.id === id);
   if (!existing) throw new Error(`供应商不存在：${id}`);
-  if (input.verify) {
-    const result = await verifyProvider(input.baseUrl, input.apiKey);
-    if (!result.ok) throw new Error(`验活失败：${result.detail}`);
-  }
+  if (input.verify) await verifyByProtocol(input);
   existing.name = input.name;
   existing.baseUrl = input.baseUrl;
   existing.modelId = input.modelId;
+  existing.protocol = normalizeProtocol(input.protocol);
   existing.verified = true;
   if (input.apiKey) existing.apiKey = getSecretBox().encrypt(input.apiKey);
   save(registry);
@@ -148,6 +166,7 @@ export interface ActiveModelClientConfig {
   baseUrl: string;
   apiKey?: string;
   model: string;
+  protocol: ProviderProtocol;
 }
 
 /** 取当前激活供应商并解密 key（服务层内部使用，永不外传）。 */
@@ -160,5 +179,6 @@ export function resolveActiveProvider(): ActiveModelClientConfig {
     baseUrl: provider.baseUrl,
     apiKey: provider.apiKey ? getSecretBox().decrypt(provider.apiKey) : undefined,
     model: provider.modelId,
+    protocol: provider.protocol ?? 'openai',
   };
 }

@@ -20,7 +20,8 @@
     "eval:w4": "tsx eval/W4-smoke.mts",
     "eval:w5": "tsx eval/W5-memory.mts",
     "eval:w6": "tsx eval/W6-structure.mts",
-    "eval:w7": "tsx eval/W7-file.mts"
+    "eval:w7": "tsx eval/W7-file.mts",
+    "eval:w8": "tsx eval/W8-anthropic.mts"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

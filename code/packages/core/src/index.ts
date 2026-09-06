@@ -1,6 +1,6 @@
 /**
  * agent 编排内核（ADR-002：自研微内核）。
- * T1-04 循环 / T1-05 内置工具 / T1-06 OpenAI 兼容模型客户端。
+ * T1-04 循环 / T1-05 内置工具 / T1-06 OpenAI 兼容模型客户端 / M1-06 Anthropic Messages 客户端。
  */
 
 export const CORE_VERSION = '0.0.0';
@@ -27,3 +27,5 @@ export {
   type ToolCall,
   type ToolSchema,
 } from './model/openai.js';
+export { createAnthropicClient, verifyAnthropicProvider } from './model/anthropic.js';
+

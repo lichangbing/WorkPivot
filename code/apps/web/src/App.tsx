@@ -15,6 +15,7 @@ import {
   uploadAttachment,
   type ChatEvent,
   type HistoryMessage,
+  type PlanStep,
   type Project,
   type PublicProvider,
   type PublicUser,
@@ -63,6 +64,7 @@ export default function App(): React.JSX.Element {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [chat, setChat] = useState<ChatItem[]>([]);
+  const [planSteps, setPlanSteps] = useState<PlanStep[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [providers, setProviders] = useState<PublicProvider[]>([]);
@@ -149,6 +151,8 @@ export default function App(): React.JSX.Element {
     const detail = await api.getTask(task.id);
     setChat(detail.history.map((m: HistoryMessage) => ({ kind: m.role, text: m.content })));
     setRightPanel(await api.getFiles(task.id));
+    // M1-12：回显任务计划（update_plan 工具落盘）
+    setPlanSteps((await api.getPlan(task.id)).steps);
   }, []);
 
   const loadWorkspaceData = useCallback(async (): Promise<void> => {
@@ -369,6 +373,9 @@ export default function App(): React.JSX.Element {
               text: `🧠 记忆写入确认：${event.content}`,
               request: { id: event.id, tool: 'memory_promote', reason: event.content, paths: [], hasPaths: false, scope: 'once' },
             });
+          } else if (event.type === 'plan_update') {
+            // M1-12：update_plan 工具推送的计划更新（不入聊天流，渲染为计划卡）
+            setPlanSteps(event.steps);
           } else if (event.type === 'gate_reject') {
             next.push({
               kind: 'gate',
@@ -718,6 +725,7 @@ export default function App(): React.JSX.Element {
                 tierLabels={tierLabels}
                 memoryOn={memoryOn}
                 activeModel={activeProvider ? `${activeProvider.name} / ${activeProvider.modelId}` : null}
+                activeTaskId={activeTask?.id}
                 onTierChange={(t) => void changeTier(t)}
                 onMemoryToggle={(v) => void toggleMemory(v)}
                 onLogout={logout}
@@ -783,6 +791,46 @@ export default function App(): React.JSX.Element {
           </div>
 
           <div className="flex-1 overflow-y-auto px-6 py-4">
+            {/* M1-12：任务计划卡（update_plan 工具维护，阶段级主线） */}
+            {planSteps.length > 0 && (
+              <div className="mb-4 rounded-lg border border-neutral-800 bg-neutral-900/60 px-4 py-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-medium text-neutral-300">任务计划</span>
+                  <span className="text-xs text-neutral-500">
+                    {planSteps.filter((s) => s.status === 'completed').length}/{planSteps.length} 完成
+                  </span>
+                </div>
+                <ol className="space-y-1">
+                  {planSteps.map((s, i) => (
+                    <li key={i} className="flex items-center gap-2 text-xs">
+                      <span
+                        className={`inline-block h-3.5 w-3.5 shrink-0 rounded-full border text-center text-[9px] leading-[12px] ${
+                          s.status === 'completed'
+                            ? 'border-emerald-600 bg-emerald-800/60 text-emerald-300'
+                            : s.status === 'in_progress'
+                              ? 'border-blue-500 bg-blue-800/60 text-blue-300'
+                              : 'border-neutral-600 text-neutral-500'
+                        }`}
+                      >
+                        {s.status === 'completed' ? '✓' : i + 1}
+                      </span>
+                      <span
+                        className={
+                          s.status === 'completed'
+                            ? 'text-neutral-500 line-through'
+                            : s.status === 'in_progress'
+                              ? 'text-neutral-100'
+                              : 'text-neutral-400'
+                        }
+                      >
+                        {s.step}
+                      </span>
+                      {s.status === 'in_progress' && <span className="text-[10px] text-blue-400">进行中</span>}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
             {chat.length === 0 && (
               <p className="mt-10 text-center text-sm text-neutral-500">选择或新建一个任务，发送第一条消息开始工作</p>
             )}

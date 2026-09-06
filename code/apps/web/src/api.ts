@@ -22,18 +22,27 @@ export interface PublicProvider {
   name: string;
   baseUrl: string;
   modelId: string;
+  protocol: 'openai' | 'anthropic';
   verified?: boolean;
   hasApiKey: boolean;
   active: boolean;
 }
 
+/** M1-06：供应商协议（openai=兼容端点，anthropic=Messages 协议）。 */
+export type ProviderProtocol = 'openai' | 'anthropic';
+
 export interface PublicUser {
   id: string;
   username: string;
+  email?: string;
   role: 'admin' | 'member';
+  createdAt?: string;
+  lastLoginTime?: string;
 }
 
 export type Tier = 'readonly' | 'ask' | 'workdir' | 'auto';
+
+export type PlanStep = { step: string; status: 'pending' | 'in_progress' | 'completed' };
 
 export type ChatEvent =
   | { type: 'assistant_delta'; text: string }
@@ -41,6 +50,7 @@ export type ChatEvent =
   | { type: 'tool_result'; toolName: string; ok?: boolean; message?: string }
   | { type: 'permission_request'; id: string; tool: string; kind: 'read' | 'write' | 'bash'; paths: Array<{ path: string; mode: string }>; command?: string; reason: string; scope: string }
   | { type: 'memory_confirm'; id: string; content: string; taskId: string }
+  | { type: 'plan_update'; steps: PlanStep[] }
   | { type: 'gate_reject'; missing: string[]; final?: boolean }
   | { type: 'error'; message: string }
   | { type: 'done'; stopReason: string; steps: number };
@@ -99,12 +109,16 @@ export const api = {
   login: (username: string, password: string): Promise<{ token: string; user: PublicUser }> =>
     jsonFetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   logout: (): Promise<{ ok: boolean }> => jsonFetch('/api/auth/logout', { method: 'POST' }),
+  changePassword: (currentPassword: string, newPassword: string): Promise<{ ok: boolean }> =>
+    jsonFetch('/api/auth/password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
   listUsers: (): Promise<{ users: PublicUser[] }> => jsonFetch('/api/users'),
-  createUser: (username: string, password: string, role: 'admin' | 'member'): Promise<{ user: PublicUser }> =>
-    jsonFetch('/api/users', { method: 'POST', body: JSON.stringify({ username, password, role }) }),
+  createUser: (username: string, password: string, role: 'admin' | 'member', email?: string): Promise<{ user: PublicUser }> =>
+    jsonFetch('/api/users', { method: 'POST', body: JSON.stringify({ username, password, role, email: email?.trim() || undefined }) }),
   deleteUser: (id: string): Promise<{ ok: boolean }> => jsonFetch(`/api/users/${id}`, { method: 'DELETE' }),
   updateUserRole: (id: string, role: 'admin' | 'member'): Promise<{ ok: boolean }> =>
     jsonFetch(`/api/users/${id}/role`, { method: 'PUT', body: JSON.stringify({ role }) }),
+  updateUserEmail: (id: string, email?: string): Promise<{ ok: boolean }> =>
+    jsonFetch(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify({ email: email?.trim() || null }) }),
   getSettings: (): Promise<{ permissionTier: Tier; tierLabels: Record<string, string>; allowDirs: string[] }> =>
     jsonFetch('/api/settings'),
   setTier: (tier: Tier): Promise<{ permissionTier: Tier }> =>
@@ -122,26 +136,31 @@ export const api = {
     jsonFetch('/api/skills/toggle', { method: 'POST', body: JSON.stringify({ name, disabled }) }),
   getTask: (id: string): Promise<{ task: Task; history: HistoryMessage[] }> => jsonFetch(`/api/tasks/${id}`),
   getTranscript: (id: string): Promise<{ rows: TranscriptRow[] }> => jsonFetch(`/api/tasks/${id}/transcript`),
+  getPlan: (id: string): Promise<{ steps: PlanStep[] }> => jsonFetch(`/api/tasks/${id}/plan`),
   getFiles: (id: string): Promise<{ directory: string; files: string[] }> => jsonFetch(`/api/tasks/${id}/files`),
   stop: (id: string): Promise<{ ok: boolean }> => jsonFetch(`/api/tasks/${id}/stop`, { method: 'POST' }),
   decidePermission: (taskId: string, id: string, decision: 'allow' | 'deny' | 'session' | 'forever'): Promise<{ ok: boolean }> =>
     jsonFetch(`/api/tasks/${taskId}/permission`, { method: 'POST', body: JSON.stringify({ id, decision }) }),
   confirmMemory: (taskId: string, id: string, approve: boolean): Promise<{ ok: boolean }> =>
     jsonFetch(`/api/tasks/${taskId}/memory/confirm`, { method: 'POST', body: JSON.stringify({ id, approve }) }),
-  memoryView: (taskId?: string): Promise<{ handbook: string; entries: Array<{ id: string; content: string }>; project: string; enabled: boolean }> =>
+  memoryView: (taskId?: string): Promise<{ handbook: string; entries: Array<{ id: string; content: string; createdAt?: string }>; project: string; enabled: boolean }> =>
     jsonFetch(`/api/memory${taskId ? `?taskId=${encodeURIComponent(taskId)}` : ''}`),
   memoryToggle: (enabled: boolean): Promise<{ enabled: boolean }> =>
     jsonFetch('/api/memory/toggle', { method: 'POST', body: JSON.stringify({ enabled }) }),
+  memoryEditHandbook: (content: string): Promise<{ ok: boolean }> =>
+    jsonFetch('/api/memory/handbook', { method: 'PUT', body: JSON.stringify({ content }) }),
+  memoryDeleteEntry: (id: string): Promise<{ ok: boolean }> =>
+    jsonFetch(`/api/memory/entries/${id}`, { method: 'DELETE' }),
   memoryState: (): Promise<{ enabled: boolean }> =>
     jsonFetch<{ enabled: boolean }>('/api/memory').then((v) => ({ enabled: v.enabled })),
   listProviders: (): Promise<{ providers: PublicProvider[]; activeId?: string }> => jsonFetch('/api/providers'),
-  saveProvider: (input: { name: string; baseUrl: string; modelId: string; apiKey?: string; verify?: boolean }): Promise<{ provider: PublicProvider }> =>
+  saveProvider: (input: { name: string; baseUrl: string; modelId: string; apiKey?: string; verify?: boolean; protocol?: ProviderProtocol }): Promise<{ provider: PublicProvider }> =>
     jsonFetch('/api/providers', { method: 'POST', body: JSON.stringify(input) }),
-  updateProvider: (id: string, input: { name: string; baseUrl: string; modelId: string; apiKey?: string; verify?: boolean }): Promise<{ provider: PublicProvider }> =>
+  updateProvider: (id: string, input: { name: string; baseUrl: string; modelId: string; apiKey?: string; verify?: boolean; protocol?: ProviderProtocol }): Promise<{ provider: PublicProvider }> =>
     jsonFetch(`/api/providers/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   deleteProvider: (id: string): Promise<{ ok: boolean }> =>
     jsonFetch(`/api/providers/${id}`, { method: 'DELETE' }),
-  verifyProvider: (input: { baseUrl: string; apiKey?: string }): Promise<{ ok: boolean; detail: string }> =>
+  verifyProvider: (input: { baseUrl: string; apiKey?: string; protocol?: ProviderProtocol }): Promise<{ ok: boolean; detail: string }> =>
     jsonFetch('/api/providers/verify', { method: 'POST', body: JSON.stringify(input) }),
   setActiveProvider: (id: string): Promise<{ provider: PublicProvider }> =>
     jsonFetch('/api/providers/active', { method: 'POST', body: JSON.stringify({ id }) }),

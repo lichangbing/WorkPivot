@@ -1,9 +1,10 @@
 /**
  * U2/E01/J01：设置面板（左栏底部 ⚙ 弹出）。
- * 权限档位切换、记忆开关、模型状态只读（+后台入口 for admin）、退出登录。
+ * 权限档位切换、记忆开关（+M1-11 记忆管理入口）、模型状态只读（+后台入口 for admin）、退出登录。
  */
 import { useState } from 'react';
 import type { PublicUser, Tier } from './api';
+import { MemoryModal } from './MemoryModal';
 
 interface Props {
   user: PublicUser;
@@ -11,6 +12,7 @@ interface Props {
   tierLabels: Record<string, string>;
   memoryOn: boolean;
   activeModel: string | null;
+  activeTaskId?: string;
   onTierChange: (tier: Tier) => void;
   onMemoryToggle: (enabled: boolean) => void;
   onLogout: () => void;
@@ -18,8 +20,9 @@ interface Props {
 }
 
 export function SettingsPanel(props: Props): React.JSX.Element {
-  const { user, tier, tierLabels, memoryOn, activeModel, onTierChange, onMemoryToggle, onLogout, onClose } = props;
+  const { user, tier, tierLabels, memoryOn, activeModel, activeTaskId, onTierChange, onMemoryToggle, onLogout, onClose } = props;
   const [memoryBusy, setMemoryBusy] = useState(false);
+  const [memoryModalOpen, setMemoryModalOpen] = useState(false);
 
   return (
     <div className="fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-neutral-700 bg-neutral-900 shadow-2xl">
@@ -58,19 +61,27 @@ export function SettingsPanel(props: Props): React.JSX.Element {
           </select>
         </div>
 
-        {/* 记忆开关 */}
-        <div className="flex items-center justify-between">
-          <span className="text-neutral-300">记忆功能</span>
+        {/* 记忆开关 + 管理入口（M1-11） */}
+        <div>
+          <div className="flex items-center justify-between">
+            <span className="text-neutral-300">记忆功能</span>
+            <button
+              className={`rounded px-2 py-1 text-xs ${memoryOn ? 'bg-emerald-700' : 'bg-neutral-700'}`}
+              disabled={memoryBusy}
+              onClick={() => {
+                setMemoryBusy(true);
+                onMemoryToggle(!memoryOn);
+                setTimeout(() => setMemoryBusy(false), 300);
+              }}
+            >
+              {memoryOn ? '已开启' : '已关闭'}
+            </button>
+          </div>
           <button
-            className={`rounded px-2 py-1 text-xs ${memoryOn ? 'bg-emerald-700' : 'bg-neutral-700'}`}
-            disabled={memoryBusy}
-            onClick={() => {
-              setMemoryBusy(true);
-              onMemoryToggle(!memoryOn);
-              setTimeout(() => setMemoryBusy(false), 300);
-            }}
+            className="mt-1.5 text-xs text-blue-400 hover:text-blue-300"
+            onClick={() => setMemoryModalOpen(true)}
           >
-            {memoryOn ? '已开启' : '已关闭'}
+            查看与编辑记忆 →
           </button>
         </div>
 
@@ -97,6 +108,8 @@ export function SettingsPanel(props: Props): React.JSX.Element {
           退出登录
         </button>
       </div>
+
+      {memoryModalOpen && <MemoryModal taskId={activeTaskId} onClose={() => setMemoryModalOpen(false)} />}
     </div>
   );
 }

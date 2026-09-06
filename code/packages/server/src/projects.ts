@@ -4,9 +4,10 @@
  * 任务级数据（转写/PROGRESS）仍在 data/tasks/<id>/（应用数据与工作产物分离不变）。
  * 存量任务（无 projectId）启动时自动迁移进「默认项目」。
  */
-import { existsSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { ensureWorkpivotDir, readJsonSafe, writeAtomic } from './store.js';
+import { moveToTrash } from './trash.js';
 import { listTasks, setTaskProject, workspaceRoot } from './tasks.js';
 
 export interface Project {
@@ -80,13 +81,13 @@ export function renameProject(projectId: string, name: string): Project | null {
   return updated;
 }
 
-/** 仅摘除项目（不删工作目录文件）；项目下仍有任务时拒绝。 */
+/** 仅摘除项目（不删工作目录文件）；项目下仍有任务时拒绝。B03：项目元数据目录移入回收站。 */
 export function deleteProject(projectId: string): { ok: boolean; error?: string } {
   if (projectId === DEFAULT_PROJECT_ID) return { ok: false, error: '默认项目不可删除' };
   const hasTasks = listTasks().some((t) => t.projectId === projectId);
   if (hasTasks) return { ok: false, error: '项目下仍有任务，请先删除或转移任务' };
   const dir = join(projectsRoot(), projectId);
-  if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+  if (existsSync(dir)) moveToTrash(dir, `project-${projectId}`);
   return { ok: true };
 }
 

@@ -44,17 +44,19 @@
 
 ---
 
-## 批次 3（顺延）：模型与文档补全（原批次 2）
+## 批次 3：模型与文档补全（原批次 2）——进行中（2026-09-07）
 
-| ID | 任务 | 需求 |
-|----|------|------|
-| M1-06 | Anthropic Messages 协议适配（C02 补全；Bedrock/Vertex 直连留 P2） | C02 |
-| M1-07 | H01 企业 Word 模板（上传/设默认/按类型关联） | H01 |
-| M1-08 | H02 PPT 生成 + H03 Excel 生成（复用 W4 工具链与自检） | H02/H03 |
-| M1-09 | F06 定时任务（cron + 错过补跑 + 通知） | F06 |
-| M1-10 | M0 已知债清偿：Job Object 沙箱（I01 强隔离）、删除进回收站（B03）、审计导出（I03） | I01/B03/I03 |
-| M1-11 | 记忆查看/编辑设置页 UI（批次 1 遗留） | E01 |
-| M1-12 | A03 阶段主线=计划工具（类 TodoWrite，主线条目≤计划阶段数） | A03 |
+| ID | 任务 | 需求 | 状态 |
+|----|------|------|------|
+| M1-06 | Anthropic Messages 协议适配（C02 补全；Bedrock/Vertex 直连留 P2）：core `anthropic.ts` 客户端（system 顶层化/tool_result 回填/input_json_delta 累积）+ 供应商 protocol 字段贯通 + 验活分流 + 后台协议下拉；eval/W8 | C02 | ✅ |
+| M1-07 | H01 企业 Word 模板（上传/设默认/按类型关联） | H01 | ⬜ |
+| M1-08 | H02 PPT 生成 + H03 Excel 生成（复用 W4 工具链与自检） | H02/H03 | ⬜ |
+| M1-09 | F06 定时任务（cron + 错过补跑 + 通知） | F06 | ⬜ |
+| M1-10 | M0 已知债清偿：审计查看/导出（I03，admin 面墙+JSONL 下载）、删除进回收站（B03，trash 目录+manifest+后台清单页）、bash 进程树强制终止（I01 轻量版：Windows taskkill /T + POSIX 进程组；真正 Job Object 仍留 M2）；eval/W6 | I01/B03/I03 | ✅ |
+| M1-11 | 记忆查看/编辑设置页 UI：手写区 MEMORY.md 编辑保存（PUT /api/memory/handbook）+ 条目区逐条删除（DELETE /api/memory/entries/:id）+ 项目记忆只读；设置面板「查看与编辑记忆」弹窗 | E01 | ✅ |
+| M1-12 | A03 阶段主线=计划工具：update_plan（全量替换，≤20 条，pending/in_progress/completed）；落盘 data/tasks/<id>/plan.json；SSE plan_update 推送前端计划卡；system 提示计划纪律；eval/W1 | A03 | ✅ |
+
+**批次 3 已完成部分验收**：eval 八套件全绿（W1 17 / W2 18 / W3 13 / W4 12 / W5 12 / W6 27 / W7 7 / W8 13 = 119 断言），基线 eval/baseline.json=pass。剩余 M1-07/08/09（文档生成与定时任务）继续。
 
 ---
 
@@ -68,10 +70,10 @@ J02 拓扑二服务端集中部署（多用户/服务端存储/浏览器 zero-in
 
 | 债 | 来源 | 计划批次 |
 |----|------|----------|
-| Job Object 强隔离（bash 沙箱现为限时+输出上限轻量版） | W2 T2-06 | 批次 3（M1-10） |
-| 删除进回收站（现直接删除） | W2 T2-06 | 批次 3（M1-10） |
-| A03 阶段主线=计划工具 | W3 T3-07 | 批次 3（M1-12） |
-| parentUuid 链预埋（fork/rewind 前置） | W3 T3-01 | 批次 3 |
+| ~~Job Object 强隔离~~ → 已做进程树终止（taskkill /T + 进程组）；真正 Job Object 强隔离仍欠 | W2 T2-06 | 轻量版✅批次 3（M1-10）；Job Object 留 M2 |
+| ~~删除进回收站~~ | W2 T2-06 | ✅ 批次 3（M1-10） |
+| ~~A03 阶段主线=计划工具~~ | W3 T3-07 | ✅ 批次 3（M1-12） |
+| parentUuid 链预埋（fork/rewind 前置） | W3 T3-01 | 批次 3 收尾或 M2 |
 | H01 企业模板 | W4 T4-02 | 批次 3（M1-07） |
 | F06 定时任务 | W4 T4-07 | 批次 3（M1-09） |
-| 记忆查看/编辑设置页 UI | M1 批次 1 | 批次 3（M1-11） |
+| ~~记忆查看/编辑设置页 UI~~ | M1 批次 1 | ✅ 批次 3（M1-11） |

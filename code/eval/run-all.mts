@@ -13,6 +13,7 @@ const suites: Array<[string, string]> = [
   ['W5', 'eval/W5-memory.mts'],
   ['W6', 'eval/W6-structure.mts'],
   ['W7', 'eval/W7-file.mts'],
+  ['W8', 'eval/W8-anthropic.mts'],
 ];
 
 const results: Record<string, string> = {};

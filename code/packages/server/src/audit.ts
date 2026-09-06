@@ -3,6 +3,7 @@
  * 不记录参数原文敏感值，只记摘要与哈希。
  */
 import { createHash } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { appendLine, ensureWorkpivotDir } from './store.js';
 
@@ -40,4 +41,17 @@ export function audit(entry: AuditEntry): void {
 
 export function argsHash(args: unknown): string {
   return createHash('sha256').update(JSON.stringify(args ?? {})).digest('hex').slice(0, 16);
+}
+
+/** M1-10/I03：导出全部审计日志（按天文件合并，时间升序）。 */
+export function readAllAudit(): string[] {
+  const dir = ensureWorkpivotDir('audit');
+  if (!existsSync(dir)) return [];
+  const rows: string[] = [];
+  for (const file of readdirSync(dir).filter((f) => f.startsWith('audit-') && f.endsWith('.jsonl')).sort()) {
+    for (const line of readFileSync(join(dir, file), 'utf8').split('\n')) {
+      if (line.trim() !== '') rows.push(line);
+    }
+  }
+  return rows;
 }
