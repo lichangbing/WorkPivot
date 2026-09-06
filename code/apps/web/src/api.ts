@@ -6,6 +6,15 @@ export interface Task {
   directory: string;
   status: 'running' | 'idle' | 'interrupted' | 'stopped';
   createdAt: string;
+  projectId?: string;
+  temp?: boolean;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  directory: string;
+  createdAt: string;
 }
 
 export interface PublicProvider {
@@ -98,8 +107,16 @@ export const api = {
   setTier: (tier: Tier): Promise<{ permissionTier: Tier }> =>
     jsonFetch('/api/settings/tier', { method: 'PUT', body: JSON.stringify({ tier }) }),
   listTasks: (): Promise<{ tasks: Task[] }> => jsonFetch('/api/tasks'),
-  createTask: (name: string, directory?: string): Promise<{ task: Task }> =>
-    jsonFetch('/api/tasks', { method: 'POST', body: JSON.stringify({ name, directory }) }),
+  createTask: (input: { name: string; directory?: string; projectId?: string; temp?: boolean }): Promise<{ task: Task }> =>
+    jsonFetch('/api/tasks', { method: 'POST', body: JSON.stringify(input) }),
+  deleteTempTask: (id: string): Promise<{ ok: boolean }> => jsonFetch(`/api/tasks/${id}`, { method: 'DELETE' }),
+  listProjects: (): Promise<{ projects: Project[]; defaultProjectId: string }> => jsonFetch('/api/projects'),
+  createProject: (name: string, directory?: string): Promise<{ project: Project }> =>
+    jsonFetch('/api/projects', { method: 'POST', body: JSON.stringify({ name, directory }) }),
+  listSkillsAdmin: (): Promise<{ skills: Array<{ name: string; description: string; source: string; disabled: boolean }> }> =>
+    jsonFetch('/api/skills'),
+  toggleSkill: (name: string, disabled: boolean): Promise<{ ok: boolean }> =>
+    jsonFetch('/api/skills/toggle', { method: 'POST', body: JSON.stringify({ name, disabled }) }),
   getTask: (id: string): Promise<{ task: Task; history: HistoryMessage[] }> => jsonFetch(`/api/tasks/${id}`),
   getTranscript: (id: string): Promise<{ rows: TranscriptRow[] }> => jsonFetch(`/api/tasks/${id}/transcript`),
   getFiles: (id: string): Promise<{ directory: string; files: string[] }> => jsonFetch(`/api/tasks/${id}/files`),

@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url';
 import type { Express } from 'express';
 import { createApp } from './app.js';
 import { markRunningTasksInterrupted } from './tasks.js';
+import { migrateTasksToDefaultProject } from './projects.js';
 import { audit } from './audit.js';
 
 export const SERVER_PORT_DEFAULT = 39800;
@@ -32,7 +33,11 @@ function listenOn(app: Express, port: number): Promise<Server> {
 
 /** 端口从 WORKPIVOT_PORT 或默认值起尝试，被占用则向后顺延（最多 10 个）。 */
 export async function startServer(opts: Parameters<typeof createApp>[0] & { port?: number } = {}): Promise<ServerHandle> {
-  // T3-02/F04：上次进程中断遗留的 running 任务标记为「已中断」（断点续跑前置）
+  const webDistFromEnv = process.env['WORKPIVOT_WEB_DIST'];
+  if (opts.webDistDir === undefined && webDistFromEnv) opts = { ...opts, webDistDir: webDistFromEnv };
+  // F1 迁移：存量任务归属默认项目；T3-02/F04：中断任务标记
+  const migrated = migrateTasksToDefaultProject();
+  if (migrated > 0) audit({ event: 'project_migration', detail: `${migrated} 个任务` });
   const interrupted = markRunningTasksInterrupted();
   if (interrupted > 0) audit({ event: 'boot_scan', decision: 'interrupted', detail: `${interrupted} 个任务` });
 

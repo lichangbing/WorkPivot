@@ -14,7 +14,7 @@ import {
   type ToolAccessRequest,
 } from '@workpivot/core';
 import { verifyClaimedFiles } from './chat-gate.js';
-import { findSkillBySlash, listSkills, renderSkillDirectory } from './skills.js';
+import { disabledSkills, findSkillBySlash, listSkills, renderSkillDirectory, setSkillDisabled } from './skills.js';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -31,6 +31,16 @@ import { evaluateAccess, getTier, resolvePendingRequest, setTier, TIER_LABELS, l
 import { appendTranscript, createTask, getTask, listTasks, readHistory, readTranscript, updateTaskStatus } from './tasks.js';
 import { audit, argsHash } from './audit.js';
 import { listProviders, resolveActiveProvider, saveProvider, setActiveProvider } from './providers.js';
+import {
+  DEFAULT_PROJECT_ID,
+  createProject,
+  deleteProject,
+  ensureDefaultProject,
+  getProject,
+  listProjects,
+  renameProject,
+} from './projects.js';
+import { deleteTempTask, workspaceRoot } from './tasks.js';
 import { buildMemoryTools, resolveMemoryConfirm } from './memory-tools.js';
 import { initProjectMemory, memoryView, renderMemoryInjection, setMemoryEnabled } from './memory.js';
 
@@ -160,6 +170,23 @@ export function createApp(opts: AppOptions = {}): Express {
     res.json(listProviders());
   });
 
+  // ---- F3 Skill 管理（仅管理员；停用技能不注入目录）----
+  app.get('/api/skills', (req, res) => {
+    if (requireAdmin(req as AuthedRequest) === null) return res.status(403).json({ error: '仅管理员可查看技能' });
+    const skills = listSkills(workspaceRoot(), { includeDisabled: true });
+    res.json({
+      skills: skills.map((s) => ({ name: s.name, description: s.description, source: s.source, disabled: disabledSkills().includes(s.name) })),
+    });
+  });
+  app.post('/api/skills/toggle', (req, res) => {
+    if (requireAdmin(req as AuthedRequest) === null) return res.status(403).json({ error: '仅管理员可启停技能' });
+    const { name, disabled } = req.body as { name?: string; disabled?: boolean };
+    if (!name || disabled === undefined) return res.status(400).json({ error: 'name/disabled 必填' });
+    setSkillDisabled(name, disabled);
+    audit({ user: (req as AuthedRequest).user?.username, event: 'skill_toggled', tool: name, decision: disabled ? 'disabled' : 'enabled' });
+    res.json({ ok: true });
+  });
+
   app.post('/api/providers/verify', async (req, res) => {
     const { baseUrl, apiKey } = req.body as { baseUrl?: string; apiKey?: string };
     if (!baseUrl) return res.status(400).json({ error: 'baseUrl 必填' });
@@ -168,6 +195,8 @@ export function createApp(opts: AppOptions = {}): Express {
   });
 
   app.post('/api/providers', async (req, res) => {
+    // F3：模型配置收敛到管理后台——仅管理员（桌面成员 403）
+    if (requireAdmin(req as AuthedRequest) === null) return res.status(403).json({ error: '仅管理员可配置模型' });
     const { name, baseUrl, modelId, apiKey, verify } = req.body as {
       name?: string; baseUrl?: string; modelId?: string; apiKey?: string; verify?: boolean;
     };
@@ -181,6 +210,7 @@ export function createApp(opts: AppOptions = {}): Express {
   });
 
   app.post('/api/providers/active', (req, res) => {
+    if (requireAdmin(req as AuthedRequest) === null) return res.status(403).json({ error: '仅管理员可切换模型' });
     const { id } = req.body as { id?: string };
     if (!id) return res.status(400).json({ error: 'id 必填' });
     try {
@@ -196,12 +226,40 @@ export function createApp(opts: AppOptions = {}): Express {
   });
 
   app.post('/api/tasks', (req, res) => {
-    const { name, directory } = req.body as { name?: string; directory?: string };
+    const { name, directory, projectId, temp } = req.body as {
+      name?: string; directory?: string; projectId?: string; temp?: boolean;
+    };
     if (!name || name.trim() === '') return res.status(400).json({ error: 'name 必填' });
-    const task = createTask(name, directory);
-    initProjectMemory(task.directory);
-    audit({ event: 'task_created', taskId: task.id, detail: task.directory });
+
+    // F1/F2：工作目录解析——临时任务落 _temp；项目任务共享项目目录；显式 directory 优先（兼容旧客户端）
+    let resolvedDir = directory ?? '';
+    let resolvedProjectId: string | null = projectId ?? null;
+    if (temp) {
+      resolvedProjectId = null;
+      resolvedDir = directory ?? join(workspaceRoot(), '_temp', `t-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+    } else if (projectId) {
+      const project = getProject(projectId);
+      if (!project) return res.status(404).json({ error: '项目不存在' });
+      resolvedDir = project.directory;
+    } else {
+      resolvedProjectId = ensureDefaultProject().id;
+      resolvedDir = directory ?? ensureDefaultProject().directory;
+    }
+
+    const task = createTask({ name, directory: resolvedDir, projectId: resolvedProjectId, temp: temp === true });
+    if (!temp) initProjectMemory(task.directory);
+    audit({ event: 'task_created', taskId: task.id, detail: task.directory, decision: temp ? 'temp' : 'project' });
     res.json({ task });
+  });
+
+  app.delete('/api/tasks/:id', (req, res) => {
+    const result = deleteTempTask(req.params['id'] ?? '');
+    if (result.ok) {
+      audit({ event: 'task_deleted', taskId: req.params['id'] });
+      res.json({ ok: true });
+    } else {
+      res.status(400).json({ error: result.error });
+    }
   });
 
   app.get('/api/tasks/:id', (req, res) => {
@@ -407,6 +465,34 @@ ${content}`;
     res.json({ enabled });
   });
 
+  // ---- F1 项目（两级结构）----
+  app.get('/api/projects', (_req, res) => {
+    res.json({ projects: listProjects(), defaultProjectId: DEFAULT_PROJECT_ID });
+  });
+  app.post('/api/projects', (req, res) => {
+    const admin = requireAdmin(req as AuthedRequest);
+    if (!admin) return res.status(403).json({ error: '仅管理员可创建项目' });
+    const { name, directory } = req.body as { name?: string; directory?: string };
+    if (!name || name.trim() === '') return res.status(400).json({ error: 'name 必填' });
+    res.json({ project: createProject(name, directory) });
+  });
+  app.put('/api/projects/:id', (req, res) => {
+    const admin = requireAdmin(req as AuthedRequest);
+    if (!admin) return res.status(403).json({ error: '仅管理员可重命名项目' });
+    const { name } = req.body as { name?: string };
+    if (!name || name.trim() === '') return res.status(400).json({ error: 'name 必填' });
+    const project = renameProject(req.params['id'] ?? '', name);
+    if (!project) return res.status(404).json({ error: '项目不存在' });
+    res.json({ project });
+  });
+  app.delete('/api/projects/:id', (req, res) => {
+    const admin = requireAdmin(req as AuthedRequest);
+    if (!admin) return res.status(403).json({ error: '仅管理员可删除项目' });
+    const result = deleteProject(req.params['id'] ?? '');
+    if (result.ok) res.json({ ok: true });
+    else res.status(409).json({ error: result.error });
+  });
+
   // T3-01：转写查看器数据源
   app.get('/api/tasks/:id/transcript', (req, res) => {
     const task = getTask(req.params['id'] ?? '');
@@ -427,9 +513,15 @@ ${content}`;
 
   if (opts.webDistDir && existsSync(join(opts.webDistDir, 'index.html'))) {
     app.use(express.static(opts.webDistDir));
+    // F3 管理后台页面（静态多页入口）
+    const adminHtml = join(opts.webDistDir, 'admin.html');
+    app.get('/admin', (_req, res) => {
+      if (existsSync(adminHtml)) res.sendFile(adminHtml);
+      else res.status(404).send('admin.html 不存在（请重新构建前端）');
+    });
     // SPA 回退：非 /api 的 GET 一律回 index.html（Express 5 不再支持 '*' 通配路由）
     app.use((req, res, next) => {
-      if (req.method !== 'GET' || req.path.startsWith('/api/')) return next();
+      if (req.method !== 'GET' || req.path.startsWith('/api/') || req.path.startsWith('/admin')) return next();
       res.sendFile(join(opts.webDistDir as string, 'index.html'));
     });
   }

@@ -18,7 +18,8 @@
     "check:deps": "depcruise apps/web --config .dependency-cruiser.cjs",
     "eval": "tsx eval/run-all.mts",
     "eval:w4": "tsx eval/W4-smoke.mts",
-    "eval:w5": "tsx eval/W5-memory.mts"
+    "eval:w5": "tsx eval/W5-memory.mts",
+    "eval:w6": "tsx eval/W6-structure.mts"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

@@ -8,7 +8,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ensureWorkpivotDir } from './store.js';
+import { ensureWorkpivotDir, readJsonSafe, writeAtomic } from './store.js';
 
 export interface Skill {
   name: string;
@@ -103,7 +103,7 @@ function builtinSkillsRoot(): string {
 }
 
 /** 每次任务执行前调用：重读磁盘（D01 热加载）。 */
-export function listSkills(taskDir: string): Skill[] {
+export function listSkills(taskDir: string, opts: { includeDisabled?: boolean } = {}): Skill[] {
   const byName = new Map<string, Skill>();
   const layers: Array<{ root: string; source: Skill['source'] }> = [
     { root: builtinSkillsRoot(), source: 'builtin' },
@@ -115,7 +115,26 @@ export function listSkills(taskDir: string): Skill[] {
       byName.set(skill.name, { ...skill, source }); // 项目覆盖全局覆盖内置
     }
   }
-  return [...byName.values()];
+  const disabled = disabledSkills();
+  return [...byName.values()].filter((s) => opts.includeDisabled === true || !disabled.includes(s.name));
+}
+
+// ---- 启停（F3 管理后台）：停用名单存 settings.json，停用技能不注入目录 ----
+export function disabledSkills(): string[] {
+  const settings = readJsonSafe<{ disabledSkills?: string[] }>(
+    join(ensureWorkpivotDir('config'), 'settings.json'),
+    {},
+  ).value;
+  return settings.disabledSkills ?? [];
+}
+
+export function setSkillDisabled(name: string, disabled: boolean): void {
+  const settingsPath = join(ensureWorkpivotDir('config'), 'settings.json');
+  const settings = readJsonSafe<{ disabledSkills?: string[] }>(settingsPath, {}).value;
+  const current = new Set(settings.disabledSkills ?? []);
+  if (disabled) current.add(name);
+  else current.delete(name);
+  writeAtomic(settingsPath, JSON.stringify({ ...settings, disabledSkills: [...current] }, null, 2));
 }
 
 /** 全局技能目录（数据目录规范）。 */
