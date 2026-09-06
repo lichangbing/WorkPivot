@@ -16,10 +16,10 @@ import { ensureWorkpivotDir, readJsonSafe, writeAtomic } from './store.js';
 export type Tier = 'readonly' | 'ask' | 'workdir' | 'auto';
 
 export const TIER_LABELS: Record<Tier, string> = {
-  readonly: '只看不动',
-  ask: '每步都问',
-  workdir: '界内自动 · 界外询问',
-  auto: '全自动（高危仍拦截）',
+  ask: '变更前确认',
+  readonly: '计划模式',
+  workdir: '自动编辑',
+  auto: '完全访问',
 };
 
 const DEFAULT_TIER: Tier = 'workdir';

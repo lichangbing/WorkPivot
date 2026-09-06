@@ -88,6 +88,7 @@ export default function App(): React.JSX.Element {
   const [atkItems, setAtkItems] = useState<string[]>([]);
   const [atkIndex, setAtkIndex] = useState(0);
   const [filesForAt, setFilesForAt] = useState<string[]>([]);
+  const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -879,23 +880,7 @@ export default function App(): React.JSX.Element {
             <div ref={chatBottomRef} />
           </div>
 
-          {/* U3/U5 输入区：附件托盘 + @补全 + 粘贴/拖拽上传 */}
-          <div
-            className={`relative border-t p-3 ${dragOver ? 'border-2 border-dashed border-blue-500' : 'border-neutral-800'}`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={(e) => {
-              e.preventDefault();
-              setDragOver(false);
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragOver(false);
-              addFiles(Array.from(e.dataTransfer.files));
-            }}
-          >
+          {/* U3/U5 输入区（ZCode 风格：统一圆角容器，文字在上，工具条在下；拖拽/粘贴/托盘已内置） */}
             {/* 附件托盘（多文件并列，右上角 × 移除） */}
             {pendingAtt.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2">
@@ -944,119 +929,191 @@ export default function App(): React.JSX.Element {
                 ))}
               </div>
             )}
-            <div className="flex items-end gap-2">
-              <button
-                className="rounded-lg border border-neutral-700 px-2 py-2 text-xs text-neutral-400 hover:bg-neutral-900 disabled:opacity-40"
-                disabled={!activeTask || streaming}
-                title="附加文本文件（≤64KB，内容将随消息注入）"
-                onClick={() => attachRef?.click()}
-              >
-                ＋
-              </button>
-              <input
-                ref={setAttachRef}
-                type="file"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  addFiles(Array.from(e.target.files ?? []));
-                  e.target.value = '';
-                }}
-              />
-              <textarea
-                ref={textareaRef}
-                className={`max-h-40 min-h-[44px] flex-1 resize-y rounded-lg border bg-neutral-900 px-3 py-2 text-sm outline-none ${dragOver ? 'border-blue-500 border-dashed' : 'border-neutral-700 focus:border-neutral-500'}`}
-                placeholder={activeTask ? '输入消息；@ 引用文件；支持粘贴/拖拽文件' : '请先新建/选择任务'}
-                value={input}
-                disabled={!activeTask || streaming}
-                onChange={(e) => {
-                  setInput(e.target.value);
-                  detectAt(e.target);
-                }}
-                onPaste={(e) => {
-                  const files = Array.from(e.clipboardData.files);
-                  if (files.length > 0) {
+            {/* U3/U5 输入区（ZCode 风格：统一圆角容器，文字在上，工具条在下） */}
+          <div
+            className={`relative mx-4 mb-3 rounded-xl border bg-neutral-900 p-3 ${dragOver ? 'border-blue-500 border-dashed' : 'border-neutral-700'}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              addFiles(Array.from(e.dataTransfer.files));
+            }}>
+            <textarea
+              ref={textareaRef}
+              className="max-h-40 min-h-[44px] w-full resize-none bg-transparent px-1 py-1 text-sm outline-none"
+              placeholder={activeTask ? '输入消息；@ 引用文件；支持粘贴/拖拽文件' : '请先新建/选择任务'}
+              value={input}
+              disabled={!activeTask || streaming}
+              onChange={(e) => {
+                setInput(e.target.value);
+                detectAt(e.target);
+              }}
+              onPaste={(e) => {
+                const files = Array.from(e.clipboardData.files);
+                if (files.length > 0) {
+                  e.preventDefault();
+                  addFiles(files);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (atk && atkItems.length > 0) {
+                  if (e.key === 'ArrowDown') {
                     e.preventDefault();
-                    addFiles(files);
+                    setAtkIndex((i) => (i + 1) % atkItems.length);
+                    return;
                   }
-                }}
-                onKeyDown={(e) => {
-                  if (atk && atkItems.length > 0) {
-                    if (e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      setAtkIndex((i) => (i + 1) % atkItems.length);
-                      return;
-                    }
-                    if (e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      setAtkIndex((i) => (i - 1 + atkItems.length) % atkItems.length);
-                      return;
-                    }
-                    if (e.key === 'Enter' || e.key === 'Tab') {
-                      e.preventDefault();
-                      applyAt(atkItems[atkIndex]!);
-                      return;
-                    }
-                    if (e.key === 'Escape') {
-                      closeAt();
-                      return;
-                    }
-                  }
-                  if (e.key === 'Enter' && !e.shiftKey) {
+                  if (e.key === 'ArrowUp') {
                     e.preventDefault();
-                    void send();
+                    setAtkIndex((i) => (i - 1 + atkItems.length) % atkItems.length);
+                    return;
                   }
-                }}
-              />
-              {/* U3：权限档位 + 模型选择移入输入区（ZCode 位置） */}
-              <select
-                className="rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-2 text-xs outline-none"
-                title="权限档位"
-                value={tier}
-                onChange={(e) => void changeTier(e.target.value as Tier)}
-              >
-                {Object.entries(tierLabels).map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-              <select
-                className="max-w-[180px] rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-2 text-xs outline-none"
-                title="模型选择（切换后下轮生效）"
-                value={activeProvider?.id ?? ''}
-                onChange={(e) => {
-                  if (isAdmin) void selectModel(e.target.value);
-                }}
-                disabled={!isAdmin}
-              >
-                {providers.length === 0 && <option value="">未配置</option>}
-                {providers.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} / {p.modelId}
-                    {p.active ? '（当前）' : ''}
-                  </option>
-                ))}
-              </select>
-              {streaming ? (
+                  if (e.key === 'Enter' || e.key === 'Tab') {
+                    e.preventDefault();
+                    applyAt(atkItems[atkIndex]!);
+                    return;
+                  }
+                  if (e.key === 'Escape') {
+                    closeAt();
+                    return;
+                  }
+                }
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+            />
+            {/* 底部工具条：左＝附件/模式，右＝模型/发送 */}
+            <div className="mt-2 flex items-center justify-between">
+              <div className="flex items-center gap-2">
                 <button
-                  className="rounded-lg bg-red-900 px-4 py-2 text-sm hover:bg-red-800"
-                  onClick={() => {
-                    if (activeTask) void api.stop(activeTask.id);
+                  className="rounded px-1.5 py-1 text-sm text-neutral-400 hover:text-neutral-200 disabled:opacity-40"
+                  disabled={!activeTask || streaming}
+                  title="添加附件（≤50MB，随消息注入）"
+                  onClick={() => attachRef?.click()}
+                >
+                  ＋
+                </button>
+                <input
+                  ref={setAttachRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    addFiles(Array.from(e.target.files ?? []));
+                    e.target.value = '';
                   }}
+                />
+                {/* 模式下拉（权限档位，ZCode 命名） */}
+                <div className="relative">
+                  <button
+                    className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-amber-400 hover:bg-neutral-800"
+                    onClick={() => setModeMenuOpen((v) => !v)}
+                  >
+                    🛡 {tierLabels[tier] ?? tier} <span className="text-neutral-500">▾</span>
+                  </button>
+                  {modeMenuOpen && (
+                    <div className="absolute bottom-full left-0 mb-1 w-40 overflow-hidden rounded border border-neutral-700 bg-neutral-800 shadow-xl">
+                      {(
+                        [
+                          ['ask', '变更前确认'],
+                          ['readonly', '计划模式'],
+                          ['workdir', '自动编辑'],
+                          ['auto', '完全访问'],
+                        ] as Array<[Tier, string]>
+                      ).map(([key, label]) => (
+                        <button
+                          key={key}
+                          className={`block w-full px-3 py-1.5 text-left text-xs hover:bg-neutral-700 ${tier === key ? 'text-blue-400' : ''}`}
+                          onClick={() => {
+                            void changeTier(key);
+                            setModeMenuOpen(false);
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* 模型选择（仅管理员可切换） */}
+                <select
+                  className="max-w-[200px] rounded bg-transparent px-1 py-1 text-xs text-neutral-300 outline-none"
+                  title="模型选择（切换后下轮生效）"
+                  value={activeProvider?.id ?? ''}
+                  onChange={(e) => {
+                    if (isAdmin) void selectModel(e.target.value);
+                  }}
+                  disabled={!isAdmin}
                 >
-                  停止
-                </button>
-              ) : (
-                <button
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm hover:bg-blue-500 disabled:opacity-40"
-                  disabled={!activeTask || streaming || input.trim() === ''}
-                  onClick={() => void send()}
-                >
-                  发送
-                </button>
-              )}
+                  {providers.length === 0 && <option value="">未配置</option>}
+                  {providers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} / {p.modelId}
+                    </option>
+                  ))}
+                </select>
+                {streaming ? (
+                  <button
+                    className="rounded-full bg-red-900 p-2 text-xs hover:bg-red-800"
+                    title="停止"
+                    onClick={() => {
+                      if (activeTask) void api.stop(activeTask.id);
+                    }}
+                  >
+                    ■
+                  </button>
+                ) : (
+                  <button
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-sm hover:bg-blue-500 disabled:opacity-40"
+                    disabled={!activeTask || streaming || (input.trim() === '' && pendingAtt.every((a) => a.status !== 'done'))}
+                    title="发送"
+                    onClick={() => void send()}
+                  >
+                    ↑
+                  </button>
+                )}
+              </div>
             </div>
+            {pendingAtt.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2 border-t border-neutral-800 pt-2">
+                {pendingAtt.map((a) => (
+                  <div key={a.id} className="relative w-44 rounded border border-neutral-700 bg-neutral-800 p-2">
+                    <button
+                      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-600 text-[10px] text-neutral-100 hover:bg-red-600"
+                      title="移除"
+                      onClick={() => removeAttachment(a.id)}
+                    >
+                      ×
+                    </button>
+                    <p className="truncate text-xs text-neutral-200">📄 {a.name}</p>
+                    <p className="text-[10px] text-neutral-500">
+                      {a.status === 'error' ? (
+                        <span className="text-red-400">上传失败</span>
+                      ) : a.status === 'done' ? (
+                        <span className="text-emerald-400">就绪 · {(a.file.size / 1024).toFixed(1)} KB</span>
+                      ) : (
+                        `上传中 ${(a.progress * 100).toFixed(0)}%`
+                      )}
+                    </p>
+                    {a.status === 'uploading' && (
+                      <div className="mt-1 h-1 w-full rounded bg-neutral-700">
+                        <div className="h-1 rounded bg-blue-500" style={{ width: `${a.progress * 100}%` }} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             {!isAdmin && providers.length === 0 && (
               <p className="mt-1 text-xs text-red-400">管理员尚未配置模型，请联系管理员。</p>
             )}
