@@ -129,6 +129,8 @@ export const api = {
     jsonFetch(`/api/memory${taskId ? `?taskId=${encodeURIComponent(taskId)}` : ''}`),
   memoryToggle: (enabled: boolean): Promise<{ enabled: boolean }> =>
     jsonFetch('/api/memory/toggle', { method: 'POST', body: JSON.stringify({ enabled }) }),
+  memoryState: (): Promise<{ enabled: boolean }> =>
+    jsonFetch<{ enabled: boolean }>('/api/memory').then((v) => ({ enabled: v.enabled })),
   listProviders: (): Promise<{ providers: PublicProvider[]; activeId?: string }> => jsonFetch('/api/providers'),
   saveProvider: (input: { name: string; baseUrl: string; modelId: string; apiKey?: string; verify?: boolean }): Promise<{ provider: PublicProvider }> =>
     jsonFetch('/api/providers', { method: 'POST', body: JSON.stringify(input) }),

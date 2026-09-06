@@ -1,7 +1,8 @@
 /**
- * WorkPivot 主界面：三栏布局（左项目/任务树、中对话流、右成果区）。
- * F1：项目-任务两级结构（项目=工作目录，任务共享；可收起）；F2：临时任务顶层分组（无长期记忆）。
- * F3 去配置化：模型/用户管理移至独立后台（/admin），桌面端仅展示状态与引导。
+ * WorkPivot 主界面（参考 ZCode 布局模式，规范见 docs/02-design/ui-ux/主界面布局规范.md）。
+ * 左栏：主按钮组（新建任务/搜索/自动化/技能市场）→ 分组 tab（项目/临时任务）→ 项目树（相对时间）→ 底部用户区；
+ * 中栏：顶部会话工具条 + 消息流 + 底部输入区（附件/权限档位/模型选择——ZCode 位置）；
+ * 右栏：成果区（版本链/转写查看）。
  * 纪律（A01.3）：只经 localhost HTTP/SSE 与服务层通信，禁止 import 服务层/内核。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -20,8 +21,8 @@ import {
   type Tier,
 } from './api';
 import { LoginView } from './LoginView';
+import { SettingsPanel } from './SettingsPanel';
 import { TranscriptModal } from './TranscriptModal';
-import { UsersModal } from './UsersModal';
 
 interface ChatItem {
   kind: 'user' | 'assistant' | 'tool' | 'error' | 'permission' | 'done' | 'gate' | 'memory';
@@ -37,9 +38,20 @@ interface ChatItem {
   };
 }
 
-/** F04 断点续跑的固定指令（用户点「继续任务」时发送） */
 const RESUME_MESSAGE =
   '请从断点继续之前的任务:先读取 PROGRESS.md(如存在),不重做已完成的部分,继续完成剩余工作。';
+
+function fmtRelative(ts: string): string {
+  const diff = Date.now() - new Date(ts).getTime();
+  const m = Math.floor(diff / 60_000);
+  if (m < 1) return '刚刚';
+  if (m < 60) return `${m} 分钟前`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} 小时前`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d} 天前`;
+  return new Date(ts).toLocaleDateString('zh-CN');
+}
 
 export default function App(): React.JSX.Element {
   const [authState, setAuthState] = useState<'loading' | 'guest' | 'authed'>('loading');
@@ -55,13 +67,17 @@ export default function App(): React.JSX.Element {
   const [providers, setProviders] = useState<PublicProvider[]>([]);
   const [tier, setTier] = useState<Tier>('workdir');
   const [tierLabels, setTierLabels] = useState<Record<string, string>>({});
+  const [memoryOn, setMemoryOn] = useState(true);
   const [rightPanel, setRightPanel] = useState<{ directory: string; files: string[] } | null>(null);
   const [serverOk, setServerOk] = useState<boolean | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
-  const [usersModalOpen, setUsersModalOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // F1/F2：新建表单与收起状态
+  // U1：搜索过滤 + 分组 tab + 收起状态 + 新建表单
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [groupTab, setGroupTab] = useState<'projects' | 'temp'>('projects');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     try {
       return JSON.parse(localStorage.getItem('wp_collapsed_projects') ?? '{}') as Record<string, boolean>;
@@ -72,9 +88,10 @@ export default function App(): React.JSX.Element {
   const [projectFormOpen, setProjectFormOpen] = useState(false);
   const [projectForm, setProjectForm] = useState({ name: '', directory: '' });
   const [projectError, setProjectError] = useState<string | null>(null);
-  const [taskFormFor, setTaskFormFor] = useState<string | null>(null); // 项目 id 或 '__temp__'
+  const [taskFormFor, setTaskFormFor] = useState<string | null>(null);
   const [newTaskName, setNewTaskName] = useState('');
   const [taskError, setTaskError] = useState<string | null>(null);
+  const [attachRef, setAttachRef] = useState<HTMLInputElement | null>(null);
 
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
@@ -84,8 +101,7 @@ export default function App(): React.JSX.Element {
   }, []);
 
   const refreshAuth = useCallback(async (): Promise<void> => {
-    // 无论有无令牌都要取 auth/state：首启（无令牌）也必须拿到 needsSetup，
-    // 否则默认 false 会把「注册管理员」界面误渲染成登录（首启注册入口被挡的根因）。
+    // 无论有无令牌都要取 auth/state：首启（无令牌）也必须拿到 needsSetup
     try {
       const state = await api.authState();
       setNeedsSetup(state.needsSetup);
@@ -125,6 +141,7 @@ export default function App(): React.JSX.Element {
     const settings = await api.getSettings();
     setTier(settings.permissionTier);
     setTierLabels(settings.tierLabels);
+    setMemoryOn((await api.memoryState()).enabled);
     setServerOk(true);
   }, [refreshTasks, refreshProviders]);
 
@@ -163,6 +180,33 @@ export default function App(): React.JSX.Element {
     },
     [tierLabels, showToast],
   );
+
+  const toggleMemory = useCallback(
+    async (enabled: boolean): Promise<void> => {
+      try {
+        const result = await api.memoryToggle(enabled);
+        setMemoryOn(result.enabled);
+        showToast(result.enabled ? '记忆功能已开启' : '记忆功能已关闭');
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [showToast],
+  );
+
+  const selectModel = useCallback(
+    async (id: string): Promise<void> => {
+      try {
+        const result = await api.setActiveProvider(id);
+        setProviders((prev) => prev.map((p) => ({ ...p, active: p.id === result.provider.id })));
+        showToast(`已切换模型：${result.provider.name} / ${result.provider.modelId}`);
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [showToast],
+  );
+
 
   const createProject = useCallback(async (): Promise<void> => {
     setProjectError(null);
@@ -317,6 +361,12 @@ export default function App(): React.JSX.Element {
   const isAdmin = currentUser?.role === 'admin';
   const activeProvider = providers.find((p) => p.active);
   const tempTasks = tasks.filter((t) => t.temp);
+  const projectTasksOf = (pid: string): Task[] =>
+    tasks.filter((t) => t.projectId === pid && !t.temp).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const search = searchText.trim().toLowerCase();
+  const matchTask = (t: Task): boolean => search === '' || t.name.toLowerCase().includes(search);
+  const matchProject = (p: Project): boolean =>
+    search === '' || p.name.toLowerCase().includes(search) || projectTasksOf(p.id).some(matchTask);
 
   const toggleCollapse = (projectId: string): void => {
     setCollapsed((prev) => {
@@ -324,6 +374,20 @@ export default function App(): React.JSX.Element {
       localStorage.setItem('wp_collapsed_projects', JSON.stringify(next));
       return next;
     });
+  };
+
+  const onAttach = async (files: FileList | null): Promise<void> => {
+    if (!files || files.length === 0) return;
+    const parts: string[] = [];
+    for (const f of Array.from(files)) {
+      if (f.size > 64 * 1024) {
+        showToast(`附件 ${f.name} 超过 64KB，暂不支持`);
+        continue;
+      }
+      const text = await f.text();
+      parts.push(`\n\n--- 附件 ${f.name} ---\n${text}\n--- 附件结束 ---`);
+    }
+    if (parts.length > 0) setInput((prev) => prev + parts.join(''));
   };
 
   return (
@@ -334,230 +398,291 @@ export default function App(): React.JSX.Element {
         </div>
       )}
       <div className="flex min-h-0 flex-1">
-        {/* 左栏：临时任务 + 项目/任务两级树 */}
+        {/* 左栏（ZCode 模式）：按钮组 → 分组 → 树 → 底部用户区 */}
         <aside className="flex w-64 shrink-0 flex-col border-r border-neutral-800">
-          <div className="flex items-center justify-between px-4 py-3">
-            <span className="text-sm font-semibold text-neutral-300">工作区</span>
+          <div className="space-y-0.5 px-3 py-3">
             <button
-              className="rounded bg-neutral-800 px-2 py-1 text-xs hover:bg-neutral-700"
+              className="block w-full rounded px-2 py-1.5 text-left text-sm font-medium hover:bg-neutral-900"
               onClick={() => {
-                setTaskFormFor('__temp__');
-                setNewTaskName(`临时任务-${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`);
-                setTaskError(null);
+                setGroupTab('projects');
+                setProjectFormOpen(true);
+                setProjectError(null);
               }}
             >
-              ＋ 临时任务
+              ＋ 新建任务
+            </button>
+            <button
+              className="block w-full rounded px-2 py-1.5 text-left text-sm text-neutral-300 hover:bg-neutral-900"
+              onClick={() => setSearchOpen((v) => !v)}
+            >
+              🔍 搜索
+            </button>
+            <button
+              className="block w-full rounded px-2 py-1.5 text-left text-sm text-neutral-300 hover:bg-neutral-900"
+              onClick={() => showToast('自动化（定时任务）将在后续版本提供')}
+            >
+              ⚡ 自动化
+            </button>
+            <button
+              className="block w-full rounded px-2 py-1.5 text-left text-sm text-neutral-300 hover:bg-neutral-900"
+              onClick={() => {
+                if (isAdmin) {
+                  window.open('/admin', '_blank');
+                } else {
+                  showToast('技能管理在后台，仅管理员可操作');
+                }
+              }}
+            >
+              🧩 技能市场
             </button>
           </div>
 
-          {taskFormFor === '__temp__' && (
-            <div className="space-y-2 border-y border-neutral-800 px-3 py-2">
+          {searchOpen && (
+            <div className="px-3 pb-2">
               <input
                 autoFocus
-                className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-neutral-500"
-                placeholder="临时任务名称"
-                value={newTaskName}
-                onChange={(e) => setNewTaskName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void createTaskIn('__temp__');
-                  if (e.key === 'Escape') setTaskFormFor(null);
-                }}
+                className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-xs outline-none focus:border-neutral-500"
+                placeholder="搜索任务/项目"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
               />
-              <p className="text-xs text-neutral-500">一次性分析任务：不注入长期记忆，目录在临时区。</p>
-              <div className="flex gap-2">
-                <button
-                  className="rounded bg-blue-600 px-2 py-1 text-xs hover:bg-blue-500"
-                  onClick={() => void createTaskIn('__temp__')}
-                >
-                  创建
-                </button>
-                <button className="rounded bg-neutral-800 px-2 py-1 text-xs" onClick={() => setTaskFormFor(null)}>
-                  取消
-                </button>
-              </div>
             </div>
           )}
 
-          {/* 临时任务分组（与项目同级，F2） */}
-          {tempTasks.length > 0 && (
-            <div className="border-b border-neutral-800 pb-1">
-              <p className="px-4 pt-2 text-xs text-neutral-500">临时任务</p>
-              {tempTasks.map((task) => (
-                <div
-                  key={task.id}
-                  className={`group flex items-center justify-between px-4 py-1.5 text-sm hover:bg-neutral-900 ${
-                    activeTask?.id === task.id ? 'bg-neutral-900' : ''
-                  }`}
-                >
-                  <button className="min-w-0 flex-1 truncate text-left" onClick={() => void openTask(task)}>
-                    <span className="mr-1.5 text-neutral-500">⚡</span>
-                    {task.name}
-                  </button>
-                  <button
-                    className="hidden text-xs text-neutral-600 hover:text-red-400 group-hover:block"
-                    title="删除临时任务"
-                    onClick={() => {
-                      void api.deleteTempTask(task.id).then(() => {
-                        if (activeTask?.id === task.id) {
-                          setActiveTask(null);
-                          setChat([]);
-                        }
-                        void refreshTasks();
-                      });
-                    }}
-                  >
-                    🗑
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* 项目列表（F1 两级树） */}
-          <div className="flex items-center justify-between px-4 py-3">
-            <span className="text-sm font-semibold text-neutral-300">项目</span>
-            {isAdmin && (
+          {/* 分组 tab（F2/F1：临时任务 与 项目） */}
+          <div className="flex gap-1 border-b border-neutral-800 px-3 pb-2 text-xs">
+            {(
+              [
+                ['projects', '项目'],
+                ['temp', '临时任务'],
+              ] as Array<['projects' | 'temp', string]>
+            ).map(([key, label]) => (
               <button
-                className="rounded bg-neutral-800 px-2 py-1 text-xs hover:bg-neutral-700"
-                onClick={() => {
-                  setProjectFormOpen((v) => !v);
-                  setProjectError(null);
-                }}
+                key={key}
+                className={`rounded px-2 py-1 ${groupTab === key ? 'bg-neutral-800 font-medium text-neutral-100' : 'text-neutral-400 hover:bg-neutral-900'}`}
+                onClick={() => setGroupTab(key)}
               >
-                ＋ 新建项目
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {groupTab === 'temp' ? (
+              <div>
+                {tempTasks.length === 0 && <p className="px-4 py-2 text-xs text-neutral-600">（暂无临时任务）</p>}
+                {tempTasks
+                  .filter(matchTask)
+                  .map((task) => (
+                    <button
+                      key={task.id}
+                      className={`block w-full px-4 py-1.5 text-left text-sm hover:bg-neutral-900 ${
+                        activeTask?.id === task.id ? 'bg-neutral-900' : ''
+                      }`}
+                      onClick={() => void openTask(task)}
+                    >
+                      <span className="mr-1.5 text-neutral-500">⚡</span>
+                      {task.name}
+                      <span className="ml-2 text-xs text-neutral-600">{fmtRelative(task.createdAt)}</span>
+                    </button>
+                  ))}
+              </div>
+            ) : (
+              <div>
+                {isAdmin && (
+                  <div className="flex items-center justify-between px-4 py-2">
+                    <span className="text-xs text-neutral-500">项目</span>
+                    <button
+                      className="rounded bg-neutral-800 px-2 py-1 text-xs hover:bg-neutral-700"
+                      onClick={() => {
+                        setProjectFormOpen((v) => !v);
+                        setProjectError(null);
+                      }}
+                    >
+                      ＋ 新建项目
+                    </button>
+                  </div>
+                )}
+                {/* F1：新建项目（仅管理员，表单内联） */}
+                {isAdmin && projectFormOpen && (
+                  <div className="space-y-2 border-b border-neutral-800 px-4 py-2">
+                    <input
+                      autoFocus
+                      className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-neutral-500"
+                      placeholder="项目名称（必填）"
+                      value={projectForm.name}
+                      onChange={(e) => setProjectForm({ ...projectForm, name: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void createProject();
+                        if (e.key === 'Escape') setProjectFormOpen(false);
+                      }}
+                    />
+                    <input
+                      className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-xs outline-none focus:border-neutral-500"
+                      placeholder="工作目录（留空自动创建）"
+                      value={projectForm.directory}
+                      onChange={(e) => setProjectForm({ ...projectForm, directory: e.target.value })}
+                    />
+                    {projectError && <p className="text-xs text-red-400">{projectError}</p>}
+                    <div className="flex gap-2">
+                      <button
+                        className="rounded bg-blue-600 px-2 py-1 text-xs hover:bg-blue-500"
+                        onClick={() => void createProject()}
+                      >
+                        创建
+                      </button>
+                      <button
+                        className="rounded bg-neutral-800 px-2 py-1 text-xs"
+                        onClick={() => setProjectFormOpen(false)}
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {projects.filter(matchProject).map((project) => {
+                  const isCollapsed = collapsed[project.id] === true;
+                  const projectTasks = projectTasksOf(project.id).filter(matchTask);
+                  return (
+                    <div key={project.id}>
+                      <div
+                        className={`group flex items-center justify-between px-4 py-1.5 hover:bg-neutral-900 ${
+                          activeTask && activeTask.projectId === project.id ? 'bg-neutral-900' : ''
+                        }`}
+                      >
+                        <button
+                          className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm"
+                          onClick={() => toggleCollapse(project.id)}
+                        >
+                          <span className="text-neutral-500">{isCollapsed ? '▸' : '▾'}</span>
+                          <span className="truncate font-medium text-neutral-200">📁 {project.name}</span>
+                        </button>
+                        <button
+                          className="hidden text-xs text-neutral-500 hover:text-neutral-200 group-hover:block"
+                          title="在此项目下新建任务"
+                          onClick={() => {
+                            setCollapsed((prev) => ({ ...prev, [project.id]: false }));
+                            setTaskFormFor(project.id);
+                            setNewTaskName('');
+                            setTaskError(null);
+                          }}
+                        >
+                          ＋任务
+                        </button>
+                      </div>
+                      {!isCollapsed && (
+                        <div>
+                          {taskFormFor === project.id && (
+                            <div className="space-y-2 px-6 py-2">
+                              <input
+                                autoFocus
+                                className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-neutral-500"
+                                placeholder="任务名称（必填）"
+                                value={newTaskName}
+                                onChange={(e) => setNewTaskName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') void createTaskIn(project.id);
+                                  if (e.key === 'Escape') setTaskFormFor(null);
+                                }}
+                              />
+                              {taskError && taskFormFor === project.id && <p className="text-xs text-red-400">{taskError}</p>}
+                              <div className="flex gap-2">
+                                <button
+                                  className="rounded bg-blue-600 px-2 py-1 text-xs hover:bg-blue-500"
+                                  onClick={() => void createTaskIn(project.id)}
+                                >
+                                  创建
+                                </button>
+                                <button
+                                  className="rounded bg-neutral-800 px-2 py-1 text-xs"
+                                  onClick={() => setTaskFormFor(null)}
+                                >
+                                  取消
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          {projectTasks.length === 0 && <p className="px-6 py-1 text-xs text-neutral-600">（无任务）</p>}
+                          {projectTasks.map((task) => (
+                            <button
+                              key={task.id}
+                              className={`block w-full px-6 py-1.5 text-left text-sm hover:bg-neutral-900 ${
+                                activeTask?.id === task.id ? 'bg-neutral-900' : ''
+                              }`}
+                              onClick={() => void openTask(task)}
+                            >
+                              <span
+                                className={`mr-2 inline-block h-2 w-2 rounded-full ${
+                                  task.status === 'running'
+                                    ? 'animate-pulse bg-amber-400'
+                                    : task.status === 'idle'
+                                      ? 'bg-emerald-500'
+                                      : 'bg-red-500'
+                                }`}
+                              />
+                              <span className="text-neutral-300">{task.name}</span>
+                              <span className="ml-2 text-xs text-neutral-600">{fmtRelative(task.createdAt)}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {projects.length === 0 && <p className="px-4 py-2 text-xs text-neutral-600">（无项目）</p>}
+              </div>
+            )}
+          </div>
+
+          {/* 底部用户区（ZCode 模式） */}
+          <div className="border-t border-neutral-800">
+            {settingsOpen ? (
+              <SettingsPanel
+                user={currentUser!}
+                tier={tier}
+                tierLabels={tierLabels}
+                memoryOn={memoryOn}
+                activeModel={activeProvider ? `${activeProvider.name} / ${activeProvider.modelId}` : null}
+                onTierChange={(t) => void changeTier(t)}
+                onMemoryToggle={(v) => void toggleMemory(v)}
+                onLogout={logout}
+                onClose={() => setSettingsOpen(false)}
+              />
+            ) : (
+              <button
+                className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-neutral-900"
+                onClick={() => setSettingsOpen(true)}
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-700 text-sm font-semibold">
+                  {(currentUser?.username ?? '?').slice(0, 1).toUpperCase()}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm">{currentUser?.username}</span>
+                  <span className="block text-xs text-neutral-500">
+                    {currentUser?.role === 'admin' ? '管理员' : '成员'}
+                  </span>
+                </span>
+                <span className="text-neutral-500">⚙</span>
               </button>
             )}
           </div>
-          {projectFormOpen && (
-            <div className="space-y-2 border-y border-neutral-800 px-3 py-2">
-              <input
-                autoFocus
-                className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-neutral-500"
-                placeholder="项目名称（必填）"
-                value={projectForm.name}
-                onChange={(e) => setProjectForm({ ...projectForm, name: e.target.value })}
-              />
-              <input
-                className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-xs outline-none focus:border-neutral-500"
-                placeholder="工作目录（留空自动创建）"
-                value={projectForm.directory}
-                onChange={(e) => setProjectForm({ ...projectForm, directory: e.target.value })}
-              />
-              {projectError && <p className="text-xs text-red-400">{projectError}</p>}
-              <div className="flex gap-2">
-                <button
-                  className="rounded bg-blue-600 px-2 py-1 text-xs hover:bg-blue-500"
-                  onClick={() => void createProject()}
-                >
-                  创建
-                </button>
-                <button className="rounded bg-neutral-800 px-2 py-1 text-xs" onClick={() => setProjectFormOpen(false)}>
-                  取消
-                </button>
-              </div>
-            </div>
-          )}
-          <div className="flex-1 overflow-y-auto">
-            {projects.map((project) => {
-              const isCollapsed = collapsed[project.id] === true;
-              const projectTasks = tasks.filter((t) => t.projectId === project.id && !t.temp);
-              return (
-                <div key={project.id}>
-                  <div
-                    className={`group flex items-center justify-between px-4 py-1.5 hover:bg-neutral-900 ${
-                      activeTask && activeTask.projectId === project.id ? 'bg-neutral-900' : ''
-                    }`}
-                  >
-                    <button
-                      className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm"
-                      onClick={() => toggleCollapse(project.id)}
-                    >
-                      <span className="text-neutral-500">{isCollapsed ? '▸' : '▾'}</span>
-                      <span className="truncate font-medium text-neutral-200">📁 {project.name}</span>
-                    </button>
-                    <button
-                      className="hidden text-xs text-neutral-500 hover:text-neutral-200 group-hover:block"
-                      title="在此项目下新建任务"
-                      onClick={() => {
-                        setCollapsed((prev) => ({ ...prev, [project.id]: false }));
-                        setTaskFormFor(project.id);
-                        setNewTaskName('');
-                        setTaskError(null);
-                      }}
-                    >
-                      ＋任务
-                    </button>
-                  </div>
-                  {!isCollapsed && (
-                    <div>
-                      {taskFormFor === project.id && (
-                        <div className="space-y-2 px-6 py-2">
-                          <input
-                            autoFocus
-                            className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-neutral-500"
-                            placeholder="任务名称（必填）"
-                            value={newTaskName}
-                            onChange={(e) => setNewTaskName(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') void createTaskIn(project.id);
-                              if (e.key === 'Escape') setTaskFormFor(null);
-                            }}
-                          />
-                          {taskError && taskFormFor === project.id && <p className="text-xs text-red-400">{taskError}</p>}
-                          <div className="flex gap-2">
-                            <button
-                              className="rounded bg-blue-600 px-2 py-1 text-xs hover:bg-blue-500"
-                              onClick={() => void createTaskIn(project.id)}
-                            >
-                              创建
-                            </button>
-                            <button
-                              className="rounded bg-neutral-800 px-2 py-1 text-xs"
-                              onClick={() => setTaskFormFor(null)}
-                            >
-                              取消
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                      {projectTasks.length === 0 && <p className="px-6 py-1 text-xs text-neutral-600">（无任务）</p>}
-                      {projectTasks.map((task) => (
-                        <button
-                          key={task.id}
-                          className={`block w-full px-6 py-1.5 text-left text-sm hover:bg-neutral-900 ${
-                            activeTask?.id === task.id ? 'bg-neutral-900' : ''
-                          }`}
-                          onClick={() => void openTask(task)}
-                        >
-                          <span
-                            className={`mr-2 inline-block h-2 w-2 rounded-full ${
-                              task.status === 'running'
-                                ? 'animate-pulse bg-amber-400'
-                                : task.status === 'idle'
-                                  ? 'bg-emerald-500'
-                                  : 'bg-red-500'
-                            }`}
-                          />
-                          {task.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {projects.length === 0 && <p className="px-4 py-2 text-xs text-neutral-600">（无项目）</p>}
-          </div>
         </aside>
 
-        {/* 中栏：对话流 */}
+        {/* 中栏：会话工具条 + 消息流 + 输入区 */}
         <main className="flex min-w-0 flex-1 flex-col">
-          <header className="flex items-center justify-between border-b border-neutral-800 px-4 py-2.5">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-neutral-400">{activeTask ? activeTask.name : '未选择任务'}</span>
+          {/* U4 顶部会话工具条 */}
+          <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-2 text-xs">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate font-medium text-neutral-200">{activeTask ? activeTask.name : '未选择任务'}</span>
+              {activeTask && (
+                <span className="truncate text-neutral-600">📁 {activeTask.directory}</span>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {activeTask?.status === 'running' && <span className="animate-pulse text-amber-400">运行中</span>}
               {activeTask?.status === 'interrupted' && (
                 <button
-                  className="rounded bg-amber-700 px-2 py-1 text-xs hover:bg-amber-600"
+                  className="rounded bg-amber-700 px-2 py-1 hover:bg-amber-600"
                   onClick={() => {
                     setInput(RESUME_MESSAGE);
                     void send(RESUME_MESSAGE);
@@ -566,40 +691,21 @@ export default function App(): React.JSX.Element {
                   ▶ 继续任务
                 </button>
               )}
-            </div>
-            <div className="flex items-center gap-3 text-xs">
-              <label className="flex items-center gap-1 text-neutral-500">
-                权限档位
-                <select
-                  className="rounded border border-neutral-700 bg-neutral-900 px-1.5 py-1"
-                  value={tier}
-                  onChange={(e) => void changeTier(e.target.value as Tier)}
-                >
-                  {Object.entries(tierLabels).map(([key, label]) => (
-                    <option key={key} value={key}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <span className={activeProvider ? 'text-neutral-500' : 'font-medium text-red-400'}>
-                {activeProvider
-                  ? `模型：${activeProvider.name} / ${activeProvider.modelId}`
-                  : isAdmin
-                    ? '⚠ 尚未配置模型——请到管理后台配置'
-                    : '⚠ 管理员尚未配置模型，请联系管理员'}
-              </span>
-              {isAdmin && (
-                <a className="text-blue-400 hover:text-blue-300" href="/admin" target="_blank" rel="noreferrer">
-                  后台管理
-                </a>
+              {rightPanel && (
+                <span className="text-neutral-500">
+                  {activeTask ? `${rightPanel.files.length} 个文件` : ''}
+                </span>
               )}
-              <span className="text-neutral-500">{currentUser?.username}</span>
-              <button className="text-neutral-500 hover:text-neutral-200" onClick={() => void logout()}>
-                退出
-              </button>
+              {activeTask && (
+                <button
+                  className="rounded bg-neutral-800 px-2 py-1 hover:bg-neutral-700"
+                  onClick={() => setTranscriptOpen(true)}
+                >
+                  转写查看
+                </button>
+              )}
             </div>
-          </header>
+          </div>
 
           <div className="flex-1 overflow-y-auto px-6 py-4">
             {chat.length === 0 && (
@@ -699,8 +805,27 @@ export default function App(): React.JSX.Element {
             <div ref={chatBottomRef} />
           </div>
 
+          {/* U3 输入区（ZCode 位置：附件 | 输入框 | 档位/模型 | 发送） */}
           <div className="border-t border-neutral-800 p-3">
             <div className="flex items-end gap-2">
+              <button
+                className="rounded-lg border border-neutral-700 px-2 py-2 text-xs text-neutral-400 hover:bg-neutral-900 disabled:opacity-40"
+                disabled={!activeTask || streaming}
+                title="附加文本文件（≤64KB，内容将随消息注入）"
+                onClick={() => attachRef?.click()}
+              >
+                ＋
+              </button>
+              <input
+                ref={setAttachRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  void onAttach(e.target.files);
+                  e.target.value = '';
+                }}
+              />
               <textarea
                 className="max-h-40 min-h-[44px] flex-1 resize-y rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm outline-none focus:border-neutral-500"
                 placeholder={activeTask ? '输入消息；可用 @文件名 引用任务目录内文件，Enter 发送' : '请先新建/选择任务'}
@@ -714,6 +839,36 @@ export default function App(): React.JSX.Element {
                   }
                 }}
               />
+              {/* U3：权限档位 + 模型选择移入输入区（ZCode 位置） */}
+              <select
+                className="rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-2 text-xs outline-none"
+                title="权限档位"
+                value={tier}
+                onChange={(e) => void changeTier(e.target.value as Tier)}
+              >
+                {Object.entries(tierLabels).map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="max-w-[180px] rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-2 text-xs outline-none"
+                title="模型选择（切换后下轮生效）"
+                value={activeProvider?.id ?? ''}
+                onChange={(e) => {
+                  if (isAdmin) void selectModel(e.target.value);
+                }}
+                disabled={!isAdmin}
+              >
+                {providers.length === 0 && <option value="">未配置</option>}
+                {providers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} / {p.modelId}
+                    {p.active ? '（当前）' : ''}
+                  </option>
+                ))}
+              </select>
               {streaming ? (
                 <button
                   className="rounded-lg bg-red-900 px-4 py-2 text-sm hover:bg-red-800"
@@ -733,6 +888,9 @@ export default function App(): React.JSX.Element {
                 </button>
               )}
             </div>
+            {!isAdmin && providers.length === 0 && (
+              <p className="mt-1 text-xs text-red-400">管理员尚未配置模型，请联系管理员。</p>
+            )}
           </div>
         </main>
 
@@ -762,7 +920,6 @@ export default function App(): React.JSX.Element {
       </div>
 
       {transcriptOpen && activeTask && <TranscriptModal taskId={activeTask.id} onClose={() => setTranscriptOpen(false)} />}
-      {usersModalOpen && <UsersModal onClose={() => setUsersModalOpen(false)} onSaved={() => undefined} />}
 
       {toast && (
         <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-neutral-800 px-4 py-2 text-sm shadow-xl">
@@ -811,4 +968,5 @@ export default function App(): React.JSX.Element {
     }
     return nodes;
   }
+
 }
