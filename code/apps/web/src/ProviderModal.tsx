@@ -1,3 +1,4 @@
+/** C02/C03：模型供应商配置弹窗（验活/保存/切换；key 经 I04 加密落盘）。 */
 import { useState } from 'react';
 import { api, type PublicProvider } from './api';
 

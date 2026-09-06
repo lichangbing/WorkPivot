@@ -1,3 +1,9 @@
+/**
+ * WorkPivot 主界面：三栏布局（左任务列表/中对话流/右成果区）。
+ * 职责：登录门与会话、任务创建与切换、SSE 流式对话渲染、权限/记忆确认卡、
+ *       模型与用户管理入口、全局错误提示。
+ * 纪律（A01.3）：只经 localhost HTTP/SSE 与服务层通信，禁止 import 服务层/内核。
+ */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';

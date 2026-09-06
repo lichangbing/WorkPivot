@@ -7,7 +7,7 @@
  */
 import { addEntry, removeEntries, writeHandbook } from './memory.js';
 import type { Tool } from '@workpivot/core';
-import { readHandbook } from './memory.js';
+import { memoryEnabled, readHandbook } from './memory.js';
 
 type Send = (payload: unknown) => void;
 
@@ -36,6 +36,7 @@ export function buildMemoryTools(userId: string, taskId: string, send: Send): To
       required: ['content'],
     },
     async run(args) {
+      if (!memoryEnabled()) return '记忆功能已关闭,本次不记录。';
       const content = String(args['content'] ?? '').trim();
       if (content === '') return '错误：content 必填';
       const id = addEntry(userId, content);

@@ -1,3 +1,4 @@
+/** T2-01 登录门：无用户时展示注册（首用户=管理员），否则登录。 */
 import { useState } from 'react';
 import { api, setToken } from './api';
 

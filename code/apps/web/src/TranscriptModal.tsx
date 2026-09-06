@@ -1,3 +1,4 @@
+/** T3-01/A03：转写查看器最简版——全量过程记录回看。 */
 import { useEffect, useState } from 'react';
 import { api, type TranscriptRow } from './api';
 

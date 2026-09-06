@@ -1,3 +1,4 @@
+/** T2-01：管理员创建用户（管理员分配制，无自主注册）。 */
 import { useCallback, useEffect, useState } from 'react';
 import { api, type PublicUser } from './api';
 
