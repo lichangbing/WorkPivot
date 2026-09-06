@@ -137,7 +137,7 @@ export function createApp(opts: AppOptions = {}): Express {
   // ---- 用户管理（仅管理员）----
   app.get('/api/users', (req, res) => {
     if (!requireAdmin(req as AuthedRequest)) return res.status(403).json({ error: '仅管理员可查看用户' });
-    res.json({ users: listUsers().map((u) => ({ ...u, createdAt: (u as any).createdAt, lastLoginTime: (u as any).lastLoginTime })) });
+    res.json({ users: listUsers().map((u) => ({ ...u, createdAt: (u as Record<string, unknown>).createdAt, lastLoginTime: (u as Record<string, unknown>).lastLoginTime })) });
   });
 
   app.delete('/api/users/:id', (req, res) => {

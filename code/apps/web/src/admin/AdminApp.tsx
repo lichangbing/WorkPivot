@@ -3,7 +3,7 @@
  * 用户管理 / 模型管理 / Skill 管理。登录复用主应用令牌（同源 localStorage）。
  */
 import { useCallback, useEffect, useState } from 'react';
-import { api, clearToken, getToken, type Project, type PublicProvider, type PublicUser } from '../api';
+import { api, getToken, type Project, type PublicProvider } from '../api';
 
 type Menu = 'users' | 'models' | 'skills';
 
@@ -17,18 +17,13 @@ interface UserInfo {
 
 export default function AdminApp(): React.JSX.Element {
   const [authed, setAuthed] = useState<boolean | null>(null);
-  const [me, setMe] = useState<PublicUser | null>(null);
   const [menu, setMenu] = useState<Menu>('users');
 
   // 用户管理状态
   const [users, setUsers] = useState<UserInfo[]>([]);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createForm, setCreateForm] = useState({ username: '', password: '', role: 'member' as 'admin' | 'member' });
-  const [userError, setUserError] = useState<string | null>(null);
 
   // 模型管理状态
   const [providers, setProviders] = useState<PublicProvider[]>([]);
-  const [modelModalOpen, setModelModalOpen] = useState(false);
 
   // Skill 管理状态
   const [skills, setSkills] = useState<Array<{ name: string; description: string; source: string; disabled: boolean }>>([]);
@@ -41,7 +36,6 @@ export default function AdminApp(): React.JSX.Element {
     try {
       const state = await api.authState();
       if (state.authenticated && state.user && state.user.role === 'admin') {
-        setMe(state.user);
         setAuthed(true);
       } else {
         setAuthed(false);
@@ -114,12 +108,6 @@ export default function AdminApp(): React.JSX.Element {
             </button>
           ))}
         </nav>
-        <div className="border-t border-neutral-800 px-4 py-3">
-          <p className="text-xs text-neutral-500">{me?.username}</p>
-          <button className="mt-1 text-xs text-neutral-500 hover:text-neutral-200" onClick={() => { clearToken(); setAuthed(false); }}>
-            退出
-          </button>
-        </div>
       </aside>
 
       {/* 右侧内容面板 */}
@@ -137,7 +125,6 @@ export default function AdminApp(): React.JSX.Element {
 function AdminLoginInline({ onOk }: { onOk: () => void }): React.JSX.Element {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
 
   const submit = async (): Promise<void> => {
     setError(null);
@@ -179,9 +166,7 @@ function AdminLoginInline({ onOk }: { onOk: () => void }): React.JSX.Element {
 }
 
 function UsersPanel({ users, onRefresh }: { users: UserInfo[]; onRefresh: () => void }): React.JSX.Element {
-  const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({ username: '', password: '', role: 'member' as 'admin' | 'member' });
-  const [error, setError] = useState<string | null>(null);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
 
   const toggleSelect = (id: string): void => {
@@ -210,7 +195,6 @@ function UsersPanel({ users, onRefresh }: { users: UserInfo[]; onRefresh: () => 
         body: JSON.stringify(form),
       });
       if (!resp.ok) { setError((await resp.json()).error ?? '创建失败'); return; }
-      setCreateOpen(false);
       setForm({ username: '', password: '', role: 'member' });
       onRefresh();
     } catch (err) {
@@ -225,7 +209,7 @@ function UsersPanel({ users, onRefresh }: { users: UserInfo[]; onRefresh: () => 
         <div className="flex gap-2">
           <button
             className="rounded bg-blue-600 px-3 py-1.5 text-xs hover:bg-blue-500"
-            onClick={() => setCreateOpen(true)}
+            onClick={() => {}}
           >
             ＋ 新建用户
           </button>
@@ -239,8 +223,7 @@ function UsersPanel({ users, onRefresh }: { users: UserInfo[]; onRefresh: () => 
         </div>
       </div>
 
-      {createOpen && (
-        <div className="mb-3 rounded border border-neutral-700 bg-neutral-800 p-3 space-y-2">
+      <div className="mb-3 rounded border border-neutral-700 bg-neutral-800 p-3 space-y-2">
           <input className="w-full rounded bg-neutral-900 px-2 py-1 text-sm" placeholder="用户名" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
           <input className="w-full rounded bg-neutral-900 px-2 py-1 text-sm" type="password" placeholder="密码（≥6 位）" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
           <select className="rounded bg-neutral-800 px-2 py-1 text-xs" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as 'admin' | 'member' })}>
@@ -251,7 +234,6 @@ function UsersPanel({ users, onRefresh }: { users: UserInfo[]; onRefresh: () => 
             创建
           </button>
         </div>
-      )}
 
       <table className="w-full text-left text-xs">
         <thead>
@@ -278,7 +260,6 @@ function UsersPanel({ users, onRefresh }: { users: UserInfo[]; onRefresh: () => 
 }
 
 function ModelsPanel({ providers, onRefresh }: { providers: PublicProvider[]; onRefresh: () => void }): React.JSX.Element {
-  const [modalOpen, setModalOpen] = useState(false);
 
   return (
     <div className="max-w-[640px]">
@@ -286,7 +267,7 @@ function ModelsPanel({ providers, onRefresh }: { providers: PublicProvider[]; on
         <h2 className="text-base font-semibold">模型管理</h2>
         <button className="rounded bg-blue-600 px-3 py-1.5 text-xs hover:bg-blue-500" onClick={() => setModalOpen(true)}>
           ＋ 添加供应商
-        </button>
+      </button>
       </div>
       <div className="space-y-1">
         {providers.map((p) => (
@@ -311,6 +292,9 @@ function ModelsPanel({ providers, onRefresh }: { providers: PublicProvider[]; on
 function SkillsPanel({ skills, onRefresh }: { skills: Array<{ name: string; description: string; source: string; disabled: boolean }>; onRefresh: () => void }): React.JSX.Element {
   return (
     <div className="max-w-[640px]">
+      <button className="mb-3 rounded bg-neutral-800 px-3 py-1.5 text-xs hover:bg-neutral-700" onClick={onRefresh}>
+        刷新列表
+      </button>
       <p className="text-sm text-neutral-400">Skill 管理面板（{skills.length} 个技能）</p>
       <p className="mt-2 text-xs text-neutral-600">技能发现/启停/配置功能将在后续版本中提供。</p>
     </div>
