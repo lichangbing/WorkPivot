@@ -23,6 +23,8 @@ import {
   login as authLogin,
   resolveToken,
   createUser,
+  deleteUser,
+  updateUserRole,
   listUsers,
   type PublicUser,
   type Role,
@@ -135,7 +137,33 @@ export function createApp(opts: AppOptions = {}): Express {
   // ---- 用户管理（仅管理员）----
   app.get('/api/users', (req, res) => {
     if (!requireAdmin(req as AuthedRequest)) return res.status(403).json({ error: '仅管理员可查看用户' });
-    res.json({ users: listUsers() });
+    res.json({ users: listUsers().map((u) => ({ ...u, createdAt: (u as any).createdAt, lastLoginTime: (u as any).lastLoginTime })) });
+  });
+
+  app.delete('/api/users/:id', (req, res) => {
+    const admin = requireAdmin(req as AuthedRequest);
+    if (!admin) return res.status(403).json({ error: '仅管理员可删除用户' });
+    const result = deleteUser(req.params['id'] ?? '', admin.id);
+    if (result.ok) {
+      audit({ user: admin.username, event: 'user_deleted', detail: req.params['id'] });
+      res.json({ ok: true });
+    } else {
+      res.status(400).json({ error: result.error });
+    }
+  });
+
+  app.put('/api/users/:id/role', (req, res) => {
+    const admin = requireAdmin(req as AuthedRequest);
+    if (!admin) return res.status(403).json({ error: '仅管理员可修改角色' });
+    const { role } = req.body as { role?: Role };
+    if (!role || (role !== 'admin' && role !== 'member')) return res.status(400).json({ error: 'role 必填' });
+    const result = updateUserRole(req.params['id'] ?? '', role);
+    if (result.ok) {
+      audit({ user: admin.username, event: 'user_role_changed', detail: `${req.params['id']} → ${role}` });
+      res.json({ ok: true });
+    } else {
+      res.status(400).json({ error: result.error });
+    }
   });
 
   app.post('/api/users', (req, res) => {

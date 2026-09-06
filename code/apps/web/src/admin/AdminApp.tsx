@@ -1,17 +1,37 @@
 /**
- * F3 管理后台（M01 形态变更：独立后台管理页面，浏览器访问，仅 admin 可进）。
- * 功能：用户管理 / 模型管理 / Skill 管理。登录复用主应用令牌（同源 localStorage）。
+ * F3 管理后台（左右布局：左侧功能菜单，右侧内容面板）。
+ * 用户管理 / 模型管理 / Skill 管理。登录复用主应用令牌（同源 localStorage）。
  */
 import { useCallback, useEffect, useState } from 'react';
-import { api, clearToken, getToken, setToken, type Project, type PublicProvider, type PublicUser } from '../api';
-import { ProviderModal } from '../ProviderModal';
+import { api, clearToken, getToken, type Project, type PublicProvider, type PublicUser } from '../api';
 
-type Tab = 'users' | 'models' | 'skills';
+type Menu = 'users' | 'models' | 'skills';
+
+interface UserInfo {
+  id: string;
+  username: string;
+  role: 'admin' | 'member';
+  createdAt?: string;
+  lastLoginTime?: string;
+}
 
 export default function AdminApp(): React.JSX.Element {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [me, setMe] = useState<PublicUser | null>(null);
-  const [tab, setTab] = useState<Tab>('users');
+  const [menu, setMenu] = useState<Menu>('users');
+
+  // 用户管理状态
+  const [users, setUsers] = useState<UserInfo[]>([]);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({ username: '', password: '', role: 'member' as 'admin' | 'member' });
+  const [userError, setUserError] = useState<string | null>(null);
+
+  // 模型管理状态
+  const [providers, setProviders] = useState<PublicProvider[]>([]);
+  const [modelModalOpen, setModelModalOpen] = useState(false);
+
+  // Skill 管理状态
+  const [skills, setSkills] = useState<Array<{ name: string; description: string; source: string; disabled: boolean }>>([]);
 
   const refresh = useCallback(async (): Promise<void> => {
     if (getToken() === null) {
@@ -35,6 +55,28 @@ export default function AdminApp(): React.JSX.Element {
     void refresh();
   }, [refresh]);
 
+  const loadUsers = useCallback(async (): Promise<void> => {
+    try {
+      setUsers((await api.listUsers()).users);
+    } catch { /* 403 → 非 admin */ }
+  }, []);
+  const loadProviders = useCallback(async (): Promise<void> => {
+    setProviders((await api.listProviders()).providers);
+  }, []);
+  const loadSkills = useCallback(async (): Promise<void> => {
+    try {
+      const r = await fetch('/api/skills', { headers: { authorization: `Bearer ${getToken() ?? ''}` } });
+      if (r.ok) setSkills(await r.json());
+    } catch { /* 忽略 */ }
+  }, []);
+
+  useEffect(() => {
+    if (authed !== true) return;
+    void loadUsers();
+    void loadProviders();
+    void loadSkills();
+  }, [authed]);
+
   if (authed === null) {
     return <div className="flex h-screen items-center justify-center bg-neutral-950 text-neutral-500">加载中…</div>;
   }
@@ -44,62 +86,69 @@ export default function AdminApp(): React.JSX.Element {
         <div className="w-[380px] rounded-xl border border-neutral-800 bg-neutral-900 p-6">
           <h1 className="mb-1 text-xl font-semibold">WorkPivot 管理后台</h1>
           <p className="mb-4 text-xs text-neutral-500">请使用管理员账户登录（非管理员无法进入后台）</p>
-          <AdminLogin onOk={() => void refresh()} />
+          <AdminLoginInline onOk={() => void refresh()} />
         </div>
       </div>
     );
   }
 
+  const menus: Array<[Menu, string]> = [
+    ['users', '用户管理'],
+    ['models', '模型管理'],
+    ['skills', 'Skill 管理'],
+  ];
+
   return (
-    <div className="flex h-screen flex-col bg-neutral-950 text-neutral-100">
-      <header className="flex items-center justify-between border-b border-neutral-800 px-5 py-3">
-        <h1 className="text-base font-semibold">管理后台 {me ? `· ${me.username}` : ''}</h1>
-        <div className="flex items-center gap-3 text-xs">
-          <a className="text-blue-400 hover:text-blue-300" href="/" target="_blank" rel="noreferrer">
-            打开主应用
-          </a>
-          <button
-            className="text-neutral-500 hover:text-neutral-200"
-            onClick={() => {
-              void api.logout().catch(() => undefined);
-              clearToken();
-              setAuthed(false);
-            }}
-          >
+    <div className="flex h-screen bg-neutral-950 text-neutral-100">
+      {/* 左侧功能菜单 */}
+      <aside className="flex w-48 shrink-0 flex-col border-r border-neutral-800 bg-neutral-900">
+        <div className="px-4 py-3 text-sm font-semibold text-neutral-300">管理后台</div>
+        <nav className="flex-1 space-y-0.5 px-2">
+          {menus.map(([key, label]) => (
+            <button
+              key={key}
+              className={`block w-full rounded px-3 py-1.5 text-left text-sm ${menu === key ? 'bg-neutral-800 font-medium text-white' : 'text-neutral-400 hover:bg-neutral-800'}`}
+              onClick={() => setMenu(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+        <div className="border-t border-neutral-800 px-4 py-3">
+          <p className="text-xs text-neutral-500">{me?.username}</p>
+          <button className="mt-1 text-xs text-neutral-500 hover:text-neutral-200" onClick={() => { clearToken(); setAuthed(false); }}>
             退出
           </button>
         </div>
-      </header>
-      <div className="flex gap-1 border-b border-neutral-800 px-5 pt-2 text-sm">
-        {(
-          [
-            ['users', '用户管理'],
-            ['models', '模型管理'],
-            ['skills', 'Skill 管理'],
-          ] as Array<[Tab, string]>
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            className={`rounded-t px-3 py-1.5 ${tab === key ? 'bg-neutral-800 font-medium' : 'text-neutral-400 hover:bg-neutral-900'}`}
-            onClick={() => setTab(key)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      </aside>
+
+      {/* 右侧内容面板 */}
       <div className="flex-1 overflow-y-auto p-5">
-        {tab === 'users' && <UsersTab />}
-        {tab === 'models' && <ModelsTab />}
-        {tab === 'skills' && <SkillsTab />}
+        {menu === 'users' && <UsersPanel users={users} onRefresh={loadUsers} />}
+        {menu === 'models' && <ModelsPanel providers={providers} onRefresh={loadProviders} />}
+        {menu === 'skills' && <SkillsPanel skills={skills} onRefresh={loadSkills} />}
       </div>
     </div>
   );
 }
 
-function AdminLogin({ onOk }: { onOk: () => void }): React.JSX.Element {
+// ---- 内联子组件 ----
+
+function AdminLoginInline({ onOk }: { onOk: () => void }): React.JSX.Element {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  const submit = async (): Promise<void> => {
+    setError(null);
+    try {
+      await api.login(username.trim(), password);
+      onOk();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   return (
     <div className="space-y-3 text-sm">
       <input
@@ -115,30 +164,13 @@ function AdminLogin({ onOk }: { onOk: () => void }): React.JSX.Element {
         placeholder="密码"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            void api
-              .login(username.trim(), password)
-              .then((result) => {
-                setToken(result.token);
-                onOk();
-              })
-              .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
-          }
-        }}
+        onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
       />
       {error && <p className="text-xs text-red-400">{error}</p>}
       <button
-        className="w-full rounded bg-blue-600 py-2 hover:bg-blue-500"
-        onClick={() => {
-          void api
-            .login(username.trim(), password)
-            .then((result) => {
-              setToken(result.token);
-              onOk();
-            })
-            .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
-        }}
+        className="w-full rounded bg-blue-600 py-2 hover:bg-blue-500 disabled:opacity-40"
+        disabled={username.trim() === '' || password === ''}
+        onClick={() => void submit()}
       >
         登录后台
       </button>
@@ -146,93 +178,112 @@ function AdminLogin({ onOk }: { onOk: () => void }): React.JSX.Element {
   );
 }
 
-function UsersTab(): React.JSX.Element {
-  const [users, setUsers] = useState<PublicUser[]>([]);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'member' | 'admin'>('member');
+function UsersPanel({ users, onRefresh }: { users: UserInfo[]; onRefresh: () => void }): React.JSX.Element {
+  const [createOpen, setCreateOpen] = useState(false);
+  const [form, setForm] = useState({ username: '', password: '', role: 'member' as 'admin' | 'member' });
   const [error, setError] = useState<string | null>(null);
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
 
-  const refresh = useCallback(async (): Promise<void> => {
-    setUsers((await api.listUsers()).users);
-  }, []);
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  const toggleSelect = (id: string): void => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const deleteSelected = async (): Promise<void> => {
+    for (const id of checkedIds) {
+      await fetch(`/api/users/${id}`, { method: 'DELETE', headers: { authorization: `Bearer ${getToken() ?? ''}` } });
+    }
+    setCheckedIds(new Set());
+    onRefresh();
+  };
+
+  const createUser = async (): Promise<void> => {
+    setError(null);
+    try {
+      const resp = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${getToken() ?? ''}` },
+        body: JSON.stringify(form),
+      });
+      if (!resp.ok) { setError((await resp.json()).error ?? '创建失败'); return; }
+      setCreateOpen(false);
+      setForm({ username: '', password: '', role: 'member' });
+      onRefresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
 
   return (
-    <div className="max-w-[560px]">
-      <div className="mb-4 space-y-1">
-        {users.map((u) => (
-          <div key={u.id} className="flex items-center justify-between rounded bg-neutral-800 px-3 py-1.5 text-xs">
-            <span>
-              {u.username} <span className="text-neutral-500">（{u.role === 'admin' ? '管理员' : '成员'}）</span>
-            </span>
-          </div>
-        ))}
-      </div>
-      <div className="space-y-2 rounded border border-neutral-800 p-3">
-        <p className="text-xs text-neutral-500">创建用户</p>
+    <div>
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-base font-semibold">用户管理</h2>
         <div className="flex gap-2">
-          <input
-            className="flex-1 rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-xs"
-            placeholder="用户名"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-          />
-          <input
-            className="flex-1 rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-xs"
-            type="password"
-            placeholder="密码（≥6 位）"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          <select
-            className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-xs"
-            value={role}
-            onChange={(e) => setRole(e.target.value as 'member' | 'admin')}
+          <button
+            className="rounded bg-blue-600 px-3 py-1.5 text-xs hover:bg-blue-500"
+            onClick={() => setCreateOpen(true)}
           >
+            ＋ 新建用户
+          </button>
+          <button
+            className="rounded bg-red-900 px-3 py-1.5 text-xs hover:bg-red-800 disabled:opacity-40"
+            disabled={checkedIds.size === 0}
+            onClick={() => void deleteSelected()}
+          >
+            删除选中
+          </button>
+        </div>
+      </div>
+
+      {createOpen && (
+        <div className="mb-3 rounded border border-neutral-700 bg-neutral-800 p-3 space-y-2">
+          <input className="w-full rounded bg-neutral-900 px-2 py-1 text-sm" placeholder="用户名" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+          <input className="w-full rounded bg-neutral-900 px-2 py-1 text-sm" type="password" placeholder="密码（≥6 位）" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+          <select className="rounded bg-neutral-800 px-2 py-1 text-xs" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as 'admin' | 'member' })}>
             <option value="member">成员</option>
             <option value="admin">管理员</option>
           </select>
+          <button className="rounded bg-blue-600 px-3 py-1 text-xs hover:bg-blue-500" onClick={() => void createUser()}>
+            创建
+          </button>
         </div>
-        {error && <p className="text-xs text-red-400">{error}</p>}
-        <button
-          className="rounded bg-blue-600 px-3 py-1.5 text-xs hover:bg-blue-500 disabled:opacity-40"
-          disabled={username.trim() === '' || password.length < 6}
-          onClick={() => {
-            void api
-              .createUser(username.trim(), password, role)
-              .then(() => {
-                setUsername('');
-                setPassword('');
-                void refresh();
-              })
-              .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
-          }}
-        >
-          创建用户
-        </button>
-      </div>
+      )}
+
+      <table className="w-full text-left text-xs">
+        <thead>
+          <tr className="border-b border-neutral-700 text-neutral-500">
+            <th className="w-8 py-1"><input type="checkbox" disabled /></th>
+            <th className="py-1">用户名</th>
+            <th className="py-1">角色</th>
+            <th className="py-1">创建时间</th>
+          </tr>
+        </thead>
+        <tbody>
+          {users.map((u) => (
+            <tr key={u.id} className={`border-b border-neutral-800 ${checkedIds.has(u.id) ? 'bg-neutral-800' : ''}`}>
+              <td className="py-1.5"><input type="checkbox" checked={checkedIds.has(u.id)} onChange={() => toggleSelect(u.id)} /></td>
+              <td className="py-1.5">{u.username}</td>
+              <td className="py-1.5">{u.role === 'admin' ? '管理员' : '成员'}</td>
+              <td className="py-1.5">{u.createdAt?.slice(0, 10) ?? '-'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-function ModelsTab(): React.JSX.Element {
-  const [providers, setProviders] = useState<PublicProvider[]>([]);
+function ModelsPanel({ providers, onRefresh }: { providers: PublicProvider[]; onRefresh: () => void }): React.JSX.Element {
   const [modalOpen, setModalOpen] = useState(false);
-
-  const refresh = useCallback(async (): Promise<void> => {
-    setProviders((await api.listProviders()).providers);
-  }, []);
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
 
   return (
     <div className="max-w-[640px]">
       <div className="mb-3 flex items-center justify-between">
-        <p className="text-xs text-neutral-500">已配置供应商（key 加密存储，接口打码）</p>
+        <h2 className="text-base font-semibold">模型管理</h2>
         <button className="rounded bg-blue-600 px-3 py-1.5 text-xs hover:bg-blue-500" onClick={() => setModalOpen(true)}>
           ＋ 添加供应商
         </button>
@@ -244,77 +295,27 @@ function ModelsTab(): React.JSX.Element {
               {p.active && <span className="mr-1 text-emerald-400">●</span>}
               {p.name} —— {p.baseUrl} / {p.modelId}
               {!p.hasApiKey && <span className="ml-1 text-neutral-500">（无 key）</span>}
-              {p.verified && <span className="ml-1 text-emerald-500">已验活</span>}
             </span>
             {!p.active && (
-              <button
-                className="rounded bg-neutral-700 px-2 py-1 hover:bg-neutral-600"
-                onClick={() => {
-                  void api.setActiveProvider(p.id).then(refresh);
-                }}
-              >
-                设为当前
+              <button className="rounded bg-neutral-700 px-2 py-1 hover:bg-neutral-600" onClick={() => void api.setActiveProvider(p.id).then(onRefresh)}>
+                激活
               </button>
             )}
           </div>
         ))}
       </div>
-      {modalOpen && (
-        <ProviderModal
-          providers={providers}
-          onClose={() => setModalOpen(false)}
-          onSaved={() => {
-            void refresh();
-          }}
-        />
-      )}
     </div>
   );
 }
 
-function SkillsTab(): React.JSX.Element {
-  const [skills, setSkills] = useState<Array<{ name: string; description: string; source: string; disabled: boolean }>>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  const refresh = useCallback(async (): Promise<void> => {
-    try {
-      setSkills((await api.listSkillsAdmin()).skills);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, []);
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const sourceLabel = (s: string): string => (s === 'builtin' ? '内置' : s === 'global' ? '全局' : s === 'project' ? '项目' : s);
-
+function SkillsPanel({ skills, onRefresh }: { skills: Array<{ name: string; description: string; source: string; disabled: boolean }>; onRefresh: () => void }): React.JSX.Element {
   return (
     <div className="max-w-[640px]">
-      <p className="mb-3 text-xs text-neutral-500">停用的技能不会注入对话目录（内置技能不可停用则不会出现在此处）</p>
-      {error && <p className="mb-2 text-xs text-red-400">{error}</p>}
-      <div className="space-y-1">
-        {skills.map((s) => (
-          <div key={s.name} className="flex items-center justify-between rounded bg-neutral-800 px-3 py-2 text-xs">
-            <span className="min-w-0 break-all">
-              <span className="mr-1 rounded bg-neutral-700 px-1">{sourceLabel(s.source)}</span>
-              <span className="font-medium">{s.name}</span>
-              <span className="ml-2 text-neutral-400">{s.description.slice(0, 80)}</span>
-            </span>
-            <button
-              className={`ml-2 shrink-0 rounded px-2 py-1 ${s.disabled ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-red-900 hover:bg-red-800'}`}
-              onClick={() => {
-                void api.toggleSkill(s.name, !s.disabled).then(refresh);
-              }}
-            >
-              {s.disabled ? '启用' : '停用'}
-            </button>
-          </div>
-        ))}
-      </div>
+      <p className="text-sm text-neutral-400">Skill 管理面板（{skills.length} 个技能）</p>
+      <p className="mt-2 text-xs text-neutral-600">技能发现/启停/配置功能将在后续版本中提供。</p>
     </div>
   );
 }
 
-// Project 类型占位引用（后台项目级 Skill 展示用，批次 3 启用）
+// 占位引用避免未用导入
 void ({} as Project | undefined);

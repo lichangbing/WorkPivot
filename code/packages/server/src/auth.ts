@@ -16,6 +16,7 @@ export interface User {
   hash: string;
   role: Role;
   createdAt: string;
+  lastLoginTime?: string;
 }
 
 interface UsersFile {
@@ -83,13 +84,18 @@ export interface PublicUser {
   id: string;
   username: string;
   role: Role;
+  createdAt?: string;
+  lastLoginTime?: string;
 }
 
 export function login(username: string, password: string): { token: string; user: PublicUser } {
-  const user = loadUsers().users.find((u) => u.username === username);
+  const file = loadUsers();
+  const user = file.users.find((u) => u.username === username);
   if (!user || !bcrypt.compareSync(password, user.hash)) throw new Error('用户名或密码错误');
+  user.lastLoginTime = new Date().toISOString();
+  writeAtomic(usersPath(), JSON.stringify(file, null, 2));
   const token = issueToken(user.id);
-  return { token, user: { id: user.id, username: user.username, role: user.role } };
+  return { token, user: { id: user.id, username: user.username, role: user.role, lastLoginTime: user.lastLoginTime } };
 }
 
 function issueToken(userId: string): string {
@@ -110,8 +116,40 @@ export function resolveToken(token: string | undefined | null): PublicUser | nul
   return user ? { id: user.id, username: user.username, role: user.role } : null;
 }
 
-export function listUsers(): PublicUser[] {
-  return loadUsers().users.map((u) => ({ id: u.id, username: u.username, role: u.role }));
+export function deleteUser(userId: string, currentUserId: string): { ok: boolean; error?: string } {
+  if (userId === currentUserId) return { ok: false, error: '不能删除自己的账户' };
+  const file = loadUsers();
+  const idx = file.users.findIndex((u) => u.id === userId);
+  if (idx < 0) return { ok: false, error: '用户不存在' };
+  const target = file.users[idx];
+  if (target && target.role === 'admin' && file.users.filter((u) => u.role === 'admin').length <= 1) {
+    return { ok: false, error: '至少保留一个管理员账户' };
+  }
+  const removed = file.users.splice(idx, 1)[0]!;
+  
+  writeAtomic(usersPath(), JSON.stringify(file, null, 2));
+  appendLine(join(ensureWorkpivotDir('audit'), `audit-${localDate()}.jsonl`), JSON.stringify({ ts: new Date().toISOString(), event: 'user_deleted', user: removed.username }));
+  return { ok: true };
+}
+
+export function updateUserRole(userId: string, role: Role): { ok: boolean; error?: string } {
+  const file = loadUsers();
+  const user = file.users.find((u) => u.id === userId)!;
+  if (!user) return { ok: false, error: '用户不存在' };
+  user.role = role;
+  writeAtomic(usersPath(), JSON.stringify(file, null, 2));
+  appendLine(join(ensureWorkpivotDir('audit'), `audit-${localDate()}.jsonl`), JSON.stringify({ ts: new Date().toISOString(), event: 'user_role_changed', user: user.username, role }));
+  return { ok: true };
+}
+
+export function listUsers(): Array<PublicUser & { createdAt?: string; lastLoginTime?: string }> {
+  return loadUsers().users.map((u) => ({
+    id: u.id,
+    username: u.username,
+    role: u.role,
+    createdAt: u.createdAt,
+    lastLoginTime: u.lastLoginTime,
+  }));
 }
 
 function localDate(): string {
