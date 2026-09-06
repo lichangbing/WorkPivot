@@ -105,6 +105,35 @@ export async function saveProvider(input: SaveProviderInput): Promise<{ provider
   return { provider: toPublic(provider, registry.activeId) };
 }
 
+/** F3：按 id 更新供应商（编辑时 apiKey 留空 = 保留原 key）。 */
+export async function updateProvider(id: string, input: SaveProviderInput): Promise<{ provider: PublicProvider; verify?: { ok: boolean; detail: string } }> {
+  const registry = load();
+  const existing = registry.providers.find((p) => p.id === id);
+  if (!existing) throw new Error(`供应商不存在：${id}`);
+  if (input.verify) {
+    const result = await verifyProvider(input.baseUrl, input.apiKey);
+    if (!result.ok) throw new Error(`验活失败：${result.detail}`);
+  }
+  existing.name = input.name;
+  existing.baseUrl = input.baseUrl;
+  existing.modelId = input.modelId;
+  existing.verified = true;
+  if (input.apiKey) existing.apiKey = getSecretBox().encrypt(input.apiKey);
+  save(registry);
+  return { provider: toPublic(existing, registry.activeId) };
+}
+
+/** F3：按 id 删除供应商；若删的是激活项则顺延到剩余第一个（没有则清空）。 */
+export function deleteProvider(id: string): { ok: true } {
+  const registry = load();
+  const idx = registry.providers.findIndex((p) => p.id === id);
+  if (idx === -1) throw new Error(`供应商不存在：${id}`);
+  registry.providers.splice(idx, 1);
+  if (registry.activeId === id) registry.activeId = registry.providers[0]?.id;
+  save(registry);
+  return { ok: true };
+}
+
 export function setActiveProvider(id: string): PublicProvider {
   const registry = load();
   const provider = registry.providers.find((p) => p.id === id);

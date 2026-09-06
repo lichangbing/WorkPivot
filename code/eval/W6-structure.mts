@@ -108,6 +108,7 @@ async function register(port: string): Promise<string> {
 function api(port: string, token: string): {
   get: <T>(path: string) => Promise<{ status: number; body: T }>;
   post: <T>(path: string, body?: unknown) => Promise<{ status: number; body: T }>;
+  put: <T>(path: string, body?: unknown) => Promise<{ status: number; body: T }>;
   del: (path: string) => Promise<{ status: number; body: unknown }>;
 } {
   const headers = { 'content-type': 'application/json', authorization: `Bearer ${token}` };
@@ -118,6 +119,10 @@ function api(port: string, token: string): {
     },
     post: async <T,>(path: string, body?: unknown) => {
       const r = await fetch(`http://127.0.0.1:${port}${path}`, { method: 'POST', headers, body: JSON.stringify(body ?? {}) });
+      return { status: r.status, body: (await r.json()) as T };
+    },
+    put: async <T,>(path: string, body?: unknown) => {
+      const r = await fetch(`http://127.0.0.1:${port}${path}`, { method: 'PUT', headers, body: JSON.stringify(body ?? {}) });
       return { status: r.status, body: (await r.json()) as T };
     },
     del: async (path: string) => {
@@ -188,6 +193,29 @@ try {
   assert('F3 member 配模型被拒（403）', providerDenied.status === 403);
   const skillsDenied = await member.get<{ error?: string }>('/api/skills');
   assert('F3 member 看技能被拒（403）', skillsDenied.status === 403);
+
+  // F3 供应商编辑/删除（PUT/DELETE /api/providers/:id）
+  const provs0 = await admin.get<{ providers: Array<{ id: string; baseUrl: string; modelId: string; active: boolean }> }>('/api/providers');
+  const p0 = provs0.body.providers[0]!;
+  const memberPut = await member.put(`/api/providers/${p0.id}`, { name: 'x', baseUrl: 'http://127.0.0.1:1/v1', modelId: 'm' });
+  assert('F3 member 改模型被拒（403）', memberPut.status === 403);
+  const upd = await admin.put(`/api/providers/${p0.id}`, { name: '模拟2', baseUrl: p0.baseUrl, modelId: 'mock-2' });
+  assert('F3 编辑供应商生效（换 modelId）', upd.status === 200 && upd.body.provider.modelId === 'mock-2' && upd.body.provider.name === '模拟2');
+  const p2 = await admin.post<{ provider: { id: string } }>('/api/providers', {
+    name: '备用', baseUrl: `http://127.0.0.1:${MOCK_PORT}/v1`, modelId: 'mock-1',
+  });
+  assert('F3 新建备用供应商', p2.status === 200);
+  // 删除激活项 → activeId 顺延到剩余第一个（对话链 resolveActiveProvider 不断供）
+  const delActive = await admin.del(`/api/providers/${p0.id}`);
+  assert('F3 删除激活供应商', delActive.status === 200);
+  const provs1 = await admin.get<{ providers: Array<{ name: string; active: boolean }> }>('/api/providers');
+  assert(
+    'F3 删除后激活项顺延',
+    provs1.body.providers.length === 1 && provs1.body.providers[0]!.active === true,
+    JSON.stringify(provs1.body.providers),
+  );
+  const delAgain = await admin.del(`/api/providers/${p0.id}`);
+  assert('F3 删除不存在的供应商报 404', delAgain.status === 404);
 
   // F2 临时任务：目录在临时区 + 零记忆注入 + 可删除
   // 先在普通任务里产生一条记忆（把注入判别物准备好）

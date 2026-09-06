@@ -102,6 +102,9 @@ export const api = {
   listUsers: (): Promise<{ users: PublicUser[] }> => jsonFetch('/api/users'),
   createUser: (username: string, password: string, role: 'admin' | 'member'): Promise<{ user: PublicUser }> =>
     jsonFetch('/api/users', { method: 'POST', body: JSON.stringify({ username, password, role }) }),
+  deleteUser: (id: string): Promise<{ ok: boolean }> => jsonFetch(`/api/users/${id}`, { method: 'DELETE' }),
+  updateUserRole: (id: string, role: 'admin' | 'member'): Promise<{ ok: boolean }> =>
+    jsonFetch(`/api/users/${id}/role`, { method: 'PUT', body: JSON.stringify({ role }) }),
   getSettings: (): Promise<{ permissionTier: Tier; tierLabels: Record<string, string>; allowDirs: string[] }> =>
     jsonFetch('/api/settings'),
   setTier: (tier: Tier): Promise<{ permissionTier: Tier }> =>
@@ -134,6 +137,10 @@ export const api = {
   listProviders: (): Promise<{ providers: PublicProvider[]; activeId?: string }> => jsonFetch('/api/providers'),
   saveProvider: (input: { name: string; baseUrl: string; modelId: string; apiKey?: string; verify?: boolean }): Promise<{ provider: PublicProvider }> =>
     jsonFetch('/api/providers', { method: 'POST', body: JSON.stringify(input) }),
+  updateProvider: (id: string, input: { name: string; baseUrl: string; modelId: string; apiKey?: string; verify?: boolean }): Promise<{ provider: PublicProvider }> =>
+    jsonFetch(`/api/providers/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  deleteProvider: (id: string): Promise<{ ok: boolean }> =>
+    jsonFetch(`/api/providers/${id}`, { method: 'DELETE' }),
   verifyProvider: (input: { baseUrl: string; apiKey?: string }): Promise<{ ok: boolean; detail: string }> =>
     jsonFetch('/api/providers/verify', { method: 'POST', body: JSON.stringify(input) }),
   setActiveProvider: (id: string): Promise<{ provider: PublicProvider }> =>

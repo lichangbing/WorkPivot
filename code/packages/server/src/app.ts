@@ -32,7 +32,7 @@ import {
 import { evaluateAccess, getTier, resolvePendingRequest, setTier, TIER_LABELS, listAllowDirs, type Decision, type Tier } from './permissions.js';
 import { appendTranscript, createTask, getTask, listTasks, readHistory, readTranscript, updateTaskStatus } from './tasks.js';
 import { audit, argsHash } from './audit.js';
-import { listProviders, resolveActiveProvider, saveProvider, setActiveProvider } from './providers.js';
+import { deleteProvider, listProviders, resolveActiveProvider, saveProvider, setActiveProvider, updateProvider } from './providers.js';
 import {
   DEFAULT_PROJECT_ID,
   createProject,
@@ -234,6 +234,34 @@ export function createApp(opts: AppOptions = {}): Express {
       res.json(result);
     } catch (err) {
       res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.put('/api/providers/:id', async (req, res) => {
+    // F3：编辑供应商（仅管理员；apiKey 留空 = 保留原 key）
+    if (requireAdmin(req as AuthedRequest) === null) return res.status(403).json({ error: '仅管理员可配置模型' });
+    const { name, baseUrl, modelId, apiKey, verify } = req.body as {
+      name?: string; baseUrl?: string; modelId?: string; apiKey?: string; verify?: boolean;
+    };
+    if (!name || !baseUrl || !modelId) return res.status(400).json({ error: 'name/baseUrl/modelId 必填' });
+    try {
+      const result = await updateProvider(req.params['id'] ?? '', { name, baseUrl, modelId, apiKey, verify });
+      audit({ user: (req as AuthedRequest).user?.username, event: 'provider_updated', detail: name });
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.delete('/api/providers/:id', (req, res) => {
+    // F3：删除供应商（仅管理员；删激活项自动顺延）
+    if (requireAdmin(req as AuthedRequest) === null) return res.status(403).json({ error: '仅管理员可配置模型' });
+    try {
+      deleteProvider(req.params['id'] ?? '');
+      audit({ user: (req as AuthedRequest).user?.username, event: 'provider_deleted', detail: req.params['id'] });
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(404).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
