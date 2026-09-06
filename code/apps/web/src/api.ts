@@ -140,17 +140,51 @@ export const api = {
     jsonFetch('/api/providers/active', { method: 'POST', body: JSON.stringify({ id }) }),
 };
 
+/** U5 附件上传：XHR 以获取上传进度。 */
+export function uploadAttachment(
+  taskId: string,
+  file: File,
+  onProgress: (ratio: number) => void,
+): Promise<{ name: string; size: number }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `/api/tasks/${taskId}/attachments?name=${encodeURIComponent(file.name)}`);
+    xhr.setRequestHeader('content-type', 'application/octet-stream');
+    const token = getToken();
+    if (token) xhr.setRequestHeader('authorization', `Bearer ${token}`);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(e.loaded / e.total);
+    };
+    xhr.onload = () => {
+      if (xhr.status === 200) {
+        try {
+          resolve(JSON.parse(xhr.responseText) as { name: string; size: number });
+        } catch {
+          reject(new Error('响应解析失败'));
+        }
+      } else {
+        reject(new Error(`上传失败 HTTP ${xhr.status}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error('网络错误'));
+    xhr.send(file);
+  });
+}
+
 /** POST + SSE 流式读取（EventSource 不支持 POST，手写解析）。 */
 export async function streamChat(
   taskId: string,
   content: string,
   onEvent: (event: ChatEvent) => void,
   signal?: AbortSignal,
+  attachments?: string[],
 ): Promise<void> {
+  const payload: Record<string, unknown> =
+    attachments && attachments.length > 0 ? { content, attachments } : { content };
   const response = await fetch(`/api/tasks/${taskId}/messages`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(payload),
     signal,
   });
   if (response.status === 401) {

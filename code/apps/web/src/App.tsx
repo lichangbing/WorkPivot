@@ -12,6 +12,7 @@ import {
   api,
   clearToken,
   streamChat,
+  uploadAttachment,
   type ChatEvent,
   type HistoryMessage,
   type Project,
@@ -72,6 +73,22 @@ export default function App(): React.JSX.Element {
   const [serverOk, setServerOk] = useState<boolean | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
+  // U5：待发送附件托盘（上传中/完成/失败）+ 拖拽高亮 + @补全弹窗
+  interface PendingAtt {
+    id: string;
+    file: File;
+    name: string;
+    progress: number;
+    status: 'uploading' | 'done' | 'error';
+    serverName?: string;
+  }
+  const [pendingAtt, setPendingAtt] = useState<PendingAtt[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const [atk, setAtk] = useState<{ query: string; start: number } | null>(null);
+  const [atkItems, setAtkItems] = useState<string[]>([]);
+  const [atkIndex, setAtkIndex] = useState(0);
+  const [filesForAt, setFilesForAt] = useState<string[]>([]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // U1：搜索过滤 + 分组 tab + 收起状态 + 新建表单
@@ -138,6 +155,7 @@ export default function App(): React.JSX.Element {
     await refreshProviders();
     const projectData = await api.listProjects();
     setProjects(projectData.projects);
+    if (activeTask) setFilesForAt((await api.getFiles(activeTask.id)).files);
     const settings = await api.getSettings();
     setTier(settings.permissionTier);
     setTierLabels(settings.tierLabels);
@@ -244,9 +262,78 @@ export default function App(): React.JSX.Element {
     [newTaskName, refreshTasks, openTask],
   );
 
+  // U5：@ 补全——检测光标前 @ 片段，弹文件清单
+  const detectAt = useCallback(
+    (ta: HTMLTextAreaElement): void => {
+      const pos = ta.selectionStart ?? 0;
+      const before = ta.value.slice(0, pos);
+      const m = /@([^@\s]*)$/.exec(before);
+      if (m && filesForAt.length >= 0) {
+        const query = m[1] ?? '';
+        const items = filesForAt.filter((f) => f.toLowerCase().includes(query.toLowerCase()));
+        setAtk({ query, start: m.index });
+        setAtkItems(items);
+        setAtkIndex(0);
+        if (items.length === 0) setAtk(null);
+      } else {
+        setAtk(null);
+      }
+    },
+    [filesForAt],
+  );
+
+  // 选中补全项：替换 @ 片段为完整路径
+  const applyAt = useCallback(
+    (path: string): void => {
+      const ta = textareaRef.current;
+      if (!ta || !atk) return;
+      const pos = ta.selectionStart ?? ta.value.length;
+      const before = ta.value.slice(0, pos);
+      const m = /@([^@\s]*)$/.exec(before);
+      const newText = (m ? before.slice(0, m.index) : before) + `@${path} ` + ta.value.slice(pos);
+      setInput(newText);
+      setAtk(null);
+    },
+    [atk],
+  );
+
+  const closeAt = useCallback((): void => setAtk(null), []);
+
+  // U5：文件进托盘并上传（粘贴/拖拽/＋按钮共用）
+  const addFiles = useCallback(
+    (files: File[]): void => {
+      if (!activeTask) return;
+      for (const f of files) {
+        if (f.size > 50 * 1024 * 1024) {
+          showToast(`附件 ${f.name} 超过 50MB 上限`);
+          continue;
+        }
+        const id = `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        setPendingAtt((prev) => [...prev, { id, file: f, name: f.name, progress: 0, status: 'uploading' }]);
+        void uploadAttachment(activeTask.id, f, (ratio) => {
+          setPendingAtt((prev) => prev.map((a) => (a.id === id ? { ...a, progress: ratio } : a)));
+        })
+          .then((res) => {
+            setPendingAtt((prev) => prev.map((a) => (a.id === id ? { ...a, progress: 1, status: 'done', serverName: res.name } : a)));
+            void api.getFiles(activeTask.id).then(setRightPanel);
+          })
+          .catch(() => {
+            showToast(`附件 ${f.name} 上传失败`);
+            setPendingAtt((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'error' } : a)));
+          });
+      }
+    },
+    [activeTask, showToast],
+  );
+
+  const removeAttachment = useCallback((id: string): void => {
+    setPendingAtt((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+
   const send = useCallback(async (override?: string): Promise<void> => {
     const content = (override ?? input).trim();
-    if (content === '' || !activeTask || streaming) return;
+    const attached = pendingAtt.filter((a) => a.status === 'done').map((a) => a.serverName ?? a.name);
+    if ((content === '' && attached.length === 0) || !activeTask || streaming) return;
     setInput('');
     setStreaming(true);
     setChat((prev) => [...prev, { kind: 'user', text: content }, { kind: 'assistant', text: '' }]);
@@ -301,14 +388,15 @@ export default function App(): React.JSX.Element {
           }
           return next;
         });
-      });
+      }, undefined, attached);
+      setPendingAtt([]);
     } catch (err) {
       setChat((prev) => [...prev, { kind: 'error', text: `出错：${err instanceof Error ? err.message : String(err)}` }]);
     } finally {
       setStreaming(false);
       void refreshTasks();
     }
-  }, [input, activeTask, streaming, refreshTasks, showToast]);
+  }, [input, activeTask, streaming, pendingAtt, refreshTasks, showToast]);
 
   const decide = useCallback(
     async (item: ChatItem, decision: 'allow' | 'deny' | 'session' | 'forever'): Promise<void> => {
@@ -374,20 +462,6 @@ export default function App(): React.JSX.Element {
       localStorage.setItem('wp_collapsed_projects', JSON.stringify(next));
       return next;
     });
-  };
-
-  const onAttach = async (files: FileList | null): Promise<void> => {
-    if (!files || files.length === 0) return;
-    const parts: string[] = [];
-    for (const f of Array.from(files)) {
-      if (f.size > 64 * 1024) {
-        showToast(`附件 ${f.name} 超过 64KB，暂不支持`);
-        continue;
-      }
-      const text = await f.text();
-      parts.push(`\n\n--- 附件 ${f.name} ---\n${text}\n--- 附件结束 ---`);
-    }
-    if (parts.length > 0) setInput((prev) => prev + parts.join(''));
   };
 
   return (
@@ -805,8 +879,71 @@ export default function App(): React.JSX.Element {
             <div ref={chatBottomRef} />
           </div>
 
-          {/* U3 输入区（ZCode 位置：附件 | 输入框 | 档位/模型 | 发送） */}
-          <div className="border-t border-neutral-800 p-3">
+          {/* U3/U5 输入区：附件托盘 + @补全 + 粘贴/拖拽上传 */}
+          <div
+            className={`relative border-t p-3 ${dragOver ? 'border-2 border-dashed border-blue-500' : 'border-neutral-800'}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              addFiles(Array.from(e.dataTransfer.files));
+            }}
+          >
+            {/* 附件托盘（多文件并列，右上角 × 移除） */}
+            {pendingAtt.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-2">
+                {pendingAtt.map((a) => (
+                  <div key={a.id} className="relative w-44 rounded border border-neutral-700 bg-neutral-900 p-2">
+                    <button
+                      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-600 text-[10px] text-neutral-100 hover:bg-red-600"
+                      title="移除"
+                      onClick={() => removeAttachment(a.id)}
+                    >
+                      ×
+                    </button>
+                    <p className="truncate text-xs text-neutral-200">📄 {a.name}</p>
+                    <p className="text-[10px] text-neutral-500">
+                      {a.status === 'error' ? (
+                        <span className="text-red-400">上传失败</span>
+                      ) : a.status === 'done' ? (
+                        <span className="text-emerald-400">就绪 · {(a.file.size / 1024).toFixed(1)} KB</span>
+                      ) : (
+                        `上传中 ${(a.progress * 100).toFixed(0)}%`
+                      )}
+                    </p>
+                    {a.status === 'uploading' && (
+                      <div className="mt-1 h-1 w-full rounded bg-neutral-700">
+                        <div className="h-1 rounded bg-blue-500" style={{ width: `${a.progress * 100}%` }} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* @ 补全弹窗（输入框上方，列工作目录文件） */}
+            {atk && atkItems.length > 0 && (
+              <div className="absolute bottom-full left-3 mb-1 max-h-48 w-80 overflow-y-auto rounded border border-neutral-700 bg-neutral-900 shadow-xl">
+                {atkItems.map((f, i) => (
+                  <button
+                    key={f}
+                    className={`block w-full truncate px-3 py-1.5 text-left text-xs ${i === atkIndex ? 'bg-neutral-700' : 'hover:bg-neutral-800'}`}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      applyAt(f);
+                    }}
+                  >
+                    📄 {f}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="flex items-end gap-2">
               <button
                 className="rounded-lg border border-neutral-700 px-2 py-2 text-xs text-neutral-400 hover:bg-neutral-900 disabled:opacity-40"
@@ -822,17 +959,49 @@ export default function App(): React.JSX.Element {
                 multiple
                 className="hidden"
                 onChange={(e) => {
-                  void onAttach(e.target.files);
+                  addFiles(Array.from(e.target.files ?? []));
                   e.target.value = '';
                 }}
               />
               <textarea
-                className="max-h-40 min-h-[44px] flex-1 resize-y rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm outline-none focus:border-neutral-500"
-                placeholder={activeTask ? '输入消息；可用 @文件名 引用任务目录内文件，Enter 发送' : '请先新建/选择任务'}
+                ref={textareaRef}
+                className={`max-h-40 min-h-[44px] flex-1 resize-y rounded-lg border bg-neutral-900 px-3 py-2 text-sm outline-none ${dragOver ? 'border-blue-500 border-dashed' : 'border-neutral-700 focus:border-neutral-500'}`}
+                placeholder={activeTask ? '输入消息；@ 引用文件；支持粘贴/拖拽文件' : '请先新建/选择任务'}
                 value={input}
                 disabled={!activeTask || streaming}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  detectAt(e.target);
+                }}
+                onPaste={(e) => {
+                  const files = Array.from(e.clipboardData.files);
+                  if (files.length > 0) {
+                    e.preventDefault();
+                    addFiles(files);
+                  }
+                }}
                 onKeyDown={(e) => {
+                  if (atk && atkItems.length > 0) {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setAtkIndex((i) => (i + 1) % atkItems.length);
+                      return;
+                    }
+                    if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setAtkIndex((i) => (i - 1 + atkItems.length) % atkItems.length);
+                      return;
+                    }
+                    if (e.key === 'Enter' || e.key === 'Tab') {
+                      e.preventDefault();
+                      applyAt(atkItems[atkIndex]!);
+                      return;
+                    }
+                    if (e.key === 'Escape') {
+                      closeAt();
+                      return;
+                    }
+                  }
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     void send();

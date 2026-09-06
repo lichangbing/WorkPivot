@@ -268,13 +268,51 @@ export function createApp(opts: AppOptions = {}): Express {
     res.json({ task, history: readHistory(task.id) });
   });
 
-  // 右栏占位（W1）：任务目录的文件清单
+  // 右栏（W1）：任务目录的文件清单（含 attachments/ 子目录内的文件，前缀显示）
   app.get('/api/tasks/:id/files', (req, res) => {
     const task = getTask(req.params['id'] ?? '');
     if (!task) return res.status(404).json({ error: '任务不存在' });
-    const files = existsSync(task.directory) ? readdirSync(task.directory).slice(0, 200) : [];
+    const files: string[] = [];
+    if (existsSync(task.directory)) {
+      files.push(...readdirSync(task.directory).slice(0, 200));
+      const attDir = join(task.directory, 'attachments');
+      if (existsSync(attDir)) {
+        for (const f of readdirSync(attDir)) files.push(`attachments/${f}`);
+      }
+    }
     res.json({ directory: task.directory, files });
   });
+
+  // U5/附件上传：裸体流，?name= 指定文件名；basename 消毒防穿越；写入 attachments/ 子目录（重名加序号）
+  app.post(
+    '/api/tasks/:id/attachments',
+    express.raw({ type: '*/*', limit: '50mb' }),
+    (req, res) => {
+      const user = (req as AuthedRequest).user;
+      const task = getTask(req.params['id'] ?? '');
+      if (!task) return res.status(404).json({ error: '任务不存在' });
+      const rawName = String(req.query['name'] ?? '');
+      const safe = rawName.replace(/^.*[\/]/, '').replace(/[\/:*?"<>|]/g, '_').trim();
+      if (safe === '') return res.status(400).json({ error: 'name 必填' });
+      if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ error: '空文件' });
+
+      const dir = join(task.directory, 'attachments');
+      mkdirSync(dir, { recursive: true });
+      const dot = safe.lastIndexOf('.');
+      const stem = dot > 0 ? safe.slice(0, dot) : safe;
+      const ext = dot > 0 ? safe.slice(dot) : '';
+      // 重名自动加序号
+      let final = safe;
+      let n = 1;
+      while (existsSync(join(dir, final))) {
+        final = dot > 0 ? `${stem}-${n}${ext}` : `${stem}-${n}`;
+        n += 1;
+      }
+      writeFileSync(join(dir, final), req.body);
+      audit({ user: user?.username, taskId: task.id, event: 'attachment_uploaded', tool: 'upload', detail: `${final}（${req.body.length}B）` });
+      res.json({ name: final, size: req.body.length });
+    },
+  );
 
   // ---- 对话（SSE 流式）----
   app.post('/api/tasks/:id/messages', (req, res) => {
@@ -315,7 +353,24 @@ ${content}`;
     }
 
     // @文件引用（T2-02）：把引用文件内容展开进消息
-    const expanded = expandFileRefs(effectiveContent, task.directory);
+    let expanded = expandFileRefs(effectiveContent, task.directory);
+    // U5 附件注入：发送时携带的附件名单（attachments/ 下已上传文件）内容自动进上下文
+    const attachNames = (req.body as { attachments?: string[] }).attachments;
+    if (Array.isArray(attachNames) && attachNames.length > 0) {
+      for (const name of attachNames) {
+        const safeName = String(name).replace(/^.*[\/]/, '');
+        const p = join(task.directory, 'attachments', safeName);
+        if (existsSync(p)) {
+          const text = readFileSync(p, 'utf8');
+          const capped = text.length > 64_000 ? `${text.slice(0, 64_000)}…（截断）` : text;
+          expanded += `
+
+--- 上传附件 ${safeName} ---
+${capped}
+--- 附件结束 ---`;
+        }
+      }
+    }
 
     const history: ChatMessage[] = readHistory(task.id).map((m) => ({ role: m.role, content: m.content }));
     history.push({ role: 'user', content: expanded });
