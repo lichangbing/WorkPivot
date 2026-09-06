@@ -3,7 +3,7 @@
  * 功能：用户管理 / 模型管理 / Skill 管理。登录复用主应用令牌（同源 localStorage）。
  */
 import { useCallback, useEffect, useState } from 'react';
-import { api, clearToken, getToken, type Project, type PublicProvider, type PublicUser } from '../api';
+import { api, clearToken, getToken, setToken, type Project, type PublicProvider, type PublicUser } from '../api';
 import { ProviderModal } from '../ProviderModal';
 
 type Tab = 'users' | 'models' | 'skills';
@@ -119,7 +119,10 @@ function AdminLogin({ onOk }: { onOk: () => void }): React.JSX.Element {
           if (e.key === 'Enter') {
             void api
               .login(username.trim(), password)
-              .then(() => onOk())
+              .then((result) => {
+                setToken(result.token);
+                onOk();
+              })
               .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
           }
         }}
@@ -130,7 +133,10 @@ function AdminLogin({ onOk }: { onOk: () => void }): React.JSX.Element {
         onClick={() => {
           void api
             .login(username.trim(), password)
-            .then(() => onOk())
+            .then((result) => {
+              setToken(result.token);
+              onOk();
+            })
             .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
         }}
       >
