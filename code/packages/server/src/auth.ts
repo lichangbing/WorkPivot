@@ -125,6 +125,12 @@ function issueToken(userId: string): string {
   return token;
 }
 
+/** M1-09：为指定用户签发令牌（定时任务内部自调用对话管线用；用户不存在返回 null）。 */
+export function issueTokenForUser(userId: string): string | null {
+  const user = loadUsers().users.find((u) => u.id === userId);
+  return user ? issueToken(userId) : null;
+}
+
 export function resolveToken(token: string | undefined | null): PublicUser | null {
   if (!token) return null;
   const file = readJsonSafe<SessionsFile>(sessionsPath(), EMPTY_SESSIONS).value;

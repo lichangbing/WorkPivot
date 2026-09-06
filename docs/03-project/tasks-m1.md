@@ -44,19 +44,19 @@
 
 ---
 
-## 批次 3：模型与文档补全（原批次 2）——进行中（2026-09-07）
+## 批次 3：模型与文档补全（原批次 2）——✅ 全部完成（2026-09-07）
 
 | ID | 任务 | 需求 | 状态 |
 |----|------|------|------|
 | M1-06 | Anthropic Messages 协议适配（C02 补全；Bedrock/Vertex 直连留 P2）：core `anthropic.ts` 客户端（system 顶层化/tool_result 回填/input_json_delta 累积）+ 供应商 protocol 字段贯通 + 验活分流 + 后台协议下拉；eval/W8 | C02 | ✅ |
-| M1-07 | H01 企业 Word 模板（上传/设默认/按类型关联） | H01 | ⬜ |
-| M1-08 | H02 PPT 生成 + H03 Excel 生成（复用 W4 工具链与自检） | H02/H03 | ⬜ |
-| M1-09 | F06 定时任务（cron + 错过补跑 + 通知） | F06 | ⬜ |
+| M1-07 | H01 企业 Word 模板：上传（含 `{{占位符}}` 的 .docx，首个自动默认）/设默认/删除；system 注入模板清单；docx-report 技能增「模板模式」（adm-zip 替换 word/document.xml）；后台企业模板面板；eval/W9 | H01 | ✅ |
+| M1-08 | H02 PPT 生成 + H03 Excel 生成：内置技能 pptx-report（pptxgenjs）/xlsx-report（exceljs），复用 W4 工具链（gen 脚本→运行→写后自检）；eval/W9 | H02/H03 | ✅ |
+| M1-09 | F06 定时任务：schedules.ts（自研 5 字段 cron 匹配器/同分钟去重/错过补跑扫描≤7 天/通知 JSONL）；执行=进程内自调用本机 HTTP 复用完整对话管线；CRUD+手动运行路由；后台定时任务面板（含运行通知）；eval/W10 | F06 | ✅ |
 | M1-10 | M0 已知债清偿：审计查看/导出（I03，admin 面墙+JSONL 下载）、删除进回收站（B03，trash 目录+manifest+后台清单页）、bash 进程树强制终止（I01 轻量版：Windows taskkill /T + POSIX 进程组；真正 Job Object 仍留 M2）；eval/W6 | I01/B03/I03 | ✅ |
 | M1-11 | 记忆查看/编辑设置页 UI：手写区 MEMORY.md 编辑保存（PUT /api/memory/handbook）+ 条目区逐条删除（DELETE /api/memory/entries/:id）+ 项目记忆只读；设置面板「查看与编辑记忆」弹窗 | E01 | ✅ |
 | M1-12 | A03 阶段主线=计划工具：update_plan（全量替换，≤20 条，pending/in_progress/completed）；落盘 data/tasks/<id>/plan.json；SSE plan_update 推送前端计划卡；system 提示计划纪律；eval/W1 | A03 | ✅ |
 
-**批次 3 已完成部分验收**：eval 八套件全绿（W1 17 / W2 18 / W3 13 / W4 12 / W5 12 / W6 27 / W7 7 / W8 13 = 119 断言），基线 eval/baseline.json=pass。剩余 M1-07/08/09（文档生成与定时任务）继续。
+**批次 3 验收**：eval 十套件全绿（W1 17 / W2 18 / W3 13 / W4 12 / W5 12 / W6 27 / W7 7 / W8 13 / W9 15 / W10 11 = 145 断言），基线 eval/baseline.json=pass。新增依赖：pptxgenjs / exceljs / adm-zip（均 MIT，过 K05 黑名单检查）。
 
 ---
 
@@ -74,6 +74,6 @@ J02 拓扑二服务端集中部署（多用户/服务端存储/浏览器 zero-in
 | ~~删除进回收站~~ | W2 T2-06 | ✅ 批次 3（M1-10） |
 | ~~A03 阶段主线=计划工具~~ | W3 T3-07 | ✅ 批次 3（M1-12） |
 | parentUuid 链预埋（fork/rewind 前置） | W3 T3-01 | 批次 3 收尾或 M2 |
-| H01 企业模板 | W4 T4-02 | 批次 3（M1-07） |
-| F06 定时任务 | W4 T4-07 | 批次 3（M1-09） |
+| ~~H01 企业模板~~ | W4 T4-02 | ✅ 批次 3（M1-07） |
+| ~~F06 定时任务~~ | W4 T4-07 | ✅ 批次 3（M1-09） |
 | ~~记忆查看/编辑设置页 UI~~ | M1 批次 1 | ✅ 批次 3（M1-11） |

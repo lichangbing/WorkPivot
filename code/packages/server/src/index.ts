@@ -9,6 +9,7 @@ import { createApp } from './app.js';
 import { markRunningTasksInterrupted } from './tasks.js';
 import { migrateTasksToDefaultProject } from './projects.js';
 import { audit } from './audit.js';
+import { startScheduler } from './schedules.js';
 
 export const SERVER_PORT_DEFAULT = 39800;
 
@@ -56,9 +57,13 @@ export async function startServer(opts: Parameters<typeof createApp>[0] & { port
       if ((err as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw err;
       continue;
     }
+    // M1-09/F06：定时任务调度器（自调用本机对话管线；手动运行路由也依赖此端口）
+    app.set('port', port);
+    const scheduler = startScheduler(port);
     return {
       port,
       close: async () => {
+        scheduler.stop();
         await new Promise<void>((resolve) => server.close(() => resolve()));
       },
     };

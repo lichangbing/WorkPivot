@@ -40,6 +40,8 @@ import { appendTranscript, createTask, getTask, listTasks, readHistory, readTran
 import { audit, argsHash, readAllAudit } from './audit.js';
 import { deleteProvider, listProviders, resolveActiveProvider, saveProvider, setActiveProvider, updateProvider } from './providers.js';
 import { listTrash } from './trash.js';
+import { addTemplate, deleteTemplate, listTemplates, renderTemplateInjection, setDefaultTemplate } from './templates.js';
+import { addSchedule, cronIsValid, deleteSchedule, listNotifications, listSchedules, runScheduleNow, updateSchedule } from './schedules.js';
 import {
   DEFAULT_PROJECT_ID,
   createProject,
@@ -474,6 +476,7 @@ ${capped}
 
     let system = buildSystemPrompt(task.directory, getTier()) + renderSkillDirectory(skills);
     system += renderMemoryInjection(user?.id ?? 'local', task.directory);
+    system += renderTemplateInjection();
     system += [
       '',
       '# 记忆纪律',
@@ -651,6 +654,119 @@ ${capped}
   app.get('/api/trash', (req, res) => {
     if (requireAdmin(req as AuthedRequest) === null) return res.status(403).json({ error: '仅管理员可查看回收站' });
     res.json({ items: listTrash() });
+  });
+
+  // ---- M1-07/H01：企业 Word 模板（上传/设默认/删除；清单全员可读——生成链要拿路径） ----
+  app.get('/api/templates', (req, res) => {
+    void req;
+    res.json({ templates: listTemplates() });
+  });
+
+  app.post(
+    '/api/templates',
+    express.raw({ type: () => true, limit: '20mb' }),
+    (req, res) => {
+      const admin = requireAdmin(req as AuthedRequest);
+      if (!admin) return res.status(403).json({ error: '仅管理员可上传模板' });
+      const name = String(req.query['name'] ?? '');
+      const kind = String(req.query['kind'] ?? 'general');
+      if (name.trim() === '') return res.status(400).json({ error: 'name 必填' });
+      if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ error: '请求体必须是 .docx 二进制' });
+      try {
+        const tpl = addTemplate(name.trim(), kind, req.body);
+        audit({ user: admin.username, event: 'template_uploaded', detail: `${tpl.name}(${tpl.kind})` });
+        res.json({ template: tpl });
+      } catch (err) {
+        res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  );
+
+  app.put('/api/templates/:id/default', (req, res) => {
+    const admin = requireAdmin(req as AuthedRequest);
+    if (!admin) return res.status(403).json({ error: '仅管理员可设置默认模板' });
+    try {
+      const tpl = setDefaultTemplate(req.params['id'] ?? '');
+      audit({ user: admin.username, event: 'template_default_set', detail: tpl.name });
+      res.json({ template: tpl });
+    } catch (err) {
+      res.status(404).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.delete('/api/templates/:id', (req, res) => {
+    const admin = requireAdmin(req as AuthedRequest);
+    if (!admin) return res.status(403).json({ error: '仅管理员可删除模板' });
+    try {
+      deleteTemplate(req.params['id'] ?? '');
+      audit({ user: admin.username, event: 'template_deleted', detail: req.params['id'] });
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(404).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // ---- M1-09/F06：定时任务（管理=仅管理员；清单/通知全员可读） ----
+  app.get('/api/schedules', (req, res) => {
+    void req;
+    res.json({ schedules: listSchedules() });
+  });
+
+  app.post('/api/schedules', (req, res) => {
+    const admin = requireAdmin(req as AuthedRequest);
+    if (!admin) return res.status(403).json({ error: '仅管理员可创建定时任务' });
+    const { name, cron, content, taskName, catchup } = req.body as {
+      name?: string; cron?: string; content?: string; taskName?: string; catchup?: boolean;
+    };
+    if (!name || !cron || !content || !taskName) return res.status(400).json({ error: 'name/cron/content/taskName 必填' });
+    if (!cronIsValid(cron)) return res.status(400).json({ error: `cron 表达式非法：${cron}（5 字段：分 时 日 月 周）` });
+    try {
+      const schedule = addSchedule({ name, cron, content, taskName, catchup: catchup === true, ownerUserId: admin.id });
+      audit({ user: admin.username, event: 'schedule_created', detail: `${name} ${cron}` });
+      res.json({ schedule });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.put('/api/schedules/:id', (req, res) => {
+    const admin = requireAdmin(req as AuthedRequest);
+    if (!admin) return res.status(403).json({ error: '仅管理员可修改定时任务' });
+    const patch = req.body as { name?: string; cron?: string; content?: string; enabled?: boolean; catchup?: boolean };
+    try {
+      const schedule = updateSchedule(req.params['id'] ?? '', patch);
+      audit({ user: admin.username, event: 'schedule_updated', detail: `${schedule.name} ${JSON.stringify(patch)}`.slice(0, 200) });
+      res.json({ schedule });
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.delete('/api/schedules/:id', (req, res) => {
+    const admin = requireAdmin(req as AuthedRequest);
+    if (!admin) return res.status(403).json({ error: '仅管理员可删除定时任务' });
+    try {
+      deleteSchedule(req.params['id'] ?? '');
+      audit({ user: admin.username, event: 'schedule_deleted', detail: req.params['id'] });
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(404).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.post('/api/schedules/:id/run', (req, res) => {
+    const admin = requireAdmin(req as AuthedRequest);
+    if (!admin) return res.status(403).json({ error: '仅管理员可手动运行' });
+    const port = Number(req.app.get('port') ?? process.env['WORKPIVOT_PORT'] ?? 0);
+    if (!port) return res.status(500).json({ error: '无法确定服务端口' });
+    void runScheduleNow(req.params['id'] ?? '', port)
+      .then(() => res.json({ ok: true }))
+      .catch((err: unknown) => res.status(400).json({ error: err instanceof Error ? err.message : String(err) }));
+  });
+
+  app.get('/api/schedules/notifications', (req, res) => {
+    void req;
+    res.json({ notifications: listNotifications() });
   });
 
   // ---- F1 项目（两级结构）----

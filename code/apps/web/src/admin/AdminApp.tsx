@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, clearToken, getToken, setToken, type PublicProvider, type PublicUser } from '../api';
 
-type Menu = 'users' | 'models' | 'skills' | 'ops';
+type Menu = 'users' | 'models' | 'skills' | 'templates' | 'schedules' | 'ops';
 type Role = PublicUser['role'];
 
 type UserDialogState =
@@ -101,6 +101,8 @@ export default function AdminApp(): React.JSX.Element {
     ['users', '用户管理'],
     ['models', '模型管理'],
     ['skills', 'Skill 管理'],
+    ['templates', '企业模板'],
+    ['schedules', '定时任务'],
     ['ops', '审计与回收站'],
   ];
 
@@ -135,6 +137,8 @@ export default function AdminApp(): React.JSX.Element {
         {menu === 'users' && <UsersPanel users={users} me={me} onRefresh={loadUsers} />}
         {menu === 'models' && <ModelsPanel providers={providers} onRefresh={loadProviders} />}
         {menu === 'skills' && <SkillsPanel skills={skills} onRefresh={loadSkills} />}
+        {menu === 'templates' && <TemplatesPanel />}
+        {menu === 'schedules' && <SchedulesPanel />}
         {menu === 'ops' && <OpsPanel />}
       </main>
 
@@ -848,6 +852,347 @@ function SkillsPanel({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ---- 企业模板（M1-07/H01：上传含 {{占位符}} 的 .docx，设默认，删除） ----
+
+interface WordTemplate {
+  id: string;
+  name: string;
+  kind: string;
+  fileName: string;
+  isDefault: boolean;
+  uploadedAt: string;
+}
+
+function TemplatesPanel(): React.JSX.Element {
+  const [templates, setTemplates] = useState<WordTemplate[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [uploadName, setUploadName] = useState('');
+  const [uploadKind, setUploadKind] = useState('general');
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async (): Promise<void> => {
+    setError(null);
+    try {
+      const r = await fetch('/api/templates', { headers: { authorization: `Bearer ${getToken() ?? ''}` } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      setTemplates(((await r.json()) as { templates: WordTemplate[] }).templates);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (templates === null) void load();
+  }, [templates, load]);
+
+  const upload = async (file: File): Promise<void> => {
+    setError(null);
+    if (!file.name.toLowerCase().endsWith('.docx')) {
+      setError('只支持 .docx 模板文件');
+      return;
+    }
+    if (uploadName.trim() === '') {
+      setError('请先填写模板名称');
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await fetch(
+        `/api/templates?name=${encodeURIComponent(uploadName.trim())}&kind=${encodeURIComponent(uploadKind)}`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/octet-stream', authorization: `Bearer ${getToken() ?? ''}` },
+          body: await file.arrayBuffer(),
+        },
+      );
+      if (!r.ok) throw new Error(((await r.json()) as { error?: string }).error ?? `HTTP ${r.status}`);
+      setUploadName('');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setDefault = async (id: string): Promise<void> => {
+    setError(null);
+    try {
+      const r = await fetch(`/api/templates/${id}/default`, { method: 'PUT', headers: { authorization: `Bearer ${getToken() ?? ''}` } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const remove = async (t: WordTemplate): Promise<void> => {
+    if (!window.confirm(`确认删除模板「${t.name}」？`)) return;
+    setError(null);
+    try {
+      const r = await fetch(`/api/templates/${t.id}`, { method: 'DELETE', headers: { authorization: `Bearer ${getToken() ?? ''}` } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  return (
+    <div className="max-w-[720px]">
+      <div className="mb-3">
+        <h2 className="text-base font-semibold">企业模板</h2>
+        <p className="mt-0.5 text-xs text-neutral-500">
+          上传含 {'{{占位符}}'}（如 {'{{标题}}/{{日期}}/{{正文}}'}）的 .docx；生成 Word 时优先走模板替换（默认模板用于未指定的请求）
+        </p>
+      </div>
+      {error && <p className="mb-2 text-xs text-red-400">{error}</p>}
+
+      <div className="mb-3 space-y-2 rounded border border-neutral-700 bg-neutral-800 p-3">
+        <div className="flex gap-2">
+          <input
+            className="flex-1 rounded bg-neutral-900 px-2 py-1 text-sm"
+            placeholder="模板名称（如：公司报告模板）"
+            value={uploadName}
+            onChange={(e) => setUploadName(e.target.value)}
+          />
+          <select
+            className="rounded bg-neutral-900 px-2 py-1 text-xs"
+            value={uploadKind}
+            onChange={(e) => setUploadKind(e.target.value)}
+          >
+            <option value="general">通用</option>
+            <option value="report">报告</option>
+            <option value="minutes">纪要</option>
+            <option value="proposal">方案</option>
+          </select>
+        </div>
+        <label className="block">
+          <input
+            type="file"
+            accept=".docx"
+            disabled={busy}
+            className="w-full text-xs text-neutral-400 file:mr-2 file:rounded file:border-0 file:bg-neutral-700 file:px-3 file:py-1 file:text-xs file:text-neutral-100 hover:file:bg-neutral-600"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = '';
+              if (f) void upload(f);
+            }}
+          />
+          <span className="mt-1 block text-[10px] text-neutral-600">{busy ? '上传中…' : '选择文件后立即上传'}</span>
+        </label>
+      </div>
+
+      <div className="space-y-1">
+        {(templates ?? []).map((t) => (
+          <div key={t.id} className="flex items-center justify-between rounded bg-neutral-800 px-3 py-2 text-xs">
+            <span>
+              {t.isDefault && <span className="mr-1 text-emerald-400">●</span>}
+              {t.name}
+              <span className="ml-2 rounded bg-neutral-700 px-1 py-0.5 text-[10px] text-neutral-300">{t.kind}</span>
+              <span className="ml-2 text-neutral-600">{t.uploadedAt.slice(0, 10)}</span>
+            </span>
+            <span className="flex items-center gap-1">
+              {!t.isDefault && (
+                <button className="rounded bg-neutral-700 px-2 py-1 hover:bg-neutral-600" onClick={() => void setDefault(t.id)}>
+                  设为默认
+                </button>
+              )}
+              <button className="rounded bg-red-900/70 px-2 py-1 hover:bg-red-900" onClick={() => void remove(t)}>
+                删除
+              </button>
+            </span>
+          </div>
+        ))}
+        {templates !== null && templates.length === 0 && (
+          <p className="py-6 text-center text-xs text-neutral-500">暂无模板——未上传时 Word 生成走内置排版（docx 库）</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---- 定时任务（M1-09/F06：cron 触发 + 错过补跑 + 通知） ----
+
+interface Schedule {
+  id: string;
+  name: string;
+  cron: string;
+  content: string;
+  taskName: string;
+  taskId?: string;
+  enabled: boolean;
+  catchup: boolean;
+  lastRunAt?: string;
+  lastResult?: string;
+}
+
+interface ScheduleNote {
+  ts: string;
+  scheduleId: string;
+  name: string;
+  event: string;
+  detail: string;
+}
+
+const SCHEDULE_FORM_EMPTY = { name: '', cron: '', taskName: '', content: '', catchup: true };
+
+function SchedulesPanel(): React.JSX.Element {
+  const [schedules, setSchedules] = useState<Schedule[] | null>(null);
+  const [notes, setNotes] = useState<ScheduleNote[] | null>(null);
+  const [form, setForm] = useState(SCHEDULE_FORM_EMPTY);
+  const [formOpen, setFormOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async (): Promise<void> => {
+    setError(null);
+    try {
+      const [s, n] = await Promise.all([
+        fetch('/api/schedules', { headers: { authorization: `Bearer ${getToken() ?? ''}` } }),
+        fetch('/api/schedules/notifications', { headers: { authorization: `Bearer ${getToken() ?? ''}` } }),
+      ]);
+      if (!s.ok || !n.ok) throw new Error(`HTTP ${s.status}/${n.status}`);
+      setSchedules(((await s.json()) as { schedules: Schedule[] }).schedules);
+      setNotes(((await n.json()) as { notifications: ScheduleNote[] }).notifications);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (schedules === null) void load();
+  }, [schedules, load]);
+
+  const create = async (): Promise<void> => {
+    setError(null);
+    if (form.name.trim() === '' || form.cron.trim() === '' || form.taskName.trim() === '' || form.content.trim() === '') {
+      setError('名称 / cron / 任务名 / 提示词均为必填');
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await fetch('/api/schedules', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${getToken() ?? ''}` },
+        body: JSON.stringify({
+          name: form.name.trim(), cron: form.cron.trim(), taskName: form.taskName.trim(),
+          content: form.content, catchup: form.catchup,
+        }),
+      });
+      if (!r.ok) throw new Error(((await r.json()) as { error?: string }).error ?? `HTTP ${r.status}`);
+      setForm(SCHEDULE_FORM_EMPTY);
+      setFormOpen(false);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const mutate = async (path: string, init: RequestInit, tip: string | null): Promise<void> => {
+    if (tip && !window.confirm(tip)) return;
+    setError(null);
+    try {
+      const r = await fetch(path, { ...init, headers: { authorization: `Bearer ${getToken() ?? ''}`, ...(init.headers ?? {}) } });
+      if (!r.ok) throw new Error(((await r.json()) as { error?: string }).error ?? `HTTP ${r.status}`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const eventLabels: Record<string, string> = {
+    run_ok: '✓ 运行成功', run_error: '✗ 运行失败', missed_catchup: '↻ 错过补跑', skipped_running: '⏭ 跳过（运行中）',
+  };
+
+  return (
+    <div className="max-w-[820px]">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold">定时任务</h2>
+          <p className="mt-0.5 text-xs text-neutral-500">cron（分 时 日 月 周）到点自动触发对话；停机期间错过的触发在下次启动补跑一次（可关）</p>
+        </div>
+        <button
+          className="rounded bg-blue-600 px-3 py-1.5 text-xs hover:bg-blue-500"
+          onClick={() => { setFormOpen(!formOpen); setError(null); }}
+        >
+          {formOpen ? '取消' : '＋ 新建定时任务'}
+        </button>
+      </div>
+      {error && <p className="mb-2 text-xs text-red-400">{error}</p>}
+
+      {formOpen && (
+        <div className="mb-3 space-y-2 rounded border border-neutral-700 bg-neutral-800 p-3">
+          <div className="flex gap-2">
+            <input className="flex-1 rounded bg-neutral-900 px-2 py-1 text-sm" placeholder="名称（如：每日站会纪要）" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <input className="w-36 rounded bg-neutral-900 px-2 py-1 text-sm font-mono" placeholder="*/30 9-18 * * 1-5" value={form.cron} onChange={(e) => setForm({ ...form, cron: e.target.value })} />
+          </div>
+          <input className="w-full rounded bg-neutral-900 px-2 py-1 text-sm" placeholder="承载任务名（如：站会纪要任务——复用同一任务，转写连续）" value={form.taskName} onChange={(e) => setForm({ ...form, taskName: e.target.value })} />
+          <textarea className="h-20 w-full rounded bg-neutral-900 px-2 py-1 text-sm" placeholder="触发时发送的提示词（如：请汇总今天的站立会议要点，生成 纪要-今天日期.docx）" value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} />
+          <label className="flex items-center gap-1.5 text-xs text-neutral-400">
+            <input type="checkbox" checked={form.catchup} onChange={(e) => setForm({ ...form, catchup: e.target.checked })} />
+            停机期间错过的触发在下次启动时补跑一次
+          </label>
+          <button className="rounded bg-blue-600 px-3 py-1 text-xs hover:bg-blue-500 disabled:opacity-40" disabled={busy} onClick={() => void create()}>
+            {busy ? '创建中…' : '创建'}
+          </button>
+        </div>
+      )}
+
+      <div className="space-y-1">
+        {(schedules ?? []).map((s) => (
+          <div key={s.id} className="rounded bg-neutral-800 px-3 py-2 text-xs">
+            <div className="flex items-center justify-between">
+              <span>
+                <span className={`mr-1 inline-block h-2 w-2 rounded-full ${s.enabled ? 'bg-emerald-500' : 'bg-neutral-600'}`} />
+                <span className="font-medium text-neutral-100">{s.name}</span>
+                <code className="ml-2 rounded bg-neutral-700 px-1.5 py-0.5 text-[10px]">{s.cron}</code>
+                {s.catchup && <span className="ml-1.5 text-[10px] text-neutral-500">补跑</span>}
+              </span>
+              <span className="flex items-center gap-1">
+                <button
+                  className={`rounded px-2 py-1 ${s.enabled ? 'bg-neutral-700 hover:bg-neutral-600' : 'bg-emerald-800 hover:bg-emerald-700'}`}
+                  onClick={() => void mutate(`/api/schedules/${s.id}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled: !s.enabled }) }, null)}
+                >
+                  {s.enabled ? '停用' : '启用'}
+                </button>
+                <button className="rounded bg-neutral-700 px-2 py-1 hover:bg-neutral-600" onClick={() => void mutate(`/api/schedules/${s.id}/run`, { method: 'POST' }, null)}>
+                  立即运行
+                </button>
+                <button className="rounded bg-red-900/70 px-2 py-1 hover:bg-red-900" onClick={() => void mutate(`/api/schedules/${s.id}`, { method: 'DELETE' }, `确认删除定时任务「${s.name}」？`)}>
+                  删除
+                </button>
+              </span>
+            </div>
+            <p className="mt-1 text-neutral-500">
+              {s.lastRunAt ? `上次运行 ${s.lastRunAt.slice(0, 19).replace('T', ' ')}（${s.lastResult ?? '?'}）` : '从未运行'}
+            </p>
+          </div>
+        ))}
+        {schedules !== null && schedules.length === 0 && <p className="py-6 text-center text-xs text-neutral-500">暂无定时任务</p>}
+      </div>
+
+      {notes !== null && notes.length > 0 && (
+        <div className="mt-5">
+          <h3 className="mb-2 text-sm font-semibold">运行通知</h3>
+          <div className="space-y-0.5">
+            {[...notes].reverse().slice(0, 30).map((n, i) => (
+              <div key={i} className="rounded bg-neutral-900 px-3 py-1.5 text-xs">
+                <span className="text-neutral-400">{n.ts.slice(0, 19).replace('T', ' ')}</span>
+                <span className="ml-2 text-neutral-200">{n.name}</span>
+                <span className="ml-2">{eventLabels[n.event] ?? n.event}</span>
+                <span className="ml-2 text-neutral-600">{n.detail}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

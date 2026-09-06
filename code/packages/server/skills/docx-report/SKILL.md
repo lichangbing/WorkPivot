@@ -8,7 +8,28 @@ license: Proprietary. 内置技能，随 WorkPivot 发行。
 
 生成 .docx 的标准流程：**先写生成脚本，再运行，最后自检**。不要手工拼二进制。
 
-## 第一步：写生成脚本（Node + docx 库）
+## 第〇步：模板模式（system 列有「企业 Word 模板」时必走）
+
+企业模板存在时**必须优先用模板**（用户未指定时用默认模板），用 adm-zip 替换 `word/document.xml` 中的 `{{占位符}}`：
+
+```js
+const AdmZip = require('adm-zip');
+const zip = new AdmZip('<模板路径>');
+let xml = zip.readAsText('word/document.xml');
+const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+xml = xml
+  .replace(/\{\{标题\}\}/g, esc('实际标题'))
+  .replace(/\{\{日期\}\}/g, esc('2026-09-07'))
+  .replace(/\{\{正文\}\}/g, esc('正文内容'));
+zip.updateFile('word/document.xml', Buffer.from(xml, 'utf8'));
+zip.writeZip(process.argv[2] ?? '报告.docx');
+console.log('ok');
+```
+
+- 占位符以模板内实际约定为准（`{{名称}}` 形式）；模板未覆盖的占位符保留原样，不算失败。
+- 生成后同样走下面的自检。
+
+## 第一步：写生成脚本（Node + docx 库，无模板时）
 
 - 新建 `gen-docx.cjs`（注意 .cjs 后缀，用 require），内容骨架：
 
