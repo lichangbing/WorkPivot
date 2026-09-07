@@ -97,7 +97,10 @@ const mock: Server = createHttpServer((req, res) => {
         send('data: [DONE]');
         res.end();
       } else {
-        // 第三轮（计划推进结果回填，3 个 tool 结果）：流式最终答案
+        // 第三轮（计划推进结果回填，3 个 tool 结果）：思考过程 + 流式最终答案
+        for (const text of ['用户要求读取文件并总结，', '我已拿到内容，组织语言。']) {
+          send({ choices: [{ delta: { reasoning_content: text } }] });
+        }
         for (const text of ['读取完成。', '该文件介绍了 WorkPivot 的定位：', '面向企业的私有化智能工作台。']) {
           send({ choices: [{ delta: { content: text } }] });
         }
@@ -197,6 +200,12 @@ try {
   assert('T1-06 流式输出 deltas', deltas.length >= 3, `${deltas.length} 个增量`);
   assert('最终总结内容完整', fullText.includes('读取完成') && fullText.includes('私有化智能工作台'), fullText.slice(0, 60));
   assert('F03 雏形：done 事件且 stopReason=completed', done?.stopReason === 'completed');
+
+  // S228 思考过程：reasoning_content 增量以 reasoning_delta 事件透传（不入正文/历史）
+  const thoughtEvents = events.filter((e) => e['type'] === 'reasoning_delta') as Array<{ text: string }>;
+  assert('S228 思考过程 reasoning_delta 透传', thoughtEvents.length >= 2, `${thoughtEvents.length} 个增量`);
+  const thoughtText = thoughtEvents.map((d) => d.text).join('');
+  assert('S228 思考内容不混入正文', thoughtText.includes('组织语言') && !fullText.includes('组织语言'));
 
   // M1-12/A03：计划工具链路
   const planEvents = events.filter((e) => e['type'] === 'plan_update') as Array<{ steps: Array<{ step: string; status: string }> }>;

@@ -27,7 +27,7 @@ import { SettingsPanel } from './SettingsPanel';
 import { TranscriptModal } from './TranscriptModal';
 
 interface ChatItem {
-  kind: 'user' | 'assistant' | 'tool' | 'error' | 'permission' | 'done' | 'gate' | 'memory';
+  kind: 'user' | 'assistant' | 'tool' | 'error' | 'permission' | 'done' | 'gate' | 'memory' | 'thought';
   text: string;
   request?: {
     id: string;
@@ -351,6 +351,13 @@ export default function App(): React.JSX.Element {
           const last = next[next.length - 1] ?? { kind: 'assistant' as const, text: '' };
           if (event.type === 'assistant_delta') {
             next[next.length - 1] = { ...last, text: last.text + event.text };
+          } else if (event.type === 'reasoning_delta') {
+            // S228 思考块：最新一轮实时流式展开，历史自动折叠（渲染按「是否最后一条」判断）
+            if (last.kind === 'thought') {
+              next[next.length - 1] = { ...last, text: last.text + event.text };
+            } else {
+              next.push({ kind: 'thought', text: event.text });
+            }
           } else if (event.type === 'tool_use') {
             next.push({ kind: 'tool', text: `🔧 ${event.toolName} ${JSON.stringify(event.args ?? {})}` });
           } else if (event.type === 'tool_result') {
@@ -856,6 +863,18 @@ export default function App(): React.JSX.Element {
                 <div key={i} className="prose prose-invert prose-sm mb-3 max-w-[85%] text-sm leading-relaxed">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text || '…'}</ReactMarkdown>
                 </div>
+              ) : item.kind === 'thought' ? (
+                // S228 思考块：最后一条=本轮思考中（实时展开）；出现正文/工具事件后自动折叠为历史
+                <details
+                  key={i}
+                  open={i === chat.length - 1 && streaming}
+                  className="mb-3 max-w-[85%] rounded-lg border border-neutral-700/70 bg-neutral-900/60 px-3 py-2"
+                >
+                  <summary className="cursor-pointer text-xs text-neutral-500 select-none">
+                    {i === chat.length - 1 && streaming ? '💭 思考中…' : '💭 已思考（点击展开）'}
+                  </summary>
+                  <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-neutral-400">{item.text}</p>
+                </details>
               ) : item.kind === 'done' ? (
                 <div
                   key={i}

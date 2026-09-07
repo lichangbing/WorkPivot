@@ -46,6 +46,7 @@ export type PlanStep = { step: string; status: 'pending' | 'in_progress' | 'comp
 
 export type ChatEvent =
   | { type: 'assistant_delta'; text: string }
+  | { type: 'reasoning_delta'; text: string }
   | { type: 'tool_use'; toolName: string; args?: unknown }
   | { type: 'tool_result'; toolName: string; ok?: boolean; message?: string }
   | { type: 'permission_request'; id: string; tool: string; kind: 'read' | 'write' | 'bash'; paths: Array<{ path: string; mode: string }>; command?: string; reason: string; scope: string }

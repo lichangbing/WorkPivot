@@ -28,6 +28,7 @@ export interface ChatMessage {
 
 export type StreamEvent =
   | { type: 'delta'; text: string }
+  | { type: 'reasoning_delta'; text: string }
   | { type: 'tool_calls'; tool_calls: ToolCall[] };
 
 export interface ModelClient {
@@ -120,6 +121,12 @@ export function createOpenAICompatibleClient(options: ModelClientOptions): Model
       }
       const delta = parsed.choices?.[0]?.delta;
       if (!delta) continue;
+      // S228：思考过程（DeepSeek reasoning_content / Qwen reasoning）——与正文增量分开推送
+      const reasoning = (delta as { reasoning_content?: string; reasoning?: string }).reasoning_content
+        ?? (delta as { reasoning?: string }).reasoning;
+      if (typeof reasoning === 'string' && reasoning.length > 0) {
+        yield { type: 'reasoning_delta', text: reasoning };
+      }
       if (typeof delta.content === 'string' && delta.content.length > 0) {
         content += delta.content;
         yield { type: 'delta', text: delta.content };

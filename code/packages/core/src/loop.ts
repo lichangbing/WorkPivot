@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import type { ModelClient, ChatMessage, ToolCall, ToolSchema } from './model/openai.js';
 import type { Tool, ToolContext, ToolAccessRequest } from './tools.js';
 
-export type AgentEventType = 'assistant_delta' | 'tool_use' | 'tool_result' | 'error';
+export type AgentEventType = 'assistant_delta' | 'reasoning_delta' | 'tool_use' | 'tool_result' | 'error';
 
 export interface AgentEvent {
   type: AgentEventType;
@@ -137,6 +137,8 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
         if (event.type === 'delta') {
           assistantText += event.text;
           options.onEvent?.({ type: 'assistant_delta', text: event.text });
+        } else if (event.type === 'reasoning_delta') {
+          options.onEvent?.({ type: 'reasoning_delta', text: event.text });
         } else {
           toolCalls = event.tool_calls;
         }

@@ -130,7 +130,7 @@ export function createAnthropicClient(options: ModelClientOptions): ModelClient 
         type?: string;
         index?: number;
         content_block?: { type?: string; id?: string; name?: string };
-        delta?: { type?: string; text?: string; partial_json?: string };
+        delta?: { type?: string; text?: string; thinking?: string; partial_json?: string };
       };
       try {
         parsed = JSON.parse(data);
@@ -146,6 +146,9 @@ export function createAnthropicClient(options: ModelClientOptions): ModelClient 
       } else if (parsed.type === 'content_block_delta' && parsed.delta) {
         if (parsed.delta.type === 'text_delta' && parsed.delta.text) {
           yield { type: 'delta', text: parsed.delta.text };
+        } else if (parsed.delta.type === 'thinking_delta' && parsed.delta.thinking) {
+          // S228：Claude 扩展思考块
+          yield { type: 'reasoning_delta', text: parsed.delta.thinking };
         } else if (parsed.delta.type === 'input_json_delta' && parsed.delta.partial_json) {
           const acc = toolBlocks.get(parsed.index ?? 0);
           if (acc) acc.json += parsed.delta.partial_json;
