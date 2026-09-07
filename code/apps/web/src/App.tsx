@@ -38,6 +38,8 @@ interface ChatItem {
     hasPaths: boolean;
     scope: string;
   };
+  /** R002：授权卡 AI 风险解读（risk_analysis 事件回填） */
+  analysis?: string;
 }
 
 const RESUME_MESSAGE =
@@ -372,6 +374,15 @@ export default function App(): React.JSX.Element {
               kind: 'memory',
               text: `🧠 记忆写入确认：${event.content}`,
               request: { id: event.id, tool: 'memory_promote', reason: event.content, paths: [], hasPaths: false, scope: 'once' },
+            });
+          } else if (event.type === 'risk_analysis') {
+            // R002：找到对应授权卡回填 AI 风险解读
+            setChat((prev) => {
+              const idx = prev.map((c) => (c.kind === 'permission' ? c.request?.id : null)).lastIndexOf(event.id);
+              if (idx === -1) return prev;
+              const next = [...prev];
+              next[idx] = { ...next[idx]!, analysis: event.analysis };
+              return next;
             });
           } else if (event.type === 'plan_update') {
             // M1-12：update_plan 工具推送的计划更新（不入聊天流，渲染为计划卡）
@@ -886,6 +897,13 @@ export default function App(): React.JSX.Element {
                     <p className="mb-2 font-mono text-xs text-neutral-400">
                       路径：{item.request.paths.map((p) => `${p.mode === 'write' ? '[写]' : '[读]'}${p.path}`).join('、')}
                     </p>
+                  )}
+                  {/* R002：AI 风险解读（异步回填，仅参考不参与判定） */}
+                  {item.analysis !== undefined && item.analysis !== '' && (
+                    <details className="mb-2 rounded border border-neutral-700 bg-neutral-900/70 px-2 py-1.5" open>
+                      <summary className="cursor-pointer text-xs font-medium text-neutral-300">🤖 AI 风险解读（仅供参考）</summary>
+                      <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-neutral-300">{item.analysis}</p>
+                    </details>
                   )}
                   <div className="flex gap-2 text-xs">
                     <button

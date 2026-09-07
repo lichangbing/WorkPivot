@@ -3,6 +3,16 @@
 所有对外发行版本的变更记录。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。每个版本发布时同步在其 `vX.Y.Z/RELEASE-NOTES.md` 中写详细说明。
 
+## [v0.1.1] - 2026-09-07
+
+### 新增
+- R002 授权卡 AI 风险解读（高危/界外卡异步附加，仅供参考）
+
+### 修复
+- P0：workdir/auto 档 bash 界外路径绕过权限（命令路径解析 + 授权卡封堵 + 提示词纪律）
+- P1：/stop 路由缺失；模型流无停滞超时（空闲 180s/连接 120s）
+- P2：SSE 心跳（长工具期断开即时感知）
+
 ## [Unreleased]
 
 ### 计划中

@@ -49,6 +49,7 @@ export type ChatEvent =
   | { type: 'tool_use'; toolName: string; args?: unknown }
   | { type: 'tool_result'; toolName: string; ok?: boolean; message?: string }
   | { type: 'permission_request'; id: string; tool: string; kind: 'read' | 'write' | 'bash'; paths: Array<{ path: string; mode: string }>; command?: string; reason: string; scope: string }
+  | { type: 'risk_analysis'; id: string; analysis: string }
   | { type: 'memory_confirm'; id: string; content: string; taskId: string }
   | { type: 'plan_update'; steps: PlanStep[] }
   | { type: 'gate_reject'; missing: string[]; final?: boolean }

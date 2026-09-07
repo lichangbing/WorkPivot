@@ -64,6 +64,11 @@ const mock: Server = createHttpServer((req, res) => {
         send({ choices: [{ delta: { content: '本轮处理完成。' } }] });
         res.write('data: [DONE]\n\n');
         res.end();
+      } else if (body.includes('安全风险分析助手')) {
+        // R002：授权卡 AI 风险解读请求 → 短文本回复
+        send({ choices: [{ delta: { content: '该命令将递归删除目标目录，不可逆，波及 C:/Users 全部内容。建议先确认路径范围并做好备份。' } }] });
+        res.write('data: [DONE]\n\n');
+        res.end();
       } else if (body.includes('rm -rf')) {
         toolCall('bash', '{"command": "rm -rf C:/Users"}');
       } else if (body.includes('绕过')) {
@@ -201,6 +206,9 @@ try {
   assert('I05 高危命令不提供永久放行', req4?.scope === 'once');
   const deny4 = eventsOf(run4, 'tool_result')[0] as { ok?: boolean } | undefined;
   assert('I05 拒绝后命令未执行', deny4?.ok === false);
+  // R002：高危卡异步附加 AI 风险解读
+  const ra = eventsOf(run4, 'risk_analysis')[0] as { analysis?: string } | undefined;
+  assert('R002 高危授权卡附加 AI 风险解读', Boolean(ra?.analysis) && (ra?.analysis ?? '').includes('不可逆'), ra?.analysis?.slice(0, 40));
 
   // 4. readonly 档：write 被拒
   await json('/api/settings/tier', { method: 'PUT', body: JSON.stringify({ tier: 'readonly' }) });

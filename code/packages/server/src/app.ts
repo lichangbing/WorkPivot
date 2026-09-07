@@ -42,6 +42,7 @@ import { deleteProvider, listProviders, resolveActiveProvider, saveProvider, set
 import { listTrash } from './trash.js';
 import { addTemplate, deleteTemplate, listTemplates, renderTemplateInjection, setDefaultTemplate } from './templates.js';
 import { addSchedule, cronIsValid, deleteSchedule, listNotifications, listSchedules, runScheduleNow, updateSchedule } from './schedules.js';
+import { analyzeRisk } from './risk-analysis.js';
 import {
   DEFAULT_PROJECT_ID,
   createProject,
@@ -499,7 +500,24 @@ ${capped}
     const requestAccess: (req: ToolAccessRequest) => Promise<boolean> = async (access) => {
       const result = await evaluateAccess(
         { tool: access.tool, kind: access.kind, paths: access.paths, command: access.command, taskDir: task.directory },
-        (request) => send({ type: 'permission_request', ...request }),
+        (request) => {
+          send({ type: 'permission_request', ...request });
+          // R002：高危/界外授权卡异步附加 AI 风险解读（不阻塞确认；失败静默无解读）
+          const risky = /高危|任务目录之外/.test(request.reason ?? '');
+          if (risky) {
+            void analyzeRisk({
+              id: request.id,
+              tool: request.tool,
+              kind: request.kind,
+              command: request.command,
+              paths: request.paths,
+              reason: request.reason,
+              userContext: expanded,
+            }).then((analysis) => {
+              if (analysis !== '') send({ type: 'risk_analysis', id: request.id, analysis });
+            });
+          }
+        },
       );
       audit({
         user: user?.username,
