@@ -1,14 +1,22 @@
 {
   "name": "@workpivot/desktop",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "main": "dist/main.js",
   "scripts": {
     "build": "esbuild src/main.ts --bundle --platform=node --format=cjs --outfile=dist/main.js --external:electron",
-    "start": "pnpm build && electron ."
+    "start": "pnpm build && electron .",
+    "collect-runtime": "node ../../scripts/collect-runtime.mjs",
+    "dist:dir": "pnpm --filter @workpivot/web build && pnpm build && pnpm collect-runtime && electron-builder --dir",
+    "dist": "pnpm dist:dir && electron-builder --win nsis"
   },
   "devDependencies": {
     "electron": "^37.2.0",
+    "electron-builder": "25.1.8",
     "esbuild": "^0.28.2"
+  },
+  "description": "WorkPivot 桌面端（Electron 形态 A：同进程服务层）",
+  "author": {
+    "name": "WorkPivot"
   }
 }

@@ -99,16 +99,24 @@ async function boot(): Promise<void> {
   logger.info(`Electron 就绪（${Date.now() - bootAt}ms）`);
   injectSecretBox();
 
-  // 宿主注入：内置技能根 + bash 的 NODE_PATH（appRoot=apps/desktop → code/）
-  const appRoot = app.getAppPath();
-  const builtinSkills = join(appRoot, '..', '..', 'packages', 'server', 'skills');
+  // 宿主注入：内置技能根 + bash 的 NODE_PATH。
+  // 开发态：appRoot=apps/desktop → 反推 code/ 内的 packages/server；
+  // 打包态（M4）：electron-builder extraResources 平铺在 process.resourcesPath 下。
+  const resources = app.isPackaged ? process.resourcesPath : app.getAppPath();
+  const builtinSkills = app.isPackaged
+    ? join(resources, 'skills')
+    : join(resources, '..', '..', 'packages', 'server', 'skills');
   if (existsSync(builtinSkills)) process.env['WORKPIVOT_BUILTIN_SKILLS'] = builtinSkills;
-  const nmDirs = [join(appRoot, '..', '..', 'packages', 'server', 'node_modules'), join(appRoot, '..', '..', 'node_modules')];
+  const nmDirs = app.isPackaged
+    ? [join(resources, 'server-node_modules')]
+    : [join(resources, '..', '..', 'packages', 'server', 'node_modules'), join(resources, '..', '..', 'node_modules')];
   const nodePath = nmDirs.filter(existsSync).join(delimiter);
   if (nodePath !== '') process.env['WORKPIVOT_NODE_PATH'] = nodePath;
   logger.info(`宿主注入:skills=${existsSync(builtinSkills) ? 'ok' : 'missing'},NODE_PATH=${nodePath !== '' ? 'ok' : 'empty'}`);
 
-  const webDistDir = join(app.getAppPath(), '../web/dist');
+  const webDistDir = app.isPackaged
+    ? join(process.resourcesPath, 'app-web-dist')
+    : join(app.getAppPath(), '../web/dist');
   server = await startServer({ webDistDir });
   logger.info(`服务层就绪 http://127.0.0.1:${server.port}（累计 ${Date.now() - bootAt}ms）`);
 

@@ -1,0 +1,34 @@
+# M4 首个发行版打包配置（v0.1.0）
+# 产物：release/win-unpacked（--dir 冒烟用）→ NSIS 安装包（dist 目标）
+appId: com.workpivot.desktop
+productName: WorkPivot
+copyright: Copyright © 2026 WorkPivot
+directories:
+  output: release
+  buildResources: build
+# 主进程单文件打包+运行时依赖走 extraResources——无原生模块，关闭内部 install/rebuild
+npmRebuild: false
+buildDependenciesFromSource: false
+# 主进程已 esbuild 打成单文件 dist/main.js——只进包这一个 JS + 清单
+files:
+  - dist/main.js
+  - package.json
+# 运行时资源平铺到 process.resourcesPath（main.ts 打包态路径已适配）
+extraResources:
+  - from: build/server-deploy/node_modules
+    to: server-node_modules
+  - from: ../../apps/web/dist
+    to: app-web-dist
+  - from: ../../packages/server/skills
+    to: skills
+win:
+  target:
+    - target: nsis
+    - target: dir
+  # 内部发行不做代码签名（无证书）；exe 元数据保持 Electron 默认
+  signAndEditExecutable: false
+  artifactName: WorkPivot-${version}-${arch}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  artifactName: WorkPivot-Setup-${version}.${ext}
