@@ -16,11 +16,14 @@ code/
 │   └── shared/            # 共享类型/常量/日志（浏览器入口 . 与 Node 入口 ./node 分离）
 ├── eval/                  # 评测题库（K01：任务验收的机器断言脚本）
 ├── scripts/               # 工程脚本（check-licenses.mjs = K05 许可黑名单）
+├── Dockerfile             # 服务端镜像（拓扑二基础，v0.2.0；docker-compose.yml 在仓库根）
 ├── eslint.config.js / tsconfig.base.json / pnpm-workspace.yaml
 ```
 
-M0 不建 `services/`（后端按域拆分）与 `deploy/`（部署编排）——它们属于拓扑二（服务端集中部署，P1），
-届时服务层从 `packages/server` 演进而来；`im-bot` 属 Q3 未定项。演进路线见 plan-2026 架构澄清节。
+拓扑二（服务端集中部署）基础已随 v0.2.0 落地：`code/Dockerfile` 构建服务端镜像，仓库根 `docker-compose.yml` 编排
+（数据卷持久化/健康检查/时区），部署步骤与环境变量见 [releases/deploy/部署说明.md](../releases/deploy/部署说明.md)。
+`services/`（后端按域拆分）与 `deploy/`（编排源文件目录化）仍留待规模触发；`im-bot` 属 Q3 未定项。
+演进路线见 plan-2026 架构澄清节。
 
 ## 已定技术决策
 
@@ -46,6 +49,16 @@ pnpm lint              # ESLint
 pnpm check:licenses    # K05 许可黑名单
 pnpm dev:web           # 前端 dev server（T1-02 起并入桌面壳启动链）
 ```
+
+## 服务端环境变量（拓扑二部署，详见部署说明）
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `WORKPIVOT_HOST` | 0.0.0.0（镜像内已设；桌面默认 127.0.0.1） | 监听地址 |
+| `WORKPIVOT_PORT` | 39800 | 服务端口 |
+| `WORKPIVOT_MAX_PARALLEL` | 8（compose 内 16） | 同时运行的 agent 任务上限 |
+| `WORKPIVOT_HOME` | /data/workpivot | 应用数据根 |
+| `WORKPIVOT_WORKSPACE` | /data/workspace | 工作区根（任务真实文件） |
 
 ## 私有化交付注意（承占位版约定）
 

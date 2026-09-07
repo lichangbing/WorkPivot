@@ -2,9 +2,9 @@
 
 企业级智能工作台（类 WorkBuddy）：面向不同企业的智能化应用平台，支持多专家多模型协同、Agent 任务交付、企业知识库与团队协作，采用**私有化部署**交付，客户端以**桌面端**为主（Web 端 / IM 接入待研究后确定）。
 
-## 当前阶段：M1 迭代（批次 1-3 完成）· 待企业形态决策 🔄
+## 当前阶段：M1 迭代（批次 4a 完成）· v0.2.1 已发布 🔄
 
-M0 竖切已于 2026-09-05 收官（4 周全部完成，登录/权限四档/Agent 循环/技能/Word 生成跑通）。M1 迭代推进中：批次 1 记忆系统、批次 2 验收反馈整改 + ZCode 式 UI 重构、批次 3 模型与文档补全（Anthropic 协议 / 企业 Word 模板 / PPT+Excel 生成 / 定时任务 / 已知债清偿 / 记忆管理 UI / 计划工具）均已完成，评测十套件 147 项断言全绿。下一步：批次 4 企业形态（依赖 Q5/Q6 决策）与 M4 首个发行版。详见 [docs/03-project/plan-2026.md](docs/03-project/plan-2026.md)、[tasks-m1.md](docs/03-project/tasks-m1.md) 与本周 [周报](docs/03-project/weekly/2026-W37.md)。
+M0 竖切已于 2026-09-05 收官（4 周全部完成，登录/权限四档/Agent 循环/技能/Word 生成跑通）。M1 迭代推进中：批次 1 记忆系统、批次 2 验收反馈整改 + ZCode 式 UI 重构、批次 3 模型与文档补全（Anthropic 协议 / 企业 Word 模板 / PPT+Excel 生成 / 定时任务 / 记忆管理 UI / 计划工具）、批次 4a 拓扑二基础（任务所有权隔离：创建人私有/admin 全见；`WORKPIVOT_HOST` / `WORKPIVOT_MAX_PARALLEL` 可配；Docker 镜像 + compose 编排，浏览器 zero-install 访问）均已完成，评测 **156 项断言全绿**。已发布 v0.1.1（彩排修复 + 授权卡 AI 风险解读）→ v0.1.2（思考过程展示）→ v0.2.0（企业部署）→ v0.2.1（三栏拖拽调宽）。下一步：批次 4b 企业增强（检索注入 / 四档矩阵 / 策略下发 / 任务共享移交等）。详见 [docs/03-project/plan-2026.md](docs/03-project/plan-2026.md)、[tasks-m1.md](docs/03-project/tasks-m1.md) 与本周 [周报](docs/03-project/weekly/2026-W37.md)。
 
 ## 目录导航
 
@@ -18,6 +18,8 @@ WorkPivot/
 ├── releases/              # 发行版本与私有化部署包（见 releases/README.md）
 └── assets/                # 公共素材：logo、产品截图、架构图表源文件
 ```
+
+最新版本 **v0.2.1**（[CHANGELOG](releases/CHANGELOG.md)）；企业 Docker 部署见 [部署说明](releases/deploy/部署说明.md)。
 
 ## 工作流程
 
