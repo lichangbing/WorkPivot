@@ -57,6 +57,52 @@ function fmtRelative(ts: string): string {
   return new Date(ts).toLocaleDateString('zh-CN');
 }
 
+/** 三栏拖拽调宽：按住分栏条水平拖动，宽度持久化到 localStorage。dir=+1 左缘拖拽（左栏），dir=-1 右缘拖拽（右栏）。 */
+function useColumnWidth(key: string, initial: number, min: number, max: number, dir: 1 | -1): { width: number; beginDrag: (e: React.MouseEvent) => void } {
+  const [width, setWidth] = useState(() => {
+    const saved = Number(localStorage.getItem(key));
+    return Number.isFinite(saved) && saved >= min && saved <= max ? saved : initial;
+  });
+  const beginDrag = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startW = width;
+      const onMove = (ev: MouseEvent): void => {
+        setWidth(Math.min(max, Math.max(min, startW + dir * (ev.clientX - startX))));
+      };
+      const onUp = (): void => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        setWidth((w) => {
+          localStorage.setItem(key, String(Math.round(w)));
+          return w;
+        });
+      };
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    },
+    [width, key, min, max, dir],
+  );
+  return { width, beginDrag };
+}
+
+/** 分栏拖拽条（兼作栏间分隔线）。 */
+function ColResizeHandle(props: { onBeginDrag: (e: React.MouseEvent) => void }): React.JSX.Element {
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      className="w-1 shrink-0 cursor-col-resize bg-neutral-800 transition-colors hover:bg-blue-600"
+      onMouseDown={props.onBeginDrag}
+    />
+  );
+}
+
 export default function App(): React.JSX.Element {
   const [authState, setAuthState] = useState<'loading' | 'guest' | 'authed'>('loading');
   const [currentUser, setCurrentUser] = useState<PublicUser | null>(null);
@@ -75,6 +121,10 @@ export default function App(): React.JSX.Element {
   const [memoryOn, setMemoryOn] = useState(true);
   const [rightPanel, setRightPanel] = useState<{ directory: string; files: string[] } | null>(null);
   const [serverOk, setServerOk] = useState<boolean | null>(null);
+
+  // 三栏拖拽调宽：左栏最小 200px（栏内按钮组需要），右栏最小 232px
+  const leftCol = useColumnWidth('wp-col-left', 256, 200, 480, 1);
+  const rightCol = useColumnWidth('wp-col-right', 288, 232, 560, -1);
   const [toast, setToast] = useState<string | null>(null);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   // U5：待发送附件托盘（上传中/完成/失败）+ 拖拽高亮 + @补全弹窗
@@ -498,8 +548,8 @@ export default function App(): React.JSX.Element {
         </div>
       )}
       <div className="flex min-h-0 flex-1">
-        {/* 左栏（ZCode 模式）：按钮组 → 分组 → 树 → 底部用户区 */}
-        <aside className="flex w-64 shrink-0 flex-col border-r border-neutral-800">
+        {/* 左栏（ZCode 模式）：按钮组 → 分组 → 树 → 底部用户区；宽度可拖拽（最小 200px） */}
+        <aside className="flex shrink-0 flex-col" style={{ width: leftCol.width, minWidth: 200 }}>
           <div className="space-y-0.5 px-3 py-3">
             <button
               className="block w-full rounded px-2 py-1.5 text-left text-sm font-medium hover:bg-neutral-900"
@@ -768,6 +818,9 @@ export default function App(): React.JSX.Element {
             )}
           </div>
         </aside>
+
+        {/* 分栏拖拽条（左栏 | 中栏） */}
+        <ColResizeHandle onBeginDrag={leftCol.beginDrag} />
 
         {/* 中栏：会话工具条 + 消息流 + 输入区 */}
         <main className="flex min-w-0 flex-1 flex-col">
@@ -1205,8 +1258,11 @@ export default function App(): React.JSX.Element {
           </div>
         </main>
 
-        {/* 右栏：成果区（B02 版本链 + 转写查看器入口） */}
-        <aside className="flex w-72 shrink-0 flex-col border-l border-neutral-800">
+        {/* 分栏拖拽条（中栏 | 右栏） */}
+        <ColResizeHandle onBeginDrag={rightCol.beginDrag} />
+
+        {/* 右栏：成果区（B02 版本链 + 转写查看器入口）；宽度可拖拽（最小 232px） */}
+        <aside className="flex shrink-0 flex-col" style={{ width: rightCol.width, minWidth: 232 }}>
           <div className="flex items-center justify-between px-4 py-3">
             <span className="text-sm font-semibold text-neutral-300">成果区</span>
             {activeTask && (
