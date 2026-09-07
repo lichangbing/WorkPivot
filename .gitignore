@@ -72,3 +72,4 @@ temp/
 *.bak
 *.tmp
 ~$*
+releases/**/*.zip

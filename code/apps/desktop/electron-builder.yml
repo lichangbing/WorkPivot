@@ -15,6 +15,8 @@ files:
   - package.json
 # 运行时资源平铺到 process.resourcesPath（main.ts 打包态路径已适配）
 extraResources:
+  - from: build/icon.png
+    to: icon.png
   - from: build/server-deploy/node_modules
     to: server-node_modules
   - from: ../../apps/web/dist

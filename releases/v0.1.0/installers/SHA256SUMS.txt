@@ -1,0 +1,2 @@
+7ebab0d3d30e52731c6d4bd2ec72429c5a3a0ce0475606dcd9f95b5c615c476d *WorkPivot-Setup-0.1.0.exe
+dae277b89a5fa09a3de0469d6fabaf340fcc96a61125c04c30f7e70d1ddeb758 *WorkPivot-0.1.0-portable-win-x64.zip

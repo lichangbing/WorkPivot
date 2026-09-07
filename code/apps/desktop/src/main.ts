@@ -34,8 +34,14 @@ function injectSecretBox(): void {
   });
 }
 
-/** 托盘图标：程序化生成 32x32 纯色位图（M0 占位，正式图标随品牌资产补充）。 */
+/** 托盘图标：优先用品牌 icon.png（打包态在 resources，开发态在 build/）；缺失回退程序化位图。 */
 function createTrayIcon(): Electron.NativeImage {
+  const resources = app.isPackaged ? process.resourcesPath : app.getAppPath();
+  const pngPath = app.isPackaged ? join(resources, 'icon.png') : join(resources, 'build', 'icon.png');
+  if (existsSync(pngPath)) {
+    const icon = nativeImage.createFromPath(pngPath).resize({ width: 32, height: 32 });
+    if (!icon.isEmpty()) return icon;
+  }
   const size = 32;
   const buffer = Buffer.alloc(size * size * 4);
   for (let i = 0; i < size * size; i++) {
