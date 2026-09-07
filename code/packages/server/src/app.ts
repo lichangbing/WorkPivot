@@ -66,10 +66,17 @@ interface AuthedRequest extends Request {
   user?: PublicUser;
 }
 
+/** J02 批次4a：任务所有权——成员仅见/操作自己的任务，管理员全部可见；旧任务（无 owner）仅管理员可见 */
+function taskVisibleTo(user: PublicUser | null | undefined, t: { ownerUserId?: string }): boolean {
+  if (!user) return false;
+  return user.role === 'admin' || t.ownerUserId === user.id;
+}
+
 /** 运行中的 agent 会话（taskId → 中止控制器）。 */
 const running = new Map<string, AbortController>();
 
-const PARALLEL_LIMIT = 8;
+// J02：企业服务端多用户并行，可经 WORKPIVOT_MAX_PARALLEL 调整
+const PARALLEL_LIMIT = Number(process.env['WORKPIVOT_MAX_PARALLEL']) || 8;
 
 // app.use('/api') 下 req.path 为相对路径（如 '/auth/login'）
 const PUBLIC_PATHS = new Set(['/health', '/auth/state', '/auth/login', '/auth/register']);
@@ -309,11 +316,16 @@ export function createApp(opts: AppOptions = {}): Express {
   });
 
   // ---- 任务（B01：任务=对话+真实目录）----
-  app.get('/api/tasks', (_req, res) => {
-    res.json({ tasks: listTasks() });
+  app.get('/api/tasks', (req, res) => {
+    // J02：成员仅见自己的任务，管理员见全部（旧任务无 owner 仅管理员可见）
+    const u = (req as AuthedRequest).user;
+    const all = listTasks();
+    const tasks = u?.role === 'admin' ? all : all.filter((t) => t.ownerUserId === u?.id);
+    res.json({ tasks });
   });
 
   app.post('/api/tasks', (req, res) => {
+    const user = (req as AuthedRequest).user;
     const { name, directory, projectId, temp } = req.body as {
       name?: string; directory?: string; projectId?: string; temp?: boolean;
     };
@@ -334,11 +346,12 @@ export function createApp(opts: AppOptions = {}): Express {
       resolvedDir = directory ?? ensureDefaultProject().directory;
     }
 
-    const task = createTask({ name, directory: resolvedDir, projectId: resolvedProjectId, temp: temp === true });
+    const task = createTask({ name, directory: resolvedDir, projectId: resolvedProjectId, temp: temp === true, ownerUserId: user?.id });
     if (!temp) initProjectMemory(task.directory);
-    audit({ event: 'task_created', taskId: task.id, detail: task.directory, decision: temp ? 'temp' : 'project' });
+    audit({ user: user?.username, event: 'task_created', taskId: task.id, detail: task.directory, decision: temp ? 'temp' : 'project' });
     res.json({ task });
   });
+
 
   app.delete('/api/tasks/:id', (req, res) => {
     const result = deleteTempTask(req.params['id'] ?? '');
@@ -353,6 +366,7 @@ export function createApp(opts: AppOptions = {}): Express {
   app.get('/api/tasks/:id', (req, res) => {
     const task = getTask(req.params['id'] ?? '');
     if (!task) return res.status(404).json({ error: '任务不存在' });
+    if (!taskVisibleTo((req as AuthedRequest).user, task)) return res.status(403).json({ error: '无权访问该任务' });
     res.json({ task, history: readHistory(task.id) });
   });
 
@@ -360,6 +374,7 @@ export function createApp(opts: AppOptions = {}): Express {
   app.get('/api/tasks/:id/files', (req, res) => {
     const task = getTask(req.params['id'] ?? '');
     if (!task) return res.status(404).json({ error: '任务不存在' });
+    if (!taskVisibleTo((req as AuthedRequest).user, task)) return res.status(403).json({ error: '无权访问该任务' });
     const files: string[] = [];
     if (existsSync(task.directory)) {
       files.push(...readdirSync(task.directory).slice(0, 200));
@@ -378,7 +393,8 @@ export function createApp(opts: AppOptions = {}): Express {
     (req, res) => {
       const user = (req as AuthedRequest).user;
       const task = getTask(req.params['id'] ?? '');
-      if (!task) return res.status(404).json({ error: '任务不存在' });
+    if (!task) return res.status(404).json({ error: '任务不存在' });
+      if (!taskVisibleTo((req as AuthedRequest).user, task)) return res.status(403).json({ error: '无权访问该任务' });
       const rawName = String(req.query['name'] ?? '');
       const safe = rawName.replace(/^.*[\/]/, '').replace(/[\/:*?"<>|]/g, '_').trim();
       if (safe === '') return res.status(400).json({ error: 'name 必填' });
@@ -407,6 +423,7 @@ export function createApp(opts: AppOptions = {}): Express {
     const user = (req as AuthedRequest).user;
     const task = getTask(req.params['id'] ?? '');
     if (!task) return res.status(404).json({ error: '任务不存在' });
+    if (!taskVisibleTo((req as AuthedRequest).user, task)) return res.status(403).json({ error: '无权访问该任务' });
     const { content } = req.body as { content?: string };
     if (!content || content.trim() === '') return res.status(400).json({ error: 'content 必填' });
     if (running.has(task.id)) return res.status(409).json({ error: '该任务正在运行中' });
@@ -618,6 +635,7 @@ ${capped}
   app.post('/api/tasks/:id/stop', (req, res) => {
     const task = getTask(req.params['id'] ?? '');
     if (!task) return res.status(404).json({ error: '任务不存在' });
+    if (!taskVisibleTo((req as AuthedRequest).user, task)) return res.status(403).json({ error: '无权访问该任务' });
     const controller = running.get(task.id);
     if (!controller) return res.status(409).json({ error: '该任务未在运行中' });
     controller.abort();
@@ -628,6 +646,9 @@ ${capped}
   // M1/E01：记忆确认卡回填 + 查看/开关
   app.post('/api/tasks/:id/memory/confirm', (req, res) => {
     const { id: confirmId, approve } = req.body as { id?: string; approve?: boolean };
+    const memTask = getTask(req.params['id'] ?? '');
+    if (!memTask) return res.status(404).json({ error: '任务不存在' });
+    if (!taskVisibleTo((req as AuthedRequest).user, memTask)) return res.status(404).json({ error: '任务不存在' });
     if (!confirmId || approve === undefined) return res.status(400).json({ error: 'id/approve 必填' });
     const ok = resolveMemoryConfirm(confirmId, Boolean(approve));
     audit({ user: (req as AuthedRequest).user?.username, taskId: req.params['id'], event: 'memory_confirm', decision: approve ? 'allow' : 'deny', detail: confirmId });
@@ -639,7 +660,9 @@ ${capped}
     const user = (req as AuthedRequest).user;
     if (!user) return res.status(401).json({ error: '未登录' });
     const taskId = req.query['taskId'] as string | undefined;
-    const taskDir = taskId ? (getTask(taskId)?.directory ?? '') : '';
+    const memTask = taskId ? getTask(taskId) : null;
+    if (memTask && !taskVisibleTo(user, memTask)) return res.status(404).json({ error: '任务不存在' });
+    const taskDir = memTask?.directory ?? '';
     res.json(memoryView(user.id, taskDir));
   });
 
@@ -839,6 +862,7 @@ ${capped}
   app.get('/api/tasks/:id/transcript', (req, res) => {
     const task = getTask(req.params['id'] ?? '');
     if (!task) return res.status(404).json({ error: '任务不存在' });
+    if (!taskVisibleTo((req as AuthedRequest).user, task)) return res.status(403).json({ error: '无权访问该任务' });
     res.json({ rows: readTranscript(task.id) });
   });
 
@@ -846,6 +870,7 @@ ${capped}
   app.get('/api/tasks/:id/plan', (req, res) => {
     const task = getTask(req.params['id'] ?? '');
     if (!task) return res.status(404).json({ error: '任务不存在' });
+    if (!taskVisibleTo((req as AuthedRequest).user, task)) return res.status(403).json({ error: '无权访问该任务' });
     res.json({ steps: readPlan(task.id) });
   });
 

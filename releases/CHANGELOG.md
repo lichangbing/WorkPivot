@@ -18,6 +18,13 @@
 ### 新增
 - 思考过程展示（S228）：reasoning/thinking 增量流式渲染，实时展开/历史折叠；不入正文与转写
 
+## [v0.2.0] - 2026-09-07（企业形态·拓扑二基础）
+
+### 新增
+- J02 服务端集中部署：WORKPIVOT_HOST 可配（内网 0.0.0.0）、Docker 镜像 + compose 编排 + 部署说明
+- J02 任务所有权隔离：任务归创建人私有（成员仅见自己的，管理员全部）；浏览器 zero-install 访问
+- WORKPIVOT_MAX_PARALLEL 多用户并行上限可配
+
 ## [Unreleased]
 
 ### 计划中

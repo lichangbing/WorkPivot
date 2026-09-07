@@ -1,0 +1,23 @@
+# WorkPivot 企业服务端编排（J02 拓扑二）
+# 用法：docker compose up -d  → 浏览器访问 http://<服务器IP>:39800
+# 数据持久化：workpivot-data（账户/任务/记忆/审计）、workpivot-workspace（任务工作区/交付物）
+services:
+  workpivot:
+    build: ./code
+    image: workpivot-server:0.2.0
+    container_name: workpivot-server
+    ports:
+      - "39800:39800"
+    environment:
+      # 首个注册用户自动成为管理员；企业建议在首次启动后立即改密
+      WORKPIVOT_MAX_PARALLEL: "16"
+      # 供应商密钥经 safeStorage（容器内回退 base64）——务必限制服务器登录权限
+      TZ: Asia/Shanghai
+    volumes:
+      - workpivot-data:/data/workpivot
+      - workpivot-workspace:/data/workspace
+    restart: unless-stopped
+
+volumes:
+  workpivot-data:
+  workpivot-workspace:

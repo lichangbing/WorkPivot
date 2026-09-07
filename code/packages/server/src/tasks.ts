@@ -21,6 +21,8 @@ export interface Task {
   projectId?: string;
   /** 临时任务（F2）：一次性分析，不注入长期记忆 */
   temp?: boolean;
+  /** J02 批次4a：创建人（任务私有——成员仅见自己的，管理员见全部；旧任务无此字段=仅管理员可见） */
+  ownerUserId?: string;
 }
 
 export function workspaceRoot(): string {
@@ -54,6 +56,8 @@ export interface CreateTaskInput {
   directory: string;
   projectId?: string | null;
   temp?: boolean;
+  /** J02：创建人 id */
+  ownerUserId?: string;
 }
 
 export function createTask(input: CreateTaskInput): Task {
@@ -70,6 +74,7 @@ export function createTask(input: CreateTaskInput): Task {
     createdAt: new Date().toISOString(),
     projectId: input.projectId ?? undefined,
     temp: input.temp === true,
+    ownerUserId: input.ownerUserId,
   };
   writeAtomic(taskFile(id), JSON.stringify(task, null, 2));
   appendLine(join(ensureWorkpivotDir('data', 'sessions'), 'index.jsonl'), JSON.stringify({ ts: task.createdAt, kind: 'task_created', payload: { taskId: id, name: input.name, directory: dir } }));

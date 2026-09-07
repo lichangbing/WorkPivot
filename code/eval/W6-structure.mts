@@ -194,6 +194,25 @@ try {
   const skillsDenied = await member.get<{ error?: string }>('/api/skills');
   assert('F3 member 看技能被拒（403）', skillsDenied.status === 403);
 
+  // J02 批次4a：任务所有权——成员仅见自己的任务；跨账号访问 404；管理员见全部
+  const adminTask = await admin.post<{ task: { id: string } }>('/api/tasks', { name: '管理员的私有任务' });
+  const memberTask = await member.post<{ task: { id: string } }>('/api/tasks', { name: '成员的私有任务' });
+  const adminList = await admin.get<{ tasks: Array<{ id: string; name: string }> }>('/api/tasks');
+  const memberList = await member.get<{ tasks: Array<{ id: string; name: string }> }>('/api/tasks');
+  assert(
+    'J02 管理员任务列表含双方任务',
+    adminList.body.tasks.some((t) => t.id === adminTask.body.task.id) && adminList.body.tasks.some((t) => t.id === memberTask.body.task.id),
+  );
+  assert(
+    'J02 成员任务列表仅含自己的任务',
+    memberList.body.tasks.some((t) => t.id === memberTask.body.task.id) && !memberList.body.tasks.some((t) => t.id === adminTask.body.task.id),
+    JSON.stringify(memberList.body.tasks.map((t) => t.name)),
+  );
+  const crossRead = await member.get<{ error?: string }>(`/api/tasks/${adminTask.body.task.id}`);
+  assert('J02 member 读管理员任务被拒（403）', crossRead.status === 403, `got ${crossRead.status}`);
+  const crossMsg = await member.post<{ error?: string }>(`/api/tasks/${adminTask.body.task.id}/messages`, { content: 'x' });
+  assert('J02 member 向管理员任务发消息被拒（403）', crossMsg.status === 403, `got ${crossMsg.status}`);
+
   // F3 供应商编辑/删除（PUT/DELETE /api/providers/:id）
   const provs0 = await admin.get<{ providers: Array<{ id: string; baseUrl: string; modelId: string; active: boolean }> }>('/api/providers');
   const p0 = provs0.body.providers[0]!;

@@ -19,8 +19,10 @@ export interface ServerHandle {
 }
 
 function listenOn(app: Express, port: number): Promise<Server> {
+  // J02：企业服务端设 WORKPIVOT_HOST=0.0.0.0 对内网开放；桌面形态默认仅本机
+  const host = process.env['WORKPIVOT_HOST'] ?? '127.0.0.1';
   return new Promise((resolve, reject) => {
-    const server = app.listen(port, '127.0.0.1', () => {
+    const server = app.listen(port, host, () => {
       server.off('error', onError);
       resolve(server);
     });
