@@ -142,14 +142,28 @@ export interface TranscriptRow {
   ordinal: number;
   kind: TranscriptKind;
   payload: Record<string, unknown>;
+  /** M1 收尾（T3-01 预埋）：本行 uuid 与父行 uuid——线性链，fork/rewind 上线后变树 */
+  uuid?: string;
+  parentUuid?: string | null;
 }
 
 let ordinalCounter = 0;
 
+/** 每任务转写链尾 uuid（append 用；进程重启后从文件尾恢复）。 */
+const lastUuidByTask = new Map<string, string | null>();
+
 export function appendTranscript(taskId: string, kind: TranscriptKind, payload: Record<string, unknown>): void {
+  if (!lastUuidByTask.has(taskId)) {
+    const rows = readTranscript(taskId);
+    const tail = rows[rows.length - 1];
+    lastUuidByTask.set(taskId, tail?.uuid ?? null);
+  }
+  const parentUuid = lastUuidByTask.get(taskId) ?? null;
+  const uuid = randomUUID();
   ordinalCounter += 1;
-  const row: TranscriptRow = { ts: new Date().toISOString(), ordinal: ordinalCounter, kind, payload };
+  const row: TranscriptRow = { ts: new Date().toISOString(), ordinal: ordinalCounter, kind, payload, uuid, parentUuid };
   appendLine(transcriptFile(taskId), JSON.stringify(row));
+  lastUuidByTask.set(taskId, uuid);
 }
 
 export function readTranscript(taskId: string): TranscriptRow[] {

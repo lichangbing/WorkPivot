@@ -304,8 +304,13 @@ try {
   );
 
   // 转写端点（T3-01）
-  const transcript = await (await api(portB, tokenB, `/api/tasks/${gateTask.id}/transcript`)).json() as { rows: Array<{ kind: string }> };
+  const transcript = await (await api(portB, tokenB, `/api/tasks/${gateTask.id}/transcript`)).json() as { rows: Array<{ kind: string; uuid?: string; parentUuid?: string | null }> };
   assert('T3-01 转写端点返回含工具事件', transcript.rows.some((r) => r.kind === 'tool_use'));
+
+  // M1 收尾：parentUuid 链预埋（每行有 uuid；从第二行起 parentUuid 指向前一行 uuid）
+  assert('T3-01 转写行全部带 uuid', transcript.rows.length > 0 && transcript.rows.every((r) => typeof r.uuid === 'string' && r.uuid.length > 0));
+  const chainOk = transcript.rows.every((r, i) => (i === 0 ? r.parentUuid === null || r.parentUuid === undefined : r.parentUuid === transcript.rows[i - 1]?.uuid));
+  assert('T3-01 parentUuid 链首尾相接（fork/rewind 前置）', chainOk, JSON.stringify(transcript.rows.slice(0, 3).map((r) => [r.kind, r.parentUuid?.slice(0, 8)])));
 
   childB.kill();
   await new Promise((r) => setTimeout(r, 500));

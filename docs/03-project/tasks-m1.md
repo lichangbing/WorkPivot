@@ -1,8 +1,8 @@
 # M1 任务拆解（tasks-m1）
 
-> **定位**：M0 收官后的第一个完整迭代。批次 1（记忆系统）已完成；批次 2 为 **2026-09-06 验收实测反馈整改**（最高优先级）；批次 3 顺延。
+> **定位**：M0 收官后的第一个完整迭代。批次 1（记忆系统）、批次 2（2026-09-06 验收反馈整改 + UI 重构）、批次 3（模型与文档补全）均已完成；批次 4（企业形态）依赖 Q5/Q6 决策。
 > **输入**：需求清单 v2 的 P1 层 + 用户验收反馈三条 + M0 已知债台账。
-> **制定**：ZCode ｜ 2026-09-06 ｜ 状态：🔄 执行中（批次 2）。任务 ID 稳定；节奏仿 M0：每批次可验证+评测断言。
+> **制定**：ZCode ｜ 2026-09-06 ｜ 状态：批次 1-3 ✅（2026-09-07）。任务 ID 稳定；节奏仿 M0：每批次可验证+评测断言。
 
 ---
 
@@ -56,6 +56,7 @@
 | M1-11 | 记忆查看/编辑设置页 UI：手写区 MEMORY.md 编辑保存（PUT /api/memory/handbook）+ 条目区逐条删除（DELETE /api/memory/entries/:id）+ 项目记忆只读；设置面板「查看与编辑记忆」弹窗 | E01 | ✅ |
 | M1-12 | A03 阶段主线=计划工具：update_plan（全量替换，≤20 条，pending/in_progress/completed）；落盘 data/tasks/<id>/plan.json；SSE plan_update 推送前端计划卡；system 提示计划纪律；eval/W1 | A03 | ✅ |
 
+**批次 3 收尾（2026-09-07）**：parentUuid 链预埋（转写行 uuid+parentUuid 线性链，W3 15/15）；桌面打包链验证（web 构建产物 4 入口 + esbuild 桌面包 1.3MB + WORKPIVOT_SMOKE 冒烟通过 + pptxgenjs/exceljs/adm-zip/docx 四库经 NODE_PATH 可解析）。
 **批次 3 验收**：eval 十套件全绿（W1 17 / W2 18 / W3 13 / W4 12 / W5 12 / W6 27 / W7 7 / W8 13 / W9 15 / W10 11 = 145 断言），基线 eval/baseline.json=pass。新增依赖：pptxgenjs / exceljs / adm-zip（均 MIT，过 K05 黑名单检查）。
 
 ---
@@ -73,7 +74,7 @@ J02 拓扑二服务端集中部署（多用户/服务端存储/浏览器 zero-in
 | ~~Job Object 强隔离~~ → 已做进程树终止（taskkill /T + 进程组）；真正 Job Object 强隔离仍欠 | W2 T2-06 | 轻量版✅批次 3（M1-10）；Job Object 留 M2 |
 | ~~删除进回收站~~ | W2 T2-06 | ✅ 批次 3（M1-10） |
 | ~~A03 阶段主线=计划工具~~ | W3 T3-07 | ✅ 批次 3（M1-12） |
-| parentUuid 链预埋（fork/rewind 前置） | W3 T3-01 | 批次 3 收尾或 M2 |
+| ~~parentUuid 链预埋~~ | W3 T3-01 | ✅ 批次 3 收尾（转写行 uuid+parentUuid 线性链，W3 断言） |
 | ~~H01 企业模板~~ | W4 T4-02 | ✅ 批次 3（M1-07） |
 | ~~F06 定时任务~~ | W4 T4-07 | ✅ 批次 3（M1-09） |
 | ~~记忆查看/编辑设置页 UI~~ | M1 批次 1 | ✅ 批次 3（M1-11） |
