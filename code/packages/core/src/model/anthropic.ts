@@ -10,6 +10,23 @@ import { parseSSEStream } from './sse.js';
 
 const ANTHROPIC_VERSION = '2023-06-01';
 
+/** 连接超时（同 openai.ts）：等响应头上限，首字节前停滞兜底。 */
+const CONNECT_TIMEOUT_MS = 120_000;
+
+function connectSignal(external: AbortSignal | undefined): { signal: AbortSignal; done: () => void } {
+  const controller = new AbortController();
+  const onAbort = (): void => controller.abort();
+  external?.addEventListener('abort', onAbort, { once: true });
+  const timer = setTimeout(() => controller.abort(), CONNECT_TIMEOUT_MS);
+  return {
+    signal: controller.signal,
+    done: () => {
+      clearTimeout(timer);
+      external?.removeEventListener('abort', onAbort);
+    },
+  };
+}
+
 /** baseUrl 规范到端点前缀：`https://api.anthropic.com` 与 `…/v1` 都接受。 */
 function endpointBase(baseUrl: string): string {
   const base = baseUrl.replace(/\/+$/, '');
@@ -75,25 +92,31 @@ export function createAnthropicClient(options: ModelClientOptions): ModelClient 
     signal?: AbortSignal,
   ): AsyncGenerator<StreamEvent, void, unknown> {
     const payload = toAnthropicPayload(messages);
-    const response = await fetch(`${base}/messages`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': options.apiKey ?? '',
-        'anthropic-version': ANTHROPIC_VERSION,
-      },
-      body: JSON.stringify({
-        model: options.model,
-        ...(payload.system ? { system: payload.system } : {}),
-        messages: payload.messages,
-        max_tokens: 8192,
-        ...(tools.length > 0
-          ? { tools: tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters })) }
-          : {}),
-        stream: true,
-      }),
-      signal,
-    });
+    const conn = connectSignal(signal);
+    let response: Response;
+    try {
+      response = await fetch(`${base}/messages`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': options.apiKey ?? '',
+          'anthropic-version': ANTHROPIC_VERSION,
+        },
+        body: JSON.stringify({
+          model: options.model,
+          ...(payload.system ? { system: payload.system } : {}),
+          messages: payload.messages,
+          max_tokens: 8192,
+          ...(tools.length > 0
+            ? { tools: tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters })) }
+            : {}),
+          stream: true,
+        }),
+        signal: conn.signal,
+      });
+    } finally {
+      conn.done();
+    }
     if (!response.ok || !response.body) {
       const detail = await response.text().catch(() => '');
       throw new Error(`模型请求失败 HTTP ${response.status}：${detail.slice(0, 300)}`);

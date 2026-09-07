@@ -4,3 +4,5 @@ packages:
 allowBuilds:
   esbuild: true
   electron: true
+verifyDepsBeforeRun: false
+confirmModulesPurge: false

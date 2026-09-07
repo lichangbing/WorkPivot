@@ -8,6 +8,8 @@ license: Proprietary. 内置技能，随 WorkPivot 发行。
 
 生成 .docx 的标准流程：**先写生成脚本，再运行，最后自检**。不要手工拼二进制。
 
+> 纪律：不要搜索/查找技能文件或库的安装位置（NODE_PATH 已预配置好，require 即可），也不要用 where/dir 全盘扫描——直接按本说明写脚本并运行。
+
 ## 第〇步：模板模式（system 列有「企业 Word 模板」时必走）
 
 企业模板存在时**必须优先用模板**（用户未指定时用默认模板），用 adm-zip 替换 `word/document.xml` 中的 `{{占位符}}`：

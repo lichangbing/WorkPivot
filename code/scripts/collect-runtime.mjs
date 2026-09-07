@@ -5,7 +5,7 @@
  * 2. 从 assets/logo 复制应用图标到 desktop build/（electron-builder 自动取 icon.ico，托盘取 icon.png）。
  */
 import { execSync } from 'node:child_process';
-import { copyFileSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,7 +20,8 @@ execSync('pnpm --filter @workpivot/server deploy --prod --legacy ./apps/desktop/
   stdio: 'inherit',
 });
 
-for (const f of ['icon.ico', 'icon.png']) {
-  copyFileSync(resolve(repoRoot, 'assets/logo', f), resolve(codeDir, 'apps/desktop/build', f));
-}
+const desktopBuildDir = resolve(codeDir, 'apps/desktop/build');
+mkdirSync(desktopBuildDir, { recursive: true });
+copyFileSync(resolve(repoRoot, 'assets/logo/icon.ico'), resolve(desktopBuildDir, 'icon.ico'));
+copyFileSync(resolve(repoRoot, 'assets/logo/icon-256.png'), resolve(desktopBuildDir, 'icon.png'));
 console.log('[collect-runtime] 完成：', target);

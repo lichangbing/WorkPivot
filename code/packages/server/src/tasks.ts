@@ -3,7 +3,7 @@
  * 转写行结构见数据目录规范 §4；parentUuid 链是否预埋在 T3-01 开工时决定。
  */
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { appendLine, ensureWorkpivotDir, readJsonSafe, writeAtomic } from './store.js';

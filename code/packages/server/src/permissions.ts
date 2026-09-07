@@ -140,6 +140,30 @@ function withinDir(path: string, dir: string): boolean {
   return norm === dir || norm.startsWith(dir + '\\') || norm.startsWith(dir + '/');
 }
 
+/** 彩排修复（I02 缺口）：从 bash 命令文本中提取 Windows 绝对路径引用（盘符开头，容忍大小写）。 */
+function extractCommandPaths(command: string): string[] {
+  const matches = command.match(/[A-Za-z]:[\\/][^\s"'|&;*)]*/g) ?? [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of matches) {
+    const key = m.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(m);
+    }
+  }
+  return out;
+}
+
+function commandTouchesOutside(command: string, taskDir: string): string[] {
+  return extractCommandPaths(command).filter((p) => {
+    const abs = p.replace(/[\\/]+$/, '');
+    if (withinDir(abs, taskDir) || withinDir(taskDir, abs)) return false; // 任务目录自身/其子路径
+    if (pathCoveredByLists(abs)) return false; // 已授权目录
+    return true;
+  });
+}
+
 function pathCoveredByLists(path: string): boolean {
   const dirs = [...listAllowDirs(), ...sessionAllowedDirs];
   return dirs.some((dir) => withinDir(path, dir));
@@ -194,6 +218,17 @@ export async function evaluateAccess(
     if (tier === 'ask') {
       const allowed = await ask(input, '每步都问档：命令执行需确认', 'once');
       return { allowed, auditedReason: allowed ? '用户逐次批准命令' : '用户拒绝命令' };
+    }
+    // 彩排修复（I02 缺口）：非高危命令也可能引用任务目录之外的路径（如 type C:\...\settings.json
+    // 绕过被拒的 read）——workdir/auto 档对含界外路径引用的命令仍需单次确认
+    const outsideRefs = commandTouchesOutside(input.command, input.taskDir);
+    if (outsideRefs.length > 0 && tier !== 'auto') {
+      const allowed = await ask(
+        { ...input, paths: outsideRefs.map((p) => ({ path: p, mode: 'read' as const })) },
+        `命令引用任务目录之外的路径：${outsideRefs.join('、')}`,
+        'once',
+      );
+      return { allowed, auditedReason: allowed ? '用户批准含界外路径的命令（一次性）' : '用户拒绝含界外路径的命令' };
     }
     return { allowed: true, auditedReason: `${tier} 档放行非高危命令` };
   }

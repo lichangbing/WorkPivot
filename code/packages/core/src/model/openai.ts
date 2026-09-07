@@ -49,6 +49,24 @@ interface AccumulatedToolCall {
   arguments: string;
 }
 
+/** 连接超时：等待响应头上限（首字节前的停滞由它兜底；流中停滞由 sse 空闲超时兜底）。 */
+const CONNECT_TIMEOUT_MS = 120_000;
+
+/** 组合外部 signal 与连接超时：响应头到达后撤销计时器，外部中止始终生效。 */
+function connectSignal(external: AbortSignal | undefined): { signal: AbortSignal; done: () => void } {
+  const controller = new AbortController();
+  const onAbort = (): void => controller.abort();
+  external?.addEventListener('abort', onAbort, { once: true });
+  const timer = setTimeout(() => controller.abort(), CONNECT_TIMEOUT_MS);
+  return {
+    signal: controller.signal,
+    done: () => {
+      clearTimeout(timer);
+      external?.removeEventListener('abort', onAbort);
+    },
+  };
+}
+
 export function createOpenAICompatibleClient(options: ModelClientOptions): ModelClient {
   const base = options.baseUrl.replace(/\/+$/, '');
 
@@ -57,20 +75,26 @@ export function createOpenAICompatibleClient(options: ModelClientOptions): Model
     tools: ToolSchema[],
     signal?: AbortSignal,
   ): AsyncGenerator<StreamEvent, void, unknown> {
-    const response = await fetch(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(options.apiKey ? { authorization: `Bearer ${options.apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        model: options.model,
-        messages,
-        ...(tools.length > 0 ? { tools: tools.map((t) => ({ type: 'function', function: t })) } : {}),
-        stream: true,
-      }),
-      signal,
-    });
+    const conn = connectSignal(signal);
+    let response: Response;
+    try {
+      response = await fetch(`${base}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(options.apiKey ? { authorization: `Bearer ${options.apiKey}` } : {}),
+        },
+        body: JSON.stringify({
+          model: options.model,
+          messages,
+          ...(tools.length > 0 ? { tools: tools.map((t) => ({ type: 'function', function: t })) } : {}),
+          stream: true,
+        }),
+        signal: conn.signal,
+      });
+    } finally {
+      conn.done();
+    }
     if (!response.ok || !response.body) {
       const detail = await response.text().catch(() => '');
       throw new Error(`模型请求失败 HTTP ${response.status}：${detail.slice(0, 300)}`);

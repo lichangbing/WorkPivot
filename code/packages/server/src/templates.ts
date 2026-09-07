@@ -5,7 +5,7 @@
  * 生成链：模型经 read 拿模板路径 → gen 脚本用 adm-zip 替换 word/document.xml 占位符 → 产出。
  */
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ensureWorkpivotDir, readJsonSafe, writeAtomic } from './store.js';
 import { moveToTrash } from './trash.js';

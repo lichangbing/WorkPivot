@@ -473,6 +473,12 @@ ${capped}
       if (!res.writableEnded) controller.abort();
       running.delete(task.id);
     });
+    // SSE 心跳：长工具执行期无事件流，TCP 缓冲不满时服务端察觉不到客户端断开——
+    // 每 15s 写一行注释帧迫使缓冲滚动，socket 死亡即刻触发 res 'close' → abort
+    const heartbeat = setInterval(() => {
+      if (!res.writableEnded) res.write(': ping\n\n');
+    }, 15_000);
+    const stopHeartbeat = (): void => clearInterval(heartbeat);
 
     let system = buildSystemPrompt(task.directory, getTier()) + renderSkillDirectory(skills);
     system += renderMemoryInjection(user?.id ?? 'local', task.directory);
@@ -484,6 +490,8 @@ ${capped}
       '把信息写入长期记忆(手写区)用 promote_memory 工具,调用后会弹出确认卡,用户可拒绝。',
       '用户要求忘掉某事时用 forget 工具。',
       '项目的长期信息写入 .workpivot/memory/MEMORY.md(用 write 工具),随项目目录走。',
+      '# 访问纪律（I02）',
+      '访问被用户拒绝后，不要改用其他工具或命令达成同一目的；应告知用户并停止。',
       '# 计划纪律（A03）',
       '多步任务（预计 ≥3 步）开工前先用 update_plan 建立阶段计划；每完成一个阶段或计划调整时全量更新；阶段全部完成后收尾。',
     ].join('\n');
@@ -582,9 +590,21 @@ ${capped}
         send({ type: 'error', message: err instanceof Error ? err.message : String(err) });
       })
       .finally(() => {
+        stopHeartbeat();
         running.delete(task.id);
         res.end();
       });
+  });
+
+  // W2/彩排修复：运行中可停止——中止 agent 循环（模型流/工具随即中断，任务转 interrupted）
+  app.post('/api/tasks/:id/stop', (req, res) => {
+    const task = getTask(req.params['id'] ?? '');
+    if (!task) return res.status(404).json({ error: '任务不存在' });
+    const controller = running.get(task.id);
+    if (!controller) return res.status(409).json({ error: '该任务未在运行中' });
+    controller.abort();
+    audit({ user: (req as AuthedRequest).user?.username, taskId: task.id, event: 'task_stopped', decision: 'stopped' });
+    res.json({ ok: true });
   });
 
   // M1/E01：记忆确认卡回填 + 查看/开关

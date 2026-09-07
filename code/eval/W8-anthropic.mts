@@ -8,7 +8,7 @@
  * 运行：pnpm eval:w8
  */
 import { createServer, type Server, type IncomingMessage } from 'node:http';
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 

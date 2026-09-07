@@ -27,8 +27,10 @@ function assert(name: string, pass: boolean, detail?: string): void {
 const MOCK_PORT = 39911;
 const OUTSIDE_DIR = join(workspace, 'outside');
 const OUTSIDE_FILE = join(OUTSIDE_DIR, 'secret.txt');
+const OUTSIDE_FILE2 = join(OUTSIDE_DIR, 'secret2.txt');
 mkdirSync(OUTSIDE_DIR, { recursive: true });
 writeFileSync(OUTSIDE_FILE, '这是界外机密内容。', 'utf8');
+writeFileSync(OUTSIDE_FILE2, '这是另一份界外机密。', 'utf8');
 
 const mock: Server = createHttpServer((req, res) => {
   if (req.method === 'GET' && req.url?.endsWith('/models')) {
@@ -64,6 +66,10 @@ const mock: Server = createHttpServer((req, res) => {
         res.end();
       } else if (body.includes('rm -rf')) {
         toolCall('bash', '{"command": "rm -rf C:/Users"}');
+      } else if (body.includes('绕过')) {
+        // 彩排场景：read 被拒后换 bash type 读另一个界外文件（未白名单）→ 必须触发授权卡
+        const abs = OUTSIDE_FILE2.replace(/\\/g, '/');
+        toolCall('bash', JSON.stringify({ command: `type ${abs}` }));
       } else if (body.includes('界外')) {
         const abs = OUTSIDE_FILE.replace(/\\/g, '/');
         toolCall('read', JSON.stringify({ path: abs }));
@@ -180,6 +186,13 @@ try {
   assert('T2-05 永久白名单生效（不再询问）', eventsOf(run3, 'permission_request').length === 0);
   const ok3 = eventsOf(run3, 'tool_result')[0] as { ok?: boolean; message?: string } | undefined;
   assert('白名单路径第三次读取成功', ok3?.ok === true);
+
+  // 2.5 彩排修复（I02 缺口）：被拒的界外 read 换 bash type 绕过 → 命令含界外路径必须走授权卡
+  const run3b = await runTurn(task.id, '换 bash 绕过读取界外的机密文件', () => 'deny');
+  const req3b = eventsOf(run3b, 'permission_request')[0] as { reason?: string } | undefined;
+  assert('I02 bash 命令引用界外路径触发授权卡（绕过封堵）', Boolean(req3b) && (req3b?.reason ?? '').includes('任务目录之外'), req3b?.reason);
+  const deny3b = eventsOf(run3b, 'tool_result')[0] as { ok?: boolean } | undefined;
+  assert('I02 绕过命令被拒后无法读取', deny3b?.ok === false);
 
   // 3. 高危命令：rm -rf（I05 bypass-immune）
   const run4 = await runTurn(task.id, '帮我执行 rm -rf C:/Users', () => 'deny');
