@@ -10,6 +10,9 @@ interface Props {
   user: PublicUser;
   tier: Tier;
   tierLabels: Record<string, string>;
+  /** RL1-02：全局默认档（仅 admin 显示可改；对未自选个人档位的用户生效）。 */
+  defaultTier?: Tier;
+  onDefaultTierChange?: (tier: Tier) => void;
   memoryOn: boolean;
   activeModel: string | null;
   activeTaskId?: string;
@@ -20,7 +23,7 @@ interface Props {
 }
 
 export function SettingsPanel(props: Props): React.JSX.Element {
-  const { user, tier, tierLabels, memoryOn, activeModel, activeTaskId, onTierChange, onMemoryToggle, onLogout, onClose } = props;
+  const { user, tier, tierLabels, defaultTier, onDefaultTierChange, memoryOn, activeModel, activeTaskId, onTierChange, onMemoryToggle, onLogout, onClose } = props;
   const [memoryBusy, setMemoryBusy] = useState(false);
   const [memoryModalOpen, setMemoryModalOpen] = useState(false);
 
@@ -45,9 +48,9 @@ export function SettingsPanel(props: Props): React.JSX.Element {
           </div>
         </div>
 
-        {/* 权限档位 */}
+        {/* 权限档位（个人；RL1-02） */}
         <div>
-          <p className="mb-1 text-xs text-neutral-500">权限档位</p>
+          <p className="mb-1 text-xs text-neutral-500">权限档位（本人）</p>
           <select
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5 outline-none focus:border-neutral-500"
             value={tier}
@@ -60,6 +63,24 @@ export function SettingsPanel(props: Props): React.JSX.Element {
             ))}
           </select>
         </div>
+
+        {/* 全局默认档（仅 admin；RL1-02——对未自选个人档位的用户生效） */}
+        {user.role === 'admin' && defaultTier && onDefaultTierChange && (
+          <div>
+            <p className="mb-1 text-xs text-neutral-500">全局默认档（未自选者生效）</p>
+            <select
+              className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5 outline-none focus:border-neutral-500"
+              value={defaultTier}
+              onChange={(e) => onDefaultTierChange(e.target.value as Tier)}
+            >
+              {Object.entries(tierLabels).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* 记忆开关 + 管理入口（M1-11） */}
         <div>

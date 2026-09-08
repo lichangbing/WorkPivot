@@ -32,6 +32,7 @@ import {
   updateUserRole,
   updateUserProfile,
   listUsers,
+  setUserTier,
   type PublicUser,
   type Role,
 } from './auth.js';
@@ -223,12 +224,36 @@ export function createApp(opts: AppOptions = {}): Express {
     res.json({ permissionTier: getTier(), tierLabels: TIER_LABELS, allowDirs: listAllowDirs() });
   });
 
+  // RL1-02：全局默认档=策略雏形（对未自选个人档位的用户生效），仅 admin 可改；个人档位走 /api/me/tier
   app.put('/api/settings/tier', (req, res) => {
+    const admin = requireAdmin(req as AuthedRequest);
+    if (admin === null) return res.status(403).json({ error: '仅管理员可修改全局默认档位' });
     const { tier } = req.body as { tier?: Tier };
     if (!tier || !(tier in TIER_LABELS)) return res.status(400).json({ error: `tier 必须是：${Object.keys(TIER_LABELS).join('/')}` });
     setTier(tier);
-    audit({ event: 'tier_changed', decision: tier });
+    audit({ user: admin.username, event: 'tier_changed', decision: tier });
     res.json({ permissionTier: getTier() });
+  });
+
+  // RL1-02：个人档位——成员自选，改的是自己（tier=null 清除自选、回落全局默认档）
+  app.get('/api/me/tier', (req, res) => {
+    const user = (req as AuthedRequest).user;
+    if (!user) return res.status(401).json({ error: '未登录' });
+    res.json({ tier: getTier(user.id), defaultTier: getTier(), tierLabels: TIER_LABELS });
+  });
+
+  app.put('/api/me/tier', (req, res) => {
+    const user = (req as AuthedRequest).user;
+    if (!user) return res.status(401).json({ error: '未登录' });
+    const { tier } = req.body as { tier?: Tier | null };
+    if (tier === undefined) return res.status(400).json({ error: 'tier 必填（null=清除自选、回落全局默认档）' });
+    if (tier !== null && !(typeof tier === 'string' && tier in TIER_LABELS)) {
+      return res.status(400).json({ error: `tier 必须是：${Object.keys(TIER_LABELS).join('/')} 或 null` });
+    }
+    const result = setUserTier(user.id, tier ?? null);
+    if (!result.ok) return res.status(400).json({ error: result.error });
+    audit({ user: user.username, event: 'my_tier_changed', decision: tier ?? '(回落全局默认)' });
+    res.json({ tier: getTier(user.id), defaultTier: getTier() });
   });
 
   // ---- 供应商（C02/C03：管理员=本机用户；key 密文落盘，接口永远打码）----
@@ -516,7 +541,8 @@ ${capped}
 
     const requestAccess: (req: ToolAccessRequest) => Promise<boolean> = async (access) => {
       const result = await evaluateAccess(
-        { tool: access.tool, kind: access.kind, paths: access.paths, command: access.command, taskDir: task.directory },
+        // RL1-02：档位按任务所有者取（admin 代跑/定时执行不提权）；旧任务无 owner 回落操作者
+        { tool: access.tool, kind: access.kind, paths: access.paths, command: access.command, taskDir: task.directory, userId: task.ownerUserId ?? user?.id },
         (request) => {
           send({ type: 'permission_request', ...request });
           // R002：高危/界外授权卡异步附加 AI 风险解读（不阻塞确认；失败静默无解读）

@@ -123,7 +123,11 @@ export const api = {
     jsonFetch(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify({ email: email?.trim() || null }) }),
   getSettings: (): Promise<{ permissionTier: Tier; tierLabels: Record<string, string>; allowDirs: string[] }> =>
     jsonFetch('/api/settings'),
-  setTier: (tier: Tier): Promise<{ permissionTier: Tier }> =>
+  // RL1-02：个人档位（成员自选，改自己）；全局默认档仅 admin（setGlobalTier）
+  getMyTier: (): Promise<{ tier: Tier; defaultTier: Tier; tierLabels: Record<string, string> }> => jsonFetch('/api/me/tier'),
+  setMyTier: (tier: Tier | null): Promise<{ tier: Tier; defaultTier: Tier }> =>
+    jsonFetch('/api/me/tier', { method: 'PUT', body: JSON.stringify({ tier }) }),
+  setGlobalTier: (tier: Tier): Promise<{ permissionTier: Tier }> =>
     jsonFetch('/api/settings/tier', { method: 'PUT', body: JSON.stringify({ tier }) }),
   listTasks: (): Promise<{ tasks: Task[] }> => jsonFetch('/api/tasks'),
   createTask: (input: { name: string; directory?: string; projectId?: string; temp?: boolean }): Promise<{ task: Task }> =>

@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { join } from 'node:path';
 import { appendLine, ensureWorkpivotDir, readJsonSafe, writeAtomic } from './store.js';
+import type { Tier } from './permissions.js';
 
 export type Role = 'admin' | 'member';
 
@@ -16,6 +17,8 @@ export interface User {
   email?: string;
   hash: string;
   role: Role;
+  /** RL1-02：个人权限档位（未自选 = 使用全局默认档）。 */
+  tier?: Tier;
   createdAt: string;
   lastLoginTime?: string;
 }
@@ -68,7 +71,7 @@ export function createUser(username: string, password: string, role: Role, email
   if (file.users.length === 0) throw new Error('尚无用户：请先通过注册创建管理员');
   if (file.users.some((u) => u.username === username)) throw new Error(`用户名已存在：${username}`);
   const { user } = createUserAndToken(file, username, password, role, email);
-  return { id: user.id, username: user.username, email: user.email, role: user.role };
+  return { id: user.id, username: user.username, email: user.email, role: user.role, tier: user.tier };
 }
 
 function createUserAndToken(
@@ -94,7 +97,7 @@ function createUserAndToken(
   writeAtomic(usersPath(), JSON.stringify(file, null, 2));
   appendLine(join(ensureWorkpivotDir('audit'), `audit-${localDate()}.jsonl`), JSON.stringify({ ts: new Date().toISOString(), event: 'user_created', user: user.username, role, email: normalizedEmail ?? null }));
   const token = issueToken(user.id);
-  return { token, user: { id: user.id, username: user.username, email: user.email, role: user.role } };
+  return { token, user: { id: user.id, username: user.username, email: user.email, role: user.role, tier: user.tier } };
 }
 
 export interface PublicUser {
@@ -102,6 +105,8 @@ export interface PublicUser {
   username: string;
   email?: string;
   role: Role;
+  /** RL1-02：个人档位（未自选时为空 = 全局默认档）。 */
+  tier?: Tier;
   createdAt?: string;
   lastLoginTime?: string;
 }
@@ -113,7 +118,7 @@ export function login(username: string, password: string): { token: string; user
   user.lastLoginTime = new Date().toISOString();
   writeAtomic(usersPath(), JSON.stringify(file, null, 2));
   const token = issueToken(user.id);
-  return { token, user: { id: user.id, username: user.username, email: user.email, role: user.role, lastLoginTime: user.lastLoginTime } };
+  return { token, user: { id: user.id, username: user.username, email: user.email, role: user.role, tier: user.tier, lastLoginTime: user.lastLoginTime } };
 }
 
 function issueToken(userId: string): string {
@@ -137,7 +142,7 @@ export function resolveToken(token: string | undefined | null): PublicUser | nul
   const entry = file.tokens.find((t) => t.token === token);
   if (!entry) return null;
   const user = loadUsers().users.find((u) => u.id === entry.userId);
-  return user ? { id: user.id, username: user.username, email: user.email, role: user.role } : null;
+  return user ? { id: user.id, username: user.username, email: user.email, role: user.role, tier: user.tier } : null;
 }
 
 export function deleteUser(userId: string, currentUserId: string): { ok: boolean; error?: string } {
@@ -182,6 +187,26 @@ export function updateUserRole(userId: string, role: Role): { ok: boolean; error
   return { ok: true };
 }
 
+/** RL1-02：读个人档位（未自选返回 null = 使用全局默认档）。 */
+export function getUserTier(userId: string): Tier | null {
+  return loadUsers().users.find((u) => u.id === userId)?.tier ?? null;
+}
+
+/** RL1-02：设置个人档位；tier=null 表示清除自选、回落全局默认档。 */
+export function setUserTier(userId: string, tier: Tier | null): { ok: boolean; error?: string } {
+  const file = loadUsers();
+  const user = file.users.find((u) => u.id === userId);
+  if (!user) return { ok: false, error: '用户不存在' };
+  if (tier === null) delete user.tier;
+  else user.tier = tier;
+  writeAtomic(usersPath(), JSON.stringify(file, null, 2));
+  appendLine(
+    join(ensureWorkpivotDir('audit'), `audit-${localDate()}.jsonl`),
+    JSON.stringify({ ts: new Date().toISOString(), event: 'user_tier_changed', user: user.username, tier: tier ?? '(回落全局默认)' }),
+  );
+  return { ok: true };
+}
+
 export function changePassword(userId: string, currentPassword: string, newPassword: string): { ok: boolean; error?: string } {
   const file = loadUsers();
   const user = file.users.find((u) => u.id === userId);
@@ -200,6 +225,7 @@ export function listUsers(): PublicUser[] {
     username: u.username,
     email: u.email,
     role: u.role,
+    tier: u.tier,
     createdAt: u.createdAt,
     lastLoginTime: u.lastLoginTime,
   }));

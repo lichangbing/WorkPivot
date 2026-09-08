@@ -16,6 +16,7 @@ const suites: Array<[string, string]> = [
   ['W8', 'eval/W8-anthropic.mts'],
   ['W9', 'eval/W9-office.mts'],
   ['W10', 'eval/W10-schedule.mts'],
+  ['W11', 'eval/W11-authz.mts'],
 ];
 
 const results: Record<string, string> = {};

@@ -12,6 +12,7 @@
  */
 import { isAbsolute, join, resolve as resolvePath } from 'node:path';
 import { ensureWorkpivotDir, readJsonSafe, writeAtomic } from './store.js';
+import { getUserTier } from './auth.js';
 
 export type Tier = 'readonly' | 'ask' | 'workdir' | 'auto';
 
@@ -33,7 +34,13 @@ interface SettingsFile {
   permissionTier?: Tier;
 }
 
-export function getTier(): Tier {
+/**
+ * RL1-02：有效档位两层合并——用户自选（个人层）优先，未自选回落全局默认档（policy 雏形，仅 admin 可改）。
+ * 设计对照：Claude Code settings 分层（user→policy）的企业版简化；I07 策略下发（4b）将在默认档之上加 policy 锁。
+ */
+export function getTier(userId?: string): Tier {
+  const personal = userId ? getUserTier(userId) : null;
+  if (personal) return personal;
   const settings = readJsonSafe<SettingsFile>(settingsPath(), { version: 1 }).value;
   return settings.permissionTier ?? DEFAULT_TIER;
 }
@@ -190,6 +197,8 @@ export interface EvaluateInput {
   paths: AccessPath[];
   command?: string;
   taskDir: string;
+  /** RL1-02：档位归属用户（=任务所有者；admin 代跑/定时任务均不提权）。 */
+  userId?: string;
 }
 
 /**
@@ -200,7 +209,7 @@ export async function evaluateAccess(
   input: EvaluateInput,
   onRequest: (request: AccessRequest) => void,
 ): Promise<{ allowed: boolean; auditedReason: string }> {
-  const tier = getTier();
+  const tier = getTier(input.userId);
   // 工具声明的是相对任务目录的路径；边界判定必须先解析为绝对路径
   const absPaths = input.paths.map((p) => ({ mode: p.mode, path: isAbsolute(p.path) ? p.path : resolvePath(input.taskDir, p.path) }));
   const outside = absPaths.filter((p) => !withinDir(p.path, input.taskDir));

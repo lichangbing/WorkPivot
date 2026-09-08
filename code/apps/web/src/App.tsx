@@ -117,6 +117,7 @@ export default function App(): React.JSX.Element {
   const [streaming, setStreaming] = useState(false);
   const [providers, setProviders] = useState<PublicProvider[]>([]);
   const [tier, setTier] = useState<Tier>('workdir');
+  const [defaultTier, setDefaultTier] = useState<Tier>('workdir');
   const [tierLabels, setTierLabels] = useState<Record<string, string>>({});
   const [memoryOn, setMemoryOn] = useState(true);
   const [rightPanel, setRightPanel] = useState<{ directory: string; files: string[] } | null>(null);
@@ -213,9 +214,11 @@ export default function App(): React.JSX.Element {
     const projectData = await api.listProjects();
     setProjects(projectData.projects);
     if (activeTask) setFilesForAt((await api.getFiles(activeTask.id)).files);
-    const settings = await api.getSettings();
-    setTier(settings.permissionTier);
-    setTierLabels(settings.tierLabels);
+    // RL1-02：档位改读个人有效档（含全局默认回落），不再读全局单值
+    const myTier = await api.getMyTier();
+    setTier(myTier.tier);
+    setDefaultTier(myTier.defaultTier);
+    setTierLabels(myTier.tierLabels);
     setMemoryOn((await api.memoryState()).enabled);
     setServerOk(true);
   }, [refreshTasks, refreshProviders]);
@@ -246,9 +249,25 @@ export default function App(): React.JSX.Element {
   const changeTier = useCallback(
     async (next: Tier): Promise<void> => {
       try {
-        const result = await api.setTier(next);
-        setTier(result.permissionTier);
+        // RL1-02：改自己的档位；admin 的全局默认档走 changeDefaultTier
+        const result = await api.setMyTier(next);
+        setTier(result.tier);
+        setDefaultTier(result.defaultTier);
         showToast(`权限档位已切换：${tierLabels[next] ?? next}`);
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [tierLabels, showToast],
+  );
+
+  // RL1-02：admin 修改全局默认档（对未自选个人档位的用户生效）
+  const changeDefaultTier = useCallback(
+    async (next: Tier): Promise<void> => {
+      try {
+        const result = await api.setGlobalTier(next);
+        setDefaultTier(result.permissionTier);
+        showToast(`全局默认档位已更新：${tierLabels[next] ?? next}`);
       } catch (err) {
         showToast(err instanceof Error ? err.message : String(err));
       }
@@ -791,6 +810,8 @@ export default function App(): React.JSX.Element {
                 user={currentUser!}
                 tier={tier}
                 tierLabels={tierLabels}
+                defaultTier={defaultTier}
+                onDefaultTierChange={(t) => void changeDefaultTier(t)}
                 memoryOn={memoryOn}
                 activeModel={activeProvider ? `${activeProvider.name} / ${activeProvider.modelId}` : null}
                 activeTaskId={activeTask?.id}

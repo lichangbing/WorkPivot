@@ -194,6 +194,17 @@ try {
   const skillsDenied = await member.get<{ error?: string }>('/api/skills');
   assert('F3 member 看技能被拒（403）', skillsDenied.status === 403);
 
+  // RL1-02（A-1 修复）：档位写口——member 不能改全局默认档；个人档位独立读写
+  const tierDenied = await member.put('/api/settings/tier', { tier: 'auto' });
+  assert('RL1-02 member 改全局默认档被拒（403）', tierDenied.status === 403, `got ${tierDenied.status}`);
+  const myTier0 = await member.get<{ tier: string; defaultTier: string }>('/api/me/tier');
+  assert('RL1-02 member 未自选=回落全局默认档', myTier0.status === 200 && myTier0.body.tier === myTier0.body.defaultTier, JSON.stringify(myTier0.body));
+  const myTierSet = await member.put<{ tier: string }>('/api/me/tier', { tier: 'readonly' });
+  assert('RL1-02 member 自选个人档位生效', myTierSet.status === 200 && myTierSet.body.tier === 'readonly');
+  const badTier = await member.put('/api/me/tier', { tier: 'god' });
+  assert('RL1-02 非法档位值被拒（400）', badTier.status === 400, `got ${badTier.status}`);
+  await member.put('/api/me/tier', { tier: null }); // 还原：后续用例回落全局默认
+
   // J02 批次4a：任务所有权——成员仅见自己的任务；跨账号访问 404；管理员见全部
   const adminTask = await admin.post<{ task: { id: string } }>('/api/tasks', { name: '管理员的私有任务' });
   const memberTask = await member.post<{ task: { id: string } }>('/api/tasks', { name: '成员的私有任务' });

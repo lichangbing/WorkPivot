@@ -23,7 +23,8 @@
     "eval:w7": "tsx eval/W7-file.mts",
     "eval:w8": "tsx eval/W8-anthropic.mts",
     "eval:w9": "tsx eval/W9-office.mts",
-    "eval:w10": "tsx eval/W10-schedule.mts"
+    "eval:w10": "tsx eval/W10-schedule.mts",
+    "eval:w11": "tsx eval/W11-authz.mts"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
