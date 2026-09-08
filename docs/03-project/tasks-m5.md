@@ -48,7 +48,7 @@
 | RL2-01 | **文件共享规则成文+核对**：项目目录=团队共享（projects.ts:2-5）、`_temp`=按任务私有（app.ts:339）写入数据目录规范；member 视角目录路径脱敏规则（现 GET /api/projects 泄漏服务器绝对路径） | B01/J02 | 规则成文；member 端无服务器绝对路径泄漏 | W12 | RL1-03 | 必做 / 0.5d |
 | RL2-02 | **收紧任务目录配置**：`POST /api/tasks` 的 `directory`（app.ts:334-347 现任何登录成员可传服务器任意绝对路径）→ member 仅限 workspaceRoot 内且不得指向他人项目目录；越界自定义仅 admin（显式配置开关）；`POST /api/projects` 的 directory（projects.ts:66-69 现无校验）同样限 workspaceRoot 内 | I08 | 普通成员不能通过自定义目录访问服务器任意位置（越界请求 400，Docker 下 `/data/workspace` 为天然边界） | W12 | RL2-01 | 必做 / 1d |
 | RL2-03 | **统一路径校验 pathGuard**：新共享模块——resolve + **realpath 符号链接解析**（现全仓无 realpathSync，symlink 逃逸未防护）+ Windows 大小写归一 + 相对/绝对路径与分隔符归一；`tools.resolveWithin`（tools.ts:39-45）与 `permissions.withinDir`（permissions.ts:138-141，纯字符串前缀）收敛共用；`expandFileRefs` @引用（app.ts:906-919 现无界内检查）补界内校验 | I08 | 相对路径/绝对路径/符号链接/Windows 大小写/Linux 路径/`..` 穿越用例全过；`@../..` 越界引用被拒 | W12 | - | 必做 / 1.5d |
-| RL2-04 | **命令执行隔离（方案验证→实施）**：**前两天出方案**——Docker 形态：容器内非 root 运行 + 仅挂载 workspaceRoot 受控目录；桌面形态：Win32 Job Object 强隔离（清 tasks-m0:104 已知债）或该形态降级「一律 ask」更严审批；spawn env 白名单化（tools.ts:178 现全量透传 `process.env`，剔除 `*KEY/*TOKEN/*SECRET/*PASSWORD` 等，仅留 PATH/HOME/语言运行时必需项） | I01/I08 | 子进程环境变量无应用密钥；受控目录外命令执行被拒；隔离形态矩阵成文 | W12 | RL2-03 | 必做（Job Object 部分可滑）/ 2d |
+| RL2-04 | **命令执行隔离（方案验证→实施）**：**前两天出方案**——Docker 形态：容器改非 root 运行 + 数据卷纪律（命令上下文只够到 workspaceRoot）+ env 白名单；桌面形态：Win32 Job Object 强隔离（清 tasks-m0:104 已知债）或该形态降级「一律 ask」更严审批；spawn env 白名单化（tools.ts:178 现全量透传 `process.env`，剔除 `*KEY/*TOKEN/*SECRET/*PASSWORD` 等，仅留 PATH/HOME/语言运行时必需项）。**试点级边界（2026-09-08 确认）**：做到「容器加固 + 受控执行环境」为止，每条命令的真沙箱（一次性侧车容器/微虚拟机）不进本轮，试点发布后单独立项 | I01/I08 | 子进程环境变量无应用密钥；受控目录外命令执行被拒；隔离形态矩阵成文 | W12 | RL2-03 | 必做（Job Object 部分可滑）/ 2d |
 | RL2-05 | **跨平台验证**：桌面 Windows + Docker Linux 双形态过 W12 全套；文档生成链回归（W4/W9 不受 env 收敛影响）；不满足隔离要求的形态自动落更严命令审批策略 | K01 | 双形态全绿；降级策略有断言 | W12 + W4 + W9 | RL2-04 | 必做 / 0.5d |
 | RL2-06 | **周末验收（第 2 周门禁）**：Agent 无法通过 Shell、文件工具、附件、@引用访问未授权目录、其他用户私有文件及应用密钥；Word/Excel/PPT 正常生成仍可用 | K01 | 记录入台账 | 全套回归 | RL2-01~05 | 门禁 |
 
@@ -61,7 +61,7 @@
 | RL3-01 | **会话生命周期**：sessions 记录增 createdAt/expiresAt + TTL 配置（默认 24h，可配；现 token 永不过期，auth.ts:119-141）；登出真撤销（app.ts:150 现为空操作）；改密清该用户全部会话（auth.ts:185 现不清）；admin 撤销会话路由 + 后台面板按钮；过期惰性清理 + 启动清扫 | J01 | 退出立即撤销当前令牌；改密使旧会话失效；到期和管理员撤销生效（评测构造过期/已撤销 token） | W13 | - | 必做 / 1d |
 | RL3-02 | **登录与初始化加固**：登录限速节流（IP+用户名滑动窗口：超限短暂延迟响应 + 审计记录，**不做账户锁定**——2026-09-08 用户定调；现无任何限速）；首管理员受控初始化——企业/Docker 形态首次启动要求受控凭据（`WORKPIVOT_ADMIN_INIT_TOKEN` 或日志一次性码），注册完成即关闭；与 RL3-03 联动保证 users 双损坏时绝不重开注册 | J01 | 限速节流生效且有审计；首个管理员初始化需要受控凭据；损坏场景不重开注册 | W13 | RL3-03 | 必做 / 1d |
 | RL3-03 | **JSON 备份恢复修复**：主文件损坏且备份有效 → 恢复备份（现 readJsonSafe 已回退 .bak，补断言固化）；**双损坏 → 明确报错**（store.ts:75-79 现静默返回 fallback：users 归零 → 注册重开 → 下一个注册者成 admin，修复为启动态拒绝启动、运行态报错+审计）；修 store.ts:49 source 标注；memory/plan 等裸写路径收编 store 层（memory.ts:55/77、plan.ts:37） | K02 | 主坏+bak 好 → 自动恢复；双损坏 → 明确报错，避免静默当作空数据；注册不重开 | W13 | - | 必做 / 1d |
-| RL3-04 | **服务端密钥保护**：SecretBox 服务端实现 AES-256-GCM，master key 取 `WORKPIVOT_SECRET_KEY`（env / Docker secret）；生产部署不再使用 Base64（secret.ts:17-22 现 Docker 形态永远 base64）；base64 仅 `WORKPIVOT_INSECURE_SECRETS=1` 开发态保留；**缺少必要密钥配置时拒绝启动**；存量 base64 数据首启检测 + 重加密迁移 | I04 | 生产部署 providers.json 无明文/base64 可读密钥；缺密钥配置拒绝启动；存量数据迁移后可用 | W13 | - | 必做 / 1d |
+| RL3-04 | **服务端密钥保护**：SecretBox 服务端实现 AES-256-GCM，master key 经 `WORKPIVOT_SECRET_KEY` 环境变量注入（**默认方案**；Docker secret 文件挂载列为后续可演进项，暂不实现）；生产部署不再使用 Base64（secret.ts:17-22 现 Docker 形态永远 base64）；base64 仅 `WORKPIVOT_INSECURE_SECRETS=1` 开发态保留；**缺少必要密钥配置时拒绝启动**；存量 base64 数据首启检测 + 重加密迁移 | I04 | 生产部署 providers.json 无明文/base64 可读密钥；缺密钥配置拒绝启动；存量数据迁移后可用 | W13 | - | 必做 / 1d |
 | RL3-05 | **部署与备份流程**：扩容 `releases/deploy/部署说明.md`——持久化目录清单、HTTPS 反代接入样例（顺带消化 4b「反向代理指引」）、备份（卷快照/停机复制）与恢复步骤、回滚（镜像 tag）；配套恢复演练脚本并留存演练记录 | J02 | 按文档完成一次 备份→清空→恢复 演练，数据完整；回滚演练有记录 | 人工演练 | RL3-03/04 | 必做 / 1d |
 | RL3-06 | **周末验收（第 3 周门禁）**：旧令牌失效测试、密钥存储检查、损坏文件恢复和备份还原全部通过 | K01 | 记录入台账 | W13 + 回归 | 全周 | 门禁 |
 
@@ -99,7 +99,7 @@
 
 ## 本轮暂不安排（2026-09-08 用户定调）
 
-知识库检索（E03/S02a，方向已修正为「只做对接接口、对接第三方成熟引擎」，M5 后立项）、多专家协同、任务共享移交、全面 UI 改版、微服务拆分、全量数据库迁移。**SQLite 迁移根据并发测试和数据规模另行立项。**
+知识库检索（E03/S02a，方向已修正为「只做对接接口、对接第三方成熟引擎」，M5 后立项）、多专家协同、任务共享移交、全面 UI 改版、微服务拆分、全量数据库迁移；**命令执行真沙箱**（一次性侧车容器/微虚拟机——试点发布后单独立项，本轮只做容器加固级隔离）；**SQLite 迁移根据并发测试和数据规模另行立项。**
 
 ---
 
