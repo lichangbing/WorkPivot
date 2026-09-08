@@ -224,6 +224,24 @@ try {
   const crossMsg = await member.post<{ error?: string }>(`/api/tasks/${adminTask.body.task.id}/messages`, { content: 'x' });
   assert('J02 member 向管理员任务发消息被拒（403）', crossMsg.status === 403, `got ${crossMsg.status}`);
 
+  // RL1-03（A-13/A-14/A-17）：越权写口封堵
+  const verifyDenied = await member.post('/api/providers/verify', { baseUrl: `http://127.0.0.1:${MOCK_PORT}/v1` });
+  assert('RL1-03 member 验活供应商被拒（403）', verifyDenied.status === 403, `got ${verifyDenied.status}`);
+  const verifyAdmin = await admin.post<{ ok?: boolean }>('/api/providers/verify', { baseUrl: `http://127.0.0.1:${MOCK_PORT}/v1` });
+  assert('RL1-03 admin 验活供应商可用', verifyAdmin.status === 200, JSON.stringify(verifyAdmin.body).slice(0, 80));
+  const projMember = await member.get<{ projects: Array<{ id: string; directory?: string }> }>('/api/projects');
+  assert(
+    'RL1-03 member 项目列表无服务器路径',
+    projMember.status === 200 && projMember.body.projects.length > 0 && projMember.body.projects.every((p) => p.directory === undefined),
+  );
+  const projAdmin = await admin.get<{ projects: Array<{ id: string; directory?: string }> }>('/api/projects');
+  assert('RL1-03 admin 项目列表保留目录（管理用）', projAdmin.status === 200 && projAdmin.body.projects.every((p) => typeof p.directory === 'string'));
+  const crossDel = await member.del(`/api/tasks/${adminTask.body.task.id}`);
+  assert('RL1-03 member 删管理员任务被拒（403）', crossDel.status === 403, `got ${crossDel.status}`);
+  const ownTemp = await member.post<{ task: { id: string } }>('/api/tasks', { name: '成员临时任务', temp: true });
+  const ownDel = await member.del(`/api/tasks/${ownTemp.body.task.id}`);
+  assert('RL1-03 member 删自己的临时任务放行', ownDel.status === 200);
+
   // F3 供应商编辑/删除（PUT/DELETE /api/providers/:id）
   const provs0 = await admin.get<{ providers: Array<{ id: string; baseUrl: string; modelId: string; active: boolean }> }>('/api/providers');
   const p0 = provs0.body.providers[0]!;

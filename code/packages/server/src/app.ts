@@ -279,6 +279,8 @@ export function createApp(opts: AppOptions = {}): Express {
   });
 
   app.post('/api/providers/verify', async (req, res) => {
+    // RL1-03（A-17）：验活=服务端向任意 URL 发请求并回告结果——仅管理员（防 member 借道探测内网）
+    if (requireAdmin(req as AuthedRequest) === null) return res.status(403).json({ error: '仅管理员可验活模型供应商' });
     const { baseUrl, apiKey, protocol } = req.body as { baseUrl?: string; apiKey?: string; protocol?: string };
     if (!baseUrl) return res.status(400).json({ error: 'baseUrl 必填' });
     // M1-06：按协议分流验活
@@ -379,9 +381,13 @@ export function createApp(opts: AppOptions = {}): Express {
 
 
   app.delete('/api/tasks/:id', (req, res) => {
+    const task = getTask(req.params['id'] ?? '');
+    if (!task) return res.status(404).json({ error: '任务不存在' });
+    // RL1-03（A-13）：删除与其他任务路由同守卫——member 仅可删自己的任务（先于 temp 校验）
+    if (!taskVisibleTo((req as AuthedRequest).user, task)) return res.status(403).json({ error: '无权删除该任务' });
     const result = deleteTempTask(req.params['id'] ?? '');
     if (result.ok) {
-      audit({ event: 'task_deleted', taskId: req.params['id'] });
+      audit({ user: (req as AuthedRequest).user?.username, taskId: req.params['id'], event: 'task_deleted' });
       res.json({ ok: true });
     } else {
       res.status(400).json({ error: result.error });
@@ -857,8 +863,14 @@ ${capped}
   });
 
   // ---- F1 项目（两级结构）----
-  app.get('/api/projects', (_req, res) => {
-    res.json({ projects: listProjects(), defaultProjectId: DEFAULT_PROJECT_ID });
+  app.get('/api/projects', (req, res) => {
+    // RL1-03（A-14）：成员端路径脱敏——不下发服务器绝对路径（管理员后台照常；深度可见性收敛随 E06 项目负责人）
+    const projects = listProjects();
+    if ((req as AuthedRequest).user?.role === 'admin') {
+      res.json({ projects, defaultProjectId: DEFAULT_PROJECT_ID });
+    } else {
+      res.json({ projects: projects.map((p) => ({ id: p.id, name: p.name, createdAt: p.createdAt })), defaultProjectId: DEFAULT_PROJECT_ID });
+    }
   });
   app.post('/api/projects', (req, res) => {
     const admin = requireAdmin(req as AuthedRequest);
