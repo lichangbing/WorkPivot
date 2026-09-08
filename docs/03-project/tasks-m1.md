@@ -72,7 +72,7 @@
 | J02-3 Docker 部署包 | code/Dockerfile + docker-compose.yml（数据卷持久化/健康检查/时区）+ releases/deploy/部署说明.md | ✅ |
 | J02-4 浏览器访问 | Express 静态托管即 Web 端，浏览器 zero-install；v0.2.0 桌面端同步发版 | ✅ |
 
-**4b 企业增强（待排期）**
+**4b 企业增强（⏸ 2026-09-08 顺延：企业部署可靠性冲刺 [M5](tasks-m5.md) 优先；仅「反向代理指引」提前并入 M5 RL3-05，其余待 M5 后另行排期）**
 
 | 任务 | 说明 |
 |------|------|
