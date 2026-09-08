@@ -28,11 +28,11 @@
 | ID | 任务与落点 | 需求 | 验收标准 | 评测 | 依赖 | 级别/预估 |
 |----|-----------|------|----------|------|------|-----------|
 | RL1-01 | **问题台账建立**：建 `docs/03-project/可靠性问题台账.md`，附录 A 的 18 项预登记入账，逐条补最小复现（脚本/手工步骤）、实际影响、优先级 | K01 | 每条问题单含复现/预期行为/影响/优先级；后续随发现随登记 | — | - | 必做 / 0.5d |
-| RL1-02 | **权限档位按用户隔离**：现全局单值 `settings.permissionTier`（permissions.ts:36-44）→ 用户级档位（users 增档位字段 + admin 管全局默认档）；`PUT /api/settings/tier`（app.ts:226 现无守卫）拆分：admin 改全局默认、用户仅改自己；`evaluateAccess` 按请求用户取有效档位 | I02/J01 | 成员不能修改全局策略；用户 A 的档位变化不影响用户 B；前端档位下拉按用户独立记忆 | W6 扩 + W11 | RL1-01 | 必做 / 1d |
+| RL1-02 | **权限档位按用户隔离**：现全局单值 `settings.permissionTier`（permissions.ts:36-44）→ 用户级档位（users 增档位字段 + admin 管全局默认档）；`PUT /api/settings/tier`（app.ts:226 现无守卫）拆分：admin 改全局默认、用户仅改自己（新增 `PUT /api/me/tier`）；`evaluateAccess` 按**任务所有者**取有效档位（两层合并：用户自选 ← 全局默认；admin 代跑不提权，定时任务同取 owner）。**设计对照（竞品调研）**：分层=Claude Code settings（user→policy）企业版简化，预留 I07 policy 锁升级位；高危 bypass-immune 铁律保持（任何档位来源不豁免 DANGER_PATTERNS） | I02/J01 | 成员不能修改全局策略；用户 A 的档位变化不影响用户 B；前端档位下拉按用户独立记忆；高危命令在任何档位下至少询问 | W6 扩 + W11 | RL1-01 | 必做 / 1d |
 | RL1-03 | **越权写口封堵**：`POST /api/providers/verify`（app.ts:256，可作内网探测跳板）补 admin 守卫；`GET /api/projects`（app.ts:834）按角色收敛；`DELETE /api/tasks/:id`（app.ts:356）补 `taskVisibleTo` 所有权守卫 | J02/I03 | member 调用上述路由 403/数据收敛；删除他人任务被拒 | W6 扩 | RL1-01 | 必做 / 0.5d |
 | RL1-04 | **四档行为矩阵成文**：新文档 `docs/02-design/product/权限行为矩阵.md`——readonly/ask/workdir/auto × 界内读/界内写/界外读/界外写/命令执行/高危操作 全交叉行为（放行/询问/拒绝+授权选项），对齐 bypass-immune 高危语义（permissions.ts:82-116、211-215），每格标注断言索引 | I02 | 矩阵成文且每格有对应断言（现有 W2 + 本周新增） | W2 扩 | RL1-02 | 必做 / 0.5d |
 | RL1-05 | **授权请求绑定用户和任务**：requestId 改 crypto 强随机（现 `pr-时间戳-随机` 可预测，permissions.ts:262）；pending 记录绑定 `{taskId, userId, createdAt}`（现仅存回调，:177）；回填路由 `POST /api/tasks/:id/permission`（app.ts:878 现只查登录）校验任务存在 + `taskVisibleTo` + requestId 归属该任务；决策值白名单 once/session/forever，非法值 400 | I05 | 用其他任务或用户的请求 ID 回填被拒；非法决策值被拒 | W11 | RL1-02 | 必做 / 1d |
-| RL1-06 | **授权作用范围修复**：once 不再顺带 `grantSessionDir`（permissions.ts:255-257 现状=一次授权变进程级放行）；session 授权集合按任务/用户隔离（现进程级全局 Set :69-78，跨用户跨任务泄漏）；高危决策仅 once 且任何路径不得写白名单（断言固化防升级）；forever 白名单补 admin 治理面（查看/删除，`/api/permissions/allowdirs`） | I05/I07 | 「允许一次」仅生效一次；会话授权不跨用户、任务泄漏；高危操作不能升级为永久授权 | W11 | RL1-05 | 必做 / 1.5d |
+| RL1-06 | **授权作用范围修复**：once 不再顺带 `grantSessionDir`（permissions.ts:255-257 现状=一次授权变进程级放行）；session 授权集合按任务/用户隔离（现进程级全局 Set :69-78，跨用户跨任务泄漏）；高危决策仅 once 且任何路径不得写白名单（断言固化防升级）；forever 白名单补 admin 治理面（查看/删除，`/api/permissions/allowdirs`）；**白名单匹配 fail-closed**——匹配异常/歧义一律落询问侧（防 claude-code-action 式「`Bash(gh:*)` 解析退化成裸 `Bash`」静默扩大） | I05/I07 | 「允许一次」仅生效一次；会话授权不跨用户、任务泄漏；高危操作不能升级为永久授权；白名单可视可清、匹配失败即询问 | W11 | RL1-05 | 必做 / 1.5d |
 | RL1-07 | **补齐等待取消**：`requestAccess` 挂起 Promise 接 AbortSignal（loop.ts:187 / permissions.ts:179-185，现 stop 后永久悬挂）；stop/断连 → pending 即拒并唤醒清理；pending 超时（120s，同 bash 超时）自动 deny；running/pending/SSE 心跳联动释放（app.ts:627-644、496-498） | F05/I05 | 等待授权时停止任务或断开连接：任务终止、无悬挂进程、pending 与心跳释放 | W3 扩 + W11 | RL1-05 | 必做 / 1d |
 | RL1-08 | **项目记忆负责人管理（E06 首步）**：项目增「负责人」字段（默认创建人，admin 可改派）；项目记忆（`.workpivot/memory/`，随项目目录走）编辑权收敛负责人——负责人可查看/编辑/删除，同项目其他成员只读，跨项目不可见（API 守卫 + 前端记忆面板按角色渲染）；全局记忆开关保底改 admin-only（全局记忆管理不再深化——2026-09-08 用户定调；个人手写区/条目区维持按账号隔离不动） | E06/J02 | 负责人可管理项目记忆、同项目成员只读、跨项目不可见；admin 改派即时生效；成员调记忆开关被拒 | W6 扩 + W11 | - | 必做 / 1d |
 | RL1-09 | **周末验收（第 1 周门禁）**：双用户双任务场景——A 提权不影响 B、B 不能决策 A 的授权卡、once/session/forever 语义正确、等待取消干净、四档矩阵回归全绿 | K01 | 验收记录入台账；未通过不进入第 2 周 | 全套回归 | RL1-02~08 | 门禁 |
@@ -130,7 +130,7 @@
 
 ## 附录 B：顺延与关联
 
-- **M1 批次 4b**（E03 / I02 完整矩阵 / I07 完整策略下发 / 任务共享移交）→ M5 之后另行排期；「反向代理指引」提前并入 RL3-05。
+- **M1 批次 4b**（E03 / I02 完整矩阵 / I07 完整策略下发 / 任务共享移交）→ M5 之后另行排期；「反向代理指引」提前并入 RL3-05。I02 升级方向（竞品实测结论）：Claude Code 真实设计为四维规则系统、档位仅 mode 层——I02 应升级为「档位×规则」双层（参数级 allow/deny，如 `Bash(npm install:*)` 允许）；I07 对标 Claude policy 层策略锁（下发后用户不可改、UI 隐藏提权入口）。
 - **知识库检索**（E03/S02a）：2026-09-08 用户定调「不自建向量库/RAG 管线，只做对接接口，对接第三方成熟向量库/知识库/graph 知识库」，与 S02a「企业知识检索不做 RAG 产品」同构；M5 后立项并落 ADR。
 - **记忆方向**（2026-09-08 用户定调）：不考虑全局记忆——全局记忆管理不再深化（开关仅保底 admin 守卫）；记忆共享以项目为单位、项目负责人治理，登记为需求 **E06**，首步并入 RL1-08（负责人字段 + 编辑权收敛），agent 写入治理后续批次演进。
 - M1 批次 4 状态与 M5 的关系见 [tasks-m1.md](tasks-m1.md) 4b 节顺延注记。
