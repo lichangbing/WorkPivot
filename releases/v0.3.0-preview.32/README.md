@@ -1,5 +1,7 @@
 # preview.32 任务删除
 
+2026-09-13 完成代码整理提交 `1032ff1` 并按要求再次部署同版本。使用 `upgrade-preview32.mjs lan --redeploy`，本次备份 `/home/lichb/workpivot-backups/pre-preview32-1789304361844`；公网健康、页面、登录保护及 worker 检查通过。文档与独立数据库原型也已纳入代码提交，但正式镜像仍仅包含已验证的文件存储后台。
+
 2026-09-13 已部署到 192.168.1.158，公网 https://workpivot.lichb.cc.cd/ 健康检查确认 preview.32；首页/管理页 200、未登录任务接口 401、worker active。升级备份 `/home/lichb/workpivot-backups/pre-preview32-1789301957367`。本机 WSL 仍为 preview.31。
 
 左侧普通任务和临时任务列表、当前会话标题栏增加垃圾桶图标。确认窗口说明清理范围；失败保留窗口显示原因；成功清除当前对话、草稿及缓存并更新任务列表。运行中任务及同目录正在执行的任务需先停止并等待结束，服务端返回 409 防止执行回写。
