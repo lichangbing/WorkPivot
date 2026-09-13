@@ -2,11 +2,11 @@
 
 ## 当前交付状态（2026-09-13）
 
-公网后台为 **v0.3.0-preview.32**：[用户端](https://workpivot.lichb.cc.cd/)、[管理端](https://workpivot.lichb.cc.cd/admin.html)。服务器为 192.168.1.158，前后端分离；用户业务数据按账号隔离，管理员不能查看其他账号的项目与任务。支持 Skill 包管理与加载、MCP、三层记忆查看编辑、成果浏览与下载、账号恢复及任务删除。任务删除入口在左侧任务旁和会话标题栏，清理范围见 [preview.32 发布说明](releases/v0.3.0-preview.32/README.md)。
+公网后台为 **v0.3.0-preview.33**：[用户端](https://workpivot.lichb.cc.cd/)、[管理端](https://workpivot.lichb.cc.cd/admin.html)。服务器为 192.168.1.158，前后端分离；用户业务数据按账号隔离，管理员不能查看其他账号的项目与任务。支持 Skill 包管理与加载、MCP、三层记忆查看编辑、成果浏览与下载、账号恢复及任务和项目删除。任务删除入口在左侧任务旁和会话标题栏，清理范围见 [preview.32 发布说明](releases/v0.3.0-preview.32/README.md)。
 
 本机 WSL 为 preview.31；Windows 安装包最新为 preview.31，网页由后台托管。macOS DMG 尚未生成，尚未发布 RC。
 
-正式后台目前仍使用文件存储。PostgreSQL 基础代码及独立测试接口已实现，但尚未接入正式运行链路；RAG、项目级联删除、最近 5 轮对话分页、三层记忆自动更新仍待开发。详见 [数据库与知识开发计划](docs/03-project/tasks-postgresql-knowledge.md) 和 [服务器部署记录](releases/deploy/192.168.1.158.md)。以下早期里程碑记录仅供历史参考，以本节及各版本发布说明为准。
+正式后台目前仍使用文件存储。PostgreSQL 基础代码及独立测试接口已实现，但尚未接入正式运行链路；RAG、数据库版级联删除、最近 5 轮对话分页、三层记忆自动更新仍待开发。详见 [数据库与知识开发计划](docs/03-project/tasks-postgresql-knowledge.md) 和 [服务器部署记录](releases/deploy/192.168.1.158.md)。以下早期里程碑记录仅供历史参考，以本节及各版本发布说明为准。
 
 **2026-09-08 最新部署**：桌面v0.3.0-preview.2已改成纯客户端，默认连接独立后台http://192.168.1.158:39800，不再启动本地后台。管理入口为http://192.168.1.158:39800/admin；首次注册后由管理员配置模型。见[部署记录](releases/deploy/192.168.1.158.md)、[客户端安装说明](releases/v0.3.0-preview.2/README.md)与[架构说明](docs/02-design/architecture/独立后台与纯客户端.md)。旧单机数据未自动迁移，命令沙箱沿用未启用状态，暂未发布RC。
 

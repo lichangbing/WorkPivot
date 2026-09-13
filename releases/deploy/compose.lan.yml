@@ -1,7 +1,7 @@
 # Standalone LAN deployment. No build context and no Docker socket required.
 services:
   workpivot:
-    image: workpivot-server:0.3.0-preview.32
+    image: workpivot-server:0.3.0-preview.33
     container_name: workpivot-server
     ports:
       - "${WORKPIVOT_BIND_IP:-192.168.1.158}:39800:39800"

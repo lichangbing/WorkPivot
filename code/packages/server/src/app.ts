@@ -72,7 +72,6 @@ import { analyzeRisk } from './risk-analysis.js';
 import {
   DEFAULT_PROJECT_ID,
   createProject,
-  deleteProject,
   ensureDefaultProject,
   getProject,
   listProjects,
@@ -82,6 +81,7 @@ import {
 } from './projects.js';
 import { workspaceRoot } from './tasks.js';
 import { deleteTaskData, recordTaskUpload } from './task-deletion.js';
+import { deleteProjectData } from './project-deletion.js';
 import { buildMemoryTools, resolveMemoryConfirm, pendingMemory, cancelMemoryRequests } from './memory-tools.js';
 import { memoryLayerRoutes, renderAdditionalMemory } from './memory-layers.js';
 import { buildPlanTool, readPlan } from './plan.js';
@@ -1153,9 +1153,13 @@ ${capped}
     const admin = (req as AuthedRequest).user;
     if (!admin) return res.status(403).json({ error: '未登录' });
     if (!getProject(req.params['id'] ?? '')) return res.status(404).json({ error: '项目不存在' });
-    const result = deleteProject(req.params['id'] ?? '');
-    if (result.ok) res.json({ ok: true });
-    else res.status(409).json({ error: result.error });
+    const id = req.params['id'] ?? '';
+    if (listTasks().some(task => task.projectId === id && running.has(task.id))) return res.status(409).json({ error: '请先停止项目内任务，等待执行结束后再删除' });
+    try {
+      const taskIds = deleteProjectData(id);
+      audit({ user: admin.username, event: 'project_deleted', detail: id });
+      res.json({ ok: true, taskIds });
+    } catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : '项目删除失败，请重试' }); }
   });
 
   // T3-01：转写查看器数据源

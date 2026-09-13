@@ -121,6 +121,7 @@ export default function App(): React.JSX.Element {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Task | null>(null);
+  const [deleteProjectTarget, setDeleteProjectTarget] = useState<Project | null>(null);
   const [deletingTask, setDeletingTask] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const deletedTaskIds = useRef(new Set<string>());
@@ -274,6 +275,24 @@ export default function App(): React.JSX.Element {
     finally { setDeletingTask(false); }
   };
   const requestDeleteTask = (task: Task): void => { setDeleteError(''); setDeleteTarget(task); };
+  const confirmDeleteProject = async (): Promise<void> => {
+    if (!deleteProjectTarget || deletingTask) return;
+    setDeletingTask(true); setDeleteError('');
+    try {
+      const result = await api.deleteProject(deleteProjectTarget.id);
+      for (const id of result.taskIds) {
+        deletedTaskIds.current.add(id); chatCache.current.delete(id); planCache.current.delete(id); drafts.current.delete(id);
+      }
+      setTasks(rows => rows.filter(task => task.projectId !== deleteProjectTarget.id && !deletedTaskIds.current.has(task.id)));
+      setProjects(rows => rows.filter(project => project.id !== deleteProjectTarget.id));
+      if (activeIdRef.current && result.taskIds.includes(activeIdRef.current)) {
+        activeIdRef.current = undefined; setActiveTask(null); chatRef.current = []; setChat([]);
+        setPlanSteps([]); setInput(''); setPendingAtt([]); setFilesForAt([]); setTranscriptOpen(false);
+      }
+      setTaskFormFor(null); setDeleteProjectTarget(null); showToast('项目及关联数据已删除');
+    } catch (error) { setDeleteError(error instanceof Error ? error.message : '项目删除失败，请重试'); }
+    finally { setDeletingTask(false); }
+  };
 
   const loadWorkspaceData = useCallback(async (): Promise<void> => {
     await refreshTasks();
@@ -776,6 +795,7 @@ export default function App(): React.JSX.Element {
                         >
                           <Icon name="plus" />任务
                         </button>
+                        {project.id !== 'p-default' && <button type="button" aria-label={`删除项目 ${project.name}`} title="删除项目" className="ml-2 shrink-0 rounded p-1 text-neutral-500 hover:text-red-400" onClick={() => { setDeleteError(''); setDeleteProjectTarget(project); }}><Icon name="trash" size={15} /></button>}
                       </div>
                       {!isCollapsed && (
                         <div>
@@ -1244,6 +1264,18 @@ export default function App(): React.JSX.Element {
           <div className="mt-5 flex justify-end gap-3">
             <button autoFocus disabled={deletingTask} className="rounded bg-neutral-800 px-4 py-2 text-sm disabled:opacity-50" onClick={() => setDeleteTarget(null)}>取消</button>
             <button disabled={deletingTask} className="rounded bg-red-700 px-4 py-2 text-sm text-white disabled:opacity-50" onClick={() => void confirmDeleteTask()}>{deletingTask ? '正在删除…' : '删除任务'}</button>
+          </div>
+        </section>
+      </div>}
+
+      {deleteProjectTarget && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onKeyDown={event => { if (event.key === 'Escape' && !deletingTask) setDeleteProjectTarget(null); }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="delete-project-title" className="w-full max-w-md rounded-xl border border-neutral-700 bg-neutral-950 p-5 shadow-xl">
+          <h2 id="delete-project-title" className="text-base font-medium">删除项目“{deleteProjectTarget.name}”？</h2>
+          <p className="mt-3 text-sm text-neutral-400">将永久删除项目下的全部任务、对话、附件、产物、项目记忆及服务端工作目录。个人记忆和已下载到本机的文件保留，此操作无法撤销。请先停止项目内正在运行的任务。</p>
+          {deleteError && <p role="alert" className="mt-3 text-sm text-red-400">{deleteError}</p>}
+          <div className="mt-5 flex justify-end gap-3">
+            <button autoFocus disabled={deletingTask} className="rounded bg-neutral-800 px-4 py-2 text-sm disabled:opacity-50" onClick={() => setDeleteProjectTarget(null)}>取消</button>
+            <button disabled={deletingTask} className="rounded bg-red-700 px-4 py-2 text-sm text-white disabled:opacity-50" onClick={() => void confirmDeleteProject()}>{deletingTask ? '正在删除…' : '删除项目'}</button>
           </div>
         </section>
       </div>}

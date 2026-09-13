@@ -1,16 +1,15 @@
 import { useState } from 'react';
 import { api, clearToken } from './api';
 
-export function ServerConnection(): React.JSX.Element {
+export function ServerConnection(): React.JSX.Element | null {
   const [error, setError] = useState('');
   const desktop = window.workpivotDesktop;
+  if (!desktop) return null;
   return <div className="mb-4 rounded border border-neutral-800 p-3 text-xs text-neutral-400">
-    <div>当前服务器</div><div className="mt-1 break-all text-neutral-200">{window.location.origin}</div>
     {desktop && <button className="mt-2 text-blue-400 hover:underline" onClick={() => {
       if (!desktop.changeServer) { setError('请通过顶部“服务器 → 更换服务器”切换；更新客户端后可在此直接切换。'); return; }
       void desktop.changeServer().catch(() => setError('无法打开服务器设置，请使用顶部“服务器”菜单。'));
     }}>更换服务器</button>}
-    {!desktop && <p className="mt-2">网页版使用当前网址对应的服务器。</p>}
     {error && <p className="mt-2" role="alert">{error}</p>}
   </div>;
 }

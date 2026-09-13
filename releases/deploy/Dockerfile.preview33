@@ -1,0 +1,5 @@
+FROM workpivot-server:0.3.0-preview.32
+COPY --chown=node:node code/packages/server/src/app.ts code/packages/server/src/task-deletion.ts code/packages/server/src/project-deletion.ts /app/packages/server/src/
+COPY --chown=node:node code/packages/shared/src/service-health.ts /app/packages/shared/src/service-health.ts
+COPY --chown=node:node code/apps/web/dist/ /app/apps/web/dist/
+COPY --chown=node:node code/eval/W40-project-deletion.mts /app/eval/W40-project-deletion.mts

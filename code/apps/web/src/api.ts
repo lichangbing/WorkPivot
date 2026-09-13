@@ -159,6 +159,7 @@ export const api = {
   setGlobalTier: (tier: Tier): Promise<{ permissionTier: Tier }> =>
     jsonFetch('/api/settings/tier', { method: 'PUT', body: JSON.stringify({ tier }) }),
   listTasks: (): Promise<{ tasks: Task[] }> => jsonFetch('/api/tasks'),
+  deleteProject: (id: string): Promise<{ ok: boolean; taskIds: string[] }> => jsonFetch(`/api/projects/${id}`, { method: 'DELETE' }),
   createTask: (input: { name: string; directory?: string; projectId?: string; temp?: boolean }): Promise<{ task: Task }> =>
     jsonFetch('/api/tasks', { method: 'POST', body: JSON.stringify(input) }),
   deleteTempTask: (id: string): Promise<{ ok: boolean }> => jsonFetch(`/api/tasks/${id}`, { method: 'DELETE' }),

@@ -25,7 +25,7 @@ export function recordTaskUpload(task: Task, name: string): void {
 }
 
 /** Delete only task-owned data. Shared project materials and promoted memories remain project/user-owned. */
-export function deleteTaskData(taskId: string): void {
+export function deleteTaskData(taskId: string, validateOnly = false): void {
   const task = getTask(taskId);
   if (!task) throw Error('任务不存在');
   const peers = listTasks().filter(other => other.id !== taskId && (
@@ -48,6 +48,7 @@ export function deleteTaskData(taskId: string): void {
   const temporaryRoot = canonicalPath(join(workspaceRoot(), '_temp'));
   const removeTemporaryDirectory = task.temp && peers.length === 0 && canonicalPath(task.directory) !== temporaryRoot && pathWithin(canonicalPath(task.directory), temporaryRoot);
   for (const path of files) if (existsSync(path) && !lstatSync(path).isFile()) throw Error('待清理文件类型异常，请检查工作目录');
+  if (validateOnly) return;
   for (const path of files) rmSync(path, { force: true });
   if (removeTemporaryDirectory) rmSync(canonicalPath(task.directory), { recursive: true, force: true });
   for (const schedule of listSchedules()) if (schedule.taskId === taskId) deleteSchedule(schedule.id);
