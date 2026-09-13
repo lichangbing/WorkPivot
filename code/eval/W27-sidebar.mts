@@ -1,0 +1,64 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+const root = mkdtempSync(join(tmpdir(), 'wp27-'));
+process.env['WORKPIVOT_HOME'] = join(root, 'home');
+process.env['WORKPIVOT_WORKSPACE'] = join(root, 'workspace');
+process.env['WORKPIVOT_HOST'] = '127.0.0.1';
+const { withTenant, withAccount } = await import('../packages/server/src/tenants.js');
+const { registerFirstAdmin, createUser, login } = await import('../packages/server/src/auth.js');
+const { createTask, updateTaskStatus } = await import('../packages/server/src/tasks.js');
+const { beginArtifacts, listArtifacts } = await import('../packages/server/src/artifacts.js');
+const { artifactRequest, downloadArtifact } = await import('../apps/desktop/src/artifact.js');
+const { buildPlanTool } = await import('../packages/server/src/plan.js');
+const { createApp } = await import('../packages/server/src/app.js');
+const a = withTenant('default', () => registerFirstAdmin('sidebar-admin', 'fixture-password'));
+const b = withTenant('default', () => { createUser('sidebar-member', 'fixture-password', 'member'); return login('sidebar-member', 'fixture-password'); });
+const task = withAccount(b.user, () => createTask({ name: 'Generate documents', directory: '', temp: true, ownerUserId: b.user.id }));
+writeFileSync(join(task.directory, 'input.csv'), 'old input');
+withAccount(b.user, () => beginArtifacts(task));
+for (const dir of ['reports', 'attachments', '.workpivot']) mkdirSync(join(task.directory, dir));
+writeFileSync(join(task.directory, 'reports/result.docx'), 'fixture document');
+writeFileSync(join(task.directory, 'attachments/input.txt'), 'attachment');
+writeFileSync(join(task.directory, '.workpivot/internal.txt'), 'internal');
+let checks = 0;
+const check = (name: string, condition: unknown): void => { assert.ok(condition, name); checks++; console.log(`✅ ${name}`); };
+const produced = withAccount(b.user, () => listArtifacts(task, true));
+check('only generated files are products', produced.length === 1 && produced[0]!.name === 'reports/result.docx');
+withAccount(b.user, () => updateTaskStatus(task.id, 'idle', 'completed'));
+await withAccount(b.user, () => buildPlanTool(task.id, () => {}).run({ steps: [{ step: 'Read data', status: 'completed' }, { step: 'Write document', status: 'completed' }] }));
+const http = createApp().listen(0, '127.0.0.1');
+await new Promise<void>((resolve) => http.once('listening', resolve));
+const address = http.address(); if (!address || typeof address === 'string') throw Error('port');
+const origin = `http://127.0.0.1:${address.port}`;
+const get = (url: string, token: string): Promise<Response> => fetch(origin + url, { headers: { authorization: `Bearer ${token}` } });
+try {
+  const sidebar = await (await get('/api/sidebar?taskId=' + task.id, b.token)).json();
+  check('sidebar shows own completed task', sidebar.tasks.length === 1 && sidebar.tasks[0].lastStopReason === 'completed');
+  check('monitor steps preserve completion', sidebar.tasks[0].steps.every((s: { status: string }) => s.status === 'completed'));
+  check('sidebar exposes product list', sidebar.artifacts[0].name === 'reports/result.docx');
+  check('sidebar lists real skills', sidebar.skills.length > 0 && typeof sidebar.skills[0].description === 'string');
+  check('no fictitious MCP connection', sidebar.mcp.length === 0);
+  check('admin cannot select foreign sidebar', (await get('/api/sidebar?taskId=' + task.id, a.token)).status === 404);
+  const own = await (await get('/api/sidebar', a.token)).json();
+  check('admin monitor excludes other accounts', own.tasks.length === 0);
+  const url = `/api/tasks/${task.id}/artifact?name=reports%2Fresult.docx`;
+  check('owner downloads artifact', await (await get(url, b.token)).text() === 'fixture document');
+  check('admin cannot download other account artifact', (await get(url, a.token)).status === 404);
+  check('path traversal denied', (await get(`/api/tasks/${task.id}/artifact?name=..%2Finput.csv`, b.token)).status === 404);
+  check('input files are not artifacts', (await get(`/api/tasks/${task.id}/artifact?name=input.csv`, b.token)).status === 404);
+  const local = await downloadArtifact(origin, task.id, 'reports/result.docx', b.token, join(root, 'cache'));
+  check('desktop downloads authorized file to local cache', readFileSync(local, 'utf8') === 'fixture document');
+  const local2 = await downloadArtifact(origin, task.id, 'reports/result.docx', b.token, join(root, 'cache'));
+  check('open does not overwrite previous local edits', local !== local2);
+  for (const name of ['evil.exe', 'evil.cmd', 'evil.js', 'evil.lnk', 'evil.docm', '../evil.pdf', 'a/../../evil.pdf', 'CON.txt', 'file.txt:evil.exe']) {
+    let denied = false; try { artifactRequest(origin, task.id, name, b.token); } catch { denied = true; }
+    check('native opener rejects ' + name, denied);
+  }
+  withAccount(b.user, () => { updateTaskStatus(task.id, 'running'); beginArtifacts(task); });
+  writeFileSync(join(task.directory, 'new.txt'), 'in progress');
+  check('products appear during execution', (await (await get('/api/sidebar?taskId=' + task.id, b.token)).json()).artifacts.some((f: { name: string }) => f.name === 'new.txt'));
+  check('new run clears completion marker', !(await (await get('/api/sidebar?taskId=' + task.id, b.token)).json()).tasks[0].lastStopReason);
+  console.log(`W27 ${checks}/${checks} passed`);
+} finally { await new Promise<void>((resolve) => http.close(() => resolve())); }

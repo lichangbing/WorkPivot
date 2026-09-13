@@ -4,6 +4,7 @@
  */
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+export { API_PROTOCOL, SERVICE_VERSION, CompatibilityError, checkServiceHealth } from './service-health.js';
 
 export interface TagLogger {
   debug(message: string, ...extra: unknown[]): void;

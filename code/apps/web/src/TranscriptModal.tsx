@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 /** T3-01/A03：转写查看器最简版——全量过程记录回看。 */
 import { useEffect, useState } from 'react';
 import { api, type TranscriptRow } from './api';
@@ -35,8 +36,8 @@ export function TranscriptModal({ taskId, onClose }: { taskId: string; onClose: 
       <div className="flex h-[80vh] w-[760px] flex-col rounded-xl border border-neutral-700 bg-neutral-900 p-5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-semibold">转写记录（全量，含工具调用原文）</h2>
-          <button className="text-neutral-500 hover:text-neutral-200" onClick={onClose}>
-            ✕
+          <button className="text-neutral-500 hover:text-neutral-200" aria-label="关闭窗口" onClick={onClose}>
+            <Icon name="close" />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto font-mono text-xs">

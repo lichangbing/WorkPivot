@@ -5,9 +5,8 @@
  * 每次更新经 SSE plan_update 事件推给前端渲染计划卡。
  */
 import { join } from 'node:path';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import type { Tool } from '@workpivot/core';
-import { ensureWorkpivotDir } from './store.js';
+import { ensureWorkpivotDir, readJsonSafe, writeAtomicWithBackup } from './store.js';
 
 export type PlanStatus = 'pending' | 'in_progress' | 'completed';
 export interface PlanStep {
@@ -23,18 +22,11 @@ function planPath(taskId: string): string {
 }
 
 export function readPlan(taskId: string): PlanStep[] {
-  const path = planPath(taskId);
-  if (!existsSync(path)) return [];
-  try {
-    const parsed = JSON.parse(readFileSync(path, 'utf8')) as { steps?: PlanStep[] };
-    return Array.isArray(parsed.steps) ? parsed.steps : [];
-  } catch {
-    return [];
-  }
+  return readJsonSafe<{ steps: PlanStep[] }>(planPath(taskId), { steps: [] }, (v) => Boolean(v && typeof v === 'object' && Array.isArray((v as { steps?: unknown }).steps))).value.steps;
 }
 
 function savePlan(taskId: string, steps: PlanStep[]): void {
-  writeFileSync(planPath(taskId), JSON.stringify({ steps }, null, 2), 'utf8');
+  writeAtomicWithBackup(planPath(taskId), JSON.stringify({ steps }, null, 2));
 }
 
 type Send = (payload: unknown) => void;

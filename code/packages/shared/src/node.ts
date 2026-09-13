@@ -6,10 +6,13 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createTagLogger, type TagLogger } from './index.js';
+import { currentTenant } from './tenant-scope.js';
+export { currentTenant, runInTenant, type TenantScope } from './tenant-scope.js';
+export { canonicalPath, pathWithin, requireWithin } from './path-guard.js';
 
 /** 数据根：~/.workpivot（env WORKPIVOT_HOME 可覆盖）。工作区根在 ~/WorkPivot/workspace，勿混淆。 */
 export function workpivotHome(): string {
-  return process.env['WORKPIVOT_HOME'] ?? join(homedir(), '.workpivot');
+  return currentTenant()?.home ?? process.env['WORKPIVOT_HOME'] ?? join(homedir(), '.workpivot');
 }
 
 function localDateStamp(now = new Date()): string {

@@ -5,8 +5,10 @@
  *       工具内 resolveWithin 仍作为最后一道防线（纵深防御）。
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, resolve, sep } from 'node:path';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { join, sep } from 'node:path';
+import { canonicalPath, pathWithin } from '@workpivot/shared/node';
+import { commandEnvironment } from './command-env.js';
 
 export interface ToolContext {
   taskDir: string;
@@ -17,9 +19,12 @@ export interface ToolContext {
   extraAllowedDirs?: string[];
   /** bash 子进程附加环境变量（如 NODE_PATH，指向应用内置依赖） */
   extraEnv?: Record<string, string>;
+  filePolicy?: (path: string, mode: 'read' | 'write') => boolean;
+  executeCommand?: (command: string) => Promise<string>;
 }
 
 export interface ToolAccessRequest {
+  external?: boolean;
   tool: string;
   kind: 'read' | 'write' | 'bash';
   paths: Array<{ path: string; mode: 'read' | 'write' }>;
@@ -27,6 +32,7 @@ export interface ToolAccessRequest {
 }
 
 export interface Tool {
+  displayName?: string;
   name: string;
   kind: 'read' | 'write' | 'bash';
   description: string;
@@ -37,14 +43,13 @@ export interface Tool {
 }
 
 function resolveWithin(taskDir: string, p: string, extraDirs: string[] = []): string {
-  const base = resolve(taskDir);
-  const abs = isAbsolute(p) ? resolve(p) : resolve(base, p);
-  if (abs === base || abs.startsWith(base + sep)) return abs;
-  if (extraDirs.some((dir) => abs === resolve(dir) || abs.startsWith(resolve(dir) + sep))) return abs;
+  const abs = canonicalPath(p, taskDir);
+  if (pathWithin(abs, taskDir)) return abs;
+  if (extraDirs.some((dir) => pathWithin(abs, canonicalPath(dir, taskDir)))) return abs;
   throw new Error(`路径越界：${p} 不在允许范围内（界外访问需用户授权）`);
 }
 
-function walkFiles(root: string, opts: { maxFiles?: number } = {}): string[] {
+function walkFiles(root: string, opts: { maxFiles?: number; allowed?: (path: string) => boolean } = {}): string[] {
   const maxFiles = opts.maxFiles ?? 2000;
   const skip = new Set(['node_modules', '.git', 'dist', 'out', '.workpivot', '__pycache__']);
   const files: string[] = [];
@@ -60,9 +65,11 @@ function walkFiles(root: string, opts: { maxFiles?: number } = {}): string[] {
     for (const name of entries) {
       if (files.length >= maxFiles) break;
       const full = join(dir, name);
+      if (opts.allowed && !opts.allowed(full)) continue;
       let stat;
       try {
-        stat = statSync(full);
+        stat = lstatSync(full);
+        if (stat.isSymbolicLink()) continue;
       } catch {
         continue;
       }
@@ -92,6 +99,7 @@ export const readTool: Tool = {
   access: (args) => ({ tool: 'read', kind: 'read' as const, paths: [{ path: String(args['path'] ?? ''), mode: 'read' as const }] }),
   async run(args, ctx) {
     const path = resolveWithin(ctx.taskDir, String(args['path'] ?? ''), ctx.extraAllowedDirs);
+    if (ctx.filePolicy && !ctx.filePolicy(path, 'read')) throw new Error('无权读取该项目或任务文件');
     if (!existsSync(path)) return `错误：文件不存在：${path}`;
     const stat = statSync(path);
     if (stat.isDirectory()) return `错误：${path} 是目录，请用 ls 列出`;
@@ -119,6 +127,7 @@ export const writeTool: Tool = {
   access: (args) => ({ tool: 'write', kind: 'write' as const, paths: [{ path: String(args['path'] ?? ''), mode: 'write' as const }] }),
   async run(args, ctx) {
     const path = resolveWithin(ctx.taskDir, String(args['path'] ?? ''), ctx.extraAllowedDirs);
+    if (ctx.filePolicy && !ctx.filePolicy(path, 'write')) throw new Error('无权修改该项目或任务文件');
     const content = String(args['content'] ?? '');
     mkdirSync(path.slice(0, Math.max(path.lastIndexOf(sep), path.lastIndexOf('/'))), { recursive: true });
     writeFileSync(path, content, 'utf8');
@@ -139,10 +148,12 @@ export const lsTool: Tool = {
   access: (args) => ({ tool: 'ls', kind: 'read' as const, paths: [{ path: String(args['path'] ?? '.'), mode: 'read' as const }] }),
   async run(args, ctx) {
     const path = resolveWithin(ctx.taskDir, String(args['path'] ?? '.'), ctx.extraAllowedDirs);
+    if (ctx.filePolicy && !ctx.filePolicy(path, 'read')) throw new Error('无权读取该目录');
     if (!existsSync(path)) return `错误：目录不存在：${path}`;
-    const entries = readdirSync(path).map((name) => {
+    const entries = readdirSync(path).filter((name) => !ctx.filePolicy || ctx.filePolicy(join(path, name), 'read')).map((name) => {
       const full = join(path, name);
-      const st = statSync(full);
+      const st = lstatSync(full);
+      if (st.isSymbolicLink()) return `[链接] ${name}`;
       return `${st.isDirectory() ? '[目录]' : `[文件 ${st.size}B]`} ${name}`;
     });
     return entries.length > 0 ? entries.join('\n') : '（空目录）';
@@ -156,7 +167,7 @@ export const bashTool: Tool = {
   name: 'bash',
   kind: 'bash',
   description:
-    '在任务目录内执行一条 shell 命令（Windows 走 cmd，其他走 sh）。高危命令（删除系统目录/格式化/强推等）会被拦截并请求用户确认。输出超长会截断，超时 120 秒自动终止。',
+    '在任务隔离环境中执行一条 shell 命令，使用系统提示中指定的 shell 和相对路径。高危命令会请求用户确认。输出超长会截断，超时 120 秒自动终止。',
   parameters: {
     type: 'object',
     properties: {
@@ -168,6 +179,7 @@ export const bashTool: Tool = {
   async run(args, ctx) {
     const command = String(args['command'] ?? '').trim();
     if (command === '') return '错误：command 必填';
+    if (ctx.executeCommand) return ctx.executeCommand(command);
     const isWin = process.platform === 'win32';
     return new Promise((resolve) => {
       // I01：POSIX 用进程组（detached），Windows 用 taskkill /T——终止时整树带走，防孤儿进程
@@ -175,7 +187,7 @@ export const bashTool: Tool = {
         cwd: ctx.taskDir,
         windowsHide: true,
         ...(isWin ? {} : { detached: true }),
-        env: ctx.extraEnv ? { ...process.env, ...ctx.extraEnv } : undefined,
+        env: commandEnvironment(ctx.extraEnv),
       });
       /** 整棵进程树强制终止（超时/中止时；不再依赖 spawn 的 timeout 只杀直接子进程）。 */
       const killTree = (): void => {
@@ -242,7 +254,7 @@ export const grepTool: Tool = {
     }
     const base = resolveWithin(ctx.taskDir, String(args['path'] ?? '.'), ctx.extraAllowedDirs);
     const matches: string[] = [];
-    for (const file of walkFiles(base)) {
+    for (const file of walkFiles(base, { allowed: (path) => !ctx.filePolicy || ctx.filePolicy(path, 'read') })) {
       if (matches.length >= 100) break;
       let stat;
       try {
@@ -296,7 +308,7 @@ export const findTool: Tool = {
       regex = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'); // 退化为子串
     }
     const base = resolveWithin(ctx.taskDir, String(args['path'] ?? '.'), ctx.extraAllowedDirs);
-    const files = walkFiles(base).filter((f) => regex.test(f.slice(base.length + 1)));
+    const files = walkFiles(base, { allowed: (path) => !ctx.filePolicy || ctx.filePolicy(path, 'read') }).filter((f) => regex.test(f.slice(base.length + 1)));
     return files.length > 0
       ? `${files.map((f) => f.slice(base.length + 1)).join('\n')}${files.length >= 200 ? '\n…（截断）' : ''}`
       : '（无匹配）';

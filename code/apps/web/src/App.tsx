@@ -1,8 +1,13 @@
+import { RequiredPasswordChange } from './AccountAccess';
+import { TaskSidebar } from './TaskSidebar';
+import { ArtifactSyncController } from './ArtifactBrowser';
+import { ProjectModal } from './ProjectModal';
+import { Icon } from './Icon';
 /**
  * WorkPivot 主界面（参考 ZCode 布局模式，规范见 docs/02-design/ui-ux/主界面布局规范.md）。
  * 左栏：主按钮组（新建任务/搜索/自动化/技能市场）→ 分组 tab（项目/临时任务）→ 项目树（相对时间）→ 底部用户区；
  * 中栏：顶部会话工具条 + 消息流 + 底部输入区（附件/权限档位/模型选择——ZCode 位置）；
- * 右栏：成果区（版本链/转写查看）。
+ * 右栏：任务侧栏（版本链/转写查看）。
  * 纪律（A01.3）：只经 localhost HTTP/SSE 与服务层通信，禁止 import 服务层/内核。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -25,9 +30,12 @@ import {
 import { LoginView } from './LoginView';
 import { SettingsPanel } from './SettingsPanel';
 import { TranscriptModal } from './TranscriptModal';
+import { ActivityRow } from './ActivityRow';
+import { SkillMarket } from './SkillMarket';
+import { fileIcon } from './file-icons';
+import { appendContent, toolSummary, type ContentItem } from './chat-content';
 
-interface ChatItem {
-  kind: 'user' | 'assistant' | 'tool' | 'error' | 'permission' | 'done' | 'gate' | 'memory' | 'thought';
+interface ChatItem extends ContentItem {
   text: string;
   request?: {
     id: string;
@@ -104,23 +112,49 @@ function ColResizeHandle(props: { onBeginDrag: (e: React.MouseEvent) => void }):
 }
 
 export default function App(): React.JSX.Element {
-  const [authState, setAuthState] = useState<'loading' | 'guest' | 'authed'>('loading');
+  const [authState, setAuthState] = useState<'loading' | 'guest' | 'authed' | 'password'>('loading');
   const [currentUser, setCurrentUser] = useState<PublicUser | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [setupTokenRequired, setSetupTokenRequired] = useState(false);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Task | null>(null);
+  const [deletingTask, setDeletingTask] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const deletedTaskIds = useRef(new Set<string>());
   const [chat, setChat] = useState<ChatItem[]>([]);
   const [planSteps, setPlanSteps] = useState<PlanStep[]>([]);
   const [input, setInput] = useState('');
-  const [streaming, setStreaming] = useState(false);
+  const [streamIds, setStreamIds] = useState<string[]>([]);
+  const streaming = Boolean(activeTask && (streamIds.includes(activeTask.id) || ['queued', 'running', 'waiting'].includes(tasks.find((t) => t.id === activeTask.id)?.status ?? '')));
+  const streamIdsRef = useRef(streamIds); streamIdsRef.current = streamIds;
+  const activeIdRef = useRef(activeTask?.id); activeIdRef.current = activeTask?.id;
+  const chatCache = useRef(new Map<string, ChatItem[]>());
+  const planCache = useRef(new Map<string, PlanStep[]>());
+  const chatRef = useRef(chat); chatRef.current = chat;
+  const updateTaskChat = useCallback((id: string, update: (prev: ChatItem[]) => ChatItem[]): void => {
+    const previous = activeIdRef.current === id ? chatRef.current : chatCache.current.get(id) ?? [];
+    const next = update(previous); chatCache.current.set(id, next);
+    if (activeIdRef.current === id) { chatRef.current = next; setChat(next); }
+  }, []);
   const [providers, setProviders] = useState<PublicProvider[]>([]);
-  const [tier, setTier] = useState<Tier>('workdir');
-  const [defaultTier, setDefaultTier] = useState<Tier>('workdir');
+  const [tier, setTier] = useState<Tier>('auto');
+  const [skillMarketOpen, setSkillMarketOpen] = useState(false);
+  const [defaultTier, setDefaultTier] = useState<Tier>('auto');
   const [tierLabels, setTierLabels] = useState<Record<string, string>>({});
   const [memoryOn, setMemoryOn] = useState(true);
-  const [rightPanel, setRightPanel] = useState<{ directory: string; files: string[] } | null>(null);
+  useEffect(() => {
+    const changed = (event: Event) => { const value = (event as CustomEvent<unknown>).detail; if (typeof value === 'boolean') setMemoryOn(value); };
+    window.addEventListener('wp:memory-changed', changed);
+    return () => window.removeEventListener('wp:memory-changed', changed);
+  }, []);
+  const [rightPanelOpen, setRightPanelOpen] = useState(() => {
+    try { return localStorage.getItem('wp-right-panel-open') !== 'false'; } catch { return true; }
+  });
+  const activeProjectName = activeTask?.temp ? '临时任务' : projects.find((project) => project.id === activeTask?.projectId)?.name ?? '默认项目';
+  const conversationTitle = activeTask ? activeProjectName + ' / ' + activeTask.name : '未选择任务';
   const [serverOk, setServerOk] = useState<boolean | null>(null);
 
   // 三栏拖拽调宽：左栏最小 200px（栏内按钮组需要），右栏最小 232px
@@ -138,6 +172,8 @@ export default function App(): React.JSX.Element {
     serverName?: string;
   }
   const [pendingAtt, setPendingAtt] = useState<PendingAtt[]>([]);
+  const drafts = useRef(new Map<string, { input: string; pending: PendingAtt[] }>());
+  const draftRef = useRef({ input, pending: pendingAtt }); draftRef.current = { input, pending: pendingAtt };
   const [dragOver, setDragOver] = useState(false);
   const [atk, setAtk] = useState<{ query: string; start: number } | null>(null);
   const [atkItems, setAtkItems] = useState<string[]>([]);
@@ -159,7 +195,7 @@ export default function App(): React.JSX.Element {
     }
   });
   const [projectFormOpen, setProjectFormOpen] = useState(false);
-  const [projectForm, setProjectForm] = useState({ name: '', directory: '' });
+  const [projectForm, setProjectForm] = useState<{ name: string; directory: string; localDirectory?: boolean }>({ name: '', directory: '' });
   const [projectError, setProjectError] = useState<string | null>(null);
   const [taskFormFor, setTaskFormFor] = useState<string | null>(null);
   const [newTaskName, setNewTaskName] = useState('');
@@ -178,9 +214,10 @@ export default function App(): React.JSX.Element {
     try {
       const state = await api.authState();
       setNeedsSetup(state.needsSetup);
+      setSetupTokenRequired(state.setupTokenRequired);
       if (state.authenticated && state.user) {
         setCurrentUser(state.user);
-        setAuthState('authed');
+        setAuthState(state.user.mustChangePassword ? 'password' : 'authed');
       } else {
         clearToken();
         setAuthState('guest');
@@ -192,7 +229,7 @@ export default function App(): React.JSX.Element {
   }, []);
 
   const refreshTasks = useCallback(async (): Promise<void> => {
-    setTasks((await api.listTasks()).tasks);
+    setTasks((await api.listTasks()).tasks.filter(task => !deletedTaskIds.current.has(task.id)));
   }, []);
 
   const refreshProviders = useCallback(async (): Promise<void> => {
@@ -200,13 +237,43 @@ export default function App(): React.JSX.Element {
   }, []);
 
   const openTask = useCallback(async (task: Task): Promise<void> => {
+    if (deletedTaskIds.current.has(task.id)) return;
+    const previousId = activeIdRef.current;
+    if (previousId) { chatCache.current.set(previousId, chatRef.current); drafts.current.set(previousId, draftRef.current); }
+    activeIdRef.current = task.id;
     setActiveTask(task);
-    const detail = await api.getTask(task.id);
-    setChat(detail.history.map((m: HistoryMessage) => ({ kind: m.role, text: m.content })));
-    setRightPanel(await api.getFiles(task.id));
-    // M1-12：回显任务计划（update_plan 工具落盘）
-    setPlanSteps((await api.getPlan(task.id)).steps);
+    setInput(drafts.current.get(task.id)?.input ?? '');
+    setPendingAtt(drafts.current.get(task.id)?.pending ?? []);
+    setChat(chatCache.current.get(task.id) ?? []);
+    setPlanSteps(planCache.current.get(task.id) ?? []);
+    const [detail, plan] = await Promise.all([api.getTask(task.id), api.getPlan(task.id)]);
+    if (activeIdRef.current !== task.id) return;
+    if (!streamIdsRef.current.includes(task.id)) {
+      const rows: ChatItem[] = detail.history.map((m: HistoryMessage) => ({ kind: m.role, text: m.content, attachments: m.attachments }));
+      for (const request of detail.pending ?? []) rows.push({ kind: 'permission', text: request.reason, request: { ...request, hasPaths: request.paths.length > 0 } });
+      for (const memory of detail.pendingMemory ?? []) rows.push({ kind: 'memory', text: `记忆写入确认：${memory.content}`, request: { id: memory.id, tool: 'memory_promote', reason: memory.content, paths: [], hasPaths: false, scope: 'once' } });
+      chatRef.current = rows; chatCache.current.set(task.id, rows); setChat(rows);
+    }
+    planCache.current.set(task.id, plan.steps); setPlanSteps(plan.steps);
   }, []);
+
+  const confirmDeleteTask = async (): Promise<void> => {
+    if (!deleteTarget || deletingTask) return;
+    setDeletingTask(true); setDeleteError('');
+    try {
+      await api.deleteTask(deleteTarget.id);
+      deletedTaskIds.current.add(deleteTarget.id);
+      chatCache.current.delete(deleteTarget.id); planCache.current.delete(deleteTarget.id); drafts.current.delete(deleteTarget.id);
+      setTasks(rows => rows.filter(task => task.id !== deleteTarget.id));
+      if (activeIdRef.current === deleteTarget.id) {
+        activeIdRef.current = undefined; setActiveTask(null); chatRef.current = []; setChat([]);
+        setPlanSteps([]); setInput(''); setPendingAtt([]); setFilesForAt([]); setTranscriptOpen(false);
+      }
+      setDeleteTarget(null); showToast('任务已删除');
+    } catch (error) { setDeleteError(error instanceof Error ? error.message : '删除失败，请重试'); }
+    finally { setDeletingTask(false); }
+  };
+  const requestDeleteTask = (task: Task): void => { setDeleteError(''); setDeleteTarget(task); };
 
   const loadWorkspaceData = useCallback(async (): Promise<void> => {
     await refreshTasks();
@@ -253,7 +320,7 @@ export default function App(): React.JSX.Element {
         const result = await api.setMyTier(next);
         setTier(result.tier);
         setDefaultTier(result.defaultTier);
-        showToast(`权限档位已切换：${tierLabels[next] ?? next}`);
+        showToast(`操作模式已切换：${tierLabels[next] ?? next}`);
       } catch (err) {
         showToast(err instanceof Error ? err.message : String(err));
       }
@@ -267,7 +334,7 @@ export default function App(): React.JSX.Element {
       try {
         const result = await api.setGlobalTier(next);
         setDefaultTier(result.permissionTier);
-        showToast(`全局默认档位已更新：${tierLabels[next] ?? next}`);
+        showToast(`默认模式已更新：${tierLabels[next] ?? next}`);
       } catch (err) {
         showToast(err instanceof Error ? err.message : String(err));
       }
@@ -305,7 +372,7 @@ export default function App(): React.JSX.Element {
   const createProject = useCallback(async (): Promise<void> => {
     setProjectError(null);
     try {
-      const { project } = await api.createProject(projectForm.name.trim(), projectForm.directory.trim() || undefined);
+      const { project } = await api.createProject(projectForm.name.trim(), projectForm.directory.trim() || undefined, projectForm.localDirectory);
       setProjectFormOpen(false);
       setProjectForm({ name: '', directory: '' });
       setCollapsed((prev) => ({ ...prev, [project.id]: false }));
@@ -379,23 +446,27 @@ export default function App(): React.JSX.Element {
   const addFiles = useCallback(
     (files: File[]): void => {
       if (!activeTask) return;
+      const owner = activeTask.id;
+      const changePending = (update: (previous: PendingAtt[]) => PendingAtt[]): void => {
+        if (activeIdRef.current === owner) setPendingAtt(update);
+        else { const saved = drafts.current.get(owner) ?? { input: '', pending: [] }; drafts.current.set(owner, { ...saved, pending: update(saved.pending) }); }
+      };
       for (const f of files) {
         if (f.size > 50 * 1024 * 1024) {
           showToast(`附件 ${f.name} 超过 50MB 上限`);
           continue;
         }
         const id = `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-        setPendingAtt((prev) => [...prev, { id, file: f, name: f.name, progress: 0, status: 'uploading' }]);
+        changePending((prev) => [...prev, { id, file: f, name: f.name, progress: 0, status: 'uploading' }]);
         void uploadAttachment(activeTask.id, f, (ratio) => {
-          setPendingAtt((prev) => prev.map((a) => (a.id === id ? { ...a, progress: ratio } : a)));
+          changePending((prev) => prev.map((a) => (a.id === id ? { ...a, progress: ratio } : a)));
         })
           .then((res) => {
-            setPendingAtt((prev) => prev.map((a) => (a.id === id ? { ...a, progress: 1, status: 'done', serverName: res.name } : a)));
-            void api.getFiles(activeTask.id).then(setRightPanel);
+            changePending((prev) => prev.map((a) => (a.id === id ? { ...a, progress: 1, status: 'done', serverName: res.name } : a)));
           })
           .catch(() => {
             showToast(`附件 ${f.name} 上传失败`);
-            setPendingAtt((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'error' } : a)));
+            changePending((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'error' } : a)));
           });
       }
     },
@@ -406,31 +477,43 @@ export default function App(): React.JSX.Element {
     setPendingAtt((prev) => prev.filter((a) => a.id !== id));
   }, []);
 
-  const send = useCallback(async (override?: string): Promise<void> => {
+  const send = useCallback(async (override?: string, target?: Task): Promise<void> => {
+    const targetTask = target ?? activeTask;
+    if (!override && pendingAtt.some(a => a.status === 'uploading')) { showToast('文件正在上传，请稍候再发送'); return; }
     const content = (override ?? input).trim();
-    const attached = pendingAtt.filter((a) => a.status === 'done').map((a) => a.serverName ?? a.name);
-    if ((content === '' && attached.length === 0) || !activeTask || streaming) return;
-    setInput('');
-    setStreaming(true);
-    setChat((prev) => [...prev, { kind: 'user', text: content }, { kind: 'assistant', text: '' }]);
+    const attached = (override ? [] : pendingAtt).filter((a) => a.status === 'done').map((a) => a.serverName ?? a.name);
+    if ((content === '' && attached.length === 0) || !targetTask || streamIdsRef.current.includes(targetTask.id)) return;
+    const id = targetTask.id;
+    const setChat = (update: (prev: ChatItem[]) => ChatItem[]): void => updateTaskChat(id, update);
+    if (activeIdRef.current === id) setInput('');
+    streamIdsRef.current = [...streamIdsRef.current, id];
+    setStreamIds(streamIdsRef.current);
+    setChat((prev) => [...prev, { kind: 'user', text: content, attachments: attached }]);
+    const sentIds = new Set(override ? [] : pendingAtt.filter(a => a.status === 'done').map(a => a.id));
     try {
-      await streamChat(activeTask.id, content, (event: ChatEvent) => {
+      await streamChat(targetTask.id, content, (event: ChatEvent) => {
+        if (event.type === 'plan_update') { planCache.current.set(id, event.steps); if (activeIdRef.current === id) setPlanSteps(event.steps); return; }
+        if (event.type === 'done') {
+          if (event.stopReason !== 'completed') setChat((prev) => [...prev, { kind: 'error', text: event.stopReason === 'aborted' ? '已停止生成' : '本次回复已中断，可继续发送消息。' }]);
+          void refreshTasks();
+          return;
+        }
         setChat((prev) => {
           const next = [...prev];
-          const last = next[next.length - 1] ?? { kind: 'assistant' as const, text: '' };
           if (event.type === 'assistant_delta') {
-            next[next.length - 1] = { ...last, text: last.text + event.text };
+            return appendContent(prev, 'assistant', event.text);
           } else if (event.type === 'reasoning_delta') {
-            // S228 思考块：最新一轮实时流式展开，历史自动折叠（渲染按「是否最后一条」判断）
-            if (last.kind === 'thought') {
-              next[next.length - 1] = { ...last, text: last.text + event.text };
-            } else {
-              next.push({ kind: 'thought', text: event.text });
-            }
+            return appendContent(prev, 'thought', event.text);
           } else if (event.type === 'tool_use') {
-            next.push({ kind: 'tool', text: `🔧 ${event.toolName} ${JSON.stringify(event.args ?? {})}` });
+            next.push({ kind: 'tool', text: toolSummary(event.toolName, event.args), toolName: event.toolName, toolDisplayName: event.displayName, callId: event.callId, toolInput: JSON.stringify(event.args ?? {}, null, 2), toolState: event.status ?? 'running' });
+          } else if (event.type === 'tool_status') {
+            const index = next.findIndex(item => item.kind === 'tool' && (event.callId ? item.callId === event.callId : item.toolName === event.toolName) && ['waiting', 'running'].includes(item.toolState ?? ''));
+            if (index >= 0) next[index] = { ...next[index]!, toolState: event.status ?? 'running' };
           } else if (event.type === 'tool_result') {
-            next.push({ kind: 'tool', text: `${event.ok ? '✓' : '✗'} ${event.toolName}: ${event.message ?? ''}` });
+            const index = next.findIndex((item) => item.kind === 'tool' && (event.callId ? item.callId === event.callId : item.toolName === event.toolName) && ['waiting', 'running'].includes(item.toolState ?? ''));
+            const update = { toolOutput: event.message ?? '', toolDisplayName: event.displayName, durationMs: event.durationMs, toolState: event.status ?? (event.ok ? 'ok' as const : 'error' as const) };
+            if (index >= 0) next[index] = { ...next[index]!, ...update };
+            else next.push({ kind: 'tool', text: event.toolName, toolName: event.toolName, ...update });
           } else if (event.type === 'permission_request') {
             next.push({
               kind: 'permission',
@@ -445,53 +528,46 @@ export default function App(): React.JSX.Element {
                 scope: event.scope,
               },
             });
+          } else if (event.type === 'permission_resolved') {
+            const index = next.findIndex((c) => c.kind === 'permission' && c.request?.id === event.id);
+            if (index >= 0) next[index] = { ...next[index]!, kind: 'tool', text: event.reason === 'timeout' ? '授权等待超时，已拒绝本次操作' : event.reason === 'aborted' ? '任务已停止，授权请求已取消' : event.decision === 'deny' ? '已拒绝本次操作' : '已授权本次操作' };
           } else if (event.type === 'memory_confirm') {
             next.push({
               kind: 'memory',
-              text: `🧠 记忆写入确认：${event.content}`,
+              text: `记忆写入确认：${event.content}`,
               request: { id: event.id, tool: 'memory_promote', reason: event.content, paths: [], hasPaths: false, scope: 'once' },
             });
+          } else if (event.type === 'memory_resolved') {
+            const index = next.findIndex((c) => c.kind === 'memory' && c.request?.id === event.id);
+            if (index >= 0) next[index] = { ...next[index]!, kind: 'tool', text: '记忆确认已结束', request: undefined };
           } else if (event.type === 'risk_analysis') {
             // R002：找到对应授权卡回填 AI 风险解读
-            setChat((prev) => {
-              const idx = prev.map((c) => (c.kind === 'permission' ? c.request?.id : null)).lastIndexOf(event.id);
-              if (idx === -1) return prev;
-              const next = [...prev];
-              next[idx] = { ...next[idx]!, analysis: event.analysis };
-              return next;
-            });
-          } else if (event.type === 'plan_update') {
-            // M1-12：update_plan 工具推送的计划更新（不入聊天流，渲染为计划卡）
-            setPlanSteps(event.steps);
+            const idx = next.map((c) => (c.kind === 'permission' ? c.request?.id : null)).lastIndexOf(event.id);
+            if (idx >= 0) next[idx] = { ...next[idx]!, analysis: event.analysis };
           } else if (event.type === 'gate_reject') {
             next.push({
               kind: 'gate',
-              text: `⚠ 成果核验未通过——缺少文件:${event.missing.join('、')}${event.final ? '(已达重试上限,请人工确认)' : ',已打回重做'}`,
+              text: `成果核验未通过——缺少文件:${event.missing.join('、')}${event.final ? '(已达重试上限,请人工确认)' : ',已打回重做'}`,
             });
           } else if (event.type === 'error') {
             next.push({ kind: 'error', text: `出错：${event.message}` });
-          } else if (event.type === 'done') {
-            next.push({
-              kind: 'done',
-              text:
-                event.stopReason === 'completed'
-                  ? `✅ 任务完成（${event.steps} 步）`
-                  : `⚠ 任务结束（${event.stopReason}，${event.steps} 步）`,
-            });
-            void refreshTasks();
-            void api.getFiles(activeTask.id).then(setRightPanel);
           }
           return next;
         });
-      }, undefined, attached);
-      setPendingAtt([]);
+      }, undefined, attached, () => {
+        if (activeIdRef.current === id) setPendingAtt(previous => previous.filter(a => !sentIds.has(a.id)));
+        const saved = drafts.current.get(id);
+        if (saved) drafts.current.set(id, { ...saved, pending: saved.pending.filter(a => !sentIds.has(a.id)) });
+      });
     } catch (err) {
       setChat((prev) => [...prev, { kind: 'error', text: `出错：${err instanceof Error ? err.message : String(err)}` }]);
     } finally {
-      setStreaming(false);
+      setChat((prev) => prev.map((c) => c.kind === 'permission' ? { ...c, kind: 'tool', text: '授权请求已结束，请重新发起任务操作' } : c));
+      streamIdsRef.current = streamIdsRef.current.filter((value) => value !== id);
+      setStreamIds(streamIdsRef.current);
       void refreshTasks();
     }
-  }, [input, activeTask, streaming, pendingAtt, refreshTasks, showToast]);
+  }, [input, activeTask, pendingAtt, refreshTasks, updateTaskChat]);
 
   const decide = useCallback(
     async (item: ChatItem, decision: 'allow' | 'deny' | 'session' | 'forever'): Promise<void> => {
@@ -502,7 +578,7 @@ export default function App(): React.JSX.Element {
           setChat((prev) =>
             prev.map((c) =>
               c === item
-                ? { ...c, kind: 'tool', text: `${decision === 'deny' ? '⛔ 已拒绝写入' : '🧠 已写入长期记忆'}：${item.request!.reason}` }
+                ? { ...c, kind: 'tool', text: `${decision === 'deny' ? '已拒绝写入' : '已写入长期记忆'}：${item.request!.reason}` }
                 : c,
             ),
           );
@@ -515,7 +591,7 @@ export default function App(): React.JSX.Element {
               ? {
                   ...c,
                   kind: 'tool',
-                  text: `${decision === 'deny' ? '⛔ 已拒绝' : '✅ 已授权'}：${item.request!.tool}`,
+                  text: `${decision === 'deny' ? '已拒绝' : '已授权'}：${item.request!.tool}`,
                 }
               : c,
           ),
@@ -530,16 +606,18 @@ export default function App(): React.JSX.Element {
   const logout = useCallback(async (): Promise<void> => {
     await api.logout().catch(() => undefined);
     clearToken();
-    setAuthState('guest');
-    setCurrentUser(null);
+    // A fresh document discards all task streams, cached messages and attachment drafts.
+    window.location.reload();
   }, []);
 
   if (authState === 'loading') {
     return <div className="flex h-screen items-center justify-center bg-neutral-950 text-neutral-500">加载中…</div>;
   }
   if (authState === 'guest') {
-    return <LoginView needsSetup={needsSetup} onAuthed={() => void refreshAuth()} />;
+    return <LoginView needsSetup={needsSetup} setupTokenRequired={setupTokenRequired} onAuthed={() => void refreshAuth()} />;
   }
+
+  if (authState === 'password') return <RequiredPasswordChange onDone={() => void refreshAuth()} />;
 
   const isAdmin = currentUser?.role === 'admin';
   const activeProvider = providers.find((p) => p.active);
@@ -561,9 +639,10 @@ export default function App(): React.JSX.Element {
 
   return (
     <div className="flex h-screen flex-col bg-neutral-950 text-neutral-100">
+      <ArtifactSyncController key={currentUser?.id} />
       {serverOk === false && (
         <div className="bg-red-900/80 px-4 py-1.5 text-xs text-red-100">
-          ⚠ 服务层未连接：请确认桌面应用已启动（或单独启动服务层），然后刷新本页。
+          <Icon name="warning" /> 服务层未连接：请确认桌面应用已启动（或单独启动服务层），然后刷新本页。
         </div>
       )}
       <div className="flex min-h-0 flex-1">
@@ -578,31 +657,25 @@ export default function App(): React.JSX.Element {
                 setProjectError(null);
               }}
             >
-              ＋ 新建任务
+              <Icon name="plus" /> 新建任务
             </button>
             <button
               className="block w-full rounded px-2 py-1.5 text-left text-sm text-neutral-300 hover:bg-neutral-900"
               onClick={() => setSearchOpen((v) => !v)}
             >
-              🔍 搜索
+              <Icon name="search" /> 搜索
             </button>
             <button
               className="block w-full rounded px-2 py-1.5 text-left text-sm text-neutral-300 hover:bg-neutral-900"
               onClick={() => showToast('自动化（定时任务）将在后续版本提供')}
             >
-              ⚡ 自动化
+              <Icon name="bolt" /> 自动化
             </button>
             <button
               className="block w-full rounded px-2 py-1.5 text-left text-sm text-neutral-300 hover:bg-neutral-900"
-              onClick={() => {
-                if (isAdmin) {
-                  window.open('/admin', '_blank');
-                } else {
-                  showToast('技能管理在后台，仅管理员可操作');
-                }
-              }}
+              onClick={() => setSkillMarketOpen(true)}
             >
-              🧩 技能市场
+              <Icon name="skill" /> 技能市场
             </button>
           </div>
 
@@ -643,70 +716,35 @@ export default function App(): React.JSX.Element {
                 {tempTasks
                   .filter(matchTask)
                   .map((task) => (
+                    <div key={task.id} className="flex items-center">
                     <button
-                      key={task.id}
-                      className={`block w-full px-4 py-1.5 text-left text-sm hover:bg-neutral-900 ${
+                      className={`block min-w-0 flex-1 px-4 py-1.5 text-left text-sm hover:bg-neutral-900 ${
                         activeTask?.id === task.id ? 'bg-neutral-900' : ''
                       }`}
-                      onClick={() => void openTask(task)}
+                      onClick={() => { void openTask(task).catch((e: unknown) => showToast(String(e))); }}
                     >
-                      <span className="mr-1.5 text-neutral-500">⚡</span>
+                      <span className="mr-1.5 text-neutral-500"><Icon name="bolt" /></span>
                       {task.name}
                       <span className="ml-2 text-xs text-neutral-600">{fmtRelative(task.createdAt)}</span>
                     </button>
+                    <button aria-label={`删除任务 ${task.name}`} title="删除任务" className="mr-2 shrink-0 rounded p-1.5 text-neutral-500 hover:text-red-400" onClick={() => requestDeleteTask(task)}><Icon name="trash" size={15} /></button>
+                    </div>
                   ))}
               </div>
             ) : (
               <div>
-                {isAdmin && (
+                {currentUser && (
                   <div className="flex items-center justify-between px-4 py-2">
                     <span className="text-xs text-neutral-500">项目</span>
                     <button
                       className="rounded bg-neutral-800 px-2 py-1 text-xs hover:bg-neutral-700"
                       onClick={() => {
-                        setProjectFormOpen((v) => !v);
+                        setProjectFormOpen(true);
                         setProjectError(null);
                       }}
                     >
-                      ＋ 新建项目
+                      <Icon name="plus" /> 新建项目
                     </button>
-                  </div>
-                )}
-                {/* F1：新建项目（仅管理员，表单内联） */}
-                {isAdmin && projectFormOpen && (
-                  <div className="space-y-2 border-b border-neutral-800 px-4 py-2">
-                    <input
-                      autoFocus
-                      className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-neutral-500"
-                      placeholder="项目名称（必填）"
-                      value={projectForm.name}
-                      onChange={(e) => setProjectForm({ ...projectForm, name: e.target.value })}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') void createProject();
-                        if (e.key === 'Escape') setProjectFormOpen(false);
-                      }}
-                    />
-                    <input
-                      className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-xs outline-none focus:border-neutral-500"
-                      placeholder="工作目录（留空自动创建）"
-                      value={projectForm.directory}
-                      onChange={(e) => setProjectForm({ ...projectForm, directory: e.target.value })}
-                    />
-                    {projectError && <p className="text-xs text-red-400">{projectError}</p>}
-                    <div className="flex gap-2">
-                      <button
-                        className="rounded bg-blue-600 px-2 py-1 text-xs hover:bg-blue-500"
-                        onClick={() => void createProject()}
-                      >
-                        创建
-                      </button>
-                      <button
-                        className="rounded bg-neutral-800 px-2 py-1 text-xs"
-                        onClick={() => setProjectFormOpen(false)}
-                      >
-                        取消
-                      </button>
-                    </div>
                   </div>
                 )}
                 {projects.filter(matchProject).map((project) => {
@@ -723,8 +761,8 @@ export default function App(): React.JSX.Element {
                           className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm"
                           onClick={() => toggleCollapse(project.id)}
                         >
-                          <span className="text-neutral-500">{isCollapsed ? '▸' : '▾'}</span>
-                          <span className="truncate font-medium text-neutral-200">📁 {project.name}</span>
+                          <span className="text-neutral-500"><Icon name={isCollapsed ? 'right' : 'down'} /></span>
+                          <span className="truncate font-medium text-neutral-200"><Icon name="folder" /> {project.name}</span>
                         </button>
                         <button
                           className="hidden text-xs text-neutral-500 hover:text-neutral-200 group-hover:block"
@@ -736,7 +774,7 @@ export default function App(): React.JSX.Element {
                             setTaskError(null);
                           }}
                         >
-                          ＋任务
+                          <Icon name="plus" />任务
                         </button>
                       </div>
                       {!isCollapsed && (
@@ -773,9 +811,9 @@ export default function App(): React.JSX.Element {
                           )}
                           {projectTasks.length === 0 && <p className="px-6 py-1 text-xs text-neutral-600">（无任务）</p>}
                           {projectTasks.map((task) => (
+                            <div key={task.id} className="flex items-center">
                             <button
-                              key={task.id}
-                              className={`block w-full px-6 py-1.5 text-left text-sm hover:bg-neutral-900 ${
+                              className={`block min-w-0 flex-1 px-6 py-1.5 text-left text-sm hover:bg-neutral-900 ${
                                 activeTask?.id === task.id ? 'bg-neutral-900' : ''
                               }`}
                               onClick={() => void openTask(task)}
@@ -792,6 +830,8 @@ export default function App(): React.JSX.Element {
                               <span className="text-neutral-300">{task.name}</span>
                               <span className="ml-2 text-xs text-neutral-600">{fmtRelative(task.createdAt)}</span>
                             </button>
+                            <button aria-label={`删除任务 ${task.name}`} title="删除任务" className="mr-2 shrink-0 rounded p-1.5 text-neutral-500 hover:text-red-400" onClick={() => requestDeleteTask(task)}><Icon name="trash" size={15} /></button>
+                            </div>
                           ))}
                         </div>
                       )}
@@ -834,7 +874,7 @@ export default function App(): React.JSX.Element {
                     {currentUser?.role === 'admin' ? '管理员' : '成员'}
                   </span>
                 </span>
-                <span className="text-neutral-500">⚙</span>
+                <span className="text-neutral-500"><Icon name="settings" /></span>
               </button>
             )}
           </div>
@@ -846,15 +886,11 @@ export default function App(): React.JSX.Element {
         {/* 中栏：会话工具条 + 消息流 + 输入区 */}
         <main className="flex min-w-0 flex-1 flex-col">
           {/* U4 顶部会话工具条 */}
-          <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-2 text-xs">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="truncate font-medium text-neutral-200">{activeTask ? activeTask.name : '未选择任务'}</span>
-              {activeTask && (
-                <span className="truncate text-neutral-600">📁 {activeTask.directory}</span>
-              )}
-            </div>
+          <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-2 text-xs gap-3">
+            <h1 className="min-w-0 flex-1 truncate text-left text-sm font-medium text-neutral-100" title={conversationTitle}>{conversationTitle}</h1>
             <div className="flex shrink-0 items-center gap-2">
-              {activeTask?.status === 'running' && <span className="animate-pulse text-amber-400">运行中</span>}
+              {activeTask && <button type="button" title="删除任务" aria-label="删除任务" className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-800 hover:text-red-400" onClick={() => requestDeleteTask(activeTask)}><Icon name="trash" /></button>}
+              {streaming && <span className="animate-pulse text-amber-400">处理中</span>}
               {activeTask?.status === 'interrupted' && (
                 <button
                   className="rounded bg-amber-700 px-2 py-1 hover:bg-amber-600"
@@ -863,66 +899,26 @@ export default function App(): React.JSX.Element {
                     void send(RESUME_MESSAGE);
                   }}
                 >
-                  ▶ 继续任务
+                  <Icon name="play" /> 继续任务
                 </button>
               )}
-              {rightPanel && (
-                <span className="text-neutral-500">
-                  {activeTask ? `${rightPanel.files.length} 个文件` : ''}
-                </span>
-              )}
-              {activeTask && (
-                <button
-                  className="rounded bg-neutral-800 px-2 py-1 hover:bg-neutral-700"
-                  onClick={() => setTranscriptOpen(true)}
-                >
-                  转写查看
-                </button>
-              )}
+              <button
+                type="button"
+                aria-label={rightPanelOpen ? '收起右侧任务侧栏' : '展开右侧任务侧栏'}
+                title={rightPanelOpen ? '收起右侧任务侧栏' : '展开右侧任务侧栏'}
+                aria-expanded={rightPanelOpen}
+                aria-controls="task-results-panel"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-100 hover:bg-neutral-800"
+                onClick={() => {
+                  const open = !rightPanelOpen;
+                  setRightPanelOpen(open);
+                  try { localStorage.setItem('wp-right-panel-open', String(open)); } catch { /* Session state still applies. */ }
+                }}
+              ><Icon name={rightPanelOpen ? 'panelClose' : 'panelOpen'} size={19} /></button>
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto px-6 py-4">
-            {/* M1-12：任务计划卡（update_plan 工具维护，阶段级主线） */}
-            {planSteps.length > 0 && (
-              <div className="mb-4 rounded-lg border border-neutral-800 bg-neutral-900/60 px-4 py-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-xs font-medium text-neutral-300">任务计划</span>
-                  <span className="text-xs text-neutral-500">
-                    {planSteps.filter((s) => s.status === 'completed').length}/{planSteps.length} 完成
-                  </span>
-                </div>
-                <ol className="space-y-1">
-                  {planSteps.map((s, i) => (
-                    <li key={i} className="flex items-center gap-2 text-xs">
-                      <span
-                        className={`inline-block h-3.5 w-3.5 shrink-0 rounded-full border text-center text-[9px] leading-[12px] ${
-                          s.status === 'completed'
-                            ? 'border-emerald-600 bg-emerald-800/60 text-emerald-300'
-                            : s.status === 'in_progress'
-                              ? 'border-blue-500 bg-blue-800/60 text-blue-300'
-                              : 'border-neutral-600 text-neutral-500'
-                        }`}
-                      >
-                        {s.status === 'completed' ? '✓' : i + 1}
-                      </span>
-                      <span
-                        className={
-                          s.status === 'completed'
-                            ? 'text-neutral-500 line-through'
-                            : s.status === 'in_progress'
-                              ? 'text-neutral-100'
-                              : 'text-neutral-400'
-                        }
-                      >
-                        {s.step}
-                      </span>
-                      {s.status === 'in_progress' && <span className="text-[10px] text-blue-400">进行中</span>}
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            )}
             {chat.length === 0 && (
               <p className="mt-10 text-center text-sm text-neutral-500">选择或新建一个任务，发送第一条消息开始工作</p>
             )}
@@ -931,42 +927,24 @@ export default function App(): React.JSX.Element {
                 <div key={i} className="mb-3 flex justify-end">
                   <div className="max-w-[75%] whitespace-pre-wrap rounded-lg bg-neutral-800 px-3 py-2 text-sm">
                     {item.text}
+                    {Boolean(item.attachments?.length) && <div className="mt-2 flex flex-wrap gap-2">{item.attachments!.map((name, index) => <span key={index} className="flex max-w-full items-center gap-2 rounded border border-neutral-700 px-2 py-1 text-xs" title={name}><Icon name={fileIcon(name)} size={20} /><span className="break-all">{name}</span></span>)}</div>}
                   </div>
                 </div>
               ) : item.kind === 'assistant' ? (
-                <div key={i} className="prose prose-invert prose-sm mb-3 max-w-[85%] text-sm leading-relaxed">
+                <div key={i} className="message-body mb-3 max-w-[85%] text-sm leading-relaxed">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.text || '…'}</ReactMarkdown>
                 </div>
               ) : item.kind === 'thought' ? (
-                // S228 思考块：最后一条=本轮思考中（实时展开）；出现正文/工具事件后自动折叠为历史
-                <details
-                  key={i}
-                  open={i === chat.length - 1 && streaming}
-                  className="mb-3 max-w-[85%] rounded-lg border border-neutral-700/70 bg-neutral-900/60 px-3 py-2"
-                >
-                  <summary className="cursor-pointer text-xs text-neutral-500 select-none">
-                    {i === chat.length - 1 && streaming ? '💭 思考中…' : '💭 已思考（点击展开）'}
-                  </summary>
-                  <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-neutral-400">{item.text}</p>
-                </details>
-              ) : item.kind === 'done' ? (
-                <div
-                  key={i}
-                  className={`mb-3 rounded-lg border px-3 py-2 text-sm ${
-                    item.text.startsWith('✅')
-                      ? 'border-emerald-700 bg-emerald-950/50 text-emerald-300'
-                      : 'border-amber-700 bg-amber-950/40 text-amber-300'
-                  }`}
-                >
-                  {item.text}
-                </div>
+                <ActivityRow key={i} title="思考" summary={(streaming && i === chat.length - 1 ? item.text.trimEnd().split('\n').at(-1) : item.text.split('\n')[0]) ?? ''} output={item.text} running={streaming && i === chat.length - 1} />
+              ) : item.kind === 'tool' && item.toolName ? (
+                <ActivityRow key={i} title={item.toolDisplayName ?? item.toolName} summary={item.toolState === 'error' ? item.toolOutput?.split('\n')[0] ?? '操作失败' : item.toolDisplayName ? '' : item.text} input={item.toolInput} output={item.toolOutput} running={streaming && ['waiting', 'running'].includes(item.toolState ?? '')} failed={item.toolState === 'error'} status={item.toolDisplayName ? (!streaming && ['waiting', 'running'].includes(item.toolState ?? '') ? '状态待确认' : ({ waiting: '等待授权', running: '执行中', ok: '成功', error: '失败', denied: '已拒绝', stopped: '已停止' }[item.toolState ?? 'running'])) : undefined} durationMs={item.toolDisplayName ? item.durationMs : undefined} />
               ) : item.kind === 'gate' ? (
                 <div key={i} className="mb-2 rounded border border-amber-600/60 bg-amber-950/30 px-3 py-2 text-xs text-amber-300">
                   {item.text}
                 </div>
               ) : item.kind === 'memory' && item.request ? (
                 <div key={i} className="mb-3 rounded-lg border border-blue-600/60 bg-blue-950/40 p-3 text-sm">
-                  <p className="mb-2 text-blue-300">🧠 记忆写入确认</p>
+                  <p className="mb-2 text-blue-300"><Icon name="memory" /> 记忆写入确认</p>
                   <p className="mb-2 text-neutral-200">{item.request.reason}</p>
                   <div className="flex gap-2 text-xs">
                     <button
@@ -982,9 +960,9 @@ export default function App(): React.JSX.Element {
                 </div>
               ) : item.kind === 'permission' && item.request ? (
                 <div key={i} className="mb-3 rounded-lg border border-amber-600/60 bg-amber-950/40 p-3 text-sm">
-                  <p className="mb-1 font-medium text-amber-300">🔐 授权请求：{item.request.reason}</p>
+                  <p className="mb-1 font-medium text-amber-300"><Icon name="lock" /> 授权请求：{item.request.reason}</p>
                   {item.request.command && (
-                    <p className="mb-1 font-mono text-xs text-neutral-300">$ {item.request.command}</p>
+                    <p className="mb-1 max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-xs text-neutral-300">{item.request.tool.startsWith('mcp_') ? '' : '$ '}{item.request.command}</p>
                   )}
                   {item.request.paths.length > 0 && (
                     <p className="mb-2 font-mono text-xs text-neutral-400">
@@ -994,7 +972,7 @@ export default function App(): React.JSX.Element {
                   {/* R002：AI 风险解读（异步回填，仅参考不参与判定） */}
                   {item.analysis !== undefined && item.analysis !== '' && (
                     <details className="mb-2 rounded border border-neutral-700 bg-neutral-900/70 px-2 py-1.5" open>
-                      <summary className="cursor-pointer text-xs font-medium text-neutral-300">🤖 AI 风险解读（仅供参考）</summary>
+                      <summary className="cursor-pointer text-xs font-medium text-neutral-300"><Icon name="bot" /> AI 风险解读（仅供参考）</summary>
                       <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-neutral-300">{item.analysis}</p>
                     </details>
                   )}
@@ -1011,13 +989,13 @@ export default function App(): React.JSX.Element {
                           className="rounded bg-neutral-700 px-2 py-1 hover:bg-neutral-600"
                           onClick={() => void decide(item, 'session')}
                         >
-                          本会话记住
+                          本任务会话记住
                         </button>
                         <button
                           className="rounded bg-neutral-700 px-2 py-1 hover:bg-neutral-600"
                           onClick={() => void decide(item, 'forever')}
                         >
-                          永久白名单
+                          本任务永久授权
                         </button>
                       </>
                     )}
@@ -1040,9 +1018,25 @@ export default function App(): React.JSX.Element {
           </div>
 
           {/* U3/U5 输入区（ZCode 风格：统一圆角容器，文字在上，工具条在下；拖拽/粘贴/托盘已内置） */}
+            {/* U3/U5 输入区（ZCode 风格：统一圆角容器，文字在上，工具条在下） */}
+          <div
+            className={`relative mx-4 mb-3 shrink-0 rounded-xl border bg-neutral-900 p-3 ${dragOver ? 'border-blue-500 border-dashed' : 'border-neutral-700'}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              addFiles(Array.from(e.dataTransfer.files));
+            }}>
             {/* 附件托盘（多文件并列，右上角 × 移除） */}
             {pendingAtt.length > 0 && (
-              <div className="mb-2 flex flex-wrap gap-2">
+              <div aria-label="待发送附件" className="mb-3 flex max-h-40 flex-wrap gap-2 overflow-y-auto border-b border-neutral-700 px-1 pb-3 pt-2">
                 {pendingAtt.map((a) => (
                   <div key={a.id} className="relative w-44 rounded border border-neutral-700 bg-neutral-900 p-2">
                     <button
@@ -1050,14 +1044,14 @@ export default function App(): React.JSX.Element {
                       title="移除"
                       onClick={() => removeAttachment(a.id)}
                     >
-                      ×
+                      <Icon name="close" />
                     </button>
-                    <p className="truncate text-xs text-neutral-200">📄 {a.name}</p>
+                    <p className="flex items-center gap-2 text-xs text-neutral-200"><Icon name={fileIcon(a.name)} size={20} /><span className="truncate">{a.name}</span></p>
                     <p className="text-[10px] text-neutral-500">
                       {a.status === 'error' ? (
                         <span className="text-red-400">上传失败</span>
                       ) : a.status === 'done' ? (
-                        <span className="text-emerald-400">就绪 · {(a.file.size / 1024).toFixed(1)} KB</span>
+                        <span className="text-emerald-400">已上传 · {(a.file.size / 1024).toFixed(1)} KB</span>
                       ) : (
                         `上传中 ${(a.progress * 100).toFixed(0)}%`
                       )}
@@ -1083,30 +1077,14 @@ export default function App(): React.JSX.Element {
                       applyAt(f);
                     }}
                   >
-                    📄 {f}
+                    <Icon name="file" /> {f}
                   </button>
                 ))}
               </div>
             )}
-            {/* U3/U5 输入区（ZCode 风格：统一圆角容器，文字在上，工具条在下） */}
-          <div
-            className={`relative mx-4 mb-3 rounded-xl border bg-neutral-900 p-3 ${dragOver ? 'border-blue-500 border-dashed' : 'border-neutral-700'}`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={(e) => {
-              e.preventDefault();
-              setDragOver(false);
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragOver(false);
-              addFiles(Array.from(e.dataTransfer.files));
-            }}>
             <textarea
               ref={textareaRef}
-              className="max-h-40 min-h-[44px] w-full resize-none bg-transparent px-1 py-1 text-sm outline-none"
+              className="message-input max-h-40 min-h-[44px] w-full resize-none bg-transparent px-1 py-1 text-sm outline-none"
               placeholder={activeTask ? '输入消息；@ 引用文件；支持粘贴/拖拽文件' : '请先新建/选择任务'}
               value={input}
               disabled={!activeTask || streaming}
@@ -1158,7 +1136,7 @@ export default function App(): React.JSX.Element {
                   title="添加附件（≤50MB，随消息注入）"
                   onClick={() => attachRef?.click()}
                 >
-                  ＋
+                  <Icon name="plus" />
                 </button>
                 <input
                   ref={setAttachRef}
@@ -1176,16 +1154,14 @@ export default function App(): React.JSX.Element {
                     className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-amber-400 hover:bg-neutral-800"
                     onClick={() => setModeMenuOpen((v) => !v)}
                   >
-                    🛡 {tierLabels[tier] ?? tier} <span className="text-neutral-500">▾</span>
+                    <Icon name="shield" /> {tierLabels[tier] ?? tier} <span className="text-neutral-500"><Icon name="down" /></span>
                   </button>
                   {modeMenuOpen && (
                     <div className="absolute bottom-full left-0 mb-1 w-40 overflow-hidden rounded border border-neutral-700 bg-neutral-800 shadow-xl">
                       {(
                         [
-                          ['ask', '变更前确认'],
-                          ['readonly', '计划模式'],
-                          ['workdir', '自动编辑'],
-                          ['auto', '完全访问'],
+                          ['ask', '确认模式'],
+                          ['auto', '自动模式'],
                         ] as Array<[Tier, string]>
                       ).map(([key, label]) => (
                         <button
@@ -1229,50 +1205,20 @@ export default function App(): React.JSX.Element {
                       if (activeTask) void api.stop(activeTask.id);
                     }}
                   >
-                    ■
+                    <Icon name="stop" />
                   </button>
                 ) : (
                   <button
                     className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-sm hover:bg-blue-500 disabled:opacity-40"
-                    disabled={!activeTask || streaming || (input.trim() === '' && pendingAtt.every((a) => a.status !== 'done'))}
+                    disabled={!activeTask || streaming || pendingAtt.some(a => a.status === 'uploading') || (input.trim() === '' && pendingAtt.every((a) => a.status !== 'done'))}
                     title="发送"
                     onClick={() => void send()}
                   >
-                    ↑
+                    <Icon name="up" />
                   </button>
                 )}
               </div>
             </div>
-            {pendingAtt.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2 border-t border-neutral-800 pt-2">
-                {pendingAtt.map((a) => (
-                  <div key={a.id} className="relative w-44 rounded border border-neutral-700 bg-neutral-800 p-2">
-                    <button
-                      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-600 text-[10px] text-neutral-100 hover:bg-red-600"
-                      title="移除"
-                      onClick={() => removeAttachment(a.id)}
-                    >
-                      ×
-                    </button>
-                    <p className="truncate text-xs text-neutral-200">📄 {a.name}</p>
-                    <p className="text-[10px] text-neutral-500">
-                      {a.status === 'error' ? (
-                        <span className="text-red-400">上传失败</span>
-                      ) : a.status === 'done' ? (
-                        <span className="text-emerald-400">就绪 · {(a.file.size / 1024).toFixed(1)} KB</span>
-                      ) : (
-                        `上传中 ${(a.progress * 100).toFixed(0)}%`
-                      )}
-                    </p>
-                    {a.status === 'uploading' && (
-                      <div className="mt-1 h-1 w-full rounded bg-neutral-700">
-                        <div className="h-1 rounded bg-blue-500" style={{ width: `${a.progress * 100}%` }} />
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
             {!isAdmin && providers.length === 0 && (
               <p className="mt-1 text-xs text-red-400">管理员尚未配置模型，请联系管理员。</p>
             )}
@@ -1280,34 +1226,30 @@ export default function App(): React.JSX.Element {
         </main>
 
         {/* 分栏拖拽条（中栏 | 右栏） */}
-        <ColResizeHandle onBeginDrag={rightCol.beginDrag} />
+        {rightPanelOpen && <ColResizeHandle onBeginDrag={rightCol.beginDrag} />}
 
-        {/* 右栏：成果区（B02 版本链 + 转写查看器入口）；宽度可拖拽（最小 232px） */}
-        <aside className="flex shrink-0 flex-col" style={{ width: rightCol.width, minWidth: 232 }}>
-          <div className="flex items-center justify-between px-4 py-3">
-            <span className="text-sm font-semibold text-neutral-300">成果区</span>
-            {activeTask && (
-              <button
-                className="rounded bg-neutral-800 px-2 py-1 text-xs hover:bg-neutral-700"
-                onClick={() => setTranscriptOpen(true)}
-              >
-                转写查看
-              </button>
-            )}
-          </div>
-          {rightPanel ? (
-            <div className="flex-1 overflow-y-auto px-4 text-xs">
-              <p className="mb-2 break-all text-neutral-500">{rightPanel.directory}</p>
-              {rightPanel.files.length === 0 && <p className="text-neutral-600">（空）</p>}
-              {renderVersionChain(rightPanel.files)}
-            </div>
-          ) : (
-            <p className="px-4 text-xs text-neutral-600">选择任务后展示产物</p>
-          )}
+        {/* 右栏：任务侧栏（B02 版本链 + 转写查看器入口）；宽度可拖拽（最小 232px） */}
+        <aside id="task-results-panel" aria-label="任务侧栏" hidden={!rightPanelOpen} className={rightPanelOpen ? 'flex shrink-0 flex-col' : 'hidden'} style={{ width: rightCol.width, minWidth: 232 }}>
+          {rightPanelOpen && <TaskSidebar taskId={activeTask?.id} steps={planSteps} onSelect={(task) => { void openTask(task).catch((e: unknown) => showToast(String(e))); }} onTranscript={() => setTranscriptOpen(true)} onTasks={(rows) => setTasks(rows.filter(task => !deletedTaskIds.current.has(task.id)))} onRetry={(task) => { void openTask(task).then(() => send(task.status === 'failed' ? '请重试上次未完成的请求，先检查已有结果，避免重复已经完成的操作。' : RESUME_MESSAGE, task)).catch((e: unknown) => showToast(String(e))); }} />}
         </aside>
       </div>
 
+      {currentUser && projectFormOpen && <ProjectModal value={projectForm} error={projectError} onChange={setProjectForm} onCreate={createProject} onClose={() => setProjectFormOpen(false)} />}
+
+      {deleteTarget && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onKeyDown={event => { if (event.key === 'Escape' && !deletingTask) setDeleteTarget(null); }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="delete-task-title" className="w-full max-w-md rounded-xl border border-neutral-700 bg-neutral-950 p-5 shadow-xl">
+          <h2 id="delete-task-title" className="text-base font-medium">删除任务“{deleteTarget.name}”？</h2>
+          <p className="mt-3 text-sm text-neutral-400">将永久删除该任务的对话、任务记忆、产物版本和专属附件。项目共享材料、项目与个人记忆、已下载到本机的文件会保留，此操作无法撤销。</p>
+          {deleteError && <p role="alert" className="mt-3 text-sm text-red-400">{deleteError}</p>}
+          <div className="mt-5 flex justify-end gap-3">
+            <button autoFocus disabled={deletingTask} className="rounded bg-neutral-800 px-4 py-2 text-sm disabled:opacity-50" onClick={() => setDeleteTarget(null)}>取消</button>
+            <button disabled={deletingTask} className="rounded bg-red-700 px-4 py-2 text-sm text-white disabled:opacity-50" onClick={() => void confirmDeleteTask()}>{deletingTask ? '正在删除…' : '删除任务'}</button>
+          </div>
+        </section>
+      </div>}
+
       {transcriptOpen && activeTask && <TranscriptModal taskId={activeTask.id} onClose={() => setTranscriptOpen(false)} />}
+      {skillMarketOpen && <SkillMarket canLoad={Boolean(activeTask) && !streaming} onClose={() => setSkillMarketOpen(false)} onLoad={name => { setInput(value => '/' + name + ' ' + value.replace(/^\/[a-z0-9-]+\s*/, '')); setSkillMarketOpen(false); showToast('已选择技能，发送任务时加载'); }} />}
 
       {toast && (
         <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-neutral-800 px-4 py-2 text-sm shadow-xl">
@@ -1316,45 +1258,5 @@ export default function App(): React.JSX.Element {
       )}
     </div>
   );
-
-  /** B02 版本链：按 `{标题} v{X.Y} …` 分组，最新版本在前 */
-  function renderVersionChain(files: string[]): React.JSX.Element[] {
-    const versioned: Array<{ title: string; version: string; file: string }> = [];
-    const plain: string[] = [];
-    const versionRe = /^(.+) v(\d+\.\d+)( \d{4}-\d{2}-\d{2})?\.([^.]+)$/;
-    for (const file of files) {
-      const m = versionRe.exec(file);
-      if (m) versioned.push({ title: m[1] ?? '', version: m[2] ?? '', file });
-      else plain.push(file);
-    }
-    const groups = new Map<string, Array<{ version: string; file: string }>>();
-    for (const v of versioned) {
-      const list = groups.get(v.title) ?? [];
-      list.push({ version: v.version, file: v.file });
-      groups.set(v.title, list);
-    }
-    const nodes: React.JSX.Element[] = [];
-    for (const [title, list] of groups) {
-      const sorted = [...list].sort((a, b) => (a.version < b.version ? 1 : -1));
-      nodes.push(
-        <div key={title} className="mb-3">
-          <p className="mb-1 font-medium text-neutral-200">📄 {title}</p>
-          {sorted.map((v) => (
-            <p key={v.file} className="mb-0.5 break-all pl-3 text-neutral-400">
-              v{v.version} —— {v.file}
-            </p>
-          ))}
-        </div>,
-      );
-    }
-    for (const f of plain) {
-      nodes.push(
-        <p key={f} className="mb-1 break-all text-neutral-300">
-          📄 {f}
-        </p>,
-      );
-    }
-    return nodes;
-  }
 
 }

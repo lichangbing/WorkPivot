@@ -1,0 +1,1608 @@
+{
+  "date": "2026-09-08T12:17:15.7499110Z",
+  "platform": "Linux x64 / Node 22 / non-root / read-only",
+  "assertionCount": 400,
+  "assertions": [
+    {
+      "name": "C02 验活（GET /models 真实请求） —— 验活通过（GET /models 200）",
+      "pass": true
+    },
+    {
+      "name": "C02 供应商保存并激活",
+      "pass": true
+    },
+    {
+      "name": "B01 建任务（工作目录已创建） —— /tmp/wp-ws-kADfNL",
+      "pass": true
+    },
+    {
+      "name": "SSE 响应 200 且为 event-stream",
+      "pass": true
+    },
+    {
+      "name": "T1-04 循环：三轮采样（计划轮+读取轮+总结轮） —— modelCalls=3",
+      "pass": true
+    },
+    {
+      "name": "T1-05 read 工具被调用",
+      "pass": true
+    },
+    {
+      "name": "T1-05 工具真实读到了文件内容 —— WorkPivot 是一个面向企业的私有化智能工作台。",
+      "pass": true
+    },
+    {
+      "name": "T1-06 流式输出 deltas —— 3 个增量",
+      "pass": true
+    },
+    {
+      "name": "最终总结内容完整 —— 读取完成。该文件介绍了 WorkPivot 的定位：面向企业的私有化智能工作台。",
+      "pass": true
+    },
+    {
+      "name": "F03 雏形：done 事件且 stopReason=completed",
+      "pass": true
+    },
+    {
+      "name": "S228 思考过程 reasoning_delta 透传 —— 2 个增量",
+      "pass": true
+    },
+    {
+      "name": "S228 思考内容不混入正文",
+      "pass": true
+    },
+    {
+      "name": "A03 update_plan 推送 plan_update 事件（两次） —— 2 次",
+      "pass": true
+    },
+    {
+      "name": "A03 计划事件含阶段条目 —— [{\"step\":\"读取简介文件\",\"status\":\"in_progress\"},{\"step\":\"输出总结\",\"status\":\"pending\"}]",
+      "pass": true
+    },
+    {
+      "name": "A03 计划落盘可回读（最终状态） —— [{\"step\":\"读取简介文件\",\"status\":\"completed\"},{\"step\":\"输出总结\",\"status\":\"in_progress\"}]",
+      "pass": true
+    },
+    {
+      "name": "F01 转写文件存在 —— /tmp/wp-home-PnIeNL/data/tasks/t-1788869146240-b82472/transcript.jsonl",
+      "pass": true
+    },
+    {
+      "name": "F01 转写含 用户/工具/助手 全部事件",
+      "pass": true
+    },
+    {
+      "name": "历史可读（用户+助手）",
+      "pass": true
+    },
+    {
+      "name": "I04 providers.json 无明文 key",
+      "pass": true
+    },
+    {
+      "name": "T2-01 首启 needsSetup=true 且未认证 —— {\"needsSetup\":true,\"setupTokenRequired\":false,\"authenticated\":false,\"user\":null}",
+      "pass": true
+    },
+    {
+      "name": "W2 界外夹具确实位于任务目录之外",
+      "pass": true
+    },
+    {
+      "name": "T2-05 界外读取触发授权卡 —— 访问任务目录之外的路径",
+      "pass": true
+    },
+    {
+      "name": "T2-05 拒绝后工具被拦（含权限不足提示）",
+      "pass": true
+    },
+    {
+      "name": "循环正常收尾",
+      "pass": true
+    },
+    {
+      "name": "T2-05 二次触发授权卡（本次授权永久）",
+      "pass": true
+    },
+    {
+      "name": "T2-05 授权后真实读到界外内容",
+      "pass": true
+    },
+    {
+      "name": "T2-05 永久白名单生效（不再询问）",
+      "pass": true
+    },
+    {
+      "name": "白名单路径第三次读取成功",
+      "pass": true
+    },
+    {
+      "name": "I02 bash 命令引用界外路径触发授权卡（绕过封堵） —— 命令引用任务目录之外的路径：/tmp/wp-ws-mFOggC/outside/secret2.txt",
+      "pass": true
+    },
+    {
+      "name": "I02 绕过命令被拒后无法读取",
+      "pass": true
+    },
+    {
+      "name": "I05 高危命令触发拦截询问 —— 高危命令：命中高危命令模式：/\\brm\\s+(-[a-z]+\\s+)*-?[a-z]*r[a-z]*f/i",
+      "pass": true
+    },
+    {
+      "name": "I05 高危命令不提供永久放行",
+      "pass": true
+    },
+    {
+      "name": "I05 拒绝后命令未执行",
+      "pass": true
+    },
+    {
+      "name": "R002 高危授权卡附加 AI 风险解读 —— 该命令将递归删除目标目录，不可逆，波及 C:/Users 全部内容。建议先确认路",
+      "pass": true
+    },
+    {
+      "name": "T2-04 只读档拒绝写入",
+      "pass": true
+    },
+    {
+      "name": "T2-04 只读档无授权卡（直接策略拒绝）",
+      "pass": true
+    },
+    {
+      "name": "T2-02 @文件引用展开并被确认",
+      "pass": true
+    },
+    {
+      "name": "I03 审计目录存在",
+      "pass": true
+    },
+    {
+      "name": "I03 审计含工具访问判定",
+      "pass": true
+    },
+    {
+      "name": "I03 审计含拒绝决策",
+      "pass": true
+    },
+    {
+      "name": "I03 审计含参数哈希（非明文）",
+      "pass": true
+    },
+    {
+      "name": "F05 卡循环第 3 次提醒",
+      "pass": true
+    },
+    {
+      "name": "F03 强制收尾触发（stopReason=max_steps）",
+      "pass": true
+    },
+    {
+      "name": "F03 强制收尾含三要素（模拟固定话术）",
+      "pass": true
+    },
+    {
+      "name": "T2-01 重启后令牌仍有效",
+      "pass": true
+    },
+    {
+      "name": "T3-02 启动扫描:running → interrupted —— interrupted",
+      "pass": true
+    },
+    {
+      "name": "T3-02 断点续跑完成 —— 已从断点继续,完成剩余工作。",
+      "pass": true
+    },
+    {
+      "name": "T3-03 谎报触 发核验闸门",
+      "pass": true
+    },
+    {
+      "name": "T3-03 打回后真实写盘 —— gate 目录: [\".workpivot\",\"总结.md\"] | 工具事件: [{\"type\":\"tool_result\",\"toolName\":\"write\",\"ok\":true,\"message\":\"已写入 /tmp/wp3-ws-dDFcJb/gate/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"ok\":true,\"message\":\"已写入 /tmp/wp3-ws-dDFcJb/gate/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"ok\":true,\"message\":\"[系统] 注意:这是第 3 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 /tmp/wp3-ws-dDFcJb/gate/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"ok\":true,\"message\":\"[系统] 注意:这是第 4 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 /tmp/wp3-ws-dDFcJb/gate/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"ok\":false,\"message\":\"错误:已连续多次产生完全相同的调用与结果,本次执行被拦截。请必须更换思路、修改参数,或向用户说明情况。\"}]",
+      "pass": true
+    },
+    {
+      "name": "T3-03 闸门后正常收尾",
+      "pass": true
+    },
+    {
+      "name": "T3-06 大结果落盘（工具结果含\"已落盘\"） —— （工具结果过大已落盘:/tmp/wp3-ws-dDFcJb/.workpivot/results/result-1788869150961.txt。可用 read 工具读取完整内容。）",
+      "pass": true
+    },
+    {
+      "name": "T3-06 落盘文件真实存在（>50KB） —— resultsDir=/tmp/wp3-ws-dDFcJb/.workpivot/results | exists=true | stashed=[\"result-1788869150961.txt\",\"result-1788869150965.txt\",\"result-1788869150970.txt\",\"result-1788869150975.txt\"]",
+      "pass": true
+    },
+    {
+      "name": "T3-08 三个版本文件并存",
+      "pass": true
+    },
+    {
+      "name": "T3-01 转写端点返回含工具事件",
+      "pass": true
+    },
+    {
+      "name": "T3-01 转写行全部带 uuid",
+      "pass": true
+    },
+    {
+      "name": "T3-01 parentUuid 链首尾相接（fork/rewind 前置） —— [[\"user_message\",null],[\"meta\",\"0ed4dc2b\"],[\"assistant_message\",\"3256eaa2\"]]",
+      "pass": true
+    },
+    {
+      "name": "T4-01 内置技能 docx-report 被发现",
+      "pass": true
+    },
+    {
+      "name": "T4-01 校验：非法技能被跳过（name≠目录名）",
+      "pass": true
+    },
+    {
+      "name": "T4-01 项目技能覆盖内置（同名）",
+      "pass": true
+    },
+    {
+      "name": "T4-01 系统提示词注入技能目录 —— sawSkillInSystem=true",
+      "pass": true
+    },
+    {
+      "name": "T4-02 gen-docx.cjs 已生成",
+      "pass": true
+    },
+    {
+      "name": "T4-02 报告 docx 真实生成 —— 目录内容: [\".workpivot\",\"check-docx.cjs\",\"gen-docx.cjs\",\"report.docx\"]",
+      "pass": true
+    },
+    {
+      "name": "T4-03 写后自检：docx 为有效 ZIP（PK 头）",
+      "pass": true
+    },
+    {
+      "name": "T4-03 自检：含 word/document.xml 部件",
+      "pass": true
+    },
+    {
+      "name": "T4-03 自检：体积合理（>2000B） —— 8522B",
+      "pass": true
+    },
+    {
+      "name": "T4-03 生成链完整收尾 —— 报告已生成并通过自检。",
+      "pass": true
+    },
+    {
+      "name": "T4-03 修复重试链发生（自检失败→修复→通过）",
+      "pass": true
+    },
+    {
+      "name": "T4-01 斜杠激活注入技能全文 —— saw=true",
+      "pass": true
+    },
+    {
+      "name": "E01 remember 静默写入并收尾",
+      "pass": true
+    },
+    {
+      "name": "E01 条目区恰有一条\"蓝色\"（幂等去重） —— [{\"id\":\"m-1788869152940-0j35\",\"content\":\"用户最喜欢的颜色是蓝色\",\"createdAt\":\"2026-09-08T12:05:52.940Z\"}]",
+      "pass": true
+    },
+    {
+      "name": "E01 下轮注入:AI 答对颜色 —— 蓝色。",
+      "pass": true
+    },
+    {
+      "name": "E01 晋升触发确认卡",
+      "pass": true
+    },
+    {
+      "name": "E01 拒绝后未写入",
+      "pass": true
+    },
+    {
+      "name": "E01 拒绝后手写区为空",
+      "pass": true
+    },
+    {
+      "name": "E01 允许后写入手写区",
+      "pass": true
+    },
+    {
+      "name": "E01 forget 删除条目",
+      "pass": true
+    },
+    {
+      "name": "E01 一键关闭后 enabled=false 且手写区仍保留",
+      "pass": true
+    },
+    {
+      "name": "E02 项目记忆文件存在",
+      "pass": true
+    },
+    {
+      "name": "E02 项目记忆含预算",
+      "pass": true
+    },
+    {
+      "name": "E02 跨任务共享:AI 答对预算 —— 项目预算是 100 万。",
+      "pass": true
+    },
+    {
+      "name": "F1 存量任务迁移至默认项目 —— projectId=p-default",
+      "pass": true
+    },
+    {
+      "name": "F1 默认项目存在",
+      "pass": true
+    },
+    {
+      "name": "F1 创建项目",
+      "pass": true
+    },
+    {
+      "name": "F1 项目任务共享项目目录 —— /tmp/wp6-ws-ELcAAl/项目A-7-9v1e",
+      "pass": true
+    },
+    {
+      "name": "F3 member 建项目被拒（403）",
+      "pass": true
+    },
+    {
+      "name": "F3 member 配模型被拒（403）",
+      "pass": true
+    },
+    {
+      "name": "F3 member 看技能被拒（403）",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 member 改全局默认档被拒（403） —— got 403",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 member 未自选=回落全局默认档 —— {\"tier\":\"workdir\",\"defaultTier\":\"workdir\",\"tierLabels\":{\"ask\":\"变更前确认\",\"readonly\":\"计划模式\",\"workdir\":\"自动编辑\",\"auto\":\"完全访问\"}}",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 member 自选个人档位生效",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 非法档位值被拒（400） —— got 400",
+      "pass": true
+    },
+    {
+      "name": "J02 管理员任务列表含双方任务",
+      "pass": true
+    },
+    {
+      "name": "J02 成员任务列表仅含自己的任务 —— [\"成员的私有任务\"]",
+      "pass": true
+    },
+    {
+      "name": "J02 member 读管理员任务被拒（403） —— got 403",
+      "pass": true
+    },
+    {
+      "name": "J02 member 向管理员任务发消息被拒（403） —— got 403",
+      "pass": true
+    },
+    {
+      "name": "RL1-03 member 验活供应商被拒（403） —— got 403",
+      "pass": true
+    },
+    {
+      "name": "RL1-03 admin 验活供应商可用 —— {\"ok\":true,\"detail\":\"验活通过（GET /models 200）\"}",
+      "pass": true
+    },
+    {
+      "name": "RL1-03 member 项目列表无服务器路径",
+      "pass": true
+    },
+    {
+      "name": "RL1-03 admin 项目列表保留目录（管理用）",
+      "pass": true
+    },
+    {
+      "name": "RL1-03 member 删管理员任务被拒（403） —— got 403",
+      "pass": true
+    },
+    {
+      "name": "RL1-03 member 删自己的临时任务放行",
+      "pass": true
+    },
+    {
+      "name": "F3 member 改模型被拒（403）",
+      "pass": true
+    },
+    {
+      "name": "F3 编辑供应商生效（换 modelId）",
+      "pass": true
+    },
+    {
+      "name": "F3 新建备用供应商",
+      "pass": true
+    },
+    {
+      "name": "F3 删除激活供应商",
+      "pass": true
+    },
+    {
+      "name": "F3 删除后激活项顺延 —— [{\"id\":\"7ab80cba-8ae9-4b5b-91df-23b84d234e22\",\"name\":\"备用\",\"baseUrl\":\"http://127.0.0.1:39941/v1\",\"modelId\":\"mock-1\",\"protocol\":\"openai\",\"verified\":true,\"hasApiKey\":false,\"active\":true}]",
+      "pass": true
+    },
+    {
+      "name": "F3 删除不存在的供应商报 404",
+      "pass": true
+    },
+    {
+      "name": "F2 临时任务目录在 _temp 区 —— /tmp/wp6-ws-ELcAAl/_temp/t-1788869153871-bge9",
+      "pass": true
+    },
+    {
+      "name": "F2 临时任务 temp 标记",
+      "pass": true
+    },
+    {
+      "name": "F2 临时任务可删除",
+      "pass": true
+    },
+    {
+      "name": "F2 删除后不在列表",
+      "pass": true
+    },
+    {
+      "name": "B03 回收站含临时任务工作目录 —— [\"taskdata-t-1788869153871-dac94b-2026-09-08T12-05-53-882Z\",\"temp-t-1788869153871-dac94b-2026-09-08T12-05-53-882Z\",\"taskdata-t-1788869153822-31f2a0-2026-09-08T12-05-53-825Z\",\"temp-t-1788869153822-31f2a0-2026-09-08T12-05-53-825Z\"]",
+      "pass": true
+    },
+    {
+      "name": "B03 回收站含任务应用数据目录",
+      "pass": true
+    },
+    {
+      "name": "B03 回收站条目记录原路径",
+      "pass": true
+    },
+    {
+      "name": "I03 member 看审计被拒（403）",
+      "pass": true
+    },
+    {
+      "name": "I03 审计可查看（含用户创建事件）",
+      "pass": true
+    },
+    {
+      "name": "I03 审计导出为 JSONL（每行可解析） —— 2503 字符",
+      "pass": true
+    },
+    {
+      "name": "F3 技能列表含内置 docx-report",
+      "pass": true
+    },
+    {
+      "name": "F3 停用生效（disabled=true）",
+      "pass": true
+    },
+    {
+      "name": "F3 /admin 页面可达且为后台入口",
+      "pass": true
+    },
+    {
+      "name": "F2 临时任务零记忆注入（mock 判别 TEMP-ZERO-MEM） —— TEMP-ZERO-MEM",
+      "pass": true
+    },
+    {
+      "name": "附件上传 200 —— status=200",
+      "pass": true
+    },
+    {
+      "name": "附件落盘于 attachments/ 子目录（重名消毒） —— 数据 W7.txt",
+      "pass": true
+    },
+    {
+      "name": "防穿越：上传不抛 5xx",
+      "pass": true
+    },
+    {
+      "name": "防穿越：workspace 根无 evil.txt 泄漏",
+      "pass": true
+    },
+    {
+      "name": "文件清单含 attachments/ 附件 —— [\".workpivot\",\"attachments\",\"attachments/evil.txt\",\"attachments/数据 W7.txt\"]",
+      "pass": true
+    },
+    {
+      "name": "附件内容注入模型上下文 —— 已读取附件标记内容。",
+      "pass": true
+    },
+    {
+      "name": "转写含附件注入内容",
+      "pass": true
+    },
+    {
+      "name": "注册 anthropic 协议供应商（保存即验活通过） —— {\"provider\":{\"id\":\"794cc4da-fe53-4498-8eee-0e36acd8ef1c\",\"name\":\"Claude模拟\",\"baseUrl\":\"http://127.0.0.1:39908\",\"modelId\":",
+      "pass": true
+    },
+    {
+      "name": "验活走了 Anthropic 分流（x-api-key 头）",
+      "pass": true
+    },
+    {
+      "name": "供应商列表回显 protocol",
+      "pass": true
+    },
+    {
+      "name": "任务创建",
+      "pass": true
+    },
+    {
+      "name": "请求头 anthropic-version 存在",
+      "pass": true
+    },
+    {
+      "name": "system 抽到顶层（messages 首条是 user） —— {\"role\":\"user\",\"content\":\"请把 W8 结论写进 w8.txt。\"}",
+      "pass": true
+    },
+    {
+      "name": "tools 用 input_schema 描述",
+      "pass": true
+    },
+    {
+      "name": "第二轮 tool_result 以 user 块回填",
+      "pass": true
+    },
+    {
+      "name": "write 工具经 tool_use 真实落盘 —— /tmp/wp8-ws-nEDdai/w8.txt",
+      "pass": true
+    },
+    {
+      "name": "落盘内容正确",
+      "pass": true
+    },
+    {
+      "name": "流式文本回传（最终答案）",
+      "pass": true
+    },
+    {
+      "name": "SSE 正常收尾",
+      "pass": true
+    },
+    {
+      "name": "转写含 assistant 文本与工具往返",
+      "pass": true
+    },
+    {
+      "name": "M1-08 pptx-report 技能注入 system",
+      "pass": true
+    },
+    {
+      "name": "PPT 生成（坏脚本自检失败→修复重试链走通） —— :\"tool_use\",\"toolName\":\"bash\",\"args\":{\"command\":\"node check-pptx.cjs 汇报.pptx\"}}",
+      "pass": true
+    },
+    {
+      "name": "PPT 文件真实存在",
+      "pass": true
+    },
+    {
+      "name": "PPT 为合法 zip 且含 ppt/presentation.xml —— 45768 字节",
+      "pass": true
+    },
+    {
+      "name": "M1-08 xlsx-report 技能注入 system",
+      "pass": true
+    },
+    {
+      "name": "Excel 生成链走通 —— \"tool_use\",\"toolName\":\"bash\",\"args\":{\"command\":\"node check-xlsx.cjs 报表.xlsx\"}}",
+      "pass": true
+    },
+    {
+      "name": "Excel 文件真实存在",
+      "pass": true
+    },
+    {
+      "name": "Excel 为合法 zip 且含 xl/workbook.xml —— 6539 字节",
+      "pass": true
+    },
+    {
+      "name": "H01 模板上传成功且自动设默认 —— {\"template\":{\"id\":\"c1ba0eac-c662-49a8-bd10-41f80cbb0bbe\",\"name\":\"W9模板\",\"kind\":\"report\",\"fileName\":\"W9模板.docx\",\"isDefault",
+      "pass": true
+    },
+    {
+      "name": "H01 模板清单可见",
+      "pass": true
+    },
+    {
+      "name": "H01 生成链走通（模板替换） —— {\"type\":\"tool_use\",\"toolName\":\"bash\",\"args\":{\"command\":\"node check-tpl.cjs\"}}",
+      "pass": true
+    },
+    {
+      "name": "H01 模板产物存在",
+      "pass": true
+    },
+    {
+      "name": "H01 占位符被替换（标题/日期/正文）",
+      "pass": true
+    },
+    {
+      "name": "H01 模板固有内容保留 —— <?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:document mc:Ignorable=",
+      "pass": true
+    },
+    {
+      "name": "H01 模板删除",
+      "pass": true
+    },
+    {
+      "name": "F06 非法 cron 被拒（400）",
+      "pass": true
+    },
+    {
+      "name": "F06 创建定时任务 —— {\"schedule\":{\"id\":\"4b372e26-0d56-482c-bacd-3bc72a4a3736\",\"name\":\"W10 巡检\",\"cron\":\"* * * * *\",\"content",
+      "pass": true
+    },
+    {
+      "name": "F06 tick 自动触发运行 —— done:completed",
+      "pass": true
+    },
+    {
+      "name": "F06 运行结果 done:completed —— done:completed",
+      "pass": true
+    },
+    {
+      "name": "F06 运行通知落盘（run_ok）",
+      "pass": true
+    },
+    {
+      "name": "F06 同分钟去重（不重复触发） —— +0 次",
+      "pass": true
+    },
+    {
+      "name": "F06 停用后不再触发 —— +0 次",
+      "pass": true
+    },
+    {
+      "name": "F06 手动运行 200",
+      "pass": true
+    },
+    {
+      "name": "F06 手动运行产生通知 —— 2 条",
+      "pass": true
+    },
+    {
+      "name": "F06 错过补跑（missed_catchup 通知） —— run_ok,run_ok,missed_catchup,run_ok",
+      "pass": true
+    },
+    {
+      "name": "F06 补跑后 lastRunAt 刷新（晚于改写值）",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 alice 自选 readonly 生效 —— {\"tier\":\"readonly\",\"defaultTier\":\"workdir\"}",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 bob 未自选=回落全局默认 workdir",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 alice readonly 拒绝界内写入 —— 权限不足：用户拒绝或当前策略禁止本次访问。请改用任务目录内的路径，或提示用户调整权限档位。",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 readonly 直接策略拒绝（无授权卡）",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 bob workdir 界内写入放行（不受 alice 影响） —— 已写入 /tmp/w11-ws-OoEDnJ/_temp/t-1788869166306-89si/out.md（8 字节）",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 admin 改全局默认档放行",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 bob 个人档位不被全局改动覆盖",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 carol 未自选=回落新全局默认 readonly",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 carol 按全局默认 readonly 拒写",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 全局收紧后 bob 个人 workdir 仍放行",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 alice 清除自选后回落全局默认 readonly",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 非法档位值被拒（400） —— got 400",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 member 改全局默认档被拒（403） —— got 403",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 全局还原后 alice 回落 workdir",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 请求使用 UUID v4",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 他人任务回填 403",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 借自己的任务回填他人请求 403",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 同用户跨任务回填 403",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 管理员也不能跨任务回填 403",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 不存在的任务 404",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 不存在的请求 404",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 非法决策 \"god\" 返回 400",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 非法决策 \"once\" 返回 400",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 非法决策 \"\" 返回 400",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 非法决策 null 返回 400",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 非法决策 true 返回 400",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 非法决策 {} 返回 400",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 非法决策 [\"allow\"] 返回 400",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 非字符串请求 ID 返回 400",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 一次性卡不能升级 session",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 一次性卡不能升级 forever",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 非法回填后文件仍未写入",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 请求保留且所有者可正常批准",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 已消费请求不能重放",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 授权后真实执行并结束",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 管理员代跑仍按所有者 ask 产生授权卡",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 管理员可批准正确任务的授权",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 管理员代管实际执行成功",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 高危卡仅限 once",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 高危卡拒绝 session",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 高危卡拒绝 forever",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 高危卡仍可拒绝",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 高危命令未执行",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 伪造永久授权没有写入白名单",
+      "pass": true
+    },
+    {
+      "name": "RL1-07 等待授权时 stop 成功",
+      "pass": true
+    },
+    {
+      "name": "RL1-07 stop 后任务以 aborted 结束",
+      "pass": true
+    },
+    {
+      "name": "RL1-07 stop 后没有写入文件",
+      "pass": true
+    },
+    {
+      "name": "RL1-07 stop 后旧授权 404",
+      "pass": true
+    },
+    {
+      "name": "RL1-07 停止后任务可再次执行",
+      "pass": true
+    },
+    {
+      "name": "RL1-07 客户端断线后任务释放",
+      "pass": true
+    },
+    {
+      "name": "RL1-07 断线后文件未写入",
+      "pass": true
+    },
+    {
+      "name": "RL1-07 断线后可重新对话",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 旧全局白名单不自动继承",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 once 当次放行",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 once 下一次仍询问",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 session 当次放行",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 同用户同任务 session 复用",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 授权目录的子路径可读",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 相似前缀目录不放行",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 其他用户不继承 session",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 其他任务不继承 session",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 读取授权不能升级写入",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 清理会话后重新询问",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 forever 当次放行",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 forever 不依赖内存会话",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 forever 不跨用户",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 forever 不跨任务",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 forever 读授权不含写入",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 写入永久授权可保存",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 readonly 不被已有写白名单提权",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 ask 写入始终重新确认",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 member 不能查看全员白名单",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 admin 可查看永久授权",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 member 不能撤销全员授权",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 admin 可撤销永久授权",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 撤销立即影响后续读取",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 已删除授权重复撤销 404",
+      "pass": true
+    },
+    {
+      "name": "RL1-06 非法或通配授权不会退化为放行",
+      "pass": true
+    },
+    {
+      "name": "RL1-07 中止唤醒授权等待并拒绝",
+      "pass": true
+    },
+    {
+      "name": "RL1-07 中止后 pending 已清理",
+      "pass": true
+    },
+    {
+      "name": "RL1-07 已中止信号不创建请求",
+      "pass": true
+    },
+    {
+      "name": "RL1-07 超时自动拒绝且回报原因",
+      "pass": true
+    },
+    {
+      "name": "RL1-07 超时请求无法迟到批准",
+      "pass": true
+    },
+    {
+      "name": "RL1-07 批准后同时停止不会继续执行",
+      "pass": true
+    },
+    {
+      "name": "RL1-07 授权卡发送失败不会悬挂",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 新项目默认不向其他成员开放",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 旧默认项目仍可见",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 非成员记忆不可读",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 非成员不能创建项目任务",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 成员不能分配负责人",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 拒绝不存在的负责人",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 成员可读负责人写入的记忆",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 成员编辑被拒绝",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 成员清空被拒绝",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 内容长度校验",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 任务记忆使用所属项目",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 无任务时不泄露项目记忆",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 不存在的任务记忆返回404",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 负责人交接后原负责人只读",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 编辑保留旧内容备份",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 新负责人可清空且保留备份",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 移出项目后原任务不可访问",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 移出项目后记忆不可访问",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 成员不能改全局记忆开关",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 全局记忆开关拒绝非布尔值",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 readonly × 界内读 —— 预期=allow 实际=allow",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 readonly × 界内写 —— 预期=deny 实际=deny",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 readonly × 界外读 —— 预期=deny 实际=deny",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 readonly × 界外写 —— 预期=deny 实际=deny",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 readonly × 普通命令 —— 预期=deny 实际=deny",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 readonly × 高危命令 —— 预期=deny 实际=deny",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 readonly × 引用界外路径命令 —— 预期=deny 实际=deny",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 ask × 界内读 —— 预期=allow 实际=allow",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 ask × 界内写 —— 预期=once 实际=once",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 ask × 界外读 —— 预期=session-or-forever 实际=session-or-forever",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 ask × 界外写 —— 预期=once 实际=once",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 ask × 普通命令 —— 预期=once 实际=once",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 ask × 高危命令 —— 预期=once 实际=once",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 ask × 引用界外路径命令 —— 预期=once 实际=once",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 workdir × 界内读 —— 预期=allow 实际=allow",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 workdir × 界内写 —— 预期=allow 实际=allow",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 workdir × 界外读 —— 预期=session-or-forever 实际=session-or-forever",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 workdir × 界外写 —— 预期=session-or-forever 实际=session-or-forever",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 workdir × 普通命令 —— 预期=allow 实际=allow",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 workdir × 高危命令 —— 预期=once 实际=once",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 workdir × 引用界外路径命令 —— 预期=once 实际=once",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 auto × 界内读 —— 预期=allow 实际=allow",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 auto × 界内写 —— 预期=allow 实际=allow",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 auto × 界外读 —— 预期=deny 实际=deny",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 auto × 界外写 —— 预期=deny 实际=deny",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 auto × 普通命令 —— 预期=allow 实际=allow",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 auto × 高危命令 —— 预期=once 实际=once",
+      "pass": true
+    },
+    {
+      "name": "RL1-04 auto × 引用界外路径命令 —— 预期=allow 实际=allow",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 成员变更中止正在等待的任务",
+      "pass": true
+    },
+    {
+      "name": "RL1-08 移出成员后旧执行未写文件",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 审计含个人档位变更事件",
+      "pass": true
+    },
+    {
+      "name": "RL1-02 审计含全局默认档变更（admin 操作）",
+      "pass": true
+    },
+    {
+      "name": "RL1-05 非法回填不伪造成功审批审计",
+      "pass": true
+    },
+    {
+      "name": "RL2-03 正常子路径允许",
+      "pass": true
+    },
+    {
+      "name": "RL2-03 相似前缀目录拒绝",
+      "pass": true
+    },
+    {
+      "name": "RL2-03 点点穿越拒绝",
+      "pass": true
+    },
+    {
+      "name": "RL2-03 不存在的新文件可解析",
+      "pass": true
+    },
+    {
+      "name": "RL2-03 NUL 路径拒绝",
+      "pass": true
+    },
+    {
+      "name": "RL2-03 链接逃逸拒绝",
+      "pass": true
+    },
+    {
+      "name": "RL2-03 链接下新文件不能逃逸",
+      "pass": true
+    },
+    {
+      "name": "RL2-03 read 工具拒绝链接逃逸",
+      "pass": true
+    },
+    {
+      "name": "RL2-03 grep 不遍历链接目录",
+      "pass": true
+    },
+    {
+      "name": "RL2-03 权限引擎识别链接界外并询问",
+      "pass": true
+    },
+    {
+      "name": "RL2-03 替换链接不能继承旧授权",
+      "pass": true
+    },
+    {
+      "name": "RL2-02 成员界外任务目录被拒",
+      "pass": true
+    },
+    {
+      "name": "RL2-02 成员不能指定临时任务目录",
+      "pass": true
+    },
+    {
+      "name": "RL2-02 管理员默认不能指定界外项目",
+      "pass": true
+    },
+    {
+      "name": "RL2-02 项目链接越界被拒",
+      "pass": true
+    },
+    {
+      "name": "RL2-02 非字符串目录被拒",
+      "pass": true
+    },
+    {
+      "name": "RL2-02 成员不能借目录访问别人的项目",
+      "pass": true
+    },
+    {
+      "name": "RL2-02 项目成员正常建任务",
+      "pass": true
+    },
+    {
+      "name": "RL2-03 正常文件引用仍送入模型",
+      "pass": true
+    },
+    {
+      "name": "RL2-03 链接及点点文件引用不泄露给模型",
+      "pass": true
+    },
+    {
+      "name": "RL2-03 转写不落盘越界文件内容",
+      "pass": true
+    },
+    {
+      "name": "RL2-03 附件目录链接逃逸被拒",
+      "pass": true
+    },
+    {
+      "name": "RL2-04 命令环境不继承应用密钥或 NODE_OPTIONS",
+      "pass": true
+    },
+    {
+      "name": "RL2-04 命令保留 PATH 与显式文档库路径",
+      "pass": true
+    },
+    {
+      "name": "RL2-03 普通嵌套写入仍正常",
+      "pass": true
+    },
+    {
+      "name": "RL3-03 缺失文件返回独立默认值",
+      "pass": true
+    },
+    {
+      "name": "RL3-03 正常读取来源为 primary",
+      "pass": true
+    },
+    {
+      "name": "RL3-03 主文件损坏后使用有效备份",
+      "pass": true
+    },
+    {
+      "name": "RL3-03 恢复内容写回主文件且损坏原件保留",
+      "pass": true
+    },
+    {
+      "name": "RL3-03 双损坏明确报错",
+      "pass": true
+    },
+    {
+      "name": "RL3-03 再次读取仍报错不归零",
+      "pass": true
+    },
+    {
+      "name": "RL3-02 对外首启缺初始化凭据拒绝启动",
+      "pass": true
+    },
+    {
+      "name": "RL3-02 首管理员注册缺凭据被拒",
+      "pass": true
+    },
+    {
+      "name": "RL3-02 有初始化凭据可创建首管理员",
+      "pass": true
+    },
+    {
+      "name": "RL3-01 退出后旧令牌失效",
+      "pass": true
+    },
+    {
+      "name": "RL3-01 退出仅撤销当前会话",
+      "pass": true
+    },
+    {
+      "name": "RL3-01 成员不能撤销其他账户",
+      "pass": true
+    },
+    {
+      "name": "RL3-01 修改密码成功",
+      "pass": true
+    },
+    {
+      "name": "RL3-01 改密使当前及其他旧令牌失效",
+      "pass": true
+    },
+    {
+      "name": "RL3-01 新密码可登录",
+      "pass": true
+    },
+    {
+      "name": "RL3-01 管理员可撤销指定用户会话",
+      "pass": true
+    },
+    {
+      "name": "RL3-01 撤销成员不影响管理员",
+      "pass": true
+    },
+    {
+      "name": "RL3-01 默认会话有效期24小时",
+      "pass": true
+    },
+    {
+      "name": "RL3-01 到期令牌被拒绝",
+      "pass": true
+    },
+    {
+      "name": "RL3-01 旧版无期限会话需要重新登录",
+      "pass": true
+    },
+    {
+      "name": "RL3-01 过期会话已从存储清理",
+      "pass": true
+    },
+    {
+      "name": "RL3-02 重复登录尝试被限速",
+      "pass": true
+    },
+    {
+      "name": "RL3-02 限速不锁定其他账户",
+      "pass": true
+    },
+    {
+      "name": "RL3-04 AES密文可正确解密",
+      "pass": true
+    },
+    {
+      "name": "RL3-04 同内容每次密文不同",
+      "pass": true
+    },
+    {
+      "name": "RL3-04 密文篡改被拒绝",
+      "pass": true
+    },
+    {
+      "name": "RL3-04 错误主密钥无法解密",
+      "pass": true
+    },
+    {
+      "name": "RL3-04 缺主密钥拒绝启动",
+      "pass": true
+    },
+    {
+      "name": "RL3-04 主文件和备份均迁移为加密密文",
+      "pass": true
+    },
+    {
+      "name": "RL3-03 账户主文件损坏恢复后不重开注册",
+      "pass": true
+    },
+    {
+      "name": "RL3-03 空账户文件不能重新初始化",
+      "pass": true
+    },
+    {
+      "name": "RL3-03 状态接口明确报告数据故障",
+      "pass": true
+    },
+    {
+      "name": "RL3-03 损坏时无法抢注管理员",
+      "pass": true
+    },
+    {
+      "name": "RL3-03 账户损坏拒绝服务启动",
+      "pass": true
+    },
+    {
+      "name": "RL2 默认根任务可读普通文件",
+      "pass": true
+    },
+    {
+      "name": "RL2 管理员代运行仍按任务所有者权限",
+      "pass": true
+    },
+    {
+      "name": "RL2 显式路径授权不能越过私有项目",
+      "pass": true
+    },
+    {
+      "name": "RL2 私有项目拒绝写入",
+      "pass": true
+    },
+    {
+      "name": "RL2 ls 不显示私有项目",
+      "pass": true
+    },
+    {
+      "name": "RL2 grep 不遍历私有项目和他人临时目录",
+      "pass": true
+    },
+    {
+      "name": "RL2 find 不返回私有文件",
+      "pass": true
+    },
+    {
+      "name": "RL2 拒绝读取应用账户与密钥目录",
+      "pass": true
+    },
+    {
+      "name": "E06 项目成员可读记忆",
+      "pass": true
+    },
+    {
+      "name": "E06 Agent 文件工具不能修改项目记忆",
+      "pass": true
+    },
+    {
+      "name": "E06 拒绝操作后记忆保持原内容",
+      "pass": true
+    },
+    {
+      "name": "E06 负责人交接后同一策略立即允许编辑",
+      "pass": true
+    },
+    {
+      "name": "E06 成员移出后同一策略立即拒绝所有文件",
+      "pass": true
+    },
+    {
+      "name": "RL2 项目技能链接不能注入私有项目内容",
+      "pass": true
+    },
+    {
+      "name": "RL4 模型停滞触发空闲超时",
+      "pass": true
+    },
+    {
+      "name": "RL4 超时释放底层模型连接",
+      "pass": true
+    },
+    {
+      "name": "RL4 停止可打断正在等待的模型流",
+      "pass": true
+    },
+    {
+      "name": "RL4 停止释放底层连接",
+      "pass": true
+    },
+    {
+      "name": "RL4 无换行超大模型响应被中止",
+      "pass": true
+    },
+    {
+      "name": "RL4 UTF8 分片解析完整",
+      "pass": true
+    },
+    {
+      "name": "RL4 记忆确认拒绝其他任务",
+      "pass": true
+    },
+    {
+      "name": "RL4 记忆确认拒绝其他用户",
+      "pass": true
+    },
+    {
+      "name": "RL4 停止后清理记忆确认卡",
+      "pass": true
+    },
+    {
+      "name": "RL4 停止后旧确认不能写入",
+      "pass": true
+    },
+    {
+      "name": "RL4 本人确认正常通过",
+      "pass": true
+    },
+    {
+      "name": "RL4 确认后只写入本人长期记忆",
+      "pass": true
+    },
+    {
+      "name": "RL4 两个任务可并发流式执行",
+      "pass": true
+    },
+    {
+      "name": "RL4 同一任务重复执行被拒",
+      "pass": true
+    },
+    {
+      "name": "RL4 超并发请求被限流",
+      "pass": true
+    },
+    {
+      "name": "RL4 停止模型挂起任务释放执行槽",
+      "pass": true
+    },
+    {
+      "name": "RL4 停止后第三个任务可立即执行",
+      "pass": true
+    },
+    {
+      "name": "RL4 模型 HTTP 错误反馈并结束流",
+      "pass": true
+    },
+    {
+      "name": "RL4 模型断流反馈并结束任务",
+      "pass": true
+    },
+    {
+      "name": "RL4 模型故障后同一任务可重新运行",
+      "pass": true
+    },
+    {
+      "name": "RL4 客户端断开后任务停止",
+      "pass": true
+    },
+    {
+      "name": "RL4 服务关闭会停止挂起任务并释放连接",
+      "pass": true
+    }
+  ],
+  "overall": "pass"
+}

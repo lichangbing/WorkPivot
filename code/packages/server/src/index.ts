@@ -1,3 +1,6 @@
+import { listTenants, withTenant, withAccount } from './tenants.js';
+import { migrateAccountData } from './account-migration.js';
+import { migrateTenantData } from './tenant-migration.js';
 /**
  * 服务层（形态 A：与 Electron 主进程同进程挂载，T1-02 接入）。
  * 对前端只暴露 localhost HTTP/SSE；前端禁 import 本包（A01.3 拆分边界纪律）。
@@ -5,11 +8,14 @@
 import type { Server } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import type { Express } from 'express';
-import { createApp } from './app.js';
+import { createApp, abortRunningTasks } from './app.js';
 import { markRunningTasksInterrupted } from './tasks.js';
 import { migrateTasksToDefaultProject } from './projects.js';
 import { audit } from './audit.js';
 import { startScheduler } from './schedules.js';
+import { listUsers, cleanupSessions, needsSetup, validateInitialization } from './auth.js';
+import { initializeSecretBox } from './secret.js';
+import { migrateProviderSecrets } from './providers.js';
 
 export const SERVER_PORT_DEFAULT = 39800;
 
@@ -36,13 +42,27 @@ function listenOn(app: Express, port: number): Promise<Server> {
 
 /** 端口从 WORKPIVOT_PORT 或默认值起尝试，被占用则向后顺延（最多 10 个）。 */
 export async function startServer(opts: Parameters<typeof createApp>[0] & { port?: number } = {}): Promise<ServerHandle> {
+  // Refuse startup before any migration writes if account/session storage is corrupt.
+  needsSetup();
+  validateInitialization();
+  migrateTenantData();
+  migrateAccountData();
+  cleanupSessions();
+  initializeSecretBox();
+  migrateProviderSecrets();
   const webDistFromEnv = process.env['WORKPIVOT_WEB_DIST'];
   if (opts.webDistDir === undefined && webDistFromEnv) opts = { ...opts, webDistDir: webDistFromEnv };
   // F1 迁移：存量任务归属默认项目；T3-02/F04：中断任务标记
-  const migrated = migrateTasksToDefaultProject();
-  if (migrated > 0) audit({ event: 'project_migration', detail: `${migrated} 个任务` });
-  const interrupted = markRunningTasksInterrupted();
-  if (interrupted > 0) audit({ event: 'boot_scan', decision: 'interrupted', detail: `${interrupted} 个任务` });
+  for (const tenant of listTenants()) withTenant(tenant.id, () => {
+    cleanupSessions();
+    migrateProviderSecrets();
+    for (const user of listUsers()) withAccount(user, () => {
+    const migrated = migrateTasksToDefaultProject();
+    if (migrated > 0) audit({ event: 'project_migration', detail: `${migrated} 个任务` });
+    const interrupted = markRunningTasksInterrupted();
+    if (interrupted > 0) audit({ event: 'boot_scan', decision: 'interrupted', detail: `${interrupted} 个任务` });
+    });
+  });
 
   const envPort = process.env['WORKPIVOT_PORT'];
   const base = opts.port ?? (envPort !== undefined && envPort !== '' ? Number(envPort) : SERVER_PORT_DEFAULT);
@@ -66,6 +86,7 @@ export async function startServer(opts: Parameters<typeof createApp>[0] & { port
       port,
       close: async () => {
         scheduler.stop();
+        abortRunningTasks();
         await new Promise<void>((resolve) => server.close(() => resolve()));
       },
     };
@@ -82,6 +103,9 @@ if (isMain) {
   startServer()
     .then((handle) => {
       console.log(`[NODE] WorkPivot 服务层已启动 http://127.0.0.1:${handle.port}`);
+      const shutdown = (): void => { void handle.close().then(() => process.exit(0)); };
+      process.once('SIGTERM', shutdown);
+      process.once('SIGINT', shutdown);
     })
     .catch((err: unknown) => {
       console.error('[NODE] 服务层启动失败', err);

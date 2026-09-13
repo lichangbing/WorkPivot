@@ -15,6 +15,8 @@ import { join } from 'node:path';
 // ---- 隔离环境：数据根/工作区都指向临时目录（必须在 import 服务层之前设置） ----
 const home = mkdtempSync(join(tmpdir(), 'wp8-home-'));
 const workspace = mkdtempSync(join(tmpdir(), 'wp8-ws-'));
+process.env['WORKPIVOT_INSECURE_SECRETS'] = '1';
+process.env['WORKPIVOT_EXECUTION_MODE'] = 'trusted-local';
 process.env['WORKPIVOT_HOME'] = home;
 process.env['WORKPIVOT_WORKSPACE'] = workspace;
 

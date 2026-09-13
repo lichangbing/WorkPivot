@@ -11,6 +11,8 @@ import { join } from 'node:path';
 
 const home = mkdtempSync(join(tmpdir(), 'wp5-home-'));
 const workspace = mkdtempSync(join(tmpdir(), 'wp5-ws-'));
+process.env['WORKPIVOT_INSECURE_SECRETS'] = '1';
+process.env['WORKPIVOT_EXECUTION_MODE'] = 'trusted-local';
 process.env['WORKPIVOT_HOME'] = home;
 process.env['WORKPIVOT_WORKSPACE'] = workspace;
 

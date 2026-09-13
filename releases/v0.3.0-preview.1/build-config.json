@@ -1,0 +1,8 @@
+{
+  "extends": "./electron-builder.yml",
+  "extraMetadata": { "version": "0.3.0-preview.1" },
+  "directories": {
+    "output": "../../../releases/v0.3.0-preview.1/installers",
+    "buildResources": "build"
+  }
+}

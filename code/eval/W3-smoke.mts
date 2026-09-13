@@ -7,7 +7,7 @@
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer as createHttpServer } from 'node:http';
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, statSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, existsSync, statSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -110,6 +110,8 @@ function spawnServer(maxSteps: string, port: string): ChildProcess {
     cwd: codeDir,
     env: {
       ...process.env,
+      WORKPIVOT_INSECURE_SECRETS: '1',
+      WORKPIVOT_HOST: '127.0.0.1',
       WORKPIVOT_HOME: home,
       WORKPIVOT_WORKSPACE: workspace,
       WORKPIVOT_PORT: port,
@@ -228,18 +230,21 @@ try {
     await api(portA, tokenA, '/api/tasks', { method: 'POST', body: JSON.stringify({ name: '挂起任务' }) })
   ).json()) as { task: { id: string; directory: string } };
 
-  // 发起挂起请求（不读流，直接 abort 读端——服务端任务仍在运行）
+  // 保持请求连接，确认运行后使用 SIGKILL，避免优雅关闭把任务标为 stopped。
   await fetch(`http://127.0.0.1:${portA}/api/tasks/${hangTask.id}/messages`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${tokenA}` },
     body: JSON.stringify({ content: '挂起' }),
-    signal: AbortSignal.timeout(1500),
+    signal: AbortSignal.timeout(10000),
   }).catch(() => undefined);
   await new Promise((r) => setTimeout(r, 800));
 
   // 冷杀子进程（SIGKILL 等效——TerminateProcess，无任何清理逻辑）
-  childA.kill();
-  await new Promise((r) => setTimeout(r, 800));
+  const beforeKill = await (await api(portA, tokenA, '/api/tasks/' + hangTask.id)).json() as { task: { status: string } };
+  assert('冷杀前任务确实正在运行', beforeKill.task.status === 'running');
+  const exited = new Promise<void>(r => childA.once('exit', () => r()));
+  childA.kill('SIGKILL');
+  await exited;
   console.log('🔪 Phase A 子进程已冷杀（挂起任务保持 running 态）');
 
   // ===== Phase B：重启（maxSteps=25）——启动扫描 + 断点续跑 + 闸门 + 预算 + 版本链 =====
@@ -265,9 +270,8 @@ try {
   );
 
   // 核验闸门：诱导谎报
-  mkdirSync(join(workspace, 'gate'), { recursive: true });
   const { task: gateTask } = (await (
-    await api(portB, tokenB, '/api/tasks', { method: 'POST', body: JSON.stringify({ name: '闸门测试', directory: join(workspace, 'gate') }) })
+    await api(portB, tokenB, '/api/tasks', { method: 'POST', body: JSON.stringify({ name: '闸门测试' }) })
   ).json()) as { task: { id: string; directory: string } };
   const gateRun = await runTurn(portB, tokenB, gateTask.id, '生成总结.md');
   assert('T3-03 谎报触 发核验闸门', gateRun.events.some((e) => e['type'] === 'gate_reject'));

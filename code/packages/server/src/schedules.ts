@@ -1,3 +1,4 @@
+import { listTenants, withTenant, withAccount, accountKey } from './tenants.js';
 /**
  * M1-09/F06：定时任务调度器。
  * - 注册表 data/schedules/schedules.json；通知 data/schedules/notifications.jsonl。
@@ -7,10 +8,10 @@
  * - tick 间隔 WORKPIVOT_SCHEDULE_TICK_MS（默认 30s，评测可调小）。
  */
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ensureWorkpivotDir, readJsonSafe, writeAtomic } from './store.js';
-import { issueTokenForUser } from './auth.js';
+import { appendLine, ensureWorkpivotDir, readJsonSafe, writeAtomic } from './store.js';
+import { issueTokenForUser, listUsers } from './auth.js';
 import { audit } from './audit.js';
 
 export interface Schedule {
@@ -135,7 +136,7 @@ function notify(event: ScheduleNotification['event'], schedule: Schedule, detail
     event,
     detail,
   };
-  writeFileSync(notificationsPath(), JSON.stringify(row) + '\n', { flag: 'a' });
+  appendLine(notificationsPath(), JSON.stringify(row));
   audit({ user: 'scheduler', event: `schedule_${event}`, detail: `${schedule.name}: ${detail}` });
 }
 
@@ -219,11 +220,12 @@ function missedMatches(cron: string, fromIso: string | undefined, now: Date): bo
 const inFlight = new Set<string>();
 
 async function runSchedule(schedule: Schedule, port: number, trigger: 'tick' | 'manual' | 'catchup'): Promise<void> {
-  if (inFlight.has(schedule.id)) {
+  const flightKey = accountKey() + ':' + schedule.id;
+  if (inFlight.has(flightKey)) {
     notify('skipped_running', schedule, '上一次运行尚未结束，本次跳过');
     return;
   }
-  inFlight.add(schedule.id);
+  inFlight.add(flightKey);
   try {
     const token = issueTokenForUser(schedule.ownerUserId);
     if (!token) {
@@ -291,7 +293,7 @@ async function runSchedule(schedule: Schedule, port: number, trigger: 'tick' | '
     persistSchedule(schedule);
     notify('run_error', schedule, `${trigger} ${schedule.lastResult}`);
   } finally {
-    inFlight.delete(schedule.id);
+    inFlight.delete(flightKey);
   }
 }
 
@@ -304,7 +306,7 @@ export async function runScheduleNow(id: string, port: number): Promise<void> {
 
 // ---- 调度循环 + 启动补跑 ----
 
-export function startScheduler(port: number): { stop: () => void } {
+function startTenantScheduler(port: number): { stop: () => void } {
   const tickMs = Number(process.env['WORKPIVOT_SCHEDULE_TICK_MS']) || 30_000;
 
   // 启动补跑：enabled+catchup 且停机窗口内有匹配 → 补跑一次
@@ -336,4 +338,21 @@ export function startScheduler(port: number): { stop: () => void } {
   timer.unref?.();
 
   return { stop: () => clearInterval(timer) };
+}
+
+export function startScheduler(port: number): { stop: () => void } {
+  const schedulers = new Map<string, { stop: () => void }>();
+  const discover = (): void => {
+    const active = new Set<string>();
+    for (const tenant of listTenants()) withTenant(tenant.id, () => {
+      for (const user of listUsers()) withAccount(user, () => {
+        const key = accountKey(); active.add(key);
+        if (!schedulers.has(key)) schedulers.set(key, startTenantScheduler(port));
+      });
+    });
+    for (const [key, scheduler] of schedulers) if (!active.has(key)) { scheduler.stop(); schedulers.delete(key); }
+  };
+  discover();
+  const timer = setInterval(discover, 5000); timer.unref();
+  return { stop: () => { clearInterval(timer); for (const scheduler of schedulers.values()) scheduler.stop(); } };
 }

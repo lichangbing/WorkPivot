@@ -7,9 +7,10 @@
  * 项目记忆（E02）：任务目录 .workpivot/memory/MEMORY.md——随目录走，同目录任务共享。
  * 一键关闭（E01）：settings.memoryEnabled=false → 全部不注入。
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ensureWorkpivotDir, readJsonSafe, writeAtomic } from './store.js';
+import { requireWithin } from '@workpivot/shared/node';
+import { ensureWorkpivotDir, readJsonSafe, writeAtomic, writeAtomicWithBackup } from './store.js';
 
 export interface MemoryEntry {
   id: string;
@@ -52,7 +53,7 @@ export function readHandbook(userId: string): string {
 
 export function writeHandbook(userId: string, content: string): void {
   ensureWorkpivotDir('data', 'memory', userId);
-  writeFileSync(handbookPath(userId), content, 'utf8');
+  writeAtomicWithBackup(handbookPath(userId), content);
 }
 
 // ---- 条目区（agent 静默写入）----
@@ -74,7 +75,7 @@ function loadEntries(userId: string): MemoryEntry[] {
 
 function saveEntries(userId: string, rows: MemoryEntry[]): void {
   ensureWorkpivotDir('data', 'memory', userId);
-  writeFileSync(entriesPath(userId), rows.map((r) => JSON.stringify(r)).join('\n') + (rows.length > 0 ? '\n' : ''), 'utf8');
+  writeAtomicWithBackup(entriesPath(userId), rows.map((r) => JSON.stringify(r)).join('\n') + (rows.length > 0 ? '\n' : ''));
 }
 
 /** 静默写入条目区；超 ENTRY_CAP 条丢最旧。返回条目 id。 */
@@ -132,7 +133,7 @@ export function setMemoryEnabled(enabled: boolean): void {
 // ---- 项目记忆（E02，随任务目录走）----
 
 export function projectMemoryPath(taskDir: string): string {
-  return join(taskDir, '.workpivot', 'memory', 'MEMORY.md');
+  return requireWithin(join('.workpivot', 'memory', 'MEMORY.md'), taskDir);
 }
 
 export function readProjectMemory(taskDir: string): string {
@@ -147,7 +148,7 @@ export function readProjectMemory(taskDir: string): string {
 
 export function writeProjectMemory(taskDir: string, content: string): void {
   mkdirSync(dirname2(projectMemoryPath(taskDir)), { recursive: true });
-  writeFileSync(projectMemoryPath(taskDir), content, 'utf8');
+  writeAtomicWithBackup(projectMemoryPath(taskDir), content);
 }
 
 function dirname2(p: string): string {
@@ -157,7 +158,7 @@ function dirname2(p: string): string {
 
 // ---- 注入渲染（拼进 system prompt）----
 
-export function renderMemoryInjection(userId: string, taskDir: string): string {
+export function renderMemoryInjection(userId: string, taskDir: string | null): string {
   if (!memoryEnabled()) return '';
   const parts: string[] = [];
   const handbook = readHandbook(userId);
@@ -169,7 +170,7 @@ export function renderMemoryInjection(userId: string, taskDir: string): string {
     const recent = entries.slice(-INJECT_ENTRY_LIMIT).map((e) => `- ${e.content}`);
     parts.push(`# 已记住的条目（用户曾让你记住的信息）\n${recent.join('\n')}`);
   }
-  const project = readProjectMemory(taskDir);
+  const project = taskDir ? readProjectMemory(taskDir) : '';
   if (project.trim() !== '') {
     parts.push(`# 项目记忆（本项目长期信息）\n${project}`);
   }
@@ -178,7 +179,7 @@ export function renderMemoryInjection(userId: string, taskDir: string): string {
 }
 
 /** 供 /api/memory 查看的完整视图。 */
-export function memoryView(userId: string, taskDir: string): {
+export function memoryView(userId: string, taskDir: string | null): {
   handbook: string;
   entries: MemoryEntry[];
   project: string;
@@ -187,18 +188,17 @@ export function memoryView(userId: string, taskDir: string): {
   return {
     handbook: readHandbook(userId),
     entries: listEntries(userId),
-    project: readProjectMemory(taskDir),
+    project: taskDir ? readProjectMemory(taskDir) : '',
     enabled: memoryEnabled(),
   };
 }
 
 /** 项目记忆目录初始化（首次进入任务时写入带说明的空 MEMORY.md）。 */
 export function initProjectMemory(taskDir: string): void {
-  const dir = join(taskDir, '.workpivot', 'memory');
-  const path = join(dir, 'MEMORY.md');
+  const path = projectMemoryPath(taskDir);
+  const dir = dirname2(path);
   if (!existsSync(path)) {
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path, '# 项目记忆\n<!-- 长期有效的项目信息;由确认流写入,也可手工编辑 -->\n', 'utf8');
+    writeAtomic(path, '# 项目记忆\n<!-- 长期有效的项目信息;由负责人管理 -->\n');
   }
 }
-

@@ -1,0 +1,27 @@
+# Separate fresh database; never attach legacy application volumes.
+# Supply a reviewed PostgreSQL image pinned by digest in WORKPIVOT_POSTGRES_IMAGE.
+# No published database port. Backends join workpivot-database network.
+services:
+  database:
+    image: "${WORKPIVOT_POSTGRES_IMAGE:?Set a verified PostgreSQL image digest}"
+    environment:
+      POSTGRES_DB: workpivot
+      POSTGRES_USER: workpivot_schema
+      POSTGRES_PASSWORD: "${WORKPIVOT_DATABASE_ADMIN_PASSWORD:?Set an independent database administration password}"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - database
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -h 127.0.0.1 -U workpivot_schema -d workpivot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    stop_grace_period: 60s
+volumes:
+  postgres-data:
+networks:
+  database:
+    name: workpivot-database
+    internal: true

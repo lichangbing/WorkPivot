@@ -1,0 +1,9 @@
+# Narrow host-worker API only. No Docker socket, SSH keys or Docker CLI access is added to the backend.
+services:
+  workpivot:
+    environment:
+      WORKPIVOT_EXECUTION_MODE: worker
+      WORKPIVOT_WORKER_URL: "http://host.docker.internal:39990"
+      WORKPIVOT_WORKER_TOKEN: "${WORKPIVOT_WORKER_TOKEN:?Missing dedicated worker token}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

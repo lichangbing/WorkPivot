@@ -1,0 +1,4 @@
+# Replace with your deployment domain. Run Caddy on the Docker host.
+workpivot.example.com {
+    reverse_proxy 127.0.0.1:39800
+}

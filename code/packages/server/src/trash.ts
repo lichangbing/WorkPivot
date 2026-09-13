@@ -2,16 +2,18 @@
  * M1-10/B03：回收站。删除的目录不再直接 rm，而是移入 ~/.workpivot/trash/<label>-<ts>/，
  * 附 manifest.json 记录原路径与删除时间（保留可恢复线索；清理策略后续版本提供）。
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { ensureWorkpivotDir } from './store.js';
 
-/** 移入回收站（跨盘 rename 会失败，回退到复制删除由调用方决定是否直接删）。 */
+/** Preserve a complete backup before deleting across Docker volumes or physical disks. */
 export function moveToTrash(absPath: string, label: string): { ok: boolean; trashPath?: string; error?: string } {
   if (!existsSync(absPath)) return { ok: true };
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const safeLabel = label.replace(/[^\w.-]/g, '_');
-  const trashPath = join(ensureWorkpivotDir('trash'), `${safeLabel}-${stamp}`);
+  const trashPath = join(ensureWorkpivotDir('trash'), `${safeLabel}-${stamp}-${randomUUID()}`);
+  let copied = false;
   try {
     mkdirSync(trashPath, { recursive: true });
     // 先落 manifest 再移入（同目录下放被删内容本体）
@@ -20,11 +22,17 @@ export function moveToTrash(absPath: string, label: string): { ok: boolean; tras
       JSON.stringify({ originalPath: absPath, deletedAt: new Date().toISOString(), label }, null, 2),
       'utf8',
     );
-    renameSync(absPath, join(trashPath, 'payload'));
+    try { renameSync(absPath, join(trashPath, 'payload')); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error;
+      cpSync(absPath, join(trashPath, 'payload'), { recursive: true, dereference: false, verbatimSymlinks: true, errorOnExist: true, force: false });
+      copied = true;
+      rmSync(absPath, { recursive: true });
+    }
     return { ok: true, trashPath };
   } catch (err) {
-    // 回收失败不阻塞删除语义：清掉半成品后返回错误，由调用方决定
-    rmSync(trashPath, { recursive: true, force: true });
+    // If source cleanup failed, preserve the complete backup for recovery.
+    if (!copied) rmSync(trashPath, { recursive: true, force: true });
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }

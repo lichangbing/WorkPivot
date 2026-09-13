@@ -4,7 +4,7 @@
  * 注意：工作区交付物（用户可见产物）直接写盘（B01），不走本层；
  *       日志允许直接追加；本层管的是 ~/.workpivot 下的应用数据。
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { workpivotHome } from '@workpivot/shared/node';
 
@@ -24,13 +24,8 @@ export function writeAtomic(path: string, data: string): void {
 export function writeAtomicWithBackup(path: string, data: string): void {
   ensureDir(path);
   if (existsSync(path)) {
-    try {
-      const bak = `${path}.bak`;
-      if (existsSync(bak)) rmSync(bak);
-      renameSync(path, bak);
-    } catch {
-      // .bak 失败不阻塞主写入
-    }
+    // Keep the primary in place until its replacement is ready; failed backup must stop the update.
+    writeAtomic(`${path}.bak`, readFileSync(path, 'utf8'));
   }
   writeAtomic(path, data);
 }
@@ -39,14 +34,14 @@ export interface ReadResult {
   ok: boolean;
   data: string | null;
   /** 'missing'=不存在；'bak'=正常读取；'corrupt-bak'=原文件损坏已隔离、从 .bak 恢复；'corrupt-missing'=损坏且无备份 */
-  source?: 'missing' | 'bak' | 'corrupt-bak' | 'corrupt-missing';
+  source?: 'missing' | 'primary' | 'bak' | 'corrupt-bak' | 'corrupt-missing';
 }
 
 /** 安全读：解析失败/读取失败时隔离为 *.corrupt，并尝试回退 .bak。 */
 export function readTextSafe(path: string): ReadResult {
   if (!existsSync(path)) return { ok: false, data: null, source: 'missing' };
   try {
-    return { ok: true, data: readFileSync(path, 'utf8'), source: 'bak' };
+    return { ok: true, data: readFileSync(path, 'utf8'), source: 'primary' };
   } catch {
     return quarantineAndFallback(path);
   }
@@ -69,15 +64,28 @@ function quarantineAndFallback(path: string): ReadResult {
   return { ok: false, data: null, source: 'corrupt-missing' };
 }
 
-/** 读 JSON：损坏自动隔离+回退 .bak，最终失败返回 fallback。 */
-export function readJsonSafe<T>(path: string, fallback: T): { value: T; source: ReadResult['source'] } {
-  const result = readTextSafe(path);
-  if (!result.ok || result.data === null) return { value: fallback, source: result.source };
-  try {
-    return { value: JSON.parse(result.data) as T, source: result.source };
-  } catch {
-    return { value: fallback, source: quarantineAndFallback(path).source ?? 'corrupt-missing' };
+export class DataIntegrityError extends Error {
+  constructor() { super('应用数据损坏，无法安全读取；请管理员检查备份并恢复后重试'); this.name = 'DataIntegrityError'; }
+}
+
+/** Defaults apply only to never-created data. Corruption must not reopen initialization. */
+export function readJsonSafe<T>(path: string, fallback: T, validate?: (value: unknown) => boolean): { value: T; source: ReadResult['source'] } {
+  const primary = existsSync(path);
+  const backup = existsSync(`${path}.bak`);
+  if (!primary && !backup && !existsSync(`${path}.corrupt`)) return { value: structuredClone(fallback), source: 'missing' };
+  const parse = (file: string): T => {
+    const value: unknown = JSON.parse(readFileSync(file, 'utf8'));
+    if (validate && !validate(value)) throw new DataIntegrityError();
+    return value as T;
+  };
+  if (primary) {
+    try { return { value: parse(path), source: 'primary' }; } catch { /* Try a validated backup. */ }
   }
+  let value: T;
+  try { value = parse(`${path}.bak`); } catch { throw new DataIntegrityError(); }
+  if (primary) copyFileSync(path, `${path}.corrupt`);
+  writeAtomic(path, JSON.stringify(value, null, 2));
+  return { value, source: 'corrupt-bak' };
 }
 
 /** 追加一行（转写/审计/索引用；append 语义）。 */

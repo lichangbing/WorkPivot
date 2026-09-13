@@ -1,0 +1,16 @@
+# Explicit opt-in for a dedicated Docker host. This grants Docker control to the service.
+# docker compose -f docker-compose.yml -f docker-compose.execution.yml up -d
+services:
+  workpivot:
+    environment:
+      WORKPIVOT_EXECUTION_MODE: docker
+      WORKPIVOT_EXECUTION_ROOT: /execution
+      WORKPIVOT_EXECUTION_VOLUME: "${WORKPIVOT_EXECUTION_VOLUME:-workpivot-execution}"
+    group_add:
+      - "${WORKPIVOT_DOCKER_GID:?请配置 Docker socket 所属组 ID}"
+    volumes:
+      - workpivot-execution:/execution
+      - /var/run/docker.sock:/var/run/docker.sock
+volumes:
+  workpivot-execution:
+    name: "${WORKPIVOT_EXECUTION_VOLUME:-workpivot-execution}"

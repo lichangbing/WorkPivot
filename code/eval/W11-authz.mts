@@ -1,21 +1,25 @@
 /**
- * W11 端到端评测：RL1-02 权限档位按用户隔离（模拟 LLM 零成本）。
+ * W11 端到端评测：RL1-02 个人档位与 RL1-05 授权请求绑定（模拟 LLM 零成本）。
  * 覆盖：个人档位自选生效（readonly 拒写/无授权卡）、未自选回落全局默认档、
  *       全局默认档仅 admin 可改（member 403）、两层合并（个人档位不受全局改动影响）、
  *       清除自选回落、非法档位值 400、A/B 用户互不影响。
+ *       授权回填跨用户/跨任务拒绝、决策枚举与 scope 校验、重放拒绝、管理员代管及审计。
  * 运行：pnpm eval:w11
  */
 import { createServer as createHttpServer, type Server } from 'node:http';
-import { mkdtempSync, rmSync, readdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, readdirSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const home = mkdtempSync(join(tmpdir(), 'w11-home-'));
 const workspace = mkdtempSync(join(tmpdir(), 'w11-ws-'));
+process.env['WORKPIVOT_INSECURE_SECRETS'] = '1';
+process.env['WORKPIVOT_EXECUTION_MODE'] = 'trusted-local';
 process.env['WORKPIVOT_HOME'] = home;
 process.env['WORKPIVOT_WORKSPACE'] = workspace;
 
 const { startServer } = await import('../packages/server/src/index.js');
+const { checkPermissionLifecycle } = await import('./W11-permission-lifecycle.mts');
 
 const results: Array<{ name: string; pass: boolean; detail?: string }> = [];
 function assert(name: string, pass: boolean, detail?: string): void {
@@ -53,6 +57,9 @@ const mock: Server = createHttpServer((req, res) => {
         res.end();
       } else if (body.includes('写入报告')) {
         toolCall('write', '{"path": "out.md", "content": "# 输出"}');
+      } else if (body.includes('测试高危审批')) {
+        // 只测试拒绝路径，绝不批准或执行此命令。
+        toolCall('bash', JSON.stringify({ command: 'git reset --hard' }));
       } else {
         send({ choices: [{ delta: { content: '（默认回复）' } }] });
         res.write('data: [DONE]\n\n');
@@ -112,12 +119,16 @@ interface RunResult {
   text: string;
 }
 
-async function runTurn(s: Session, taskId: string, content: string): Promise<RunResult> {
+async function runTurn(
+  s: Session, taskId: string, content: string,
+  onPermission?: (event: Record<string, unknown>) => Promise<void>,
+): Promise<RunResult> {
   const events: Array<Record<string, unknown>> = [];
   const response = await fetch(`${base}/api/tasks/${taskId}/messages`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${s.token}` },
     body: JSON.stringify({ content }),
+    signal: AbortSignal.timeout(30_000),
   });
   if (!response.ok || !response.body) throw new Error(`SSE HTTP ${response.status}`);
   const reader = response.body.getReader();
@@ -140,8 +151,12 @@ async function runTurn(s: Session, taskId: string, content: string): Promise<Run
       events.push(event);
       if (event['type'] === 'assistant_delta') text += String(event['text']);
       if (event['type'] === 'permission_request') {
-        // W11 不应有授权卡（界内写入场景）；兜底拒绝并留事件供断言暴露
-        await s.json(`/api/tasks/${taskId}/permission`, { method: 'POST', body: JSON.stringify({ id: event['id'], decision: 'deny' }) });
+        try {
+          await onPermission?.(event);
+        } finally {
+          // 未被测试消费的请求兜底拒绝；已消费请求返回 404。
+          await s.raw(`/api/tasks/${taskId}/permission`, { method: 'POST', body: JSON.stringify({ id: event['id'], decision: 'deny' }) });
+        }
       }
     }
   }
@@ -217,12 +232,123 @@ try {
   const aFinal = await alice.json<{ tier: string }>('/api/me/tier');
   assert('RL1-02 全局还原后 alice 回落 workdir', aFinal.tier === 'workdir');
 
+  // RL1-05：真实 SSE 授权卡回填，覆盖身份、任务、决策和重放。
+  await alice.json('/api/me/tier', { method: 'PUT', body: JSON.stringify({ tier: 'ask' }) });
+  const newTask = async (name: string): Promise<{ id: string; directory: string }> =>
+    (await alice.json<{ task: { id: string; directory: string } }>('/api/tasks', {
+      method: 'POST', body: JSON.stringify({ name, temp: true }),
+    })).task;
+  const approvalTask = await newTask('授权归属');
+  const anotherTask = await newTask('同用户另一任务');
+  const decide = (s: Session, taskId: string, id: unknown, decision: unknown) =>
+    s.raw(`/api/tasks/${taskId}/permission`, { method: 'POST', body: JSON.stringify({ id, decision }) });
+  let approvalId = '';
+  const approved = await runTurn(alice, approvalTask.id, '请写入报告', async (event) => {
+    approvalId = String(event['id']);
+    assert('RL1-05 请求使用 UUID v4', /^pr-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(approvalId));
+    assert('RL1-05 他人任务回填 403', (await decide(bob, approvalTask.id, approvalId, 'allow')).status === 403);
+    assert('RL1-05 借自己的任务回填他人请求 403', (await decide(bob, taskB.task.id, approvalId, 'allow')).status === 403);
+    assert('RL1-05 同用户跨任务回填 403', (await decide(alice, anotherTask.id, approvalId, 'allow')).status === 403);
+    assert('RL1-05 管理员也不能跨任务回填 403', (await decide(admin, anotherTask.id, approvalId, 'allow')).status === 403);
+    assert('RL1-05 不存在的任务 404', (await decide(alice, 'missing-task', approvalId, 'allow')).status === 404);
+    assert('RL1-05 不存在的请求 404', (await decide(alice, approvalTask.id, 'missing-request', 'allow')).status === 404);
+    for (const invalid of ['god', 'once', '', null, true, {}, ['allow']]) {
+      assert(`RL1-05 非法决策 ${JSON.stringify(invalid)} 返回 400`, (await decide(alice, approvalTask.id, approvalId, invalid)).status === 400);
+    }
+    assert('RL1-05 非字符串请求 ID 返回 400', (await decide(alice, approvalTask.id, {}, 'allow')).status === 400);
+    assert('RL1-05 一次性卡不能升级 session', (await decide(alice, approvalTask.id, approvalId, 'session')).status === 400);
+    assert('RL1-05 一次性卡不能升级 forever', (await decide(alice, approvalTask.id, approvalId, 'forever')).status === 400);
+    assert('RL1-05 非法回填后文件仍未写入', !existsSync(join(approvalTask.directory, 'out.md')));
+    assert('RL1-05 请求保留且所有者可正常批准', (await decide(alice, approvalTask.id, approvalId, 'allow')).status === 200);
+    assert('RL1-05 已消费请求不能重放', (await decide(alice, approvalTask.id, approvalId, 'allow')).status === 404);
+  });
+  assert('RL1-05 授权后真实执行并结束', eventsOf(approved, 'tool_result')[0]?.['ok'] === true && existsSync(join(approvalTask.directory, 'out.md')) && eventsOf(approved, 'done').length === 1);
+
+  const delegatedTask = await newTask('管理员代管');
+  const delegated = await runTurn(admin, delegatedTask.id, '请写入报告', async (event) => {
+    assert('RL1-05 管理员代跑仍按所有者 ask 产生授权卡', event['scope'] === 'once');
+    assert('RL1-05 管理员可批准正确任务的授权', (await decide(admin, delegatedTask.id, event['id'], 'allow')).status === 200);
+  });
+  assert('RL1-05 管理员代管实际执行成功', eventsOf(delegated, 'tool_result')[0]?.['ok'] === true);
+
+  const dangerTask = await newTask('高危授权范围');
+  const dangerous = await runTurn(alice, dangerTask.id, '测试高危审批', async (event) => {
+    assert('RL1-05 高危卡仅限 once', event['scope'] === 'once');
+    assert('RL1-05 高危卡拒绝 session', (await decide(alice, dangerTask.id, event['id'], 'session')).status === 400);
+    assert('RL1-05 高危卡拒绝 forever', (await decide(alice, dangerTask.id, event['id'], 'forever')).status === 400);
+    assert('RL1-05 高危卡仍可拒绝', (await decide(alice, dangerTask.id, event['id'], 'deny')).status === 200);
+  });
+  assert('RL1-05 高危命令未执行', eventsOf(dangerous, 'tool_result')[0]?.['ok'] === false);
+  assert('RL1-05 伪造永久授权没有写入白名单', !existsSync(join(home, 'config', 'permissions.json')));
+
+  // RL1-07：真实 HTTP stop，授权等待应结束、旧请求失效、任务可重用。
+  const stoppedTask = await newTask('等待授权时停止');
+  let stoppedId = '';
+  const stopped = await runTurn(alice, stoppedTask.id, '请写入报告', async (event) => {
+    stoppedId = String(event['id']);
+    assert('RL1-07 等待授权时 stop 成功', (await alice.raw(`/api/tasks/${stoppedTask.id}/stop`, { method: 'POST' })).status === 200);
+  });
+  assert('RL1-07 stop 后任务以 aborted 结束', eventsOf(stopped, 'done')[0]?.['stopReason'] === 'aborted');
+  assert('RL1-07 stop 后没有写入文件', !existsSync(join(stoppedTask.directory, 'out.md')));
+  assert('RL1-07 stop 后旧授权 404', (await decide(alice, stoppedTask.id, stoppedId, 'allow')).status === 404);
+  const resumed = await runTurn(alice, stoppedTask.id, '请写入报告', async (event) => {
+    await decide(alice, stoppedTask.id, event['id'], 'allow');
+  });
+  assert('RL1-07 停止后任务可再次执行', eventsOf(resumed, 'done')[0]?.['stopReason'] === 'completed' && existsSync(join(stoppedTask.directory, 'out.md')));
+
+  const disconnectTask = await newTask('等待授权时断线');
+  const disconnected = new AbortController();
+  const response = await fetch(`${base}/api/tasks/${disconnectTask.id}/messages`, {
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${alice.token}` },
+    body: JSON.stringify({ content: '请写入报告' }), signal: disconnected.signal,
+  });
+  const stream = response.body!.getReader();
+  let received = '';
+  const disconnectTimer = setTimeout(() => disconnected.abort(), 5000);
+  try {
+    while (!received.includes('permission_request')) {
+      const chunk = await stream.read();
+      if (chunk.done) throw new Error('未收到授权卡');
+      received += new TextDecoder().decode(chunk.value);
+    }
+  } finally { clearTimeout(disconnectTimer); disconnected.abort(); await stream.cancel().catch(() => undefined); }
+  let status = 'running';
+  const until = Date.now() + 5000;
+  while (status === 'running' && Date.now() < until) {
+    status = (await alice.json<{ task: { status: string } }>(`/api/tasks/${disconnectTask.id}`)).task.status;
+    if (status === 'running') await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert('RL1-07 客户端断线后任务释放', status === 'interrupted');
+  assert('RL1-07 断线后文件未写入', !existsSync(join(disconnectTask.directory, 'out.md')));
+  const reconnect = await runTurn(alice, disconnectTask.id, '请写入报告');
+  assert('RL1-07 断线后可重新对话', eventsOf(reconnect, 'done').length === 1);
+
+  await checkPermissionLifecycle(home, workspace, alice, bob, admin, assert);
+  const { checkProjectMemory } = await import('./W11-project-memory.mts');
+  await checkProjectMemory(admin, alice, bob, assert);
+  const { checkPermissionMatrix } = await import('./W11-permission-matrix.mts');
+  await checkPermissionMatrix((await alice.json<{ user: { id: string } }>('/api/auth/state')).user.id, workspace, assert);
+  const aid = (await alice.json<{ user: { id: string } }>('/api/auth/state')).user.id;
+  const bid = (await bob.json<{ user: { id: string } }>('/api/auth/state')).user.id;
+  const { project: changingProject } = await admin.json<{ project: { id: string } }>('/api/projects', { method: 'POST', body: JSON.stringify({ name: '运行中成员变更' }) });
+  await admin.json(`/api/projects/${changingProject.id}/access`, { method: 'PUT', body: JSON.stringify({ ownerUserId: aid, memberUserIds: [] }) });
+  const { task: changingTask } = await alice.json<{ task: { id: string; directory: string } }>('/api/tasks', { method: 'POST', body: JSON.stringify({ name: '等待时移出', projectId: changingProject.id }) });
+  await alice.json('/api/me/tier', { method: 'PUT', body: JSON.stringify({ tier: 'ask' }) });
+  const changingRun = await runTurn(alice, changingTask.id, '写入报告', async () => {
+    await admin.json(`/api/projects/${changingProject.id}/access`, { method: 'PUT', body: JSON.stringify({ ownerUserId: bid, memberUserIds: [] }) });
+  });
+  assert('RL1-08 成员变更中止正在等待的任务', eventsOf(changingRun, 'done').some((e) => e['stopReason'] === 'aborted'));
+  assert('RL1-08 移出成员后旧执行未写文件', !existsSync(join(changingTask.directory, 'out.md')));
+
   // 7. 审计：档位变更留操作者（I03 本地 JSONL 审计=竞品差异点）
   const auditText = readdirSync(join(home, 'audit'))
     .map((f) => readFileSync(join(home, 'audit', f), 'utf8'))
     .join('');
   assert('RL1-02 审计含个人档位变更事件', auditText.includes('"event":"user_tier_changed"') || auditText.includes('"event":"my_tier_changed"'));
   assert('RL1-02 审计含全局默认档变更（admin 操作）', auditText.includes('"event":"tier_changed"') && auditText.includes('"user":"admin"'));
+  const approvalAudit = auditText.split('\n').filter(Boolean).map((line) => JSON.parse(line) as Record<string, unknown>)
+    .filter((row) => row['event'] === 'permission_decision' && row['detail'] === approvalId);
+  assert('RL1-05 非法回填不伪造成功审批审计', approvalAudit.length === 1 && approvalAudit[0]?.['user'] === 'alice' && approvalAudit[0]?.['decision'] === 'allow');
 } catch (err) {
   assert('执行无未捕获异常', false, err instanceof Error ? err.message : String(err));
 } finally {

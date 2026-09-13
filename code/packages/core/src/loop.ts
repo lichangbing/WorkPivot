@@ -4,12 +4,17 @@
  *          工具结果预算（>50k 交 stashResult 落盘）、循环信号=流中 tool_calls（竞品实证）。
  */
 import { createHash } from 'node:crypto';
+import { canonicalPath } from '@workpivot/shared/node';
 import type { ModelClient, ChatMessage, ToolCall, ToolSchema } from './model/openai.js';
 import type { Tool, ToolContext, ToolAccessRequest } from './tools.js';
 
-export type AgentEventType = 'assistant_delta' | 'reasoning_delta' | 'tool_use' | 'tool_result' | 'error';
+export type AgentEventType = 'assistant_delta' | 'reasoning_delta' | 'tool_use' | 'tool_status' | 'tool_result' | 'error';
 
 export interface AgentEvent {
+  displayName?: string;
+  callId?: string;
+  durationMs?: number;
+  status?: 'waiting' | 'running' | 'ok' | 'error' | 'denied' | 'stopped';
   type: AgentEventType;
   text?: string;
   toolName?: string;
@@ -37,6 +42,8 @@ export interface RunAgentOptions {
   stashResult?: (content: string) => Promise<string>;
   /** bash 子进程附加环境变量（NODE_PATH 等） */
   extraEnv?: Record<string, string>;
+  filePolicy?: ToolContext['filePolicy'];
+  executeCommand?: ToolContext['executeCommand'];
   onEvent?: (event: AgentEvent) => void;
   signal?: AbortSignal;
 }
@@ -80,6 +87,8 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
     requestAccess: options.requestAccess,
     extraAllowedDirs: [],
     extraEnv: options.extraEnv,
+    filePolicy: options.filePolicy,
+    executeCommand: options.executeCommand,
   };
 
   const startedAt = Date.now();
@@ -165,7 +174,10 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
         break;
       }
       const tool = tools.find((t) => t.name === call.function.name);
-      options.onEvent?.({ type: 'tool_use', toolName: call.function.name, args: safeParse(call.function.arguments) });
+      const identity = { toolName: call.function.name, displayName: tool?.displayName, callId: call.id };
+      options.onEvent?.({ type: 'tool_use', ...identity, status: tool?.displayName ? 'waiting' : 'running', args: safeParse(call.function.arguments) });
+      let startedAt: number | undefined;
+      let outcome: AgentEvent['status'];
       let resultText: string;
       let ok = true;
       const argFp = fingerprint(`${call.function.name}:${call.function.arguments}`);
@@ -181,17 +193,26 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
         try {
           // 权限判定（T2-04/05）：声明访问 → 钩子判定；拒绝则以错误回填，不执行
           let allowed = true;
+          ctx.extraAllowedDirs = [];
           let request: ToolAccessRequest | null = null;
           if (ctx.requestAccess && tool.access) {
             request = tool.access(safeParse(call.function.arguments), ctx);
+            request.paths = request.paths.map((p) => ({ ...p, path: canonicalPath(p.path, ctx.taskDir) }));
             allowed = await ctx.requestAccess(request);
             if (allowed) ctx.extraAllowedDirs = request.paths.map((p) => p.path);
           }
+          if (signal?.aborted) {
+            options.onEvent?.({ type: 'tool_result', ...identity, ok: false, status: 'stopped', durationMs: 0, message: '任务已停止，工具未执行' });
+            stopReason = 'aborted'; break;
+          }
           if (allowed) {
+            startedAt = Date.now();
+            options.onEvent?.({ type: 'tool_status', ...identity, status: 'running' });
             resultText = await tool.run(safeParse(call.function.arguments), ctx);
           } else {
+            outcome = 'denied';
             ok = false;
-            resultText = '权限不足：用户拒绝或当前策略禁止本次访问。请改用任务目录内的路径，或提示用户调整权限档位。';
+            resultText = request?.external ? 'MCP 调用未获授权：用户拒绝或当前策略禁止本次外部操作。' : '权限不足：用户拒绝或当前策略禁止本次访问。请改用任务目录内的路径，或提示用户调整权限档位。';
           }
         } catch (err) {
           ok = false;
@@ -218,7 +239,7 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
       if (options.stashResult && resultText.length > RESULT_STASH_THRESHOLD) {
         resultText = await options.stashResult(resultText);
       }
-      options.onEvent?.({ type: 'tool_result', toolName: call.function.name, ok, message: resultText.slice(0, 200) });
+      options.onEvent?.({ type: 'tool_result', ...identity, ok, status: signal?.aborted ? 'stopped' : outcome ?? (ok ? 'ok' : 'error'), durationMs: startedAt === undefined ? 0 : Date.now() - startedAt, message: resultText.slice(0, tool?.displayName ? 8000 : 200) });
       messages.push({ role: 'tool', tool_call_id: call.id, content: resultText });
     }
     if (stopReason === 'aborted') break;

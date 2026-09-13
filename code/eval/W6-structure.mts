@@ -66,6 +66,7 @@ function spawnServer(port: string): ChildProcess {
     cwd: codeDir,
     env: {
       ...process.env,
+      WORKPIVOT_INSECURE_SECRETS: '1',
       WORKPIVOT_HOME: home,
       WORKPIVOT_WORKSPACE: workspace,
       WORKPIVOT_PORT: port,

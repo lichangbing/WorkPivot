@@ -12,6 +12,8 @@ Desktop.ini
 
 # ===== Node.js =====
 node_modules/
+.pnpm-store/
+releases/**/installers/
 dist/
 build/
 .next/

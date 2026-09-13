@@ -1,0 +1,18 @@
+# Install as a user unit for the existing Docker-host deployment user.
+[Unit]
+Description=WorkPivot bounded Skill execution service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/workpivot-worker
+EnvironmentFile=%h/workpivot-worker/worker.env
+ExecStart=/usr/bin/node %h/workpivot-worker/skill-worker.mjs
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

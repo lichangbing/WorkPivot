@@ -1,16 +1,18 @@
+import { ThemeSwitch } from './theme';
+import { Icon } from './Icon';
 /**
  * U2/E01/J01：设置面板（左栏底部 ⚙ 弹出）。
  * 权限档位切换、记忆开关（+M1-11 记忆管理入口）、模型状态只读（+后台入口 for admin）、退出登录。
  */
 import { useState } from 'react';
 import type { PublicUser, Tier } from './api';
-import { MemoryModal } from './MemoryModal';
+import { MemoryCenter as MemoryModal } from './MemoryCenter';
 
 interface Props {
   user: PublicUser;
   tier: Tier;
   tierLabels: Record<string, string>;
-  /** RL1-02：全局默认档（仅 admin 显示可改；对未自选个人档位的用户生效）。 */
+  /** RL1-02：默认档（仅 admin 显示可改；对未自选个人档位的用户生效）。 */
   defaultTier?: Tier;
   onDefaultTierChange?: (tier: Tier) => void;
   memoryOn: boolean;
@@ -31,8 +33,8 @@ export function SettingsPanel(props: Props): React.JSX.Element {
     <div className="fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-neutral-700 bg-neutral-900 shadow-2xl">
       <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
         <span className="text-sm font-semibold">设置</span>
-        <button className="text-neutral-500 hover:text-neutral-200" onClick={onClose}>
-          ✕
+        <button className="text-neutral-500 hover:text-neutral-200" aria-label="关闭设置" onClick={onClose}>
+          <Icon name="close" />
         </button>
       </div>
 
@@ -44,13 +46,15 @@ export function SettingsPanel(props: Props): React.JSX.Element {
           </div>
           <div>
             <p className="font-medium">{user.username}</p>
-            <p className="text-xs text-neutral-500">{user.role === 'admin' ? '管理员' : '成员'}</p>
+            <p className="text-xs text-neutral-500">{user.role === 'admin' ? '管理员' : '成员'}</p><p className="text-xs text-neutral-500">个人空间 · 数据仅本人可见</p>
           </div>
         </div>
 
+        <section aria-label="外观设置"><p className="mb-2 text-xs text-neutral-500">界面风格</p><ThemeSwitch /></section>
+
         {/* 权限档位（个人；RL1-02） */}
         <div>
-          <p className="mb-1 text-xs text-neutral-500">权限档位（本人）</p>
+          <p className="mb-1 text-xs text-neutral-500">操作模式</p>
           <select
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5 outline-none focus:border-neutral-500"
             value={tier}
@@ -62,12 +66,13 @@ export function SettingsPanel(props: Props): React.JSX.Element {
               </option>
             ))}
           </select>
+          <p className="mt-2 text-xs leading-relaxed text-neutral-500">{tier === 'ask' ? '读取资料自动执行；修改文件和执行脚本前确认。' : '当前项目内常规读写和隔离脚本自动执行。'} 高风险命令和 MCP 调用仍需确认，不能访问其他账号的数据。</p>
         </div>
 
-        {/* 全局默认档（仅 admin；RL1-02——对未自选个人档位的用户生效） */}
+        {/* 默认档（仅 admin；RL1-02——对未自选个人档位的用户生效） */}
         {user.role === 'admin' && defaultTier && onDefaultTierChange && (
           <div>
-            <p className="mb-1 text-xs text-neutral-500">全局默认档（未自选者生效）</p>
+            <p className="mb-1 text-xs text-neutral-500">默认模式（未单独选择时使用）</p>
             <select
               className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5 outline-none focus:border-neutral-500"
               value={defaultTier}
@@ -89,6 +94,7 @@ export function SettingsPanel(props: Props): React.JSX.Element {
             <button
               className={`rounded px-2 py-1 text-xs ${memoryOn ? 'bg-emerald-700' : 'bg-neutral-700'}`}
               disabled={memoryBusy}
+              title="切换个人记忆功能"
               onClick={() => {
                 setMemoryBusy(true);
                 onMemoryToggle(!memoryOn);
@@ -102,7 +108,7 @@ export function SettingsPanel(props: Props): React.JSX.Element {
             className="mt-1.5 text-xs text-blue-400 hover:text-blue-300"
             onClick={() => setMemoryModalOpen(true)}
           >
-            查看与编辑记忆 →
+            查看与编辑记忆 <Icon name="arrow" size={14} />
           </button>
         </div>
 
@@ -112,7 +118,7 @@ export function SettingsPanel(props: Props): React.JSX.Element {
           <p className="text-xs text-neutral-300">{activeModel ?? '未配置'}</p>
           {user.role === 'admin' && (
             <a className="text-xs text-blue-400 hover:text-blue-300" href="/admin" target="_blank" rel="noreferrer">
-              前往后台配置 →
+              前往后台配置 <Icon name="arrow" size={14} />
             </a>
           )}
         </div>

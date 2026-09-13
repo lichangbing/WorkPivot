@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 /** C02/C03：模型供应商配置弹窗（验活/保存/切换；key 经 I04 加密落盘）。 */
 import { useState } from 'react';
 import { api, type PublicProvider } from './api';
@@ -41,8 +42,8 @@ export function ProviderModal({ providers, onClose, onSaved }: Props): React.JSX
       <div className="w-[520px] rounded-xl border border-neutral-700 bg-neutral-900 p-5">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-semibold">模型设置</h2>
-          <button className="text-neutral-500 hover:text-neutral-200" onClick={onClose}>
-            ✕
+          <button className="text-neutral-500 hover:text-neutral-200" aria-label="关闭窗口" onClick={onClose}>
+            <Icon name="close" />
           </button>
         </div>
 
@@ -53,7 +54,7 @@ export function ProviderModal({ providers, onClose, onSaved }: Props): React.JSX
             {providers.map((p) => (
               <div key={p.id} className="mb-1 flex items-center justify-between rounded bg-neutral-800 px-3 py-1.5 text-xs">
                 <span>
-                  {p.active && <span className="mr-1 text-emerald-400">●</span>}
+                  {p.active && <span aria-label="当前启用" className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />}
                   {p.name} —— {p.baseUrl} / {p.modelId}
                   {!p.hasApiKey && <span className="ml-1 text-neutral-500">（无 key）</span>}
                 </span>

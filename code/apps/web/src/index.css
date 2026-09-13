@@ -1,1 +1,74 @@
 @import "tailwindcss";
+
+:root { font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--color-neutral-950); color: var(--color-neutral-100); }
+:root[data-theme="light"] {
+  --color-neutral-50: #111827;
+  --color-neutral-100: #17212f;
+  --color-neutral-200: #263244;
+  --color-neutral-300: #384354;
+  --color-neutral-400: #505b6b;
+  --color-neutral-500: #626d7c;
+  --color-neutral-600: #7a8492;
+  --color-neutral-700: #d7dce3;
+  --color-neutral-800: #eceef2;
+  --color-neutral-900: #f7f8fa;
+  --color-neutral-950: #ffffff;
+}
+:root[data-theme="light"] .text-red-400 { color: var(--color-red-700); }
+:root[data-theme="light"] .bg-red-900\/80 { background-color: color-mix(in srgb, var(--color-red-100) 80%, transparent); }
+:root[data-theme="light"] .text-red-100 { color: var(--color-red-700); }
+:root[data-theme="light"] .bg-blue-700 { background-color: var(--color-blue-100); }
+:root[data-theme="light"] .text-amber-400 { color: var(--color-amber-700); }
+:root[data-theme="light"] .bg-amber-700 { background-color: var(--color-amber-100); }
+:root[data-theme="light"] .border-emerald-600 { border-color: var(--color-emerald-200); }
+:root[data-theme="light"] .bg-emerald-800\/60 { background-color: color-mix(in srgb, var(--color-emerald-100) 60%, transparent); }
+:root[data-theme="light"] .text-emerald-300 { color: var(--color-emerald-700); }
+:root[data-theme="light"] .bg-blue-800\/60 { background-color: color-mix(in srgb, var(--color-blue-100) 60%, transparent); }
+:root[data-theme="light"] .text-blue-300 { color: var(--color-blue-700); }
+:root[data-theme="light"] .text-blue-400 { color: var(--color-blue-700); }
+:root[data-theme="light"] .border-amber-600\/60 { border-color: color-mix(in srgb, var(--color-amber-200) 60%, transparent); }
+:root[data-theme="light"] .bg-amber-950\/30 { background-color: color-mix(in srgb, var(--color-amber-100) 30%, transparent); }
+:root[data-theme="light"] .text-amber-300 { color: var(--color-amber-700); }
+:root[data-theme="light"] .border-blue-600\/60 { border-color: color-mix(in srgb, var(--color-blue-200) 60%, transparent); }
+:root[data-theme="light"] .bg-blue-950\/40 { background-color: color-mix(in srgb, var(--color-blue-100) 40%, transparent); }
+:root[data-theme="light"] .bg-emerald-700 { background-color: var(--color-emerald-100); }
+:root[data-theme="light"] .bg-red-900 { background-color: var(--color-red-100); }
+:root[data-theme="light"] .hover\:bg-red-800:hover { background-color: var(--color-red-200); }
+:root[data-theme="light"] .bg-amber-950\/40 { background-color: color-mix(in srgb, var(--color-amber-100) 40%, transparent); }
+:root[data-theme="light"] .text-emerald-400 { color: var(--color-emerald-700); }
+:root[data-theme="light"] .hover\:bg-red-900:hover { background-color: var(--color-red-200); }
+:root[data-theme="light"] .hover\:text-blue-300:hover { color: var(--color-blue-700); }
+:root[data-theme="light"] .bg-red-900\/70 { background-color: color-mix(in srgb, var(--color-red-100) 70%, transparent); }
+:root[data-theme="light"] .hover\:text-blue-400:hover { color: var(--color-blue-700); }
+:root[data-theme="light"] .hover\:text-red-400:hover { color: var(--color-red-700); }
+:root[data-theme="light"] .bg-emerald-800 { background-color: var(--color-emerald-100); }
+:root[data-theme="light"] .hover\:bg-emerald-700:hover { background-color: var(--color-emerald-200); }
+:root[data-theme="light"] .bg-red-950 { background-color: var(--color-red-100); }
+:root[data-theme="light"] .text-red-300 { color: var(--color-red-700); }
+
+.wp-icon { display: inline-block; vertical-align: -3px; flex-shrink: 0; }
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+button:not(:disabled), summary { cursor: pointer; }
+:focus-visible { outline: 2px solid #3b82f6; outline-offset: 3px; }
+::selection { background: #3b82f640; }
+.theme-switch { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--color-neutral-700); border-radius: 10px; background: var(--color-neutral-800); }
+.theme-switch button { display: flex; flex: 1; align-items: center; justify-content: center; gap: 7px; padding: 7px 12px; border-radius: 7px; font-size: 12px; white-space: nowrap; color: var(--color-neutral-400); }
+.theme-switch button[aria-pressed="true"] { background: var(--color-neutral-950); color: var(--color-neutral-100); box-shadow: 0 1px 4px #00000014; }
+/* Accent buttons retain white ink in both themes. */
+button.bg-blue-600, button.bg-blue-500, button.bg-emerald-600 { color: white; }
+.message-body { overflow-wrap: anywhere; color: var(--color-neutral-200); }
+.message-body > :first-child { margin-top: 0; }
+.message-body p, .message-body ul, .message-body ol, .message-body pre, .message-body blockquote, .message-body table { margin: .75em 0; }
+.message-body ul { list-style: disc; padding-left: 1.5em; }
+.message-body ol { list-style: decimal; padding-left: 1.5em; }
+.message-body h1, .message-body h2, .message-body h3 { font-weight: 600; margin: 1em 0 .5em; }
+.message-body h1 { font-size: 1.5em; } .message-body h2 { font-size: 1.25em; }
+.message-body pre { overflow-x: auto; border: 1px solid var(--color-neutral-700); background: var(--color-neutral-900); padding: 12px; border-radius: 8px; }
+.message-body :not(pre) > code { background: var(--color-neutral-800); border-radius: 4px; padding: 2px 4px; }
+.message-body blockquote { border-left: 3px solid var(--color-neutral-700); padding-left: 12px; color: var(--color-neutral-400); }
+.message-body a { color: #3b82f6; text-decoration: underline; }
+.message-body table { display: block; overflow-x: auto; border-collapse: collapse; }
+.message-body th, .message-body td { border: 1px solid var(--color-neutral-700); padding: 7px 12px; }
+
+/* Keep the composer neutral when its text field receives pointer focus. */
+.message-input:focus-visible { outline: none; }

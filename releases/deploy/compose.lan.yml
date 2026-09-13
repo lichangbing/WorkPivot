@@ -1,0 +1,32 @@
+# Standalone LAN deployment. No build context and no Docker socket required.
+services:
+  workpivot:
+    image: workpivot-server:0.3.0-preview.32
+    container_name: workpivot-server
+    ports:
+      - "${WORKPIVOT_BIND_IP:-192.168.1.158}:39800:39800"
+      - "127.0.0.1:39800:39800"
+    environment:
+      WORKPIVOT_HOST: 0.0.0.0
+      WORKPIVOT_PORT: "39800"
+      WORKPIVOT_WEB_DIST: /app/apps/web/dist
+      WORKPIVOT_HOME: /data/workpivot
+      WORKPIVOT_WORKSPACE: /data/workspace
+      WORKPIVOT_SECRET_KEY: "${WORKPIVOT_SECRET_KEY:?Missing master key}"
+      WORKPIVOT_ADMIN_INIT_TOKEN: "${WORKPIVOT_ADMIN_INIT_TOKEN:?Missing initialization token}"
+      WORKPIVOT_SESSION_TTL_HOURS: "24"
+      WORKPIVOT_MAX_PARALLEL: "8"
+      TZ: Asia/Shanghai
+    init: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=256m
+    volumes:
+      - workpivot-data:/data/workpivot
+      - workpivot-workspace:/data/workspace
+    restart: unless-stopped
+volumes:
+  workpivot-data:
+  workpivot-workspace:

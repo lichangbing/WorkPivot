@@ -58,6 +58,7 @@ function spawnServer(): ChildProcess {
     cwd: codeDir,
     env: {
       ...process.env,
+      WORKPIVOT_INSECURE_SECRETS: '1',
       WORKPIVOT_HOME: home,
       WORKPIVOT_WORKSPACE: workspace,
       WORKPIVOT_PORT: PORT,
@@ -102,7 +103,7 @@ try {
   const reg = await fetch(`${base}/api/auth/register`, {
     method: 'POST', headers: H, body: JSON.stringify({ username: 'admin', password: 'w10-smoke-123' }),
   });
-  const { token } = (await reg.json()) as { token: string };
+  const { token, user } = (await reg.json()) as { token: string; user: { id: string } };
   const auth = { ...H, authorization: `Bearer ${token}` };
   await fetch(`${base}/api/providers`, {
     method: 'POST', headers: auth,
@@ -173,7 +174,7 @@ try {
 
   // 错过补跑：停服 → lastRunAt 改到 10 分钟前 → 重启 → missed_catchup
   await stopServer(children[children.length - 1]!);
-  const schedulesFile = join(home, 'data', 'schedules', 'schedules.json');
+  const schedulesFile = join(home, 'accounts', user.id, 'data', 'schedules', 'schedules.json');
   const raw = JSON.parse(readFileSync(schedulesFile, 'utf8')) as {
     schedules: Array<{ id: string; lastRunAt?: string; enabled: boolean }>;
   };

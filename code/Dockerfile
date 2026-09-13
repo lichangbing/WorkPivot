@@ -5,6 +5,8 @@ FROM node:22-alpine
 
 # pnpm（与 pnpm-lock.yaml 版本对齐由 corepack 读取 packageManager/package.json）
 RUN corepack enable
+RUN apk add --no-cache docker-cli
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 
 WORKDIR /app
 
@@ -17,7 +19,8 @@ COPY packages/shared/package.json packages/shared/
 COPY apps/web/package.json apps/web/
 COPY apps/desktop/package.json apps/desktop/
 
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=workpivot-pnpm,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --network-concurrency=8 --fetch-timeout=180000
 
 # 源码（服务层直接以 tsx 运行 TS 源，无需构建步骤）
 COPY . .
@@ -28,14 +31,18 @@ RUN pnpm --filter @workpivot/web build
 ENV NODE_ENV=production \
     WORKPIVOT_HOST=0.0.0.0 \
     WORKPIVOT_PORT=39800 \
+    WORKPIVOT_WEB_DIST=/app/apps/web/dist \
     WORKPIVOT_HOME=/data/workpivot \
     WORKPIVOT_WORKSPACE=/data/workspace
 
 EXPOSE 39800
+
+RUN mkdir -p /data/workpivot /data/workspace /execution && chown -R node:node /data /execution
+USER node
 
 VOLUME ["/data/workpivot", "/data/workspace"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
   CMD wget -qO- http://127.0.0.1:39800/api/health || exit 1
 
-CMD ["npx", "tsx", "packages/server/src/index.ts"]
+CMD ["./node_modules/.bin/tsx", "packages/server/src/index.ts"]

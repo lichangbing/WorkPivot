@@ -1,0 +1,114 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, statSync, symlinkSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { createServer } from 'node:http';
+const root = mkdtempSync(join(tmpdir(), 'wp36-'));
+Object.assign(process.env, { WORKPIVOT_HOME: join(root, 'home'), WORKPIVOT_WORKSPACE: join(root, 'workspace'), WORKPIVOT_SECRET_KEY: '12'.repeat(32), WORKPIVOT_EXECUTION_MODE: 'disabled', NODE_ENV: 'test' });
+const { withTenant, withAccount } = await import('../packages/server/src/tenants.js');
+const auth = await import('../packages/server/src/auth.js');
+const { createApp } = await import('../packages/server/src/app.js');
+const { createTask, updateTaskStatus } = await import('../packages/server/src/tasks.js');
+const { beginArtifacts, finishArtifacts } = await import('../packages/server/src/artifacts.js');
+const { beginDeliverables, finishDeliverables, deliveryTool } = await import('../packages/server/src/deliverables.js');
+const { ArtifactSync, fetchManifest } = await import('../apps/desktop/src/artifact-sync.js');
+const owner = withTenant('default', () => auth.registerFirstAdmin('delivery-owner', 'fixture-password'));
+const other = withTenant('default', () => { auth.createUser('delivery-other', 'fixture-password', 'admin'); return auth.login('delivery-other', 'fixture-password'); });
+const task = withAccount(owner.user, () => createTask({ name: 'report', directory: '', temp: true, ownerUserId: owner.user.id }));
+const server = createApp().listen(0, '127.0.0.1'); await new Promise<void>(r => server.once('listening', r));
+const address = server.address(); if (!address || typeof address === 'string') throw Error('port');
+const origin = 'http://127.0.0.1:' + address.port;
+const request = (path: string, body?: unknown, token = owner.token) => fetch(origin + '/api' + path, { method: body ? 'POST' : 'GET', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
+const scope = <T>(fn: () => T) => withAccount(owner.user, fn);
+const start = () => scope(() => { beginArtifacts(task); beginDeliverables(task); updateTaskStatus(task.id, 'running'); task.status = 'running'; });
+const finish = (outcome: string) => scope(() => { finishArtifacts(task, outcome); finishDeliverables(task, outcome); task.status = outcome === 'completed' ? 'idle' : 'failed'; updateTaskStatus(task.id, task.status, outcome); });
+const publish = (files: string[]) => scope(() => deliveryTool(task).run({ files }, { taskDir: task.directory }));
+let n = 0; const check = (label: string, value: unknown) => { assert.ok(value, label); n++; console.log('✅ ' + label); };
+try {
+  start(); writeFileSync(join(task.directory, 'report.txt'), 'VERSION-ONE'); writeFileSync(join(task.directory, 'process.py'), 'intermediate');
+  check('cannot publish missing or traversing file', (await publish(['../secret.txt'])).includes('错误'));
+  check('tool registers final file', (await publish(['report.txt'])).includes('已登记'));
+  check('running output not exposed for synchronization', !(await fetchManifest(origin, owner.token)).files.length);
+  finish('completed');
+  let manifest = await fetchManifest(origin, owner.token);
+  check('only declared final outcome published', manifest.files.length === 1 && manifest.files[0]!.name === 'report.txt');
+  const sidebar = await (await request('/sidebar?taskId=' + task.id)).json();
+  check('sidebar contains final files only', sidebar.artifacts.length === 1 && sidebar.artifacts[0].name === 'report.txt');
+  const browse = await (await request('/tasks/' + task.id + '/deliverables')).json();
+  check('server browser includes process file', browse.files.some((f: { name: string }) => f.name === 'process.py'));
+  check('other admin cannot browse task', (await request('/tasks/' + task.id + '/deliverables', undefined, other.token)).status === 404);
+  check('other admin manifest isolated', !(await fetchManifest(origin, other.token)).files.length);
+  check('other admin cannot select file', (await request('/tasks/' + task.id + '/deliverables', { name: 'process.py', selected: true }, other.token)).status === 404);
+  const sync = new ArtifactSync(join(root, 'client-config'));
+  check('sync initially disabled', !sync.status(origin, manifest.accountId).enabled);
+  sync.configure(origin, manifest.accountId, join(root, 'local'), true);
+  let result = await sync.sync(origin, owner.token, manifest);
+  check('first sync downloads one final file', result.synced === 1 && !result.errors.length);
+  const local = sync.localPath(origin, manifest.accountId, task.id, 'report.txt')!;
+  check('download content verified and local path stable', readFileSync(local, 'utf8') === 'VERSION-ONE');
+  check('no process material downloaded', !sync.localPath(origin, manifest.accountId, task.id, 'process.py'));
+  const before = statSync(local).mtimeMs;
+  result = await sync.sync(origin, owner.token, manifest);
+  check('unchanged version not rewritten', result.synced === 0 && statSync(local).mtimeMs === before);
+  start(); writeFileSync(join(task.directory, 'report.txt'), 'VERSION-TWO'); finish('completed');
+  manifest = await fetchManifest(origin, owner.token); result = await sync.sync(origin, owner.token, manifest);
+  check('registered result updates automatically', result.synced === 1 && readFileSync(local, 'utf8') === 'VERSION-TWO');
+  writeFileSync(local, 'LOCAL-EDIT');
+  start(); writeFileSync(join(task.directory, 'report.txt'), 'VERSION-THREE'); finish('completed');
+  manifest = await fetchManifest(origin, owner.token); result = await sync.sync(origin, owner.token, manifest);
+  check('local modifications preserved', readFileSync(local, 'utf8') === 'LOCAL-EDIT');
+  const conflict = sync.localPath(origin, manifest.accountId, task.id, 'report.txt')!;
+  check('server version saved separately on conflict', result.conflicts === 1 && conflict !== local && readFileSync(conflict, 'utf8') === 'VERSION-THREE');
+  result = await sync.sync(origin, owner.token, manifest);
+  check('conflict copy not repeatedly downloaded', result.synced === 0 && result.conflicts === 1);
+  start(); writeFileSync(join(task.directory, 'report.txt'), 'FAILED-VERSION'); await publish(['process.py']); finish('error');
+  check('failed run never publishes staged materials', (await fetchManifest(origin, owner.token)).files.length === 1);
+  check('failed run retains last successful delivery', (await fetchManifest(origin, owner.token)).files[0]!.hash === manifest.files[0]!.hash);
+  check('cannot manually publish failed file', (await request('/tasks/' + task.id + '/deliverables', { name: 'process.py', selected: true })).status === 400);
+  start(); writeFileSync(join(task.directory, 'report.txt'), 'FINAL-FOUR'); finish('completed');
+  check('manual select works for existing successful process file', (await request('/tasks/' + task.id + '/deliverables', { name: 'process.py', selected: true })).status === 200);
+  await request('/tasks/' + task.id + '/deliverables', { name: 'process.py', selected: false });
+  await request('/tasks/' + task.id + '/deliverables', { name: 'report.txt', selected: false });
+  check('unselected result excluded from manifest', !(await fetchManifest(origin, owner.token)).files.length);
+  await sync.sync(origin, owner.token, await fetchManifest(origin, owner.token));
+  check('unselect never deletes local copies', existsSync(local) && existsSync(conflict));
+  sync.configure(origin, manifest.accountId, join(root, 'local'), false);
+  check('pause stops downloads', !(await sync.sync(origin, owner.token, manifest)).synced);
+  check('other account has separate configuration', !sync.status(origin, other.user.id).directory);
+  sync.configure(origin, manifest.accountId, join(root, 'bad-local'), true);
+  for (const bad of ['../escape.txt', 'sub/../../escape', 'C:/bad.txt', 'CON.txt', 'bad\\file.txt']) {
+    result = await sync.sync(origin, owner.token, { ...manifest, files: [{ ...manifest.files[0]!, name: bad }] });
+    check('unsafe path rejected ' + bad, result.errors.length === 1 && result.synced === 0);
+  }
+  result = await sync.sync(origin, owner.token, { ...manifest, files: [{ ...manifest.files[0]!, hash: '0'.repeat(64) }] });
+  check('hash mismatch rejects download', result.errors.length === 1 && result.synced === 0);
+  let canceled = false;
+  try { await sync.sync(origin, owner.token, manifest, () => false); } catch { canceled = true; }
+  check('connection switch cancels synchronization', canceled);
+  let step = 0, registered = false;
+  const model = createServer((req, res) => { let body = ''; req.on('data', b => { body += b; }); req.on('end', () => {
+    const packet = JSON.parse(body); registered ||= packet.tools.some((t: { function: { name: string } }) => t.function.name === 'deliver_files');
+    const calls = [ ['write', { path: 'delivered.txt', content: 'FINAL VIA MODEL' }], ['write', { path: 'scratch.txt', content: 'PROCESS VIA MODEL' }], ['deliver_files', { files: ['delivered.txt'] }] ] as const;
+    const c = calls[step++];
+    const delta = c ? { tool_calls: [{ index: 0, id: 'call-' + step, function: { name: c[0], arguments: JSON.stringify(c[1]) } }] } : { content: 'Delivery completed.' };
+    res.writeHead(200, { 'content-type': 'text/event-stream' }); res.end('data: ' + JSON.stringify({ choices: [{ delta }] }) + '\n\ndata: [DONE]\n\n');
+  }); });
+  model.listen(0, '127.0.0.1'); await new Promise<void>(r => model.once('listening', r));
+  try {
+    const address = model.address(); if (!address || typeof address === 'string') throw Error('port');
+    const { saveProvider } = await import('../packages/server/src/providers.js');
+    await withTenant('default', () => saveProvider({ name: 'fixture', baseUrl: `http://127.0.0.1:${address.port}/v1`, modelId: 'fixture', apiKey: 'fixture', verify: false }));
+    const generated = scope(() => createTask({ name: 'model delivery', directory: '', temp: true, ownerUserId: owner.user.id }));
+    const r = await request('/tasks/' + generated.id + '/messages', { content: 'Create the final file and deliver it.' });
+    const text = await r.text();
+    check('runtime exposes delivery tool and completes', registered && text.includes('Delivery completed.'));
+    const delivered = (await fetchManifest(origin, owner.token)).files.filter(f => f.taskId === generated.id);
+    check('model run publishes only explicit final file', delivered.length === 1 && delivered[0]!.name === 'delivered.txt');
+  } finally { model.closeAllConnections(); await new Promise<void>(r => model.close(() => r())); }
+  if (process.platform !== 'win32') {
+    symlinkSync(join(root, 'local'), join(root, 'linked'));
+    assert.throws(() => sync.configure(origin, manifest.accountId, join(root, 'linked'), true));
+    check('symlink destination rejected', true);
+  }
+} finally { server.closeAllConnections(); await new Promise<void>(r => server.close(() => r())); rmSync(root, { recursive: true, force: true }); }
+console.log(`W36 ${n}/${n} passed`);

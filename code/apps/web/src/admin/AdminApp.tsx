@@ -1,3 +1,6 @@
+import { RequiredPasswordChange, ServerConnection } from '../AccountAccess';
+import { ThemeSwitch } from '../theme';
+import { Icon } from '../Icon';
 /**
  * 管理后台：顶部通栏布局，左侧品牌区 + 功能页签，右侧用户下拉菜单（修改密码/退出）。
  * 用户管理：创建/修改/删除均走右侧按钮与弹窗；创建弹窗包含用户名/密码/确认密码/邮箱。
@@ -5,8 +8,13 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { api, clearToken, getToken, setToken, type PublicProvider, type PublicUser } from '../api';
+import { PermissionsPanel } from './PermissionsPanel';
+import { ProjectsPanel } from './ProjectsPanel';
+import { SkillPackagesPanel } from './SkillPackagesPanel';
+import { McpPanel } from './McpPanel';
+import { MemoryTemplatesPanel } from './MemoryTemplatesPanel';
 
-type Menu = 'users' | 'models' | 'skills' | 'templates' | 'schedules' | 'ops';
+type Menu = 'users' | 'models' | 'skills' | 'mcp' | 'memory' | 'templates' | 'schedules' | 'ops' | 'permissions' | 'projects';
 type Role = PublicUser['role'];
 
 type UserDialogState =
@@ -26,7 +34,7 @@ export default function AdminApp(): React.JSX.Element {
 
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [providers, setProviders] = useState<PublicProvider[]>([]);
-  const [skills, setSkills] = useState<Array<{ name: string; description: string; source: string; disabled: boolean }>>([]);
+  const [skillDirty, setSkillDirty] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
 
   const refresh = useCallback(async (): Promise<void> => {
@@ -62,18 +70,12 @@ export default function AdminApp(): React.JSX.Element {
   const loadProviders = useCallback(async (): Promise<void> => {
     setProviders((await api.listProviders()).providers);
   }, []);
-  const loadSkills = useCallback(async (): Promise<void> => {
-    try {
-      setSkills((await api.listSkillsAdmin()).skills);
-    } catch { /* 403 → 非 admin */ }
-  }, []);
-
   useEffect(() => {
-    if (authed !== true) return;
+    if (authed !== true || me?.mustChangePassword) return;
     void loadUsers();
     void loadProviders();
-    void loadSkills();
-  }, [authed, loadUsers, loadProviders, loadSkills]);
+
+  }, [authed, me?.mustChangePassword, loadUsers, loadProviders]);
 
   const logout = useCallback(async (): Promise<void> => {
     await api.logout().catch(() => undefined);
@@ -91,20 +93,28 @@ export default function AdminApp(): React.JSX.Element {
         <div className="w-[380px] rounded-xl border border-neutral-800 bg-neutral-900 p-6">
           <h1 className="mb-1 text-xl font-semibold">WorkPivot 管理后台</h1>
           <p className="mb-4 text-xs text-neutral-500">请使用管理员账户登录（非管理员无法进入后台）</p>
+          <ServerConnection />
           <AdminLoginInline onOk={() => void refresh()} />
         </div>
       </div>
     );
   }
 
+  if (me?.mustChangePassword) return <RequiredPasswordChange onDone={() => void refresh()} />;
+
   const menus: Array<[Menu, string]> = [
     ['users', '用户管理'],
     ['models', '模型管理'],
     ['skills', 'Skill 管理'],
-    ['templates', '企业模板'],
+    ['mcp', 'MCP 管理'],
+    ['memory', '默认记忆'],
+    ['templates', '我的模板'],
     ['schedules', '定时任务'],
     ['ops', '审计与回收站'],
+    ['permissions', '路径授权'],
+    ['projects', '我的项目'],
   ];
+
 
   return (
     <div className="flex h-screen flex-col bg-neutral-950 text-neutral-100">
@@ -112,18 +122,9 @@ export default function AdminApp(): React.JSX.Element {
       <header className="relative z-40 flex h-14 shrink-0 items-center justify-between border-b border-neutral-800 bg-neutral-900 px-5">
         <div className="flex items-center gap-8">
           <div className="text-sm font-semibold tracking-wide text-neutral-100">管理后台</div>
-          <nav className="flex items-center gap-1 text-sm">
-            {menus.map(([key, label]) => (
-              <button
-                key={key}
-                className={`rounded px-3 py-1.5 ${menu === key ? 'bg-neutral-800 font-medium text-white' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}
-                onClick={() => setMenu(key)}
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
+
         </div>
+        <ThemeSwitch />
         {me && (
           <UserMenu
             username={me.username}
@@ -133,14 +134,34 @@ export default function AdminApp(): React.JSX.Element {
         )}
       </header>
 
-      <main className="min-h-0 flex-1 overflow-y-auto p-5">
+      <div className="flex min-h-0 flex-1">
+        <aside className="w-48 shrink-0 overflow-y-auto border-r border-neutral-800 bg-neutral-900 p-3" aria-label="后台菜单">
+          <nav className="flex flex-col gap-1 text-sm">
+            {menus.map(([key, label]) => (
+              <button
+                key={key}
+                className={`rounded px-3 py-2.5 text-left ${menu === key ? 'bg-neutral-800 font-medium text-neutral-100' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}
+                aria-current={menu === key ? "page" : undefined}
+                onClick={() => { if (key === menu || !skillDirty || window.confirm('离开将放弃当前未保存的编辑，已保存草稿会保留。继续？')) setMenu(key); }}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-5">
         {menu === 'users' && <UsersPanel users={users} me={me} onRefresh={loadUsers} />}
         {menu === 'models' && <ModelsPanel providers={providers} onRefresh={loadProviders} />}
-        {menu === 'skills' && <SkillsPanel skills={skills} onRefresh={loadSkills} />}
+        {menu === 'skills' && <SkillPackagesPanel onDirty={setSkillDirty} />}
+        {menu === 'mcp' && <McpPanel onDirty={setSkillDirty} />}
+        {menu === 'memory' && <MemoryTemplatesPanel onDirty={setSkillDirty} />}
         {menu === 'templates' && <TemplatesPanel />}
         {menu === 'schedules' && <SchedulesPanel />}
         {menu === 'ops' && <OpsPanel />}
+        {menu === 'permissions' && <PermissionsPanel />}
+        {menu === 'projects' && <ProjectsPanel />}
       </main>
+      </div>
 
       {passwordOpen && <ChangePasswordModal onClose={() => setPasswordOpen(false)} />}
     </div>
@@ -217,7 +238,7 @@ function UserMenu({
         className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-neutral-200 hover:bg-neutral-800"
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-700 text-xs font-semibold text-white">
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-700 text-xs font-semibold text-neutral-100">
           {username.slice(0, 1).toUpperCase()}
         </span>
         <span>{username}</span>
@@ -275,6 +296,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }): React.JSX.El
     setBusy(true);
     try {
       await api.changePassword(current, next);
+      clearToken();
       setDone(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -288,15 +310,15 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }): React.JSX.El
       <div className="w-[380px] rounded-xl border border-neutral-700 bg-neutral-900 p-5">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-semibold">修改密码</h2>
-          <button className="text-neutral-500 hover:text-neutral-200" onClick={onClose}>
-            ×
+          <button className="text-neutral-500 hover:text-neutral-200" aria-label="关闭窗口" onClick={onClose}>
+            <Icon name="close" />
           </button>
         </div>
         {done ? (
           <div className="space-y-4">
-            <p className="text-sm text-emerald-400">密码修改成功。</p>
-            <button className="w-full rounded bg-blue-600 py-2 text-sm hover:bg-blue-500" onClick={onClose}>
-              完成
+            <p className="text-sm text-emerald-400">密码修改成功，所有旧会话已失效，请重新登录。</p>
+            <button className="w-full rounded bg-blue-600 py-2 text-sm hover:bg-blue-500" onClick={() => window.location.reload()}>
+              重新登录
             </button>
           </div>
         ) : (
@@ -331,7 +353,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }): React.JSX.El
             </label>
             {error && <p className="text-xs text-red-400">{error}</p>}
             <div className="flex justify-end gap-2 pt-1">
-              <button className="rounded bg-neutral-800 px-3 py-1.5 text-xs hover:bg-neutral-700" onClick={onClose}>
+              <button className="rounded bg-neutral-800 px-3 py-1.5 text-xs hover:bg-neutral-700" aria-label="关闭窗口" onClick={onClose}>
                 取消
               </button>
               <button
@@ -361,6 +383,15 @@ function UsersPanel({
   onRefresh: () => void;
 }): React.JSX.Element {
   const [dialog, setDialog] = useState<UserDialogState>(null);
+  const [resetResult, setResetResult] = useState<{ username: string; password: string } | null>(null);
+  const [resetBusy, setResetBusy] = useState(false);
+  const resetPassword = async (user: PublicUser): Promise<void> => {
+    if (resetBusy || !window.confirm(`重置「${user.username}」的密码？旧登录将失效，运行中的任务将停止，下次登录必须修改临时密码。`)) return;
+    setResetBusy(true); setError(null);
+    try { const result = await api.resetUserPassword(user.id); setResetResult({ username: user.username, password: result.temporaryPassword }); onRefresh(); }
+    catch (err) { setError(err instanceof Error ? err.message : String(err)); }
+    finally { setResetBusy(false); }
+  };
   const [error, setError] = useState<string | null>(null);
 
   const removeUser = async (user: PublicUser): Promise<void> => {
@@ -374,8 +405,21 @@ function UsersPanel({
     }
   };
 
+  const revokeSessions = async (user: PublicUser): Promise<void> => {
+    if (!window.confirm(`让「${user.username}」的所有登录会话失效并停止其运行中的任务？`)) return;
+    setError(null);
+    try { await api.revokeUserSessions(user.id); window.alert('会话已撤销'); }
+    catch (err) { setError(err instanceof Error ? err.message : String(err)); }
+  };
+
   return (
     <div className="max-w-[900px]">
+      {resetResult && <div role="dialog" aria-modal="true" aria-label="临时密码" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"><div className="max-w-md space-y-4 rounded-xl border border-neutral-700 bg-neutral-900 p-6">
+        <h3 className="font-semibold">{resetResult.username} 的临时密码</h3><p className="text-sm text-neutral-400">请复制并交给该用户。关闭后不再展示，用户登录后需要修改。</p>
+        <input aria-label="临时密码" readOnly value={resetResult.password} onFocus={(e) => e.target.select()} className="w-full rounded bg-neutral-800 p-3 font-mono" />
+        <button className="rounded bg-blue-600 px-4 py-2" onClick={() => setResetResult(null)}>已保存，关闭</button>
+      </div></div>}
+
       <div className="mb-3 flex items-center justify-between">
         <div>
           <h2 className="text-base font-semibold">用户管理</h2>
@@ -389,7 +433,7 @@ function UsersPanel({
               setError(null);
             }}
           >
-            ＋ 创建用户
+            <Icon name="plus" /> 创建用户
           </button>
         </div>
       </div>
@@ -404,7 +448,7 @@ function UsersPanel({
             <th className="py-2">角色</th>
             <th className="py-2">创建时间</th>
             <th className="py-2">最近登录</th>
-            <th className="w-28 py-2 text-right">操作</th>
+            <th className="w-48 py-2 text-right">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -428,6 +472,9 @@ function UsersPanel({
                   >
                     修改
                   </button>
+                  <button className="whitespace-nowrap rounded bg-neutral-800 px-2 py-1 hover:bg-neutral-700" onClick={() => void revokeSessions(u)}>撤销登录</button>
+                  {!u.platformAdmin && u.id !== me?.id && <button disabled={resetBusy} className="whitespace-nowrap rounded bg-neutral-800 px-2 py-1 hover:bg-neutral-700 disabled:opacity-40" onClick={() => void resetPassword(u)}>重置密码</button>}
+                  {u.mustChangePassword && <span className="text-xs text-amber-400">待修改密码</span>}
                   <button
                     className="rounded bg-red-900/70 px-2 py-1 hover:bg-red-900 disabled:opacity-30"
                     disabled={me !== null && me.id === u.id}
@@ -537,8 +584,8 @@ function UserDialog({
       <div className="w-[420px] rounded-xl border border-neutral-700 bg-neutral-900 p-5">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-semibold">{isEdit ? '修改用户' : '创建用户'}</h2>
-          <button className="text-neutral-500 hover:text-neutral-200" onClick={onClose}>
-            ×
+          <button className="text-neutral-500 hover:text-neutral-200" aria-label="关闭窗口" onClick={onClose}>
+            <Icon name="close" />
           </button>
         </div>
         <div className="space-y-3 text-sm">
@@ -600,7 +647,7 @@ function UserDialog({
           </label>
           {error && <p className="text-xs text-red-400">{error}</p>}
           <div className="flex justify-end gap-2 pt-1">
-            <button className="rounded bg-neutral-800 px-3 py-1.5 text-xs hover:bg-neutral-700" onClick={onClose}>
+            <button className="rounded bg-neutral-800 px-3 py-1.5 text-xs hover:bg-neutral-700" aria-label="关闭窗口" onClick={onClose}>
               取消
             </button>
             <button
@@ -710,7 +757,7 @@ function ModelsPanel({ providers, onRefresh }: { providers: PublicProvider[]; on
           className="rounded bg-blue-600 px-3 py-1.5 text-xs hover:bg-blue-500"
           onClick={() => (editing ? setFormOpen(null) : openCreate())}
         >
-          {editing ? '取消' : '＋ 添加供应商'}
+          {editing ? '取消' : <><Icon name="plus" /> 添加供应商</>}
         </button>
       </div>
       {editing && (
@@ -765,7 +812,7 @@ function ModelsPanel({ providers, onRefresh }: { providers: PublicProvider[]; on
         {providers.map((p) => (
           <div key={p.id} className="flex items-center justify-between rounded bg-neutral-800 px-3 py-2 text-xs">
             <span>
-              {p.active && <span className="mr-1 text-emerald-400">●</span>}
+              {p.active && <span aria-label="当前启用" className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />}
               {p.name} — {p.baseUrl} / {p.modelId}
               <span className="ml-1.5 rounded bg-neutral-700 px-1 py-0.5 text-[10px] text-neutral-300">{PROTOCOL_LABELS[p.protocol] ?? p.protocol}</span>
               {!p.hasApiKey && <span className="ml-1 text-neutral-500">（无 key）</span>}
@@ -795,66 +842,6 @@ function ModelsPanel({ providers, onRefresh }: { providers: PublicProvider[]; on
 }
 
 // ---- Skill 管理 ----
-
-function SkillsPanel({
-  skills,
-  onRefresh,
-}: {
-  skills: Array<{ name: string; description: string; source: string; disabled: boolean }>;
-  onRefresh: () => void;
-}): React.JSX.Element {
-  const [error, setError] = useState<string | null>(null);
-  const [toggling, setToggling] = useState<string | null>(null);
-
-  const sourceLabels: Record<string, string> = { builtin: '内置', global: '全局', project: '项目' };
-
-  const toggle = async (name: string, disabled: boolean): Promise<void> => {
-    setError(null);
-    setToggling(name);
-    try {
-      await api.toggleSkill(name, disabled);
-      onRefresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setToggling(null);
-    }
-  };
-
-  return (
-    <div className="max-w-[720px]">
-      <div className="mb-3 flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-semibold">Skill 管理</h2>
-          <p className="mt-0.5 text-xs text-neutral-500">禁用后的技能不再注入技能目录，模型无法激活（共 {skills.length} 个）</p>
-        </div>
-        <button className="rounded bg-neutral-800 px-3 py-1.5 text-xs hover:bg-neutral-700" onClick={onRefresh}>
-          刷新列表
-        </button>
-      </div>
-      {error && <p className="mb-2 text-xs text-red-400">{error}</p>}
-      <div className="space-y-1">
-        {skills.length === 0 && <p className="text-xs text-neutral-500">未发现任何技能（内置/全局/项目三层均为空）。</p>}
-        {skills.map((s) => (
-          <div key={s.name} className={`flex items-center justify-between rounded px-3 py-2 text-xs ${s.disabled ? 'bg-neutral-900 text-neutral-500' : 'bg-neutral-800'}`}>
-            <span className="min-w-0">
-              <span className="font-medium text-neutral-100">{s.name}</span>
-              <span className="ml-2 rounded bg-neutral-700 px-1 py-0.5 text-[10px] text-neutral-300">{sourceLabels[s.source] ?? s.source}</span>
-              <span className="ml-2 block truncate text-neutral-500">{s.description}</span>
-            </span>
-            <button
-              className={`ml-3 shrink-0 rounded px-2 py-1 ${s.disabled ? 'bg-emerald-800 hover:bg-emerald-700' : 'bg-neutral-700 hover:bg-neutral-600'} disabled:opacity-40`}
-              disabled={toggling === s.name}
-              onClick={() => void toggle(s.name, !s.disabled)}
-            >
-              {toggling === s.name ? '切换中…' : s.disabled ? '启用' : '停用'}
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // ---- 企业模板（M1-07/H01：上传含 {{占位符}} 的 .docx，设默认，删除） ----
 
@@ -991,7 +978,7 @@ function TemplatesPanel(): React.JSX.Element {
         {(templates ?? []).map((t) => (
           <div key={t.id} className="flex items-center justify-between rounded bg-neutral-800 px-3 py-2 text-xs">
             <span>
-              {t.isDefault && <span className="mr-1 text-emerald-400">●</span>}
+              {t.isDefault && <span aria-label="当前启用" className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />}
               {t.name}
               <span className="ml-2 rounded bg-neutral-700 px-1 py-0.5 text-[10px] text-neutral-300">{t.kind}</span>
               <span className="ml-2 text-neutral-600">{t.uploadedAt.slice(0, 10)}</span>
@@ -1108,7 +1095,7 @@ function SchedulesPanel(): React.JSX.Element {
   };
 
   const eventLabels: Record<string, string> = {
-    run_ok: '✓ 运行成功', run_error: '✗ 运行失败', missed_catchup: '↻ 错过补跑', skipped_running: '⏭ 跳过（运行中）',
+    run_ok: '运行成功', run_error: '运行失败', missed_catchup: '错过补跑', skipped_running: '跳过（运行中）',
   };
 
   return (
@@ -1122,7 +1109,7 @@ function SchedulesPanel(): React.JSX.Element {
           className="rounded bg-blue-600 px-3 py-1.5 text-xs hover:bg-blue-500"
           onClick={() => { setFormOpen(!formOpen); setError(null); }}
         >
-          {formOpen ? '取消' : '＋ 新建定时任务'}
+          {formOpen ? '取消' : <><Icon name="plus" /> 新建定时任务</>}
         </button>
       </div>
       {error && <p className="mb-2 text-xs text-red-400">{error}</p>}
@@ -1276,13 +1263,13 @@ function OpsPanel(): React.JSX.Element {
         <div className="flex items-center gap-2">
           <div className="flex gap-1">
             <button
-              className={`rounded px-3 py-1.5 text-xs ${tab === 'audit' ? 'bg-neutral-800 font-medium text-white' : 'text-neutral-400 hover:bg-neutral-800'}`}
+              className={`rounded px-3 py-1.5 text-xs ${tab === 'audit' ? 'bg-neutral-800 font-medium text-neutral-100' : 'text-neutral-400 hover:bg-neutral-800'}`}
               onClick={() => setTab('audit')}
             >
               审计日志
             </button>
             <button
-              className={`rounded px-3 py-1.5 text-xs ${tab === 'trash' ? 'bg-neutral-800 font-medium text-white' : 'text-neutral-400 hover:bg-neutral-800'}`}
+              className={`rounded px-3 py-1.5 text-xs ${tab === 'trash' ? 'bg-neutral-800 font-medium text-neutral-100' : 'text-neutral-400 hover:bg-neutral-800'}`}
               onClick={() => setTab('trash')}
             >
               回收站

@@ -1,0 +1,32 @@
+services:
+  workpivot:
+    image: workpivot-server:0.3.0-preview.31
+    container_name: workpivot-local-server
+    ports:
+      - "127.0.0.1:39880:39800"
+    environment:
+      WORKPIVOT_HOST: 0.0.0.0
+      WORKPIVOT_PORT: "39800"
+      WORKPIVOT_WEB_DIST: /app/apps/web/dist
+      WORKPIVOT_HOME: /data/workpivot
+      WORKPIVOT_WORKSPACE: /data/workspace
+      WORKPIVOT_SECRET_KEY: "${WORKPIVOT_SECRET_KEY:?Missing key}"
+      WORKPIVOT_ADMIN_INIT_TOKEN: "${WORKPIVOT_ADMIN_INIT_TOKEN:?Missing initialization token}"
+      WORKPIVOT_EXECUTION_MODE: worker
+      WORKPIVOT_WORKER_URL: http://host.docker.internal:39993
+      WORKPIVOT_WORKER_TOKEN: "${WORKPIVOT_WORKER_TOKEN:?Missing worker token}"
+      TZ: Asia/Shanghai
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:rw,nosuid,nodev,size=256m"]
+    volumes:
+      - data:/data/workpivot
+      - workspace:/data/workspace
+    restart: unless-stopped
+volumes:
+  data:
+  workspace:

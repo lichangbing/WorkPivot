@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 /**
  * M1-11：记忆查看/编辑弹窗（设置面板「管理记忆」打开，批次 1 遗留 UI）。
  * 三个分区：手写区 MEMORY.md（可编辑保存）/ 条目区 entries（逐条删除）/ 项目记忆（只读，随当前任务）。
@@ -10,6 +11,8 @@ interface MemoryData {
   entries: Array<{ id: string; content: string; createdAt?: string }>;
   project: string;
   enabled: boolean;
+  projectId: string | null;
+  canEditProject: boolean;
 }
 
 type Tab = 'handbook' | 'entries' | 'project';
@@ -24,15 +27,19 @@ export function MemoryModal({ taskId, onClose }: { taskId?: string; onClose: () 
   const [tab, setTab] = useState<Tab>('handbook');
   const [data, setData] = useState<MemoryData | null>(null);
   const [draft, setDraft] = useState('');
+  const [projectDraft, setProjectDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async (): Promise<void> => {
+    setData(null);
+    setError(null);
     try {
       const view = await api.memoryView(taskId);
       setData(view);
       setDraft(view.handbook);
+      setProjectDraft(view.project);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -72,14 +79,26 @@ export function MemoryModal({ taskId, onClose }: { taskId?: string; onClose: () 
   };
 
   const dirty = data !== null && draft !== data.handbook;
+  const saveProject = async (clear = false): Promise<void> => {
+    if (!data?.projectId || !data.canEditProject) return;
+    if (clear && !window.confirm('清空项目记忆？所有项目成员将在下一轮对话中生效。')) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (clear) await api.clearProjectMemory(data.projectId);
+      else await api.editProjectMemory(data.projectId, projectDraft);
+      await load();
+    } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
+    finally { setBusy(false); }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="flex h-[560px] w-[640px] max-w-full flex-col rounded-xl border border-neutral-700 bg-neutral-900">
         <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
           <h2 className="text-sm font-semibold">记忆管理</h2>
-          <button className="text-neutral-500 hover:text-neutral-200" onClick={onClose}>
-            ✕
+          <button className="text-neutral-500 hover:text-neutral-200" aria-label="关闭窗口" onClick={onClose}>
+            <Icon name="close" />
           </button>
         </div>
 
@@ -87,7 +106,7 @@ export function MemoryModal({ taskId, onClose }: { taskId?: string; onClose: () 
           {TAB_LABELS.map(([key, label]) => (
             <button
               key={key}
-              className={`rounded px-3 py-1 text-xs ${tab === key ? 'bg-neutral-800 font-medium text-white' : 'text-neutral-400 hover:bg-neutral-800'}`}
+              className={`rounded px-3 py-1 text-xs ${tab === key ? 'bg-neutral-800 font-medium text-neutral-100' : 'text-neutral-400 hover:bg-neutral-800'}`}
               onClick={() => setTab(key)}
             >
               {label}
@@ -151,12 +170,18 @@ export function MemoryModal({ taskId, onClose }: { taskId?: string; onClose: () 
           {data !== null && tab === 'project' && (
             <div>
               <p className="mb-2 text-xs text-neutral-500">
-                项目记忆：当前任务工作目录下 .workpivot/memory/MEMORY.md，同目录任务共享，随项目目录走。
-                {taskId ? '' : '（未选择任务，仅显示全局视图）'}
+                项目记忆由项目成员共享，负责人和管理员可编辑，保存后下一轮对话生效。
+                {!data.projectId ? '请选择项目中的正式任务查看。' : !data.canEditProject ? '你当前为只读权限。' : ''}
               </p>
-              <pre className="max-h-[380px] overflow-auto whitespace-pre-wrap rounded border border-neutral-700 bg-neutral-800 p-2 font-mono text-xs text-neutral-100">
+              {data.canEditProject ? <>
+                <textarea aria-label="项目记忆内容" className="h-64 w-full rounded border border-neutral-700 bg-neutral-800 p-2 text-xs" value={projectDraft} maxLength={20000} disabled={busy} onChange={(e) => setProjectDraft(e.target.value)} />
+                <div className="mt-2 flex gap-2">
+                  <button className="rounded bg-blue-600 px-3 py-1.5 text-xs disabled:opacity-40" disabled={busy || projectDraft === data.project} onClick={() => void saveProject()}>保存项目记忆</button>
+                  <button className="rounded bg-neutral-800 px-3 py-1.5 text-xs disabled:opacity-40" disabled={busy || !data.project} onClick={() => void saveProject(true)}>清空项目记忆</button>
+                </div>
+              </> : <pre className="max-h-[380px] overflow-auto whitespace-pre-wrap rounded border border-neutral-700 bg-neutral-800 p-2 font-mono text-xs text-neutral-100">
                 {data.project.trim() === '' ? '（空）' : data.project}
-              </pre>
+              </pre>}
             </div>
           )}
         </div>

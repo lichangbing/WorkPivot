@@ -8,10 +8,12 @@
 import { createServer as createHttpServer } from 'node:http';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 
 const home = mkdtempSync(join(tmpdir(), 'wp-home-'));
 const workspace = mkdtempSync(join(tmpdir(), 'wp-ws-'));
+process.env['WORKPIVOT_INSECURE_SECRETS'] = '1';
+process.env['WORKPIVOT_EXECUTION_MODE'] = 'trusted-local';
 process.env['WORKPIVOT_HOME'] = home;
 process.env['WORKPIVOT_WORKSPACE'] = workspace;
 
@@ -170,8 +172,9 @@ try {
   });
   const { task } = await json<{ task: { id: string; directory: string } }>('/api/tasks', {
     method: 'POST',
-    body: JSON.stringify({ name: 'W2 冒烟' }),
+    body: JSON.stringify({ name: 'W2 冒烟', temp: true }),
   });
+  assert('W2 界外夹具确实位于任务目录之外', relative(task.directory, OUTSIDE_FILE).startsWith('..'));
   writeFileSync(join(task.directory, '简介.txt'), 'WorkPivot 简介内容。', 'utf8');
 
   // 1. 默认档 workdir：界外读取 → 授权卡 → 拒绝

@@ -1,0 +1,5 @@
+FROM workpivot-server:0.3.0-preview.30
+COPY --chown=node:node code/packages/server/src/auth.ts code/packages/server/src/app.ts /app/packages/server/src/
+COPY --chown=node:node code/packages/shared/src/service-health.ts /app/packages/shared/src/service-health.ts
+COPY --chown=node:node code/apps/web/dist/ /app/apps/web/dist/
+COPY --chown=node:node code/eval/W37-password-reset.mts /app/eval/W37-password-reset.mts

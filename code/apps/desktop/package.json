@@ -1,21 +1,21 @@
 {
   "name": "@workpivot/desktop",
-  "version": "0.2.1",
+  "version": "0.3.0-preview.31",
   "private": true,
   "main": "dist/main.js",
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --platform=node --format=cjs --outfile=dist/main.js --external:electron",
+    "build": "esbuild src/main.ts src/preload.ts --bundle --platform=node --format=cjs --outdir=dist --external:electron && node ../../scripts/copy-client-resources.mjs",
     "start": "pnpm build && electron .",
-    "collect-runtime": "node ../../scripts/collect-runtime.mjs",
-    "dist:dir": "pnpm --filter @workpivot/web build && pnpm build && pnpm collect-runtime && electron-builder --dir",
-    "dist": "pnpm dist:dir && electron-builder --win nsis"
+    "dist:dir": "pnpm build && electron-builder --dir",
+    "dist": "pnpm dist:dir && electron-builder --win nsis",
+    "dist:mac": "pnpm build && electron-builder --mac dmg zip --arm64 --x64 --publish never"
   },
   "devDependencies": {
     "electron": "^37.2.0",
     "electron-builder": "25.1.8",
     "esbuild": "^0.28.2"
   },
-  "description": "WorkPivot 桌面端（Electron 形态 A：同进程服务层）",
+  "description": "WorkPivot 桌面客户端，连接独立部署的后台服务器",
   "author": {
     "name": "WorkPivot"
   }

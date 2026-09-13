@@ -11,6 +11,8 @@ import { join } from 'node:path';
 
 const home = mkdtempSync(join(tmpdir(), 'wp7-home-'));
 const workspace = mkdtempSync(join(tmpdir(), 'wp7-ws-'));
+process.env['WORKPIVOT_INSECURE_SECRETS'] = '1';
+process.env['WORKPIVOT_EXECUTION_MODE'] = 'trusted-local';
 process.env['WORKPIVOT_HOME'] = home;
 process.env['WORKPIVOT_WORKSPACE'] = workspace;
 
@@ -122,9 +124,14 @@ try {
   assert('附件内容注入模型上下文', reply.includes('已读取附件标记内容'), reply.slice(0, 60));
 
   // 5. 转写含 user 消息
-  const transcriptPath = join(home, 'data', 'tasks', task.id, 'transcript.jsonl');
+  const identity = await (await fetch(base + '/api/auth/state', { headers: auth })).json();
+  const transcriptPath = join(home, 'accounts', identity.user.id, 'data', 'tasks', task.id, 'transcript.jsonl');
   const transcript = readFileSync(transcriptPath, 'utf8');
   assert('转写含附件注入内容', transcript.includes('W7-ATTACHMENT-MARKER-9527'));
+  const detail = await json<{ history: Array<{ role: string; content: string; attachments?: string[] }> }>(`/api/tasks/${task.id}`);
+  const message = detail.history.find(m => m.role === 'user');
+  assert('界面历史保留原始消息不展开附件', message?.content === '读取附件' && !JSON.stringify(detail.history).includes('W7-ATTACHMENT-MARKER-9527'));
+  assert('界面历史保留附件文件名', message?.attachments?.[0] === upBody.name);
 } catch (err) {
   assert('执行无未捕获异常', false, err instanceof Error ? err.message : String(err));
 } finally {

@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { TenantMap } from './tenant-map.js';
 /**
  * M1 批次 1/E01：记忆工具组（remember / forget / promote_memory）。
  * - remember：静默写入条目区（E01 条目层）
@@ -8,17 +10,23 @@
 import { addEntry, removeEntries, writeHandbook } from './memory.js';
 import type { Tool } from '@workpivot/core';
 import { memoryEnabled, readHandbook } from './memory.js';
+import { randomUUID } from 'node:crypto';
 
 type Send = (payload: unknown) => void;
 
-const confirmResolvers = new Map<string, (approve: boolean) => void>();
+const confirmResolvers = new TenantMap<string, { taskId: string; userId: string; content: string; resolve: (approve: boolean) => void }>();
+export function cancelMemoryRequests(): void { for (const entry of [...confirmResolvers.values()]) entry.resolve(false); }
+export function pendingMemory(taskId: string, userId: string): Array<{ id: string; content: string }> {
+  return [...confirmResolvers].filter(([, p]) => p.taskId === taskId && p.userId === userId).map(([id, p]) => ({ id, content: p.content }));
+}
 
 /** 渲染层的确认回填入口。 */
-export function resolveMemoryConfirm(id: string, approve: boolean): boolean {
+export function resolveMemoryConfirm(id: string, approve: boolean, actor: { taskId: string; userId: string; role: string }): boolean {
   const resolver = confirmResolvers.get(id);
   if (!resolver) return false;
+  if (resolver.taskId !== actor.taskId || (resolver.userId !== actor.userId && actor.role !== 'admin')) return false;
   confirmResolvers.delete(id);
-  resolver(approve);
+  resolver.resolve(approve);
   return true;
 }
 
@@ -75,13 +83,30 @@ export function buildMemoryTools(userId: string, taskId: string, send: Send): To
       },
       required: ['content'],
     },
-    async run(args) {
+    async run(args, ctx) {
+      if (!memoryEnabled()) return '记忆功能已关闭，本次不记录。';
       const content = String(args['content'] ?? '').trim();
       if (content === '') return '错误：content 必填';
-      const id = `mc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      send({ type: 'memory_confirm', id, content, taskId });
-      const approve = await new Promise<boolean>((resolve) => confirmResolvers.set(id, resolve));
+      const id = `mc-${randomUUID()}`;
+      const approve = await new Promise<boolean>((resolve) => {
+        let settled = false;
+        const finish = (value: boolean): void => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer); confirmResolvers.delete(id); ctx.signal?.removeEventListener('abort', cancel);
+          resolve(value);
+          try { send({ type: 'memory_resolved', id }); } catch { /* disconnected */ }
+        };
+        const cancel = AsyncLocalStorage.bind((): void => finish(false));
+        if (ctx.signal?.aborted) { resolve(false); return; }
+        const timer = setTimeout(cancel, 120000);
+        ctx.signal?.addEventListener('abort', cancel, { once: true });
+        confirmResolvers.set(id, { taskId, userId, content, resolve: finish });
+        try { send({ type: 'memory_confirm', id, content, taskId }); } catch { finish(false); }
+      });
+      if (ctx.signal?.aborted) return '任务已停止';
       if (!approve) return '用户拒绝写入长期记忆。不要重试同一条内容。';
+      if (!memoryEnabled()) return '记忆功能已关闭，本次不记录。';
       const existing = readHandbookSafe(userId);
       writeHandbook(userId, existing.trim() + (existing.trim() === '' ? '' : '\n') + `- ${content}`);
       return '已写入长期记忆（MEMORY.md）。';

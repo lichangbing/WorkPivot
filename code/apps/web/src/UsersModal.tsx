@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 /** T2-01：管理员创建用户（管理员分配制，无自主注册）。 */
 import { useCallback, useEffect, useState } from 'react';
 import { api, type PublicUser } from './api';
@@ -35,8 +36,8 @@ export function UsersModal({ onClose, onSaved }: { onClose: () => void; onSaved:
       <div className="w-[460px] rounded-xl border border-neutral-700 bg-neutral-900 p-5">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-semibold">用户管理</h2>
-          <button className="text-neutral-500 hover:text-neutral-200" onClick={onClose}>
-            ✕
+          <button className="text-neutral-500 hover:text-neutral-200" aria-label="关闭窗口" onClick={onClose}>
+            <Icon name="close" />
           </button>
         </div>
 

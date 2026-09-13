@@ -4,15 +4,24 @@
 services:
   workpivot:
     build: ./code
-    image: workpivot-server:0.2.0
+    image: ${WORKPIVOT_IMAGE:-workpivot-server:0.3.0-dev}
     container_name: workpivot-server
     ports:
-      - "39800:39800"
+      - "127.0.0.1:39800:39800"
     environment:
-      # 首个注册用户自动成为管理员；企业建议在首次启动后立即改密
       WORKPIVOT_MAX_PARALLEL: "16"
-      # 供应商密钥经 safeStorage（容器内回退 base64）——务必限制服务器登录权限
+      WORKPIVOT_SECRET_KEY: "${WORKPIVOT_SECRET_KEY:?请配置服务端主密钥}"
+      WORKPIVOT_ADMIN_INIT_TOKEN: "${WORKPIVOT_ADMIN_INIT_TOKEN:?请配置初始化凭据}"
+      WORKPIVOT_SESSION_TTL_HOURS: "24"
+      WORKPIVOT_EXECUTION_IMAGE: "${WORKPIVOT_IMAGE:-workpivot-server:0.3.0-dev}"
       TZ: Asia/Shanghai
+    init: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
     volumes:
       - workpivot-data:/data/workpivot
       - workpivot-workspace:/data/workspace

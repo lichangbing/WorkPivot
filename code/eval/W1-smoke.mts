@@ -12,6 +12,8 @@ import { join } from 'node:path';
 // ---- 隔离环境：数据根/工作区都指向临时目录（必须在 import 服务层之前设置） ----
 const home = mkdtempSync(join(tmpdir(), 'wp-home-'));
 const workspace = mkdtempSync(join(tmpdir(), 'wp-ws-'));
+process.env['WORKPIVOT_INSECURE_SECRETS'] = '1';
+process.env['WORKPIVOT_EXECUTION_MODE'] = 'trusted-local';
 process.env['WORKPIVOT_HOME'] = home;
 process.env['WORKPIVOT_WORKSPACE'] = workspace;
 
@@ -127,7 +129,7 @@ const reg = await fetch(`${base}/api/auth/register`, {
   body: JSON.stringify({ username: 'admin', password: 'w1-smoke-123' }),
 });
 if (!reg.ok) throw new Error(`管理员注册失败 HTTP ${reg.status}`);
-const { token } = (await reg.json()) as { token: string };
+const { token, user } = (await reg.json()) as { token: string; user: { id: string } };
 const auth = { authorization: `Bearer ${token}` };
 
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
@@ -215,7 +217,7 @@ try {
   assert('A03 计划落盘可回读（最终状态）', planView.steps.some((s) => s.step === '读取简介文件' && s.status === 'completed') === true, JSON.stringify(planView.steps));
 
   // 4. 转写落盘（F01 v0）
-  const transcriptPath = join(home, 'data', 'tasks', task.id, 'transcript.jsonl');
+  const transcriptPath = join(home, 'accounts', user.id, 'data', 'tasks', task.id, 'transcript.jsonl');
   assert('F01 转写文件存在', existsSync(transcriptPath), transcriptPath);
   const transcript = readFileSync(transcriptPath, 'utf8');
   assert('F01 转写含 用户/工具/助手 全部事件', transcript.includes('user_message') && transcript.includes('tool_use') && transcript.includes('assistant_message'));

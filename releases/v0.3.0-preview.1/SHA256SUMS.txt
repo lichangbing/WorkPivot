@@ -1,0 +1,1 @@
+57d371a9ae52dd81b445cf1071ae74e78fb66c3c02e8c359c838865052e4188f  installers/WorkPivot-Setup-0.3.0-preview.1.exe

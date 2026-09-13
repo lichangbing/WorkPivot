@@ -1,29 +1,26 @@
-/**
- * T2-04/T2-05/I05：权限档位 + 目录边界 + 高危分类 + 异步授权请求。
- *
- * 四档（需求清单 I02）：
- *  - readonly 只看不动：读界内放行；写/bash 一律拒绝
- *  - ask      每步都问：读界内放行；写/bash 逐次询问
- *  - workdir  界内自动+界外询问（默认）：界内放行；界外读写/执行 → 授权卡
- *  - auto     全自动：除高危命令（I05，仍需询问）外全部放行
- *
- * I05 高危命令：任何档位都至少询问（readonly 直接拒绝），且不提供"永久放行"。
- * bypass-immune 原则（对标竞品）：危险判定不受档位与白名单影响。
- */
-import { isAbsolute, join, resolve as resolvePath } from 'node:path';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { TenantMap } from './tenant-map.js';
+/** 两种操作模式：ask 变更前确认；auto 项目内常规操作自动执行。
+ * 旧 readonly/workdir 存储值在读取时转换，高风险命令和 MCP 仍逐次授权。 */
+import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
+import { canonicalPath, pathWithin } from '@workpivot/shared/node';
 import { ensureWorkpivotDir, readJsonSafe, writeAtomic } from './store.js';
 import { getUserTier } from './auth.js';
+import { grantPath, pathIsGranted } from './permission-grants.js';
 
 export type Tier = 'readonly' | 'ask' | 'workdir' | 'auto';
 
-export const TIER_LABELS: Record<Tier, string> = {
-  ask: '变更前确认',
-  readonly: '计划模式',
-  workdir: '自动编辑',
-  auto: '完全访问',
+export const TIER_LABELS: Record<string, string> = {
+  ask: '确认模式',
+  auto: '自动模式',
 };
 
-const DEFAULT_TIER: Tier = 'workdir';
+const DEFAULT_TIER: Tier = 'auto';
+/** Legacy stored values remain readable; new UI/API only expose the two modes. */
+export function normalizeTier(tier: unknown): 'ask' | 'auto' {
+  return tier === 'auto' || tier === 'workdir' ? 'auto' : 'ask';
+}
 
 function settingsPath(): string {
   return join(ensureWorkpivotDir('config'), 'settings.json');
@@ -40,48 +37,14 @@ interface SettingsFile {
  */
 export function getTier(userId?: string): Tier {
   const personal = userId ? getUserTier(userId) : null;
-  if (personal) return personal;
+  if (personal) return normalizeTier(personal);
   const settings = readJsonSafe<SettingsFile>(settingsPath(), { version: 1 }).value;
-  return settings.permissionTier ?? DEFAULT_TIER;
+  return normalizeTier(settings.permissionTier ?? DEFAULT_TIER);
 }
 
 export function setTier(tier: Tier): void {
   const settings = readJsonSafe<SettingsFile>(settingsPath(), { version: 1 }).value;
-  writeAtomic(settingsPath(), JSON.stringify({ ...settings, version: 1, permissionTier: tier }, null, 2));
-}
-
-// ---- 永久白名单（界外目录）----
-
-function allowListPath(): string {
-  return join(ensureWorkpivotDir('config'), 'permissions.json');
-}
-
-interface AllowListFile {
-  version: 1;
-  allowDirs: string[];
-}
-
-export function listAllowDirs(): string[] {
-  return readJsonSafe<AllowListFile>(allowListPath(), { version: 1, allowDirs: [] }).value.allowDirs;
-}
-
-export function addAllowDir(dir: string): void {
-  const file = readJsonSafe<AllowListFile>(allowListPath(), { version: 1, allowDirs: [] }).value;
-  if (!file.allowDirs.includes(dir)) file.allowDirs.push(dir);
-  writeAtomic(allowListPath(), JSON.stringify(file, null, 2));
-}
-
-// ---- 本会话记住（服务进程生命周期内的内存授权）----
-
-const sessionAllowedDirs = new Set<string>();
-const sessionAllowedCommands = new Set<string>();
-
-export function grantSessionDir(dir: string): void {
-  sessionAllowedDirs.add(dir);
-}
-
-export function grantSessionCommand(prefix: string): void {
-  sessionAllowedCommands.add(prefix);
+  writeAtomic(settingsPath(), JSON.stringify({ ...settings, version: 1, permissionTier: normalizeTier(tier) }, null, 2));
 }
 
 // ---- I05 高危命令分类 ----
@@ -143,17 +106,17 @@ export interface AccessRequest {
 export type Decision = 'allow' | 'deny' | 'session' | 'forever';
 
 function withinDir(path: string, dir: string): boolean {
-  const norm = path.replace(/[\\/]+$/, '');
-  return norm === dir || norm.startsWith(dir + '\\') || norm.startsWith(dir + '/');
+  try { return pathWithin(path, dir); } catch { return false; }
 }
 
-/** 彩排修复（I02 缺口）：从 bash 命令文本中提取 Windows 绝对路径引用（盘符开头，容忍大小写）。 */
+/** Advisory command checks; actual confinement is enforced by the execution sandbox. */
 function extractCommandPaths(command: string): string[] {
-  const matches = command.match(/[A-Za-z]:[\\/][^\s"'|&;*)]*/g) ?? [];
+  const matches: string[] = command.match(/[A-Za-z]:[\\/][^\s"'|&;*)]*/g) ?? [];
+  if (process.platform !== 'win32') for (const match of command.matchAll(/(?:^|[\s"'=])(\/[^\s"'|&;*)]*)/g)) matches.push(match[1]!);
   const seen = new Set<string>();
   const out: string[] = [];
   for (const m of matches) {
-    const key = m.toLowerCase();
+    const key = process.platform === 'win32' ? m.toLowerCase() : m;
     if (!seen.has(key)) {
       seen.add(key);
       out.push(m);
@@ -165,40 +128,64 @@ function extractCommandPaths(command: string): string[] {
 function commandTouchesOutside(command: string, taskDir: string): string[] {
   return extractCommandPaths(command).filter((p) => {
     const abs = p.replace(/[\\/]+$/, '');
-    if (withinDir(abs, taskDir) || withinDir(taskDir, abs)) return false; // 任务目录自身/其子路径
-    if (pathCoveredByLists(abs)) return false; // 已授权目录
+    if (withinDir(abs, taskDir)) return false; // 只允许任务目录自身/其子路径
+    // Shell 无法可靠声明读写模式，路径白名单不豁免命令审批。
     return true;
   });
 }
 
-function pathCoveredByLists(path: string): boolean {
-  const dirs = [...listAllowDirs(), ...sessionAllowedDirs];
-  return dirs.some((dir) => withinDir(path, dir));
-}
-
 export interface PendingRequest {
   request: AccessRequest;
+  taskId: string;
+  userId: string;
+  createdAt: number;
   resolve: (decision: Decision) => void;
 }
 
-const pending = new Map<string, PendingRequest>();
+const pending = new TenantMap<string, PendingRequest>();
+export function pendingRequests(taskId: string, userId: string): AccessRequest[] {
+  return [...pending.values()].filter((p) => p.taskId === taskId && p.userId === userId).map((p) => p.request);
+}
 
-export function resolvePendingRequest(id: string, decision: Decision): boolean {
+export type ResolvePendingResult = 'resolved' | 'not-found' | 'forbidden' | 'invalid-decision';
+
+/** 来自已认证路由的身份，不能从请求 body 获取。管理员可代管可见任务。 */
+export interface PermissionActor {
+  taskId: string;
+  userId: string;
+  role: 'admin' | 'member';
+}
+
+export function resolvePendingRequest(id: string, decision: unknown, actor: PermissionActor): ResolvePendingResult {
+  if (decision !== 'allow' && decision !== 'deny' && decision !== 'session' && decision !== 'forever') {
+    return 'invalid-decision';
+  }
   const entry = pending.get(id);
-  if (!entry) return false;
+  if (!entry) return 'not-found';
+  if (entry.taskId !== actor.taskId || (entry.userId !== actor.userId && actor.role !== 'admin')) {
+    return 'forbidden';
+  }
+  // 可选范围由服务端决定；伪造按钮请求不能扩大一次性授权。
+  if (entry.request.scope === 'once' && decision !== 'allow' && decision !== 'deny') return 'invalid-decision';
   pending.delete(id);
   entry.resolve(decision);
-  return true;
+  return 'resolved';
 }
 
 export interface EvaluateInput {
+  external?: boolean;
   tool: string;
   kind: 'read' | 'write' | 'bash';
   paths: AccessPath[];
   command?: string;
   taskDir: string;
   /** RL1-02：档位归属用户（=任务所有者；admin 代跑/定时任务均不提权）。 */
-  userId?: string;
+  userId: string;
+  taskId: string;
+  signal?: AbortSignal;
+  /** 仅服务端可设置，默认 120 秒。 */
+  timeoutMs?: number;
+  onSettled?: (id: string, decision: Decision, reason: 'decision' | 'aborted' | 'timeout') => void;
 }
 
 /**
@@ -209,23 +196,27 @@ export async function evaluateAccess(
   input: EvaluateInput,
   onRequest: (request: AccessRequest) => void,
 ): Promise<{ allowed: boolean; auditedReason: string }> {
+  if (input.signal?.aborted) return { allowed: false, auditedReason: '任务已停止' };
   const tier = getTier(input.userId);
+  if (input.external) {
+    const allowed = await ask(input, 'MCP 外部工具调用：请确认服务、工具和发送参数', 'once');
+    return { allowed, auditedReason: allowed ? '用户批准 MCP 调用（一次性）' : 'MCP 调用未获授权' };
+  }
   // 工具声明的是相对任务目录的路径；边界判定必须先解析为绝对路径
-  const absPaths = input.paths.map((p) => ({ mode: p.mode, path: isAbsolute(p.path) ? p.path : resolvePath(input.taskDir, p.path) }));
+  let absPaths: AccessPath[];
+  try { absPaths = input.paths.map((p) => ({ mode: p.mode, path: canonicalPath(p.path, input.taskDir) })); }
+  catch { return { allowed: false, auditedReason: '路径无法安全解析' }; }
   const outside = absPaths.filter((p) => !withinDir(p.path, input.taskDir));
 
   // 1) bash 命令：先过高危分类（bypass-immune）
   if (input.kind === 'bash' && input.command !== undefined) {
     const { danger, reason } = classifyCommand(input.command);
     if (danger) {
-      if (tier === 'readonly') return { allowed: false, auditedReason: `readonly 档拒绝 bash：${reason ?? ''}` };
       const allowed = await ask(input, `高危命令：${reason ?? '命中高危模式'}`, 'once');
       return { allowed, auditedReason: allowed ? '用户批准高危命令（一次性）' : '用户拒绝高危命令' };
     }
-    if (sessionAllowedCommands.has(input.command.trim())) return { allowed: true, auditedReason: '本会话已批准的命令' };
-    if (tier === 'readonly') return { allowed: false, auditedReason: 'readonly 档拒绝 bash' };
     if (tier === 'ask') {
-      const allowed = await ask(input, '每步都问档：命令执行需确认', 'once');
+      const allowed = await ask(input, '确认模式：命令执行需确认', 'once');
       return { allowed, auditedReason: allowed ? '用户逐次批准命令' : '用户拒绝命令' };
     }
     // 彩排修复（I02 缺口）：非高危命令也可能引用任务目录之外的路径（如 type C:\...\settings.json
@@ -245,30 +236,26 @@ export async function evaluateAccess(
   // 2) 文件类：全部界内
   if (outside.length === 0) {
     if (input.kind === 'read') return { allowed: true, auditedReason: '界内读取' };
-    if (tier === 'readonly') return { allowed: false, auditedReason: 'readonly 档拒绝界内写入' };
     if (tier === 'ask') {
-      const allowed = await ask(input, '每步都问档：写入需确认', 'once');
+      const allowed = await ask(input, '确认模式：写入需确认', 'once');
       return { allowed, auditedReason: allowed ? '用户逐次批准写入' : '用户拒绝写入' };
     }
     return { allowed: true, auditedReason: `${tier} 档放行界内${input.kind === 'write' ? '写入' : '访问'}` };
   }
 
-  // 3) 界外：白名单/会话授权 → 放行；否则授权卡
-  if (absPaths.every((p) => pathCoveredByLists(p.path))) {
+  // ask 的写入仍逐次确认；混合界内/界外请求只检查界外部分。
+  if (!(tier === 'ask' && input.kind === 'write') && outside.every((p) => pathIsGranted(input, p.path, p.mode))) {
     return { allowed: true, auditedReason: '界外但命中白名单/会话授权' };
   }
-  if (tier === 'readonly' || tier === 'auto') {
+  if (tier === 'auto') {
     return { allowed: false, auditedReason: `${tier} 档拒绝界外访问（${outside.map((p) => p.path).join(', ')}）` };
   }
-  const allowed = await ask(input, '访问任务目录之外的路径', 'session-or-forever');
-  if (allowed) {
-    for (const p of outside) grantSessionDir(p.path);
-  }
+  const allowed = await ask({ ...input, paths: absPaths }, '访问任务目录之外的路径', tier === 'ask' && input.kind === 'write' ? 'once' : 'session-or-forever');
   return { allowed, auditedReason: allowed ? '用户授权界外访问' : '用户拒绝界外访问' };
 
   async function ask(base: Omit<AccessRequest, 'id' | 'reason' | 'scope'>, reason: string, scope: AccessRequest['scope']): Promise<boolean> {
     const request: AccessRequest = {
-      id: `pr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `pr-${randomUUID()}`,
       tool: base.tool,
       kind: base.kind,
       paths: base.paths,
@@ -277,15 +264,31 @@ export async function evaluateAccess(
       scope,
     };
     const decision = await new Promise<Decision>((resolve) => {
-      pending.set(request.id, { request, resolve });
-      onRequest(request);
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined = undefined;
+      const finish = (value: Decision, reason: 'decision' | 'aborted' | 'timeout'): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        input.signal?.removeEventListener('abort', onAbort);
+        pending.delete(request.id);
+        resolve(value);
+        try { input.onSettled?.(request.id, value, reason); } catch { /* 展示失败不阻塞清理 */ }
+      };
+      const onAbort = AsyncLocalStorage.bind((): void => finish('deny', 'aborted'));
+      if (input.signal?.aborted) { finish('deny', 'aborted'); return; }
+      pending.set(request.id, { request, taskId: input.taskId, userId: input.userId, createdAt: Date.now(), resolve: (value) => finish(value, 'decision') });
+      input.signal?.addEventListener('abort', onAbort, { once: true });
+      const timeout = input.timeoutMs;
+      timer = setTimeout(() => finish('deny', 'timeout'), timeout !== undefined && Number.isFinite(timeout) && timeout > 0 ? Math.min(timeout, 120_000) : 120_000);
+      try { onRequest(request); } catch { finish('deny', 'aborted'); }
     });
-    if (decision === 'session') {
-      if (request.kind === 'bash' && request.command) grantSessionCommand(request.command.trim());
-      for (const p of request.paths) grantSessionDir(p.path);
-    } else if (decision === 'forever') {
-      for (const p of request.paths) addAllowDir(p.path.includes('\\') || p.path.includes('/') ? p.path : join(p.path));
+    if (input.signal?.aborted) return false;
+    if (decision === 'session' || decision === 'forever') {
+      for (const p of request.paths) {
+        if (!withinDir(p.path, input.taskDir)) grantPath(input, p.path, p.mode, decision);
+      }
     }
-    return decision !== 'deny';
+    return decision === 'allow' || decision === 'session' || decision === 'forever';
   }
 }

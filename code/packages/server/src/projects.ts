@@ -1,3 +1,4 @@
+import { tenantId } from './tenants.js';
 /**
  * F1/M1 批次 2：项目-任务两级结构。
  * 项目（名称+工作目录）1:N 任务；任务共享项目工作目录（内容/临时文件/结果落项目目录）；
@@ -9,12 +10,20 @@ import { join } from 'node:path';
 import { ensureWorkpivotDir, readJsonSafe, writeAtomic } from './store.js';
 import { moveToTrash } from './trash.js';
 import { listTasks, setTaskProject, workspaceRoot } from './tasks.js';
+import { listUsers, type PublicUser } from './auth.js';
+import { canonicalPath, currentTenant } from '@workpivot/shared/node';
 
 export interface Project {
+  tenantId?: string;
+  tenantShared?: boolean;
   id: string;
   name: string;
   directory: string;
   createdAt: string;
+  /** 旧项目未指定时由管理员代管。 */
+  ownerUserId?: string;
+  /** 未指定表示旧版团队共享；新项目显式记录成员。 */
+  memberUserIds?: string[];
 }
 
 export const DEFAULT_PROJECT_ID = 'p-default';
@@ -24,13 +33,17 @@ function projectsRoot(): string {
 }
 
 function projectFile(projectId: string): string {
+  if (!/^[a-zA-Z0-9_-]+$/.test(projectId)) throw new Error('项目标识无效');
   return join(projectsRoot(), projectId, 'project.json');
 }
 
 export function getProject(projectId: string): Project | null {
+  if (!/^[a-zA-Z0-9_-]+$/.test(projectId)) return null;
   const path = projectFile(projectId);
   if (!existsSync(path)) return null;
-  return readJsonSafe<Project>(path, {} as Project).value;
+  const project = readJsonSafe<Project>(path, {} as Project).value;
+  if (currentTenant()?.userId && project.ownerUserId !== currentTenant()!.userId) return null;
+  return project.tenantId && project.tenantId !== tenantId() ? null : project;
 }
 
 export function listProjects(): Project[] {
@@ -50,6 +63,10 @@ export function ensureDefaultProject(): Project {
   if (existing) return existing;
   const project: Project = {
     id: DEFAULT_PROJECT_ID,
+    tenantId: tenantId(),
+    memberUserIds: [],
+    tenantShared: false,
+    ownerUserId: currentTenant()?.userId,
     name: '默认项目',
     directory: workspaceRoot(),
     createdAt: new Date().toISOString(),
@@ -58,19 +75,41 @@ export function ensureDefaultProject(): Project {
   return project;
 }
 
-export function createProject(name: string, directory?: string): Project {
+export function createProject(name: string, directory?: string, ownerUserId?: string): Project {
   const id = `p-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const project: Project = {
     id,
+    tenantId: tenantId(),
     name: name.trim(),
-    directory:
+    directory: canonicalPath(
       directory && directory.trim() !== ''
         ? join(directory)
-        : join(workspaceRoot(), `${name.trim().replace(/[\\/:*?"<>|\s]+/g, '-')}-${id.slice(-6)}`),
+        : join(workspaceRoot(), `${name.trim().replace(/[\\/:*?"<>|\s]+/g, '-')}-${id.slice(-6)}`)),
     createdAt: new Date().toISOString(),
+    ownerUserId,
+    memberUserIds: ownerUserId ? [ownerUserId] : undefined,
   };
   writeAtomic(projectFile(id), JSON.stringify(project, null, 2));
   return project;
+}
+
+export function projectVisibleTo(user: PublicUser | undefined, project: Project): boolean {
+  return Boolean(user && (user.tenantId ?? 'default') === (project.tenantId ?? 'default') && (project.ownerUserId === user.id));
+}
+
+export function projectMemoryEditableBy(user: PublicUser | undefined, project: Project): boolean {
+  return Boolean(user && (user.tenantId ?? 'default') === (project.tenantId ?? 'default') && (project.ownerUserId === user.id));
+}
+
+/** 管理员分配，保存前验证所有用户；负责人始终为项目成员。 */
+export function updateProjectAccess(projectId: string, ownerUserId: string, memberUserIds: string[]): Project | null {
+  const project = getProject(projectId);
+  if (!project) return null;
+  const known = new Set(listUsers().map((u) => u.id));
+  if (!known.has(ownerUserId) || memberUserIds.some((id) => !known.has(id))) throw new Error('负责人或成员账户不存在');
+  const updated = { ...project, tenantShared: false, ownerUserId, memberUserIds: [...new Set([ownerUserId, ...memberUserIds])] };
+  writeAtomic(projectFile(projectId), JSON.stringify(updated, null, 2));
+  return updated;
 }
 
 export function renameProject(projectId: string, name: string): Project | null {

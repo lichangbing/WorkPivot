@@ -1,0 +1,74 @@
+{
+  "date": "2026-09-08T12:20:36.446Z",
+  "results": [
+    {
+      "name": "RL3 Linux 非 root、只读根、禁止提权部署",
+      "pass": true
+    },
+    {
+      "name": "RL3 默认部署没有 Docker socket 挂载",
+      "pass": true
+    },
+    {
+      "name": "RL3 用户端和管理端网页均可访问",
+      "pass": true
+    },
+    {
+      "name": "RL3 初始化凭据注册成功",
+      "pass": true
+    },
+    {
+      "name": "RL3 项目持久化可用",
+      "pass": true
+    },
+    {
+      "name": "RL3 供应商密钥保存成功",
+      "pass": true
+    },
+    {
+      "name": "RL3 跨数据卷删除完整保留回收副本",
+      "pass": true
+    },
+    {
+      "name": "RL3 停机一致性备份后服务恢复",
+      "pass": true
+    },
+    {
+      "name": "RL3 恢复后历史会话失效",
+      "pass": true
+    },
+    {
+      "name": "RL3 恢复后原账户可以重新登录",
+      "pass": true
+    },
+    {
+      "name": "RL3 恢复项目和原供应商配置",
+      "pass": true
+    },
+    {
+      "name": "RL3 回滚使用快照镜像及升级前文件",
+      "pass": true
+    },
+    {
+      "name": "RL3 恢复不覆盖原卷",
+      "pass": true
+    },
+    {
+      "name": "RL3 恢复拒绝已存在目标卷",
+      "pass": true
+    },
+    {
+      "name": "RL3 损坏备份校验失败且不启动恢复",
+      "pass": true
+    },
+    {
+      "name": "RL4 Linux 优雅停止退出码为0",
+      "pass": true
+    },
+    {
+      "name": "RL3 错误主密钥拒绝启动",
+      "pass": true
+    }
+  ],
+  "overall": "pass"
+}

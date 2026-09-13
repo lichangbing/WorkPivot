@@ -4,10 +4,12 @@
  * M1-06：protocol 字段区分协议客户端（openai=兼容端点 / anthropic=Messages 协议）。
  */
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { verifyAnthropicProvider, verifyProvider } from '@workpivot/core';
-import { ensureWorkpivotDir, readJsonSafe, writeAtomicWithBackup } from './store.js';
-import { getSecretBox } from './secret.js';
+import { ensureWorkpivotDir, readJsonSafe, writeAtomic, writeAtomicWithBackup } from './store.js';
+import { getSecretBox, type SecretEnvelope } from './secret.js';
+import { tenantId, withTenant } from './tenants.js';
 
 export type ProviderProtocol = 'openai' | 'anthropic';
 
@@ -17,7 +19,7 @@ export interface Provider {
   baseUrl: string;
   modelId: string;
   protocol?: ProviderProtocol;
-  apiKey?: { enc: 'safeStorage' | 'b64'; data: string };
+  apiKey?: SecretEnvelope;
   verified?: boolean;
   createdAt: string;
 }
@@ -30,8 +32,27 @@ interface ProviderRegistry {
 
 const EMPTY: ProviderRegistry = { version: 1, providers: [] };
 
+/** Validate all existing secrets first; migrate both primary and backup so readable legacy keys do not remain in .bak. */
+export function migrateProviderSecrets(): void {
+  const updates: Array<{ path: string; data: string }> = [];
+  for (const path of [registryPath(), registryPath() + '.bak']) {
+    if (!existsSync(path)) continue;
+    const registry = readJsonSafe<ProviderRegistry>(path, EMPTY).value;
+    let changed = false;
+    for (const provider of registry.providers) {
+      if (!provider.apiKey) continue;
+      if (provider.apiKey.enc === 'b64') {
+        provider.apiKey = getSecretBox().encrypt(Buffer.from(provider.apiKey.data, 'base64').toString('utf8'));
+        changed = provider.apiKey.enc !== 'b64' || changed;
+      } else getSecretBox().decrypt(provider.apiKey);
+    }
+    if (changed) updates.push({ path, data: JSON.stringify(registry, null, 2) });
+  }
+  for (const update of updates) writeAtomic(update.path, update.data);
+}
+
 function registryPath(): string {
-  return join(ensureWorkpivotDir('config'), 'providers.json');
+  return withTenant(tenantId(), () => join(ensureWorkpivotDir('config'), 'providers.json'));
 }
 
 function load(): ProviderRegistry {

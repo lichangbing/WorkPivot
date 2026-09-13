@@ -1,17 +1,1666 @@
 {
-  "date": "2026-09-08T05:59:11.561Z",
+  "date": "2026-09-11T05:12:26.080Z",
   "suites": {
     "W1": "pass",
-    "W2": "pass",
     "W3": "pass",
-    "W4": "pass",
     "W5": "pass",
-    "W6": "pass",
     "W7": "pass",
     "W8": "pass",
-    "W9": "pass",
     "W10": "pass",
-    "W11": "pass"
+    "W13": "pass",
+    "W16": "pass",
+    "W17": "pass",
+    "W18": "pass",
+    "W19": "pass",
+    "W20": "pass",
+    "W22": "pass",
+    "W26": "pass",
+    "W27": "pass",
+    "W28": "pass",
+    "W29": "pass",
+    "W30": "pass",
+    "W31": "pass"
   },
+  "assertions": {
+    "W1": [
+      {
+        "name": "C02 验活（GET /models 真实请求） —— 验活通过（GET /models 200）",
+        "pass": true
+      },
+      {
+        "name": "C02 供应商保存并激活",
+        "pass": true
+      },
+      {
+        "name": "B01 建任务（工作目录已创建） —— c:\\users\\lichb\\appdata\\local\\temp\\wp-ws-vxrkty\\.accounts\\c3885f2f-77ad-4137-8dc9-fff2fdfc3ed5",
+        "pass": true
+      },
+      {
+        "name": "SSE 响应 200 且为 event-stream",
+        "pass": true
+      },
+      {
+        "name": "T1-04 循环：三轮采样（计划轮+读取轮+总结轮） —— modelCalls=3",
+        "pass": true
+      },
+      {
+        "name": "T1-05 read 工具被调用",
+        "pass": true
+      },
+      {
+        "name": "T1-05 工具真实读到了文件内容 —— WorkPivot 是一个面向企业的私有化智能工作台。",
+        "pass": true
+      },
+      {
+        "name": "T1-06 流式输出 deltas —— 3 个增量",
+        "pass": true
+      },
+      {
+        "name": "最终总结内容完整 —— 读取完成。该文件介绍了 WorkPivot 的定位：面向企业的私有化智能工作台。",
+        "pass": true
+      },
+      {
+        "name": "F03 雏形：done 事件且 stopReason=completed",
+        "pass": true
+      },
+      {
+        "name": "S228 思考过程 reasoning_delta 透传 —— 2 个增量",
+        "pass": true
+      },
+      {
+        "name": "S228 思考内容不混入正文",
+        "pass": true
+      },
+      {
+        "name": "A03 update_plan 推送 plan_update 事件（两次） —— 2 次",
+        "pass": true
+      },
+      {
+        "name": "A03 计划事件含阶段条目 —— [{\"step\":\"读取简介文件\",\"status\":\"in_progress\"},{\"step\":\"输出总结\",\"status\":\"pending\"}]",
+        "pass": true
+      },
+      {
+        "name": "A03 计划落盘可回读（最终状态） —— [{\"step\":\"读取简介文件\",\"status\":\"completed\"},{\"step\":\"输出总结\",\"status\":\"in_progress\"}]",
+        "pass": true
+      },
+      {
+        "name": "F01 转写文件存在 —— C:\\Users\\lichb\\AppData\\Local\\Temp\\wp-home-JMw2NI\\accounts\\c3885f2f-77ad-4137-8dc9-fff2fdfc3ed5\\data\\tasks\\t-1789103518667-8a77d1\\transcript.jsonl",
+        "pass": true
+      },
+      {
+        "name": "F01 转写含 用户/工具/助手 全部事件",
+        "pass": true
+      },
+      {
+        "name": "历史可读（用户+助手）",
+        "pass": true
+      },
+      {
+        "name": "I04 providers.json 无明文 key",
+        "pass": true
+      }
+    ],
+    "W3": [
+      {
+        "name": "F05 卡循环第 3 次提醒",
+        "pass": true
+      },
+      {
+        "name": "F03 强制收尾触发（stopReason=max_steps）",
+        "pass": true
+      },
+      {
+        "name": "F03 强制收尾含三要素（模拟固定话术）",
+        "pass": true
+      },
+      {
+        "name": "冷杀前任务确实正在运行",
+        "pass": true
+      },
+      {
+        "name": "T2-01 重启后令牌仍有效",
+        "pass": true
+      },
+      {
+        "name": "T3-02 启动扫描:running → interrupted —— interrupted",
+        "pass": true
+      },
+      {
+        "name": "T3-02 断点续跑完成 —— 已从断点继续,完成剩余工作。",
+        "pass": true
+      },
+      {
+        "name": "T3-03 谎报触 发核验闸门",
+        "pass": true
+      },
+      {
+        "name": "T3-03 打回后真实写盘 —— gate 目录: [\".workpivot\",\"总结.md\",\"简介.txt\"] | 工具事件: [{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_i1x7j9\",\"ok\":true,\"status\":\"ok\",\"durationMs\":3,\"message\":\"已写入 c:\\\\users\\\\lichb\\\\appdata\\\\local\\\\temp\\\\wp3-ws-xbslpt\\\\.accounts\\\\d607287e-5705-42df-b461-ed6636542755\\\\总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_u4rive\",\"ok\":true,\"status\":\"ok\",\"durationMs\":4,\"message\":\"已写入 c:\\\\users\\\\lichb\\\\appdata\\\\local\\\\temp\\\\wp3-ws-xbslpt\\\\.accounts\\\\d607287e-5705-42df-b461-ed6636542755\\\\总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_xufzrj\",\"ok\":true,\"status\":\"ok\",\"durationMs\":2,\"message\":\"[系统] 注意:这是第 3 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 c:\\\\users\\\\lichb\\\\appdata\\\\local\\\\temp\\\\wp3-ws-xbslpt\\\\.accounts\\\\d607287e-5705-42df-b461-ed6636542755\\\\总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_rky7su\",\"ok\":true,\"status\":\"ok\",\"durationMs\":2,\"message\":\"[系统] 注意:这是第 4 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 c:\\\\users\\\\lichb\\\\appdata\\\\local\\\\temp\\\\wp3-ws-xbslpt\\\\.accounts\\\\d607287e-5705-42df-b461-ed6636542755\\\\总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_egsdpr\",\"ok\":false,\"status\":\"error\",\"durationMs\":0,\"message\":\"错误:已连续多次产生完全相同的调用与结果,本次执行被拦截。请必须更换思路、修改参数,或向用户说明情况。\"}]",
+        "pass": true
+      },
+      {
+        "name": "T3-03 闸门后正常收尾",
+        "pass": true
+      },
+      {
+        "name": "T3-06 大结果落盘（工具结果含\"已落盘\"） —— （工具结果过大已落盘:c:\\users\\lichb\\appdata\\local\\temp\\wp3-ws-xbslpt\\.accounts\\d607287e-5705-42df-b461-ed6636542755\\.workpivot\\res",
+        "pass": true
+      },
+      {
+        "name": "T3-06 落盘文件真实存在（>50KB） —— resultsDir=c:\\users\\lichb\\appdata\\local\\temp\\wp3-ws-xbslpt\\.accounts\\d607287e-5705-42df-b461-ed6636542755\\.workpivot\\results | exists=true | stashed=[\"result-1789103520816.txt\",\"result-1789103520829.txt\",\"result-1789103520842.txt\",\"result-1789103520853.txt\"]",
+        "pass": true
+      },
+      {
+        "name": "T3-08 三个版本文件并存",
+        "pass": true
+      },
+      {
+        "name": "T3-01 转写端点返回含工具事件",
+        "pass": true
+      },
+      {
+        "name": "T3-01 转写行全部带 uuid",
+        "pass": true
+      },
+      {
+        "name": "T3-01 parentUuid 链首尾相接（fork/rewind 前置） —— [[\"user_message\",null],[\"meta\",\"aa5e7ec1\"],[\"meta\",\"9f633017\"]]",
+        "pass": true
+      }
+    ],
+    "W5": [
+      {
+        "name": "E01 remember 静默写入并收尾",
+        "pass": true
+      },
+      {
+        "name": "E01 条目区恰有一条\"蓝色\"（幂等去重） —— [{\"id\":\"m-1789103522785-m52s\",\"content\":\"用户最喜欢的颜色是蓝色\",\"createdAt\":\"2026-09-11T05:12:02.785Z\"}]",
+        "pass": true
+      },
+      {
+        "name": "E01 下轮注入:AI 答对颜色 —— 蓝色。",
+        "pass": true
+      },
+      {
+        "name": "E01 晋升触发确认卡",
+        "pass": true
+      },
+      {
+        "name": "E01 拒绝后未写入",
+        "pass": true
+      },
+      {
+        "name": "E01 拒绝后手写区为空",
+        "pass": true
+      },
+      {
+        "name": "E01 允许后写入手写区",
+        "pass": true
+      },
+      {
+        "name": "E01 forget 删除条目",
+        "pass": true
+      },
+      {
+        "name": "E01 一键关闭后 enabled=false 且手写区仍保留",
+        "pass": true
+      },
+      {
+        "name": "E02 项目记忆文件存在",
+        "pass": true
+      },
+      {
+        "name": "E02 项目记忆含预算",
+        "pass": true
+      },
+      {
+        "name": "E02 跨任务共享:AI 答对预算 —— 项目预算是 100 万。",
+        "pass": true
+      }
+    ],
+    "W7": [
+      {
+        "name": "附件上传 200 —— status=200",
+        "pass": true
+      },
+      {
+        "name": "附件落盘于 attachments/ 子目录（重名消毒） —— 数据 W7.txt",
+        "pass": true
+      },
+      {
+        "name": "防穿越：上传不抛 5xx",
+        "pass": true
+      },
+      {
+        "name": "防穿越：workspace 根无 evil.txt 泄漏",
+        "pass": true
+      },
+      {
+        "name": "文件清单含 attachments/ 附件 —— [\".workpivot\",\"attachments\",\"attachments/evil.txt\",\"attachments/数据 W7.txt\"]",
+        "pass": true
+      },
+      {
+        "name": "附件内容注入模型上下文 —— 已读取附件标记内容。",
+        "pass": true
+      },
+      {
+        "name": "转写含附件注入内容",
+        "pass": true
+      }
+    ],
+    "W8": [
+      {
+        "name": "注册 anthropic 协议供应商（保存即验活通过） —— {\"provider\":{\"id\":\"caa900ca-9a4f-43de-87a7-c624f8eca11f\",\"name\":\"Claude模拟\",\"baseUrl\":\"http://127.0.0.1:39908\",\"modelId\":",
+        "pass": true
+      },
+      {
+        "name": "验活走了 Anthropic 分流（x-api-key 头）",
+        "pass": true
+      },
+      {
+        "name": "供应商列表回显 protocol",
+        "pass": true
+      },
+      {
+        "name": "任务创建",
+        "pass": true
+      },
+      {
+        "name": "请求头 anthropic-version 存在",
+        "pass": true
+      },
+      {
+        "name": "system 抽到顶层（messages 首条是 user） —— {\"role\":\"user\",\"content\":\"请把 W8 结论写进 w8.txt。\"}",
+        "pass": true
+      },
+      {
+        "name": "tools 用 input_schema 描述",
+        "pass": true
+      },
+      {
+        "name": "第二轮 tool_result 以 user 块回填",
+        "pass": true
+      },
+      {
+        "name": "write 工具经 tool_use 真实落盘 —— c:\\users\\lichb\\appdata\\local\\temp\\wp8-ws-uflaww\\.accounts\\c2ba06ce-5108-44a0-9bf3-4301bd2d58e8\\w8.txt",
+        "pass": true
+      },
+      {
+        "name": "落盘内容正确",
+        "pass": true
+      },
+      {
+        "name": "流式文本回传（最终答案）",
+        "pass": true
+      },
+      {
+        "name": "SSE 正常收尾",
+        "pass": true
+      },
+      {
+        "name": "转写含 assistant 文本与工具往返",
+        "pass": true
+      }
+    ],
+    "W10": [
+      {
+        "name": "F06 非法 cron 被拒（400）",
+        "pass": true
+      },
+      {
+        "name": "F06 创建定时任务 —— {\"schedule\":{\"id\":\"20c01e01-a7d5-466a-a04f-219c93621271\",\"name\":\"W10 巡检\",\"cron\":\"* * * * *\",\"content",
+        "pass": true
+      },
+      {
+        "name": "F06 tick 自动触发运行 —— done:completed",
+        "pass": true
+      },
+      {
+        "name": "F06 运行结果 done:completed —— done:completed",
+        "pass": true
+      },
+      {
+        "name": "F06 运行通知落盘（run_ok）",
+        "pass": true
+      },
+      {
+        "name": "F06 同分钟去重（不重复触发） —— +0 次",
+        "pass": true
+      },
+      {
+        "name": "F06 停用后不再触发 —— +0 次",
+        "pass": true
+      },
+      {
+        "name": "F06 手动运行 200",
+        "pass": true
+      },
+      {
+        "name": "F06 手动运行产生通知 —— 2 条",
+        "pass": true
+      },
+      {
+        "name": "F06 错过补跑（missed_catchup 通知） —— run_ok,run_ok,missed_catchup,run_ok",
+        "pass": true
+      },
+      {
+        "name": "F06 补跑后 lastRunAt 刷新（晚于改写值）",
+        "pass": true
+      }
+    ],
+    "W13": [
+      {
+        "name": "RL3-03 缺失文件返回独立默认值",
+        "pass": true
+      },
+      {
+        "name": "RL3-03 正常读取来源为 primary",
+        "pass": true
+      },
+      {
+        "name": "RL3-03 主文件损坏后使用有效备份",
+        "pass": true
+      },
+      {
+        "name": "RL3-03 恢复内容写回主文件且损坏原件保留",
+        "pass": true
+      },
+      {
+        "name": "RL3-03 双损坏明确报错",
+        "pass": true
+      },
+      {
+        "name": "RL3-03 再次读取仍报错不归零",
+        "pass": true
+      },
+      {
+        "name": "RL3-02 对外首启缺初始化凭据拒绝启动",
+        "pass": true
+      },
+      {
+        "name": "RL3-02 首管理员注册缺凭据被拒",
+        "pass": true
+      },
+      {
+        "name": "RL3-02 初始化凭据前后空白不影响首管理员注册",
+        "pass": true
+      },
+      {
+        "name": "RL3-01 退出后旧令牌失效",
+        "pass": true
+      },
+      {
+        "name": "RL3-01 退出仅撤销当前会话",
+        "pass": true
+      },
+      {
+        "name": "RL3-01 成员不能撤销其他账户",
+        "pass": true
+      },
+      {
+        "name": "RL3-01 修改密码成功",
+        "pass": true
+      },
+      {
+        "name": "RL3-01 改密使当前及其他旧令牌失效",
+        "pass": true
+      },
+      {
+        "name": "RL3-01 新密码可登录",
+        "pass": true
+      },
+      {
+        "name": "RL3-01 管理员可撤销指定用户会话",
+        "pass": true
+      },
+      {
+        "name": "RL3-01 撤销成员不影响管理员",
+        "pass": true
+      },
+      {
+        "name": "RL3-01 默认会话有效期24小时",
+        "pass": true
+      },
+      {
+        "name": "RL3-01 到期令牌被拒绝",
+        "pass": true
+      },
+      {
+        "name": "RL3-01 旧版无期限会话需要重新登录",
+        "pass": true
+      },
+      {
+        "name": "RL3-01 过期会话已从存储清理",
+        "pass": true
+      },
+      {
+        "name": "RL3-02 重复登录尝试被限速",
+        "pass": true
+      },
+      {
+        "name": "RL3-02 限速不锁定其他账户",
+        "pass": true
+      },
+      {
+        "name": "RL3-04 AES密文可正确解密",
+        "pass": true
+      },
+      {
+        "name": "RL3-04 同内容每次密文不同",
+        "pass": true
+      },
+      {
+        "name": "RL3-04 密文篡改被拒绝",
+        "pass": true
+      },
+      {
+        "name": "RL3-04 错误主密钥无法解密",
+        "pass": true
+      },
+      {
+        "name": "RL3-04 缺主密钥拒绝启动",
+        "pass": true
+      },
+      {
+        "name": "RL3-04 主文件和备份均迁移为加密密文",
+        "pass": true
+      },
+      {
+        "name": "RL3-03 账户主文件损坏恢复后不重开注册",
+        "pass": true
+      },
+      {
+        "name": "RL3-03 空账户文件不能重新初始化",
+        "pass": true
+      },
+      {
+        "name": "RL3-03 状态接口明确报告数据故障",
+        "pass": true
+      },
+      {
+        "name": "RL3-03 损坏时无法抢注管理员",
+        "pass": true
+      },
+      {
+        "name": "RL3-03 账户损坏拒绝服务启动",
+        "pass": true
+      }
+    ],
+    "W16": [
+      {
+        "name": "客户端默认连接本机WSL后台",
+        "pass": true
+      },
+      {
+        "name": "服务地址规范化",
+        "pass": true
+      },
+      {
+        "name": "客户端拒绝非法服务地址 file",
+        "pass": true
+      },
+      {
+        "name": "客户端拒绝非法服务地址 javascript",
+        "pass": true
+      },
+      {
+        "name": "客户端拒绝非法服务地址 https",
+        "pass": true
+      },
+      {
+        "name": "客户端拒绝非法服务地址 https",
+        "pass": true
+      },
+      {
+        "name": "客户端拒绝非法服务地址 https",
+        "pass": true
+      },
+      {
+        "name": "客户端拒绝非法服务地址 https",
+        "pass": true
+      },
+      {
+        "name": "客户端拒绝非法服务地址 empty",
+        "pass": true
+      },
+      {
+        "name": "客户端拒绝非法服务地址 null",
+        "pass": true
+      },
+      {
+        "name": "纯客户端可独立构建",
+        "pass": true
+      },
+      {
+        "name": "客户端包不包含后端及模型执行代码",
+        "pass": true
+      },
+      {
+        "name": "客户端包不包含系统密钥解密",
+        "pass": true
+      }
+    ],
+    "W17": [
+      {
+        "name": "连接支持当前协议",
+        "pass": true
+      },
+      {
+        "name": "连接兼容已部署旧后台",
+        "pass": true
+      },
+      {
+        "name": "连接拒绝不兼容协议",
+        "pass": true
+      },
+      {
+        "name": "连接拒绝错误服务标识",
+        "pass": true
+      },
+      {
+        "name": "连接拒绝不健康服务",
+        "pass": true
+      },
+      {
+        "name": "客户端流兼容UTF8分片、CRLF及心跳",
+        "pass": true
+      },
+      {
+        "name": "客户端流EOF不能误报任务完成",
+        "pass": true
+      },
+      {
+        "name": "客户端流空闲超时",
+        "pass": true
+      },
+      {
+        "name": "客户端流超时清理连接",
+        "pass": true
+      },
+      {
+        "name": "客户端等待数据期间可取消",
+        "pass": true
+      },
+      {
+        "name": "客户端取消释放连接",
+        "pass": true
+      },
+      {
+        "name": "客户端拒绝异常JSON并清理",
+        "pass": true
+      },
+      {
+        "name": "客户端限制无换行超长响应",
+        "pass": true
+      },
+      {
+        "name": "客户端服务端错误事件正常结束",
+        "pass": true
+      }
+    ],
+    "W18": [
+      {
+        "name": "能力默认关闭命令执行",
+        "pass": true
+      },
+      {
+        "name": "能力未知配置不能开启执行",
+        "pass": true
+      },
+      {
+        "name": "能力生产禁止本机执行降级",
+        "pass": true
+      },
+      {
+        "name": "能力开发允许显式本机执行",
+        "pass": true
+      },
+      {
+        "name": "能力隔离执行须显式开启",
+        "pass": true
+      },
+      {
+        "name": "能力服务层不向模型提供命令工具",
+        "pass": true
+      },
+      {
+        "name": "能力服务层保留文件工具",
+        "pass": true
+      },
+      {
+        "name": "能力服务层提供Skill加载工具",
+        "pass": true
+      },
+      {
+        "name": "能力提示明确说明脚本限制",
+        "pass": true
+      },
+      {
+        "name": "能力模型伪造命令调用不会执行",
+        "pass": true
+      },
+      {
+        "name": "能力禁用命令后仍可写入文件",
+        "pass": true
+      },
+      {
+        "name": "能力任务正常结束",
+        "pass": true
+      },
+      {
+        "name": "能力任务历史保存",
+        "pass": true
+      }
+    ],
+    "W19": [
+      {
+        "name": "正文不会并入思考块",
+        "pass": true
+      },
+      {
+        "name": "连续正文增量合并",
+        "pass": true
+      },
+      {
+        "name": "工具之后创建独立正文",
+        "pass": true
+      },
+      {
+        "name": "空增量不制造占位消息",
+        "pass": true
+      },
+      {
+        "name": "多轮思考和正文保持顺序",
+        "pass": true
+      },
+      {
+        "name": "真实SSE解析后正文独立可见",
+        "pass": true
+      }
+    ],
+    "W20": [
+      {
+        "name": "Skill目录指引模型自主加载",
+        "pass": true
+      },
+      {
+        "name": "Skill按名称读取完整说明",
+        "pass": true
+      },
+      {
+        "name": "Skill列出可按需加载的资源",
+        "pass": true
+      },
+      {
+        "name": "Skill读取相对参考资料",
+        "pass": true
+      },
+      {
+        "name": "Skill支持内置办公说明",
+        "pass": true
+      },
+      {
+        "name": "Skill不存在明确拒绝",
+        "pass": true
+      },
+      {
+        "name": "Skill拒绝目录穿越",
+        "pass": true
+      },
+      {
+        "name": "Skill拒绝绝对路径",
+        "pass": true
+      },
+      {
+        "name": "Skill拒绝Windows路径绕过",
+        "pass": true
+      },
+      {
+        "name": "Skill拒绝超大资料",
+        "pass": true
+      },
+      {
+        "name": "Skill拒绝二进制资料",
+        "pass": true
+      },
+      {
+        "name": "Skill拒绝资源链接逃逸",
+        "pass": true
+      },
+      {
+        "name": "Skill运行中停用立即生效",
+        "pass": true
+      },
+      {
+        "name": "Skill资源热更新",
+        "pass": true
+      },
+      {
+        "name": "Skill撤销项目读取权立即生效",
+        "pass": true
+      },
+      {
+        "name": "Skill停止后不再加载",
+        "pass": true
+      }
+    ],
+    "W22": [
+      {
+        "name": "Worker配置不完整时关闭执行",
+        "pass": true
+      },
+      {
+        "name": "Worker配置完整时启用",
+        "pass": true
+      },
+      {
+        "name": "Worker请求认证且只发送授权文件",
+        "pass": true
+      },
+      {
+        "name": "Worker发送已加载Skill资源",
+        "pass": true
+      },
+      {
+        "name": "Worker成功回写文件和二进制产物",
+        "pass": true
+      },
+      {
+        "name": "Worker未读取文件不会被删除",
+        "pass": true
+      },
+      {
+        "name": "Worker失败不修改任务文件",
+        "pass": true
+      },
+      {
+        "name": "Worker文件冲突拒绝覆盖",
+        "pass": true
+      },
+      {
+        "name": "Worker撤销写权限拒绝回写",
+        "pass": true
+      },
+      {
+        "name": "Worker拒绝非法返回 traversal",
+        "pass": true
+      },
+      {
+        "name": "Worker拒绝非法返回 duplicate",
+        "pass": true
+      },
+      {
+        "name": "Worker拒绝非法返回 encoding",
+        "pass": true
+      },
+      {
+        "name": "Worker等待执行时可停止",
+        "pass": true
+      },
+      {
+        "name": "Worker副本读取遵守文件策略",
+        "pass": true
+      }
+    ],
+    "W26": [
+      {
+        "name": "migration assigns member task",
+        "pass": true
+      },
+      {
+        "name": "migration copies private files",
+        "pass": true
+      },
+      {
+        "name": "migration preserves originals",
+        "pass": true
+      },
+      {
+        "name": "shared files are not assigned arbitrarily",
+        "pass": true
+      },
+      {
+        "name": "shared originals retained",
+        "pass": true
+      },
+      {
+        "name": "admin cannot list member or unknown tasks",
+        "pass": true
+      },
+      {
+        "name": "default projects are personal",
+        "pass": true
+      },
+      {
+        "name": "migration idempotent",
+        "pass": true
+      },
+      {
+        "name": "username-only login ignores namespace selector",
+        "pass": true
+      },
+      {
+        "name": "old sessions retained",
+        "pass": true
+      },
+      {
+        "name": "tenant management removed",
+        "pass": true
+      },
+      {
+        "name": "member can create project",
+        "pass": true
+      },
+      {
+        "name": "admin cannot list member project",
+        "pass": true
+      },
+      {
+        "name": "admin denies private task ",
+        "pass": true
+      },
+      {
+        "name": "admin denies private task /files",
+        "pass": true
+      },
+      {
+        "name": "admin denies private task /transcript",
+        "pass": true
+      },
+      {
+        "name": "admin denies private task /plan",
+        "pass": true
+      },
+      {
+        "name": "admin cannot mutate private task /stop",
+        "pass": true
+      },
+      {
+        "name": "admin cannot mutate private task /messages",
+        "pass": true
+      },
+      {
+        "name": "admin cannot mutate private task /permission",
+        "pass": true
+      },
+      {
+        "name": "admin cannot mutate private task ",
+        "pass": true
+      },
+      {
+        "name": "admin cannot rename private project",
+        "pass": true
+      },
+      {
+        "name": "admin cannot read project memory",
+        "pass": true
+      },
+      {
+        "name": "admin cannot assign ownership",
+        "pass": true
+      },
+      {
+        "name": "admin cannot target foreign directory",
+        "pass": true
+      },
+      {
+        "name": "admin cannot upload to private task",
+        "pass": true
+      },
+      {
+        "name": "admin denies private task ",
+        "pass": true
+      },
+      {
+        "name": "admin denies private task /files",
+        "pass": true
+      },
+      {
+        "name": "admin denies private task /transcript",
+        "pass": true
+      },
+      {
+        "name": "admin denies private task /plan",
+        "pass": true
+      },
+      {
+        "name": "admin cannot mutate private task /stop",
+        "pass": true
+      },
+      {
+        "name": "admin cannot mutate private task /messages",
+        "pass": true
+      },
+      {
+        "name": "admin cannot mutate private task /permission",
+        "pass": true
+      },
+      {
+        "name": "admin cannot mutate private task ",
+        "pass": true
+      },
+      {
+        "name": "admin cannot rename private project",
+        "pass": true
+      },
+      {
+        "name": "admin cannot read project memory",
+        "pass": true
+      },
+      {
+        "name": "admin cannot assign ownership",
+        "pass": true
+      },
+      {
+        "name": "admin cannot target foreign directory",
+        "pass": true
+      },
+      {
+        "name": "admin cannot upload to private task",
+        "pass": true
+      },
+      {
+        "name": "owner upload works",
+        "pass": true
+      },
+      {
+        "name": "owner sees migrated history",
+        "pass": true
+      },
+      {
+        "name": "owner sees migrated memory",
+        "pass": true
+      },
+      {
+        "name": "member controls personal memory",
+        "pass": true
+      },
+      {
+        "name": "personal memory toggle does not change admin",
+        "pass": true
+      },
+      {
+        "name": "admin cannot see member memory",
+        "pass": true
+      },
+      {
+        "name": "runtime maps account scoped",
+        "pass": true
+      },
+      {
+        "name": "foreign file boundary denies admins",
+        "pass": true
+      },
+      {
+        "name": "identity store inaccessible",
+        "pass": true
+      },
+      {
+        "name": "personal workspace root excludes siblings",
+        "pass": true
+      },
+      {
+        "name": "admin can configure shared model",
+        "pass": true
+      },
+      {
+        "name": "member can use configured model",
+        "pass": true
+      },
+      {
+        "name": "second admin creates own task",
+        "pass": true
+      },
+      {
+        "name": "concurrent personal streams succeed",
+        "pass": true
+      },
+      {
+        "name": "schedules isolated from other admin",
+        "pass": true
+      },
+      {
+        "name": "scheduler authenticates as owner",
+        "pass": true
+      },
+      {
+        "name": "admin cannot see scheduled task",
+        "pass": true
+      },
+      {
+        "name": "account management remains available",
+        "pass": true
+      },
+      {
+        "name": "member cannot manage accounts",
+        "pass": true
+      },
+      {
+        "name": "duplicate trimmed username rejected",
+        "pass": true
+      },
+      {
+        "name": "revoke another account sessions",
+        "pass": true
+      }
+    ],
+    "W27": [
+      {
+        "name": "only generated files are products",
+        "pass": true
+      },
+      {
+        "name": "sidebar shows own completed task",
+        "pass": true
+      },
+      {
+        "name": "monitor steps preserve completion",
+        "pass": true
+      },
+      {
+        "name": "sidebar exposes product list",
+        "pass": true
+      },
+      {
+        "name": "sidebar lists real skills",
+        "pass": true
+      },
+      {
+        "name": "no fictitious MCP connection",
+        "pass": true
+      },
+      {
+        "name": "admin cannot select foreign sidebar",
+        "pass": true
+      },
+      {
+        "name": "admin monitor excludes other accounts",
+        "pass": true
+      },
+      {
+        "name": "owner downloads artifact",
+        "pass": true
+      },
+      {
+        "name": "admin cannot download other account artifact",
+        "pass": true
+      },
+      {
+        "name": "path traversal denied",
+        "pass": true
+      },
+      {
+        "name": "input files are not artifacts",
+        "pass": true
+      },
+      {
+        "name": "desktop downloads authorized file to local cache",
+        "pass": true
+      },
+      {
+        "name": "open does not overwrite previous local edits",
+        "pass": true
+      },
+      {
+        "name": "native opener rejects evil.exe",
+        "pass": true
+      },
+      {
+        "name": "native opener rejects evil.cmd",
+        "pass": true
+      },
+      {
+        "name": "native opener rejects evil.js",
+        "pass": true
+      },
+      {
+        "name": "native opener rejects evil.lnk",
+        "pass": true
+      },
+      {
+        "name": "native opener rejects evil.docm",
+        "pass": true
+      },
+      {
+        "name": "native opener rejects ../evil.pdf",
+        "pass": true
+      },
+      {
+        "name": "native opener rejects a/../../evil.pdf",
+        "pass": true
+      },
+      {
+        "name": "native opener rejects CON.txt",
+        "pass": true
+      },
+      {
+        "name": "native opener rejects file.txt:evil.exe",
+        "pass": true
+      },
+      {
+        "name": "products appear during execution",
+        "pass": true
+      },
+      {
+        "name": "new run clears completion marker",
+        "pass": true
+      }
+    ],
+    "W28": [
+      {
+        "name": "capacity queues second task",
+        "pass": true
+      },
+      {
+        "name": "duplicate queued submission rejected",
+        "pass": true
+      },
+      {
+        "name": "account queues independent",
+        "pass": true
+      },
+      {
+        "name": "queued task can stop",
+        "pass": true
+      },
+      {
+        "name": "stopped task can continue",
+        "pass": true
+      },
+      {
+        "name": "model failure is distinct",
+        "pass": true
+      },
+      {
+        "name": "pending approval restored by detail API",
+        "pass": true
+      },
+      {
+        "name": "foreign user cannot inspect approval",
+        "pass": true
+      },
+      {
+        "name": "restored approval can resolve",
+        "pass": true
+      },
+      {
+        "name": "resolved approval removed",
+        "pass": true
+      },
+      {
+        "name": "modified artifact creates revision",
+        "pass": true
+      },
+      {
+        "name": "unchanged artifact deduplicated",
+        "pass": true
+      },
+      {
+        "name": "old revision content immutable",
+        "pass": true
+      },
+      {
+        "name": "old revision remains private",
+        "pass": true
+      },
+      {
+        "name": "forged revision denied",
+        "pass": true
+      },
+      {
+        "name": "desktop selects exact revision",
+        "pass": true
+      },
+      {
+        "name": "partial artifact marked failed",
+        "pass": true
+      },
+      {
+        "name": "restart recovers queued state",
+        "pass": true
+      }
+    ],
+    "W29": [
+      {
+        "name": "admin reads editable instructions",
+        "pass": true
+      },
+      {
+        "name": "member cannot read editor",
+        "pass": true
+      },
+      {
+        "name": "save instructions",
+        "pass": true
+      },
+      {
+        "name": "conflicting save rejected",
+        "pass": true
+      },
+      {
+        "name": "edits persisted",
+        "pass": true
+      },
+      {
+        "name": "other admin unchanged",
+        "pass": true
+      },
+      {
+        "name": "runtime discovery uses edit",
+        "pass": true
+      },
+      {
+        "name": "model loads edited instructions",
+        "pass": true
+      },
+      {
+        "name": "invalid frontmatter rejected",
+        "pass": true
+      },
+      {
+        "name": "name change rejected",
+        "pass": true
+      },
+      {
+        "name": "member cannot edit",
+        "pass": true
+      },
+      {
+        "name": "invalid toggle rejected",
+        "pass": true
+      },
+      {
+        "name": "unknown toggle rejected",
+        "pass": true
+      },
+      {
+        "name": "disable succeeds",
+        "pass": true
+      },
+      {
+        "name": "disabled absent from runtime",
+        "pass": true
+      },
+      {
+        "name": "disabled still editable",
+        "pass": true
+      },
+      {
+        "name": "other account still enabled",
+        "pass": true
+      },
+      {
+        "name": "enable succeeds",
+        "pass": true
+      },
+      {
+        "name": "edit survives toggle",
+        "pass": true
+      }
+    ],
+    "W30": [
+      {
+        "name": "member package access denied",
+        "pass": true
+      },
+      {
+        "name": "invalid package name rejected",
+        "pass": true
+      },
+      {
+        "name": "new package is unpublished",
+        "pass": true
+      },
+      {
+        "name": "draft excluded from runtime",
+        "pass": true
+      },
+      {
+        "name": "foreign admin cannot inspect draft",
+        "pass": true
+      },
+      {
+        "name": "stale draft write rejected",
+        "pass": true
+      },
+      {
+        "name": "binary upload preserved",
+        "pass": true
+      },
+      {
+        "name": "traversal upload rejected",
+        "pass": true
+      },
+      {
+        "name": "case collision rejected",
+        "pass": true
+      },
+      {
+        "name": "main file cannot be deleted",
+        "pass": true
+      },
+      {
+        "name": "draft validation succeeds",
+        "pass": true
+      },
+      {
+        "name": "empty nested directory created",
+        "pass": true
+      },
+      {
+        "name": "stale directory request rejected",
+        "pass": true
+      },
+      {
+        "name": "folder traversal rejected",
+        "pass": true
+      },
+      {
+        "name": "folder file collision rejected",
+        "pass": true
+      },
+      {
+        "name": "file folder collision rejected",
+        "pass": true
+      },
+      {
+        "name": "publish creates version",
+        "pass": true
+      },
+      {
+        "name": "runtime uses published resources",
+        "pass": true
+      },
+      {
+        "name": "draft does not alter published resources",
+        "pass": true
+      },
+      {
+        "name": "new rounds see new version",
+        "pass": true
+      },
+      {
+        "name": "running round pins old resources",
+        "pass": true
+      },
+      {
+        "name": "load_skill sees published reference",
+        "pass": true
+      },
+      {
+        "name": "foreign admin cannot download version",
+        "pass": true
+      },
+      {
+        "name": "forged version denied",
+        "pass": true
+      },
+      {
+        "name": "version export contains original binary",
+        "pass": true
+      },
+      {
+        "name": "version export preserves empty folder",
+        "pass": true
+      },
+      {
+        "name": "rollback retains draft",
+        "pass": true
+      },
+      {
+        "name": "rollback activates old resources",
+        "pass": true
+      },
+      {
+        "name": "discard restores whole published draft",
+        "pass": true
+      },
+      {
+        "name": "discard preserves published empty folder",
+        "pass": true
+      },
+      {
+        "name": "zip roundtrip preserves empty folder",
+        "pass": true
+      },
+      {
+        "name": "foreign account cannot delete folder",
+        "pass": true
+      },
+      {
+        "name": "stale folder deletion rejected",
+        "pass": true
+      },
+      {
+        "name": "root deletion denied",
+        "pass": true
+      },
+      {
+        "name": "folder deletion removes draft children",
+        "pass": true
+      },
+      {
+        "name": "folder deletion preserves published files",
+        "pass": true
+      },
+      {
+        "name": "folder deletion removes empty descendants",
+        "pass": true
+      },
+      {
+        "name": "nested zip imports as draft",
+        "pass": true
+      },
+      {
+        "name": "zip traversal rejected",
+        "pass": true
+      },
+      {
+        "name": "zip symlink rejected",
+        "pass": true
+      },
+      {
+        "name": "zip case collisions rejected",
+        "pass": true
+      },
+      {
+        "name": "zip decompressed size limit enforced",
+        "pass": true
+      },
+      {
+        "name": "forged zip size cannot bypass inflate cap",
+        "pass": true
+      },
+      {
+        "name": "failed imports preserve draft revision",
+        "pass": true
+      },
+      {
+        "name": "missing dependency prevents validation",
+        "pass": true
+      },
+      {
+        "name": "invalid package never publishes",
+        "pass": true
+      },
+      {
+        "name": "missing resource reference rejected",
+        "pass": true
+      },
+      {
+        "name": "disable still revokes pinned skills",
+        "pass": true
+      },
+      {
+        "name": "member cannot mutate package",
+        "pass": true
+      },
+      {
+        "name": "existing builtin becomes managed with initial rollback",
+        "pass": true
+      },
+      {
+        "name": "legacy save cannot bypass publication",
+        "pass": true
+      }
+    ],
+    "W31": [
+      {
+        "name": "member cannot configure MCP",
+        "pass": true
+      },
+      {
+        "name": "credential in URL rejected",
+        "pass": true
+      },
+      {
+        "name": "created disabled and credential redacted",
+        "pass": true
+      },
+      {
+        "name": "credential encrypted at rest",
+        "pass": true
+      },
+      {
+        "name": "other admin cannot see configuration",
+        "pass": true
+      },
+      {
+        "name": "other admin cannot mutate connection",
+        "pass": true
+      },
+      {
+        "name": "untested connection cannot enable",
+        "pass": true
+      },
+      {
+        "name": "handshake and paginated discovery",
+        "pass": true
+      },
+      {
+        "name": "stale update rejected",
+        "pass": true
+      },
+      {
+        "name": "enabled tools enter account catalog",
+        "pass": true
+      },
+      {
+        "name": "foreign admin cannot toggle individual tool",
+        "pass": true
+      },
+      {
+        "name": "unknown tool rejected",
+        "pass": true
+      },
+      {
+        "name": "invalid tool switch rejected",
+        "pass": true
+      },
+      {
+        "name": "disabled tool excluded while sibling remains",
+        "pass": true
+      },
+      {
+        "name": "stale tool reference cannot bypass disable",
+        "pass": true
+      },
+      {
+        "name": "stale switch rejected",
+        "pass": true
+      },
+      {
+        "name": "retest retains individual disabled choices",
+        "pass": true
+      },
+      {
+        "name": "sidebar exposes tool names and availability",
+        "pass": true
+      },
+      {
+        "name": "external approval requested in auto mode: deny",
+        "pass": true
+      },
+      {
+        "name": "foreign account cannot inspect approval: deny",
+        "pass": true
+      },
+      {
+        "name": "permanent approval rejected: deny",
+        "pass": true
+      },
+      {
+        "name": "friendly metadata and status: deny",
+        "pass": true
+      },
+      {
+        "name": "execution transition only after approval: deny",
+        "pass": true
+      },
+      {
+        "name": "task completed with expected external call count: deny",
+        "pass": true
+      },
+      {
+        "name": "external approval requested in auto mode: allow",
+        "pass": true
+      },
+      {
+        "name": "foreign account cannot inspect approval: allow",
+        "pass": true
+      },
+      {
+        "name": "permanent approval rejected: allow",
+        "pass": true
+      },
+      {
+        "name": "friendly metadata and status: allow",
+        "pass": true
+      },
+      {
+        "name": "execution transition only after approval: allow",
+        "pass": true
+      },
+      {
+        "name": "task completed with expected external call count: allow",
+        "pass": true
+      },
+      {
+        "name": "SSE Unicode result reaches model and assistant",
+        "pass": true
+      },
+      {
+        "name": "changed remote schema blocked before execution",
+        "pass": true
+      },
+      {
+        "name": "disconnect does not retry side effects",
+        "pass": true
+      },
+      {
+        "name": "disable aborts in-flight call and hides tools",
+        "pass": true
+      },
+      {
+        "name": "individual tool can re-enable",
+        "pass": true
+      },
+      {
+        "name": "changing endpoint clears old token",
+        "pass": true
+      },
+      {
+        "name": "redirect refused",
+        "pass": true
+      },
+      {
+        "name": "failed test stays disabled",
+        "pass": true
+      },
+      {
+        "name": "delete succeeds",
+        "pass": true
+      }
+    ]
+  },
+  "assertionCount": 400,
   "overall": "pass"
 }

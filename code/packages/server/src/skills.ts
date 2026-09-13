@@ -5,12 +5,16 @@
  * 内置技能额外注入全文；用户/项目技能以 /技能名 斜杠触发时注入全文。
  * 热加载：每次任务执行前重读磁盘，无缓存。
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, lstatSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ensureWorkpivotDir, readJsonSafe, writeAtomic } from './store.js';
+import { createHash } from 'node:crypto';
+import { ensureWorkpivotDir, readJsonSafe, writeAtomic, writeAtomicWithBackup } from './store.js';
+import { pathWithin } from '@workpivot/shared/node';
+import { managedPackageNames, packageError, publishedPackages } from './skill-package-store.js';
 
 export interface Skill {
+  packageVersion?: string;
   name: string;
   description: string;
   /** SKILL.md 全文（渐进披露第三层，按需注入） */
@@ -53,13 +57,17 @@ function validate(dirName: string, fields: Record<string, string>): { ok: boolea
   return { ok: true };
 }
 
-function loadSkillDir(skillsRoot: string, source: Skill['source']): Skill[] {
+function loadSkillDir(skillsRoot: string, source: Skill['source'], allowed?: (path: string) => boolean): Skill[] {
+  if (allowed && !allowed(skillsRoot)) return [];
   if (!existsSync(skillsRoot)) return [];
   const skills: Skill[] = [];
   for (const dirName of readdirSync(skillsRoot)) {
     const skillFile = join(skillsRoot, dirName, 'SKILL.md');
-    if (!existsSync(skillFile)) continue;
+    if (allowed && !allowed(skillFile)) continue;
+    if (!existsSync(skillFile) || !pathWithin(skillFile, skillsRoot)) continue;
     try {
+      const stat = lstatSync(skillFile);
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 256 * 1024) continue;
       const text = readFileSync(skillFile, 'utf8');
       const { fields } = parseFrontmatter(text);
       const check = validate(dirName, fields);
@@ -103,7 +111,7 @@ function builtinSkillsRoot(): string {
 }
 
 /** 每次任务执行前调用：重读磁盘（D01 热加载）。 */
-export function listSkills(taskDir: string, opts: { includeDisabled?: boolean } = {}): Skill[] {
+export function listSkills(taskDir: string, opts: { includeDisabled?: boolean; projectFileAllowed?: (path: string) => boolean } = {}): Skill[] {
   const byName = new Map<string, Skill>();
   const layers: Array<{ root: string; source: Skill['source'] }> = [
     { root: builtinSkillsRoot(), source: 'builtin' },
@@ -111,12 +119,53 @@ export function listSkills(taskDir: string, opts: { includeDisabled?: boolean } 
     { root: join(taskDir, '.workpivot', 'skills'), source: 'project' },
   ];
   for (const { root, source } of layers) {
-    for (const skill of loadSkillDir(root === '' ? root : root, source)) {
+    for (const skill of loadSkillDir(root, source, source === 'project' ? opts.projectFileAllowed : undefined)) {
       byName.set(skill.name, { ...skill, source }); // 项目覆盖全局覆盖内置
     }
   }
+  const overrides = readJsonSafe<Record<string, string>>(join(ensureWorkpivotDir('config'), 'skill-edits.json'), {}).value;
+  for (const [name, skill] of byName) {
+    const key = `${skill.source}:${name}`;
+    const content = Object.hasOwn(overrides, key) ? overrides[key] : undefined;
+    if (typeof content === 'string' && validate(name, parseFrontmatter(content).fields).ok) {
+      byName.set(name, { ...skill, content, description: parseFrontmatter(content).fields['description']! });
+    }
+  }
+  for (const skill of publishedPackages()) {
+    if (byName.get(skill.name)?.source !== 'project') byName.set(skill.name, skill);
+  }
   const disabled = disabledSkills();
   return [...byName.values()].filter((s) => opts.includeDisabled === true || !disabled.includes(s.name));
+}
+
+export function skillRevision(skill: Skill): string {
+  return createHash('sha256').update(skill.source + '\n' + skill.content).digest('hex');
+}
+
+/** Published files are immutable; still re-discover to honour disable/revoke immediately. */
+export function pinPublishedSkills(discover: () => Skill[]): () => Skill[] {
+  const pinned = new Map<string, Skill>();
+  return () => discover().map(skill => {
+    const previous = pinned.get(skill.name);
+    if (skill.packageVersion && previous) return previous;
+    pinned.set(skill.name, skill); return skill;
+  });
+}
+
+/** Personal instruction overrides preserve the original resource/script directory. */
+export function editSkill(taskDir: string, name: string, content: string, revision: string): void {
+  if (managedPackageNames().includes(name)) throw packageError('此技能已使用文件包管理，请编辑草稿并发布', 409);
+  const skill = listSkills(taskDir, { includeDisabled: true }).find((item) => item.name === name);
+  if (!skill) throw Object.assign(new Error('技能不存在'), { status: 404 });
+  if (skillRevision(skill) !== revision) throw Object.assign(new Error('技能已被修改，请重新打开后编辑'), { status: 409 });
+  if (Buffer.byteLength(content, 'utf8') > 256 * 1024) throw Object.assign(new Error('技能内容不能超过 256KB'), { status: 400 });
+  const parsed = parseFrontmatter(content);
+  const check = validate(name, parsed.fields);
+  if (!check.ok || !parsed.body.trim()) throw Object.assign(new Error(check.error ?? '技能正文不能为空'), { status: 400 });
+  const path = join(ensureWorkpivotDir('config'), 'skill-edits.json');
+  const edits = readJsonSafe<Record<string, string>>(path, {}).value;
+  edits[`${skill.source}:${name}`] = content;
+  writeAtomicWithBackup(path, JSON.stringify(edits, null, 2));
 }
 
 // ---- 启停（F3 管理后台）：停用名单存 settings.json，停用技能不注入目录 ----
@@ -154,7 +203,7 @@ export function renderSkillDirectory(skills: Skill[]): string {
     lines.push(line);
     used += line.length;
   }
-  return ['\n# 可用技能', '以下是可用技能目录。需要某技能的完整说明时,用 read 工具读取其 SKILL.md 路径。', ...lines].join('\n');
+  return ['\n# 可用技能', '根据用户任务匹配以下技能；匹配时必须先调用 load_skill({name:"技能名"}) 加载完整说明，再开展工作，不需要用户输入斜杠命令。', '说明引用的参考资料或脚本用 load_skill({name:"技能名",file:"技能内相对路径"}) 按需读取。脚本读取不等于执行；Skill 不会新增工具或提升权限。不要将所有技能全文一次加载。', ...lines].join('\n');
 }
 
 /** 斜杠触发：消息以 /技能名 开头时返回该技能全文（拼入消息上下文）。 */
