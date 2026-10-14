@@ -7,6 +7,7 @@ import { AccountRepository } from '../packages/server/src/database/accounts.js';
 import { WorkspaceRepository } from '../packages/server/src/database/workspace.js';
 import { RunRepository } from '../packages/server/src/database/runs.js';
 import { createDatabaseRuntime } from '../packages/server/src/database/runtime.js';
+import { McpRepository } from '../packages/server/src/database/mcp.js';
 
 if (process.env.WORKPIVOT_SERVICE_RECOVERY_FIXTURE !== '1') throw Error('Disposable fixture only');
 for (const key of ['WORKPIVOT_DATABASE_URL', 'WORKPIVOT_AUTH_DATABASE_URL', 'WORKPIVOT_DATABASE_ADMIN_URL']) {
@@ -14,9 +15,11 @@ for (const key of ['WORKPIVOT_DATABASE_URL', 'WORKPIVOT_AUTH_DATABASE_URL', 'WOR
   if (!/^workpivot-recovery-test-\d+-db$/.test(url.hostname) || url.pathname !== '/recovery') throw Error('Expected isolated recovery database');
 }
 const fixturePath = '/tmp/workpivot-service-recovery.json';
-interface Fixture { actor: string; token: string; task: string; run: Awaited<ReturnType<RunRepository['start']>>; permission: string; cursor: string; secret: string }
+interface Fixture { actor: string; token: string; task: string; run: Awaited<ReturnType<RunRepository['start']>>; permission: string; cursor: string; secret: string; mcpRun: Awaited<ReturnType<RunRepository['start']>> }
 const db = pool(process.env.WORKPIVOT_DATABASE_URL!), auth = pool(process.env.WORKPIVOT_AUTH_DATABASE_URL!);
 const init = 'disposable-service-recovery-initialization';
+const mcpUrl = process.env.WORKPIVOT_RECOVERY_MCP_URL!;
+if (!/^http:\/\/workpivot-recovery-test-\d+-mcp:39801$/.test(mcpUrl)) throw Error('Expected isolated MCP fixture');
 let checks = 0;
 const check = (value: unknown, name: string) => { assert.ok(value, name); checks++; console.log('PASS ' + name); };
 
@@ -30,6 +33,8 @@ async function verify(mode: string) {
   const permission = await (await request(taskPath + '/permissions')).json();
   if (mode === 'before') {
     check(permission.pending.some((p: { id: string }) => p.id === f.permission), 'live confirmation visible before crash');
+    const audit = await (await fetch(mcpUrl + '/audit', { signal: AbortSignal.timeout(5000) })).json();
+    check(audit.calls === 1 && !audit.released, 'MCP persisted one real side effect before responding');
     return;
   }
   const state = await transaction(db, async c => ({
@@ -42,6 +47,13 @@ async function verify(mode: string) {
   check(state.permission.state === 'cancelled' && permission.pending.length === 0, 'orphaned confirmation cancelled');
   check(state.skill.status === 'interrupted' && state.skill.error.includes('结果未确认'), 'uncertain skill result is not silently completed');
   check(state.counts.runs === 1 && state.counts.skills === 1, 'restart creates no replacement task or skill execution');
+  const external = await transaction(db, async c => (await c.query('SELECT status FROM workpivot.task_runs WHERE id=$1', [f.mcpRun.id])).rows[0], f.actor);
+  check(external.status === 'interrupted', 'in-flight MCP run recovered as interrupted');
+  assert.ok((await fetch(mcpUrl + '/release', { method: 'POST', signal: AbortSignal.timeout(5000) })).ok);
+  const audit = await (await fetch(mcpUrl + '/audit', { signal: AbortSignal.timeout(5000) })).json();
+  check(audit.calls === 1, 'restart never dispatches the external side effect again');
+  const mcpChanges = await (await request(`/tasks/${f.mcpRun.taskId}/conversation-changes?after=0`)).json();
+  check(mcpChanges.events.every((e: { kind: string; content: string }) => e.kind !== 'tool_result' && !e.content.includes('side effect persisted')), 'unacknowledged external result is not claimed as received');
   check((await request(taskPath + `/permissions/${f.permission}`, { method: 'POST', body: JSON.stringify({ decision: 'allow' }) })).status === 409, 'stale approval rejected after restart');
   const changes = await (await request(taskPath + '/conversation-changes?after=0')).json();
   check(changes.events.filter((e: { content: string }) => e.content === 'durable partial answer').length === 1, 'partial response persists exactly once');
@@ -98,14 +110,30 @@ async function serve() {
     const permission = await runs.requestPermission(owner.user.id, run, { tool: 'fixture', command: 'no actual external operation', external: true, paths: [], kind: 'write' });
     await transaction(db, c => c.query('INSERT INTO workpivot.skill_executions(id,owner_user_id,run_id,task_id) VALUES($1,$2,$3,$4)', [randomUUID(), owner.user.id, run.id, task.id]), owner.user.id);
     const cursor = await transaction(db, async c => (await c.query('SELECT (next_sequence-1)::text AS cursor FROM workpivot.tasks WHERE id=$1', [task.id])).rows[0].cursor as string, owner.user.id);
-    fixture = { actor: owner.user.id, token: owner.token, task: task.id, run, permission: permission.id, cursor, secret: randomBytes(32).toString('hex') };
+    const mcpTask = await new WorkspaceRepository(db).createTask(owner.user.id, 'MCP uncertain result');
+    const mcpRun = await runs.start(owner.user.id, mcpTask.id, randomUUID(), 'persist a test marker');
+    fixture = { actor: owner.user.id, token: owner.token, task: task.id, run, permission: permission.id, cursor, secret: randomBytes(32).toString('hex'), mcpRun };
     await writeFile(fixturePath, JSON.stringify(fixture), { mode: 0o600, flag: 'wx' });
   }
   const app = await createDatabaseRuntime(auth, db, { initToken: init, secretKey: fixture.secret, filesRoot: '/tmp/recovery-files', webDist: '/app/apps/web/dist' });
   // Seeded executor heartbeat lives in the API process and dies with SIGKILL.
   if (first) {
     const f = fixture;
-    setInterval(() => { void new RunRepository(db).heartbeat(f.actor, f.run).catch(() => undefined); }, 1000);
+    const runs = new RunRepository(db);
+    setInterval(() => { for (const run of [f.run, f.mcpRun]) void runs.heartbeat(f.actor, run).catch(() => undefined); }, 1000);
+    const mcp = new McpRepository(db, f.secret);
+    let connection = await mcp.save(f.actor, { name: 'Crash recovery MCP', url: mcpUrl + '/mcp' });
+    connection = await mcp.discover(f.actor, connection.id, connection.revision);
+    await mcp.toggle(f.actor, connection.id, connection.revision, true);
+    const tool = (await mcp.tools(f.actor))[0]!;
+    void (async () => {
+      const result = await tool.run({}, { taskDir: '.', requestAccess: async request => {
+        const p = await runs.requestPermission(f.actor, f.mcpRun, request);
+        await runs.decidePermission(f.actor, f.mcpRun.taskId, p.id, 'allow');
+        return await runs.consumePermission(f.actor, f.mcpRun, p.id) === 'allow';
+      } });
+      await runs.append(f.actor, f.mcpRun, { type: 'assistant_delta', text: result });
+    })().catch(() => console.error('MCP fixture call ended before server termination'));
   }
   app.listen(39800, '0.0.0.0', () => console.log('RECOVERY_FIXTURE_READY'));
 }

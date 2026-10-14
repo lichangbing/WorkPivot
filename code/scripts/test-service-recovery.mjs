@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 const windows = process.platform === 'win32';
 const prefix = `workpivot-recovery-test-${Date.now()}`;
 const database = prefix + '-db', server = prefix + '-api';
+const mcp = prefix + '-mcp';
 const image = process.env.WORKPIVOT_TEST_SERVICE_IMAGE || 'workpivot-server:0.3.0-rc.1-recovery-validation-20260929';
 const pgImage = process.env.WORKPIVOT_TEST_PG_IMAGE || 'postgres:15-alpine';
 const docker = args => {
@@ -16,7 +17,7 @@ const docker = args => {
 };
 const linuxPath = path => windows ? execFileSync('wsl', ['-d', 'Ubuntu-24.04', '--', 'wslpath', '-a', path.replaceAll('\\', '/')], { encoding: 'utf8', timeout: 30000 }).trim() : path;
 const code = resolve(import.meta.dirname, '..');
-let keeper, networkCreated = false, dbCreated = false, apiCreated = false;
+let keeper, networkCreated = false, dbCreated = false, apiCreated = false, mcpCreated = false;
 const wait = ms => new Promise(r => setTimeout(r, ms));
 try {
   if (windows) {
@@ -33,9 +34,14 @@ try {
     try { docker(['exec', database, 'pg_isready', '-U', 'postgres', '-d', 'recovery']); ready = true; break; } catch { await wait(500); }
   }
   if (!ready) throw Error('Disposable database readiness timeout');
+  docker(['create', '--name', mcp, '--network', prefix, '--label', 'workpivot.disposable=service-recovery', '--user', 'node',
+    '-e', 'WORKPIVOT_SERVICE_RECOVERY_FIXTURE=1', image, 'node', '/tmp/recovery-mcp-service.mjs']); mcpCreated = true;
+  docker(['cp', linuxPath(resolve(code, 'eval/recovery-mcp-service.mjs')), `${mcp}:/tmp/recovery-mcp-service.mjs`]);
+  docker(['start', mcp]);
   const url = user => `postgresql://${user}:${password}@${database}:5432/recovery`;
   docker(['create', '--name', server, '--network', prefix, '--label', 'workpivot.disposable=service-recovery', '--user', 'root',
     '-e', 'WORKPIVOT_SERVICE_RECOVERY_FIXTURE=1', '-e', 'WORKPIVOT_DATABASE_ADMIN_URL=' + url('postgres'),
+    '-e', 'WORKPIVOT_RECOVERY_MCP_URL=http://' + mcp + ':39801',
     '-e', 'WORKPIVOT_DATABASE_URL=' + url('wp_recovery_app'), '-e', 'WORKPIVOT_AUTH_DATABASE_URL=' + url('wp_recovery_auth'),
     image, './node_modules/.bin/tsx', 'eval/wsl-service-recovery.mts', 'serve']); apiCreated = true;
   // Test current checkout source using the existing dependency image, without touching the deployed service.
@@ -61,7 +67,7 @@ try {
 } finally {
   // Only uniquely named resources created by this invocation are removed.
   try {
-    for (const [created, name] of [[apiCreated, server], [dbCreated, database]]) {
+    for (const [created, name] of [[apiCreated, server], [mcpCreated, mcp], [dbCreated, database]]) {
       if (created) {
         const info = JSON.parse(docker(['inspect', name]))[0];
         if (info.Config.Labels?.['workpivot.disposable'] !== 'service-recovery') throw Error('Refusing to clean non-test container');
