@@ -58,3 +58,17 @@
 来源：[abbrev 1.0.3 登记信息](https://registry.npmjs.org/abbrev/1.0.3)、[buffers 0.1.1 登记信息](https://registry.npmjs.org/buffers/0.1.1)。锁文件直接依赖边：nopt@5.0.0 → abbrev@1.0.3，unzipper@0.10.11 → binary@0.3.0 → buffers@0.1.1。未为消除提示直接替换依赖；应另做上游升级兼容验证或取得对应授权材料。
 
 本批未部署，未重复执行完整界面、真实模型或公网验收。版本库凭据检查只作初步排查，不是完整泄密审计。
+
+## 继续检查：模型请求恢复边界
+
+用户进一步授权按检查清单修改、更新文档并提交。此前基线和整改提交已推送至 GitHub 私有仓库 `lichangbing/WorkPivot` 的 main，原自建远程保留；上文“未提交/待推送”是当时状态。
+
+复现发现：模型错误同时包含 HTTP 400/401/403/429/500 和嵌套 ETIMEDOUT 时，原判断会优先命中网络重试条件；供应商 AbortError 带网络错误时也可能被重试。新增回归在修复前失败于 HTTP 400，证明测试覆盖实际判断缺陷。
+
+现已明确优先级：AbortError 不重试；存在 HTTP 状态时只允许既定的 502/503/504；没有 HTTP 状态时才检查允许的网络错误。仍保留一次重试预算、任何输出后不重试、调用方取消后不重试的约束，异常原对象继续向上传递。本批不改变工具执行或业务重放机制。
+
+验证结果：模型恢复专项 18/18 通过（新增 6 项）；WSL 独立临时 PostgreSQL 15 全量回归 585/585 通过，测试容器已清理，未挂载 Docker socket、未使用业务卷；全工作区类型检查、ESLint、git diff --check 通过。本批无界面、数据库结构或部署变更，未重新做浏览器、真实模型及整服务重启验收。
+
+许可后续项补充：npm 官方元数据确认 nopt@5.0.0 接受 abbrev 的 1.x，abbrev@1.1.1 声明 ISC；unzipper@0.12.3 已不依赖 binary/buffers，但 ExcelJS@4.4.0 要求 ^0.10.11。后者超出现有兼容范围，需完成普通及流式 Excel 读取、损坏文件等验证后才能替换，不能为了消除提示直接覆盖。两个旧包的许可问题本批仍未关闭。
+
+依据：[nopt 5.0.0](https://registry.npmjs.org/nopt/5.0.0)、[abbrev 1.1.1](https://registry.npmjs.org/abbrev/1.1.1)、[unzipper 0.12.3](https://registry.npmjs.org/unzipper/0.12.3)、[ExcelJS 4.4.0](https://registry.npmjs.org/exceljs/4.4.0)。

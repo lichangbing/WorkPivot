@@ -4,7 +4,10 @@ import { modelFailureDetails } from './model-error.js';
 
 export function retryableModelError(error: unknown): boolean {
   const details = modelFailureDetails(error);
-  return ['502', '503', '504'].includes(details.status ?? '') || details.code !== undefined;
+  if (details.name === 'AbortError') return false;
+  // An explicit HTTP response takes precedence over a nested transport failure.
+  if (details.status !== undefined) return ['502', '503', '504'].includes(details.status);
+  return details.code !== undefined;
 }
 
 /** Retry one unanswered model request, never a tool or a partially delivered stream. */

@@ -44,4 +44,29 @@ export async function testModelRecovery(check: (v: unknown, label: string) => vo
   const cancelled: ModelClient = { ...client, async *streamChat() { calls++; controller.abort(); if (calls > 0) throw timeout(); yield { type: 'delta', text: '' }; } };
   await assert.rejects(async () => { for await (const _ of streamWithRecovery(cancelled, [[], [], controller.signal], 0)) { void _; } });
   check(calls === 1, 'cancellation prevents retry');
+  for (const status of [400, 401, 403, 429, 500]) {
+    calls = 0;
+    const failure = new Error(`HTTP ${status}`, { cause: { code: 'ETIMEDOUT' } });
+    const rejected: ModelClient = { ...client, async *streamChat() {
+      calls++;
+      if (calls > 0) throw failure;
+      yield { type: 'delta', text: '' };
+    } };
+    await assert.rejects(async () => {
+      for await (const event of streamWithRecovery(rejected, [[], []], 0)) void event;
+    }, (error) => error === failure);
+    check(calls === 1, `HTTP ${status} overrides nested transport timeout`);
+  }
+  calls = 0;
+  const abort = new Error('provider cancelled', { cause: { code: 'ETIMEDOUT' } });
+  abort.name = 'AbortError';
+  const aborted: ModelClient = { ...client, async *streamChat() {
+    calls++;
+    if (calls > 0) throw abort;
+    yield { type: 'delta', text: '' };
+  } };
+  await assert.rejects(async () => {
+    for await (const event of streamWithRecovery(aborted, [[], []], 0)) void event;
+  }, (error) => error === abort);
+  check(calls === 1, 'provider abort never retries even without caller cancellation');
 }
