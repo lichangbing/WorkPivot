@@ -101,7 +101,7 @@ export async function startWorker({ host = '127.0.0.1', port = 39990, token, ima
   return { server, close: async () => { for (const controller of active) controller.abort(); await new Promise((resolve) => server.close(resolve)); } };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const worker = await startWorker({ host: process.env.WORKPIVOT_WORKER_BIND ?? '127.0.0.1', port: Number(process.env.WORKPIVOT_WORKER_PORT ?? 39990), token: process.env.WORKPIVOT_WORKER_TOKEN, image: process.env.WORKPIVOT_WORKER_IMAGE });
+  const worker = await startWorker({ owner: process.env.WORKPIVOT_WORKER_OWNER ?? OWNER, host: process.env.WORKPIVOT_WORKER_BIND ?? '127.0.0.1', port: Number(process.env.WORKPIVOT_WORKER_PORT ?? 39990), token: process.env.WORKPIVOT_WORKER_TOKEN, image: process.env.WORKPIVOT_WORKER_IMAGE });
   console.log('Skill worker ready');
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { void worker.close().then(() => process.exit(0)); });
 }

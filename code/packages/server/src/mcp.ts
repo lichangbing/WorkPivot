@@ -5,7 +5,7 @@ import { ensureWorkpivotDir, readJsonSafe, writeAtomicWithBackup } from './store
 import { getSecretBox, type SecretEnvelope } from './secret.js';
 import { TenantMap } from './tenant-map.js';
 
-interface RemoteTool { name: string; description: string; inputSchema: Record<string, unknown> }
+export interface RemoteTool { name: string; description: string; inputSchema: Record<string, unknown> }
 interface Connection { id: string; revision: string; name: string; url: string; secret?: SecretEnvelope; enabled: boolean; tools: RemoteTool[]; disabledTools?: string[]; checkedAt?: string; status: 'untested' | 'ready' | 'error'; error?: string }
 const enabledTools = (row: Connection) => row.tools.filter(t => !row.disabledTools?.includes(t.name));
 export const mcpError = (message: string, status = 400): Error => Object.assign(new Error(message), { status });
@@ -56,12 +56,12 @@ export function toggleMcpTool(id: string, name: unknown, enabled: unknown, revis
 
 type Rpc = { jsonrpc?: string; id?: string | number; method?: string; result?: unknown; error?: { code?: number } };
 const protocols = ['2025-11-25', '2025-06-18', '2025-03-26'];
-class HttpSession {
+export class HttpSession {
   private session = '';
   private protocol = '';
-  constructor(private row: Connection, private signal: AbortSignal) {}
+  constructor(private row: Pick<Connection, 'url' | 'secret'>, private signal: AbortSignal, private bearer?: string) {}
   private headers(): Record<string, string> {
-    return { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(this.row.secret ? { authorization: `Bearer ${getSecretBox().decrypt(this.row.secret)}` } : {}), ...(this.session ? { 'Mcp-Session-Id': this.session } : {}), ...(this.protocol ? { 'MCP-Protocol-Version': this.protocol } : {}) };
+    return { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(this.bearer ? { authorization: `Bearer ${this.bearer}` } : this.row.secret ? { authorization: `Bearer ${getSecretBox().decrypt(this.row.secret)}` } : {}), ...(this.session ? { 'Mcp-Session-Id': this.session } : {}), ...(this.protocol ? { 'MCP-Protocol-Version': this.protocol } : {}) };
   }
   private async post(body: unknown, signal = this.signal): Promise<Response> {
     const response = await fetch(this.row.url, { method: 'POST', headers: this.headers(), body: JSON.stringify(body), redirect: 'error', signal });

@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import { mergeEvents, groupEvents, type StoredEvent } from '../apps/web/src/database-chat-state.ts';
+const event = (id: string, sequence: string, content = id, kind = 'assistant', turnId = 'turn'): StoredEvent => ({ id, sequence, content, kind, turnId, runId: turnId, truncated: false });
+const a = event('a', '9007199254740993'), b = event('b', '9007199254740992');
+assert.deepEqual(mergeEvents([a], [b, a]).map(e => e.id), ['b', 'a']);
+assert.equal(mergeEvents([a], [event('other', '9007199254740994', 'a')]).length, 2);
+assert.equal(mergeEvents([a], [{ ...a, content: 'preview', truncated: true }])[0]?.content, 'a');
+assert.equal(mergeEvents([{ ...a, truncated: true }], [{ ...a, content: 'expanded' }])[0]?.content, 'expanded');
+const rows = [event('u', '1', 'question', 'user'), event('a', '2', 'Hello '), event('b', '3', 'world'), event('t', '4', 'tool', 'tool_use'), event('c', '5', 'after'), event('d', '6', 'next task', 'assistant', 'turn2')];
+const groups = groupEvents(rows);
+assert.equal(groups.length, 2);
+assert.deepEqual(groups[0]?.events.map(e => e.content), ['question', 'Hello world', 'tool', 'after']);
+assert.equal(rows[1]?.content, 'Hello ');
+assert.equal(groupEvents([a, { ...b, truncated: true }])[0]?.events.length, 2);
+assert.equal(groupEvents([a, { ...b, runId: 'different' }])[0]?.events.length, 2);
+assert.deepEqual(groupEvents([]), []);
+console.log('W39 database chat state: 10/10 passed');

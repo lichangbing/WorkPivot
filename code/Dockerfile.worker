@@ -2,5 +2,5 @@
 ARG BASE_IMAGE=workpivot-server:0.3.0-preview.6
 FROM ${BASE_IMAGE}
 USER root
-RUN apk add --no-cache python3
+RUN apk add --no-cache python3 poppler-utils
 USER node

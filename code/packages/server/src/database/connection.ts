@@ -1,7 +1,7 @@
 import pg from 'pg';
 import type { PoolClient, PoolConfig } from 'pg';
 import { createHash } from 'node:crypto';
-import { schemaSql, schemaVersion, personalTables } from './schema.js';
+import { schemaSql, schemaVersion, personalTables, schemaUpgrades } from './schema.js';
 
 export class RepositoryError extends Error {
   constructor(public readonly status: number, message: string) { super(message); }
@@ -50,9 +50,8 @@ export async function installSchema(db: pg.Pool, appRole: string, authRole: stri
     const checksum = createHash('sha256').update(schemaSql + personalTables.join(',')).digest('hex');
     const versions = await client.query('SELECT version,checksum,app_role,auth_role FROM workpivot_meta.schema_versions ORDER BY version');
     if (versions.rowCount) {
-      if (versions.rowCount !== 1 || versions.rows[0].version !== schemaVersion || versions.rows[0].checksum !== checksum || versions.rows[0].app_role !== appRole || versions.rows[0].auth_role !== authRole) throw new Error('数据库结构版本、角色或校验不匹配');
-      return;
-    }
+      if (versions.rowCount > schemaUpgrades.length + 1 || versions.rows[0].version !== schemaVersion || versions.rows[0].checksum !== checksum || versions.rows.some(r => r.app_role !== appRole || r.auth_role !== authRole)) throw new Error('数据库结构版本、角色或校验不匹配');
+    } else {
     await client.query(schemaSql);
     for (const table of personalTables) await client.query(`ALTER TABLE workpivot.${table} ENABLE ROW LEVEL SECURITY;
       ALTER TABLE workpivot.${table} FORCE ROW LEVEL SECURITY;
@@ -61,6 +60,18 @@ export async function installSchema(db: pg.Pool, appRole: string, authRole: stri
       GRANT USAGE ON SCHEMA workpivot TO ${app}; GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA workpivot TO ${app};
       REVOKE ALL ON FUNCTION workpivot.actor_id() FROM PUBLIC; GRANT EXECUTE ON FUNCTION workpivot.actor_id() TO ${app}`);
     await client.query('INSERT INTO workpivot_meta.schema_versions(version,checksum,app_role,auth_role) VALUES($1,$2,$3,$4)', [schemaVersion, checksum, appRole, authRole]);
+    }
+    for (const [index, upgrade] of schemaUpgrades.entries()) {
+      const digest = createHash('sha256').update(upgrade.sql).digest('hex');
+      const installed = versions.rows[index + 1];
+      if (installed) {
+        if (installed.version !== upgrade.version || installed.checksum !== digest) throw new Error('数据库升级校验不匹配');
+      } else {
+        await client.query(upgrade.sql);
+        await client.query(`GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA workpivot TO ${app}`);
+        await client.query('INSERT INTO workpivot_meta.schema_versions(version,checksum,app_role,auth_role) VALUES($1,$2,$3,$4)', [upgrade.version, digest, appRole, authRole]);
+      }
+    }
   });
 }
 

@@ -23,8 +23,14 @@ function* packageJsonPaths(rootDir) {
     if (!existsSync(nm)) continue;
     for (const pkg of readdirSync(nm)) {
       if (pkg.startsWith('.')) continue;
-      const pj = join(nm, pkg, 'package.json');
-      if (existsSync(pj)) yield pj;
+      // Scoped packages live one level below @scope, not at @scope/package.json.
+      const packages = pkg.startsWith('@')
+        ? readdirSync(join(nm, pkg)).map(name => join(nm, pkg, name))
+        : [join(nm, pkg)];
+      for (const dir of packages) {
+        const pj = join(dir, 'package.json');
+        if (existsSync(pj)) yield pj;
+      }
     }
   }
 }
@@ -32,6 +38,8 @@ function* packageJsonPaths(rootDir) {
 const rootDir = process.cwd();
 const seen = new Set();
 const violations = [];
+const unreadable = [];
+const unknown = [];
 let scanned = 0;
 
 for (const pjPath of packageJsonPaths(rootDir)) {
@@ -39,6 +47,7 @@ for (const pjPath of packageJsonPaths(rootDir)) {
   try {
     pkg = JSON.parse(readFileSync(pjPath, 'utf8'));
   } catch {
+    unreadable.push(pjPath);
     continue;
   }
   const key = `${pkg.name}@${pkg.version}`;
@@ -47,6 +56,7 @@ for (const pjPath of packageJsonPaths(rootDir)) {
   scanned += 1;
 
   const licenses = [...normalizeLicense(pkg.license), ...normalizeLicense(pkg.licenses)];
+  if (licenses.length === 0) unknown.push(key);
   for (const license of licenses) {
     if (DENY_PATTERNS.some((pattern) => pattern.test(license))) {
       violations.push({ name: pkg.name ?? '?', version: pkg.version ?? '?', license });
@@ -55,8 +65,13 @@ for (const pjPath of packageJsonPaths(rootDir)) {
 }
 
 console.log(`[K05] 已扫描依赖 ${scanned} 个（黑名单：AGPL / PolyForm）`);
+if (scanned === 0 || unreadable.length > 0) {
+  console.error(`[K05] 检查未完成：有效依赖 ${scanned} 个，无法解析的清单 ${unreadable.length} 个。请检查依赖安装及运行目录。`);
+  process.exit(1);
+}
+if (unknown.length) console.warn(`[K05] ${unknown.length} 个依赖未声明许可，需人工核对：${unknown.join(', ')}`);
 if (violations.length > 0) {
   for (const v of violations) console.error(`[K05] ⛔ 违规：${v.name}@${v.version} license=${v.license}`);
   process.exit(1);
 }
-console.log('[K05] ✅ 无黑名单许可');
+console.log('[K05] ✅ 已声明许可中未命中黑名单（不替代完整许可证审查）');

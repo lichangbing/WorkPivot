@@ -69,6 +69,7 @@ const baseline = {
   assertionCount: Object.values(assertions).flat().length,
   overall: failed === 0 ? 'pass' : 'fail',
 };
-writeFileSync(process.env['WORKPIVOT_EVAL_BASELINE'] ?? 'eval/baseline.json', JSON.stringify(baseline, null, 2));
-console.log(`\n===== 基线已写入 eval/baseline.json：${baseline.overall} =====`);
+const baselinePath = process.env['WORKPIVOT_EVAL_BASELINE'] ?? 'eval/baseline.json';
+writeFileSync(baselinePath, JSON.stringify(baseline, null, 2));
+console.log(`\n===== 基线已写入 ${baselinePath}：${baseline.overall} =====`);
 process.exit(failed > 0 ? 1 : 0);

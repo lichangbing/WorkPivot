@@ -12,9 +12,10 @@ import { PermissionsPanel } from './PermissionsPanel';
 import { ProjectsPanel } from './ProjectsPanel';
 import { SkillPackagesPanel } from './SkillPackagesPanel';
 import { McpPanel } from './McpPanel';
+import { DatabaseAdminContent } from './DatabaseAdminContent';
 import { MemoryTemplatesPanel } from './MemoryTemplatesPanel';
 
-type Menu = 'users' | 'models' | 'skills' | 'mcp' | 'memory' | 'templates' | 'schedules' | 'ops' | 'permissions' | 'projects';
+type Menu = 'experts' | 'users' | 'models' | 'skills' | 'mcp' | 'memory' | 'templates' | 'schedules' | 'ops' | 'permissions' | 'projects';
 type Role = PublicUser['role'];
 
 type UserDialogState =
@@ -27,7 +28,7 @@ const ROLE_TEXT: Record<Role, string> = {
   member: '成员',
 };
 
-export default function AdminApp(): React.JSX.Element {
+export default function AdminApp({ database = false }: { database?: boolean }): React.JSX.Element {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [me, setMe] = useState<PublicUser | null>(null);
   const [menu, setMenu] = useState<Menu>('users');
@@ -73,9 +74,9 @@ export default function AdminApp(): React.JSX.Element {
   useEffect(() => {
     if (authed !== true || me?.mustChangePassword) return;
     void loadUsers();
-    void loadProviders();
+    if (!database) void loadProviders();
 
-  }, [authed, me?.mustChangePassword, loadUsers, loadProviders]);
+  }, [authed, me?.mustChangePassword, loadUsers, loadProviders, database]);
 
   const logout = useCallback(async (): Promise<void> => {
     await api.logout().catch(() => undefined);
@@ -105,6 +106,7 @@ export default function AdminApp(): React.JSX.Element {
   const menus: Array<[Menu, string]> = [
     ['users', '用户管理'],
     ['models', '模型管理'],
+    ['experts', '专家模板'],
     ['skills', 'Skill 管理'],
     ['mcp', 'MCP 管理'],
     ['memory', '默认记忆'],
@@ -150,6 +152,7 @@ export default function AdminApp(): React.JSX.Element {
           </nav>
         </aside>
       <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-5">
+        {database ? <DatabaseAdminContent menu={menu} onDirty={setSkillDirty} /> : <>
         {menu === 'users' && <UsersPanel users={users} me={me} onRefresh={loadUsers} />}
         {menu === 'models' && <ModelsPanel providers={providers} onRefresh={loadProviders} />}
         {menu === 'skills' && <SkillPackagesPanel onDirty={setSkillDirty} />}
@@ -160,6 +163,7 @@ export default function AdminApp(): React.JSX.Element {
         {menu === 'ops' && <OpsPanel />}
         {menu === 'permissions' && <PermissionsPanel />}
         {menu === 'projects' && <ProjectsPanel />}
+        </>}
       </main>
       </div>
 

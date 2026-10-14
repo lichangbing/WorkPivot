@@ -1,0 +1,10 @@
+FROM workpivot-server:0.3.0-db-preview.37
+USER root
+COPY --chown=node:node code/packages/server/src/ /app/packages/server/src/
+COPY --chown=node:node code/packages/core/src/ /app/packages/core/src/
+COPY --chown=node:node code/packages/shared/src/ /app/packages/shared/src/
+COPY --chown=node:node code/packages/server/skills/ /app/packages/server/skills/
+COPY --chown=node:node code/apps/web/dist/ /app/apps/web/dist/
+COPY --chown=node:node code/scripts/database-server.mts code/scripts/postgres-schema.mts code/scripts/seed-memory-templates.mts code/scripts/seed-office-skills.mts /app/scripts/
+USER node
+CMD ["./node_modules/.bin/tsx", "scripts/database-server.mts"]

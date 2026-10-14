@@ -1,9 +1,37 @@
 # 源代码（pnpm monorepo）
 
+## 当前开发入口
+
+运行环境和包管理器版本以本目录 package.json、锁文件为准。用户界面在 apps/web，桌面外壳在 apps/desktop，业务服务在 packages/server，Agent 核心在 packages/core，共享协议在 packages/shared。
+
+当前 PostgreSQL 运行入口为 scripts/database-server.mts，业务组装在 packages/server/src/database/runtime.ts；WSL 使用 eval/wsl-database-server.mts。前端通过后台 HTTP/SSE 通信，不要求后台与客户端在同一主机。原有文件存储代码仍保留，不能与数据库链路的验收结果混用。
+
+### 检查方式（在 code 目录执行）
+
+| 命令 | 范围 |
+| --- | --- |
+| pnpm typecheck | 工作区类型检查 |
+| pnpm lint | 静态检查 |
+| pnpm check:deps | 前端依赖边界 |
+| pnpm check:licenses | 已安装 pnpm 依赖的许可证黑名单筛查，缺失声明单独提示；不是完整法律审查 |
+| pnpm test:licenses | 许可证检查脚本自身的边界用例 |
+| pnpm eval:chat-state | 数据库界面事件排序、去重与分组 |
+| pnpm eval | 常规模拟评测；不包含数据库集成和真实模型验收 |
+| pnpm eval:database | 独立临时 PostgreSQL 集成测试，需 Docker；Windows 使用 WSL |
+| pnpm --filter @workpivot/web build | 用户端及管理端构建 |
+
+数据库测试默认需要 postgres:17-alpine 镜像；可通过 WORKPIVOT_TEST_PG_IMAGE 显式指定已准备的受测版本。不要用业务数据库代替临时测试库。Windows 测试期间需保持 WSL 实例存活；本次审计发现无人持有前台进程时连接可能中断，保持实例运行后复测通过，详见工程检查记录。测试覆盖范围见 [eval/README.md](eval/README.md)，部署采用对应环境的最新记录。
+
+开发规范见 [AGENTS.md](../AGENTS.md)，当前计划见 [数据库与知识开发计划](../docs/03-project/tasks-postgresql-knowledge.md)。
+
+## 以下为早期实现记录
+
+以下 M0 技术选择、认证设想、同进程拓扑、环境变量和任务提交约定仅用于理解历史，不覆盖当前代码、开发规范与部署记录。
+
 > 工程于 2026-09-05 建立（M0 竖切开工，T1-01）。依据：ADR-002（编排内核=自研微内核）、
 > [数据目录规范](../docs/02-design/architecture/数据目录规范.md)、plan-2026 / tasks-m0。
 
-## 当前结构（M0 · 形态 A：服务层与 Electron 主进程同进程）
+## 历史结构（M0 · 形态 A：服务层与 Electron 主进程同进程）
 
 ```
 code/

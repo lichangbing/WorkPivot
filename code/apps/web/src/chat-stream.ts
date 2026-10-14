@@ -1,6 +1,6 @@
 import type { ChatEvent } from './api';
 
-export async function readChatStream(body: ReadableStream<Uint8Array>, onEvent: (event: ChatEvent) => void, signal?: AbortSignal, idleMs = 45000): Promise<void> {
+export async function readChatStream<T extends { type: string } = ChatEvent>(body: ReadableStream<Uint8Array>, onEvent: (event: T) => void, signal?: AbortSignal, idleMs = 45000): Promise<void> {
   const reader = body.getReader(), decoder = new TextDecoder();
   let buffer = '';
   const abort = () => { void reader.cancel().catch(() => undefined); };
@@ -18,7 +18,7 @@ export async function readChatStream(body: ReadableStream<Uint8Array>, onEvent: 
       while ((end = buffer.indexOf('\n')) >= 0) {
         const line = buffer.slice(0, end).trimEnd(); buffer = buffer.slice(end + 1);
         if (!line.startsWith('data:')) continue;
-        const event = JSON.parse(line.slice(5).trim()) as ChatEvent;
+        const event = JSON.parse(line.slice(5).trim()) as T;
         if (!event || typeof event.type !== 'string') throw new Error('服务器响应格式无效');
         onEvent(event);
         if (event.type === 'done' || event.type === 'error') return;

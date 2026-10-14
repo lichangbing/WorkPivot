@@ -1,0 +1,34 @@
+import {randomBytes,randomUUID} from 'node:crypto';
+import {resolve} from 'node:path';
+import {pool,installSchema,transaction} from '../packages/server/src/database/connection.js';
+import {AccountRepository} from '../packages/server/src/database/accounts.js';
+import {Experts} from '../packages/server/src/database/experts.js';
+import {ExpertWorker} from '../packages/server/src/database/expert-worker.js';
+import {WorkspaceRepository} from '../packages/server/src/database/workspace.js';
+import {RunRepository} from '../packages/server/src/database/runs.js';
+import {createDatabaseApp} from '../packages/server/src/database/app.js';
+if(process.env.WORKPIVOT_TEST_PG_DISPOSABLE!=='1')throw Error('Disposable only');
+const target=process.env.WORKPIVOT_TEST_PG_URL!,secret=randomBytes(32).toString('hex');
+const schema=pool(target);await schema.query(`CREATE ROLE rc_app LOGIN PASSWORD '${secret}' NOSUPERUSER NOBYPASSRLS;CREATE ROLE rc_auth LOGIN PASSWORD '${secret}' NOSUPERUSER NOBYPASSRLS;`);await installSchema(schema,'rc_app','rc_auth');
+const url=(role:string)=>{const u=new URL(target);u.username=role;u.password=secret;return u.toString();};
+const db=pool(url('rc_app')),auth=pool(url('rc_auth'));
+const actor=(await new AccountRepository(auth).registerFirst('rc-preview','RcPreview-2026!',secret,secret)).user.id;
+const experts=new Experts(db),workspace=new WorkspaceRepository(db),runs=new RunRepository(db);
+const settings={role:'通用研究员，区分事实和推断。',startup:'检查统计口径和待办，不自动重跑工具。',skills:[]};
+const template=await experts.create(actor,'通用研究员',settings,true);await experts.publish(actor,template.id,template.revision);
+const expert=await experts.create(actor,'我的研究员',settings,false,template.id);
+const project=await workspace.createProject(actor,'RC专家验收');await experts.bind(actor,'projects',project.id,expert.id,project.revision);
+const task=await workspace.createTask(actor,'专家经验确认',project.id);
+const run=await runs.start(actor,task.id,randomUUID(),'请记住方法：比较库存前先核对时间和范围。');await runs.finish(actor,run,'completed',[{role:'assistant',content:'请核对下面的专家经验建议。'}]);
+const worker=new ExpertWorker(db,async()=>({providerId:'fixture',model:'fixture',async *streamChat(){yield{type:'delta' as const,text:JSON.stringify([{content:'比较库存前先核对时间和范围。',conditions:'库存比较',evidence:'比较库存前先核对时间和范围',targets:[]}])};}}));await worker.recover(actor);await worker.process(actor);
+const interruptedTask=await workspace.createTask(actor,'中断恢复验收',project.id);
+const interruptedRun=await runs.start(actor,interruptedTask.id,randomUUID(),'检查中断后恢复');
+await transaction(db,async c=>{await c.query("INSERT INTO workpivot.skill_executions(id,owner_user_id,run_id,task_id,status,error) VALUES($1,$2,$3,$4,'interrupted','执行中断，结果未确认；请检查已有产物后重新发起')",[randomUUID(),actor,interruptedRun.id,interruptedTask.id]);await c.query("UPDATE workpivot.task_runs SET lease_until=now()-interval '1 second' WHERE id=$1",[interruptedRun.id]);},actor);
+await runs.recover(actor,interruptedTask.id);
+await workspace.createTask(actor,'无执行记录任务',project.id);
+const app=await createDatabaseApp(auth,db,secret,undefined,undefined,undefined,resolve('apps/web/dist'));
+// Test-only stop route remains behind normal authentication.
+app.post('/api/fixture-stop',(_req,res)=>{res.json({ok:true});void close();});
+const server=app.listen(39987,'127.0.0.1',()=>console.log('RC browser fixture ready: http://127.0.0.1:39987 ; test login rc-preview / RcPreview-2026!'));
+let closing=false;async function close(){if(closing)return;closing=true;server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));await Promise.all([db.end(),auth.end(),schema.end()]);}
+setTimeout(()=>void close(),900000).unref();process.on('SIGINT',()=>void close());process.on('SIGTERM',()=>void close());

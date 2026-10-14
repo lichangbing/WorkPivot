@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-11T05:12:26.080Z",
+  "date": "2026-09-16T02:30:26.604Z",
   "suites": {
     "W1": "pass",
     "W3": "pass",
@@ -19,7 +19,12 @@
     "W28": "pass",
     "W29": "pass",
     "W30": "pass",
-    "W31": "pass"
+    "W31": "pass",
+    "W33": "pass",
+    "W34": "pass",
+    "W35": "pass",
+    "W36": "pass",
+    "W37": "pass"
   },
   "assertions": {
     "W1": [
@@ -32,7 +37,7 @@
         "pass": true
       },
       {
-        "name": "B01 建任务（工作目录已创建） —— c:\\users\\lichb\\appdata\\local\\temp\\wp-ws-vxrkty\\.accounts\\c3885f2f-77ad-4137-8dc9-fff2fdfc3ed5",
+        "name": "B01 建任务（工作目录已创建） —— c:\\users\\lichb\\appdata\\local\\temp\\wp-ws-lr2ytf\\.accounts\\2b1a04d6-e728-4165-84f6-cf380f0bd8af",
         "pass": true
       },
       {
@@ -84,7 +89,7 @@
         "pass": true
       },
       {
-        "name": "F01 转写文件存在 —— C:\\Users\\lichb\\AppData\\Local\\Temp\\wp-home-JMw2NI\\accounts\\c3885f2f-77ad-4137-8dc9-fff2fdfc3ed5\\data\\tasks\\t-1789103518667-8a77d1\\transcript.jsonl",
+        "name": "F01 转写文件存在 —— C:\\Users\\lichb\\AppData\\Local\\Temp\\wp-home-yMXaPl\\accounts\\2b1a04d6-e728-4165-84f6-cf380f0bd8af\\data\\tasks\\t-1789525788309-a480ac\\transcript.jsonl",
         "pass": true
       },
       {
@@ -134,7 +139,7 @@
         "pass": true
       },
       {
-        "name": "T3-03 打回后真实写盘 —— gate 目录: [\".workpivot\",\"总结.md\",\"简介.txt\"] | 工具事件: [{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_i1x7j9\",\"ok\":true,\"status\":\"ok\",\"durationMs\":3,\"message\":\"已写入 c:\\\\users\\\\lichb\\\\appdata\\\\local\\\\temp\\\\wp3-ws-xbslpt\\\\.accounts\\\\d607287e-5705-42df-b461-ed6636542755\\\\总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_u4rive\",\"ok\":true,\"status\":\"ok\",\"durationMs\":4,\"message\":\"已写入 c:\\\\users\\\\lichb\\\\appdata\\\\local\\\\temp\\\\wp3-ws-xbslpt\\\\.accounts\\\\d607287e-5705-42df-b461-ed6636542755\\\\总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_xufzrj\",\"ok\":true,\"status\":\"ok\",\"durationMs\":2,\"message\":\"[系统] 注意:这是第 3 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 c:\\\\users\\\\lichb\\\\appdata\\\\local\\\\temp\\\\wp3-ws-xbslpt\\\\.accounts\\\\d607287e-5705-42df-b461-ed6636542755\\\\总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_rky7su\",\"ok\":true,\"status\":\"ok\",\"durationMs\":2,\"message\":\"[系统] 注意:这是第 4 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 c:\\\\users\\\\lichb\\\\appdata\\\\local\\\\temp\\\\wp3-ws-xbslpt\\\\.accounts\\\\d607287e-5705-42df-b461-ed6636542755\\\\总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_egsdpr\",\"ok\":false,\"status\":\"error\",\"durationMs\":0,\"message\":\"错误:已连续多次产生完全相同的调用与结果,本次执行被拦截。请必须更换思路、修改参数,或向用户说明情况。\"}]",
+        "name": "T3-03 打回后真实写盘 —— gate 目录: [\".workpivot\",\"总结.md\",\"简介.txt\"] | 工具事件: [{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_w2u27o\",\"ok\":true,\"status\":\"ok\",\"durationMs\":2,\"message\":\"已写入 c:\\\\users\\\\lichb\\\\appdata\\\\local\\\\temp\\\\wp3-ws-isfndh\\\\.accounts\\\\21c6e775-4062-4df5-949b-74ce1dc5eb20\\\\总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_qfn08r\",\"ok\":true,\"status\":\"ok\",\"durationMs\":2,\"message\":\"已写入 c:\\\\users\\\\lichb\\\\appdata\\\\local\\\\temp\\\\wp3-ws-isfndh\\\\.accounts\\\\21c6e775-4062-4df5-949b-74ce1dc5eb20\\\\总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_4aof5c\",\"ok\":true,\"status\":\"ok\",\"durationMs\":3,\"message\":\"[系统] 注意:这是第 3 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 c:\\\\users\\\\lichb\\\\appdata\\\\local\\\\temp\\\\wp3-ws-isfndh\\\\.accounts\\\\21c6e775-4062-4df5-949b-74ce1dc5eb20\\\\总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_kujtqm\",\"ok\":true,\"status\":\"ok\",\"durationMs\":3,\"message\":\"[系统] 注意:这是第 4 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 c:\\\\users\\\\lichb\\\\appdata\\\\local\\\\temp\\\\wp3-ws-isfndh\\\\.accounts\\\\21c6e775-4062-4df5-949b-74ce1dc5eb20\\\\总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_11e867\",\"ok\":false,\"status\":\"error\",\"durationMs\":0,\"message\":\"错误:已连续多次产生完全相同的调用与结果,本次执行被拦截。请必须更换思路、修改参数,或向用户说明情况。\"}]",
         "pass": true
       },
       {
@@ -142,11 +147,11 @@
         "pass": true
       },
       {
-        "name": "T3-06 大结果落盘（工具结果含\"已落盘\"） —— （工具结果过大已落盘:c:\\users\\lichb\\appdata\\local\\temp\\wp3-ws-xbslpt\\.accounts\\d607287e-5705-42df-b461-ed6636542755\\.workpivot\\res",
+        "name": "T3-06 大结果落盘（工具结果含\"已落盘\"） —— （工具结果过大已落盘:c:\\users\\lichb\\appdata\\local\\temp\\wp3-ws-isfndh\\.accounts\\21c6e775-4062-4df5-949b-74ce1dc5eb20\\.workpivot\\res",
         "pass": true
       },
       {
-        "name": "T3-06 落盘文件真实存在（>50KB） —— resultsDir=c:\\users\\lichb\\appdata\\local\\temp\\wp3-ws-xbslpt\\.accounts\\d607287e-5705-42df-b461-ed6636542755\\.workpivot\\results | exists=true | stashed=[\"result-1789103520816.txt\",\"result-1789103520829.txt\",\"result-1789103520842.txt\",\"result-1789103520853.txt\"]",
+        "name": "T3-06 落盘文件真实存在（>50KB） —— resultsDir=c:\\users\\lichb\\appdata\\local\\temp\\wp3-ws-isfndh\\.accounts\\21c6e775-4062-4df5-949b-74ce1dc5eb20\\.workpivot\\results | exists=true | stashed=[\"result-1789525791217.txt\",\"result-1789525791231.txt\",\"result-1789525791244.txt\",\"result-1789525791256.txt\"]",
         "pass": true
       },
       {
@@ -162,7 +167,7 @@
         "pass": true
       },
       {
-        "name": "T3-01 parentUuid 链首尾相接（fork/rewind 前置） —— [[\"user_message\",null],[\"meta\",\"aa5e7ec1\"],[\"meta\",\"9f633017\"]]",
+        "name": "T3-01 parentUuid 链首尾相接（fork/rewind 前置） —— [[\"user_message\",null],[\"meta\",\"9c1f9f26\"],[\"meta\",\"45b34475\"]]",
         "pass": true
       }
     ],
@@ -172,7 +177,7 @@
         "pass": true
       },
       {
-        "name": "E01 条目区恰有一条\"蓝色\"（幂等去重） —— [{\"id\":\"m-1789103522785-m52s\",\"content\":\"用户最喜欢的颜色是蓝色\",\"createdAt\":\"2026-09-11T05:12:02.785Z\"}]",
+        "name": "E01 条目区恰有一条\"蓝色\"（幂等去重） —— [{\"id\":\"m-1789525793326-yrmr\",\"content\":\"用户最喜欢的颜色是蓝色\",\"createdAt\":\"2026-09-16T02:29:53.326Z\"}]",
         "pass": true
       },
       {
@@ -244,11 +249,19 @@
       {
         "name": "转写含附件注入内容",
         "pass": true
+      },
+      {
+        "name": "界面历史保留原始消息不展开附件",
+        "pass": true
+      },
+      {
+        "name": "界面历史保留附件文件名",
+        "pass": true
       }
     ],
     "W8": [
       {
-        "name": "注册 anthropic 协议供应商（保存即验活通过） —— {\"provider\":{\"id\":\"caa900ca-9a4f-43de-87a7-c624f8eca11f\",\"name\":\"Claude模拟\",\"baseUrl\":\"http://127.0.0.1:39908\",\"modelId\":",
+        "name": "注册 anthropic 协议供应商（保存即验活通过） —— {\"provider\":{\"id\":\"9ab31cc3-42c9-47b8-aacf-39da684b982f\",\"name\":\"Claude模拟\",\"baseUrl\":\"http://127.0.0.1:39908\",\"modelId\":",
         "pass": true
       },
       {
@@ -280,7 +293,7 @@
         "pass": true
       },
       {
-        "name": "write 工具经 tool_use 真实落盘 —— c:\\users\\lichb\\appdata\\local\\temp\\wp8-ws-uflaww\\.accounts\\c2ba06ce-5108-44a0-9bf3-4301bd2d58e8\\w8.txt",
+        "name": "write 工具经 tool_use 真实落盘 —— c:\\users\\lichb\\appdata\\local\\temp\\wp8-ws-cp3pfj\\.accounts\\22ddcde9-2039-474e-b1d4-d75de59f7eea\\w8.txt",
         "pass": true
       },
       {
@@ -306,7 +319,7 @@
         "pass": true
       },
       {
-        "name": "F06 创建定时任务 —— {\"schedule\":{\"id\":\"20c01e01-a7d5-466a-a04f-219c93621271\",\"name\":\"W10 巡检\",\"cron\":\"* * * * *\",\"content",
+        "name": "F06 创建定时任务 —— {\"schedule\":{\"id\":\"38819990-e118-475d-a68d-43bc88b2011f\",\"name\":\"W10 巡检\",\"cron\":\"* * * * *\",\"content",
         "pass": true
       },
       {
@@ -1136,7 +1149,7 @@
         "pass": true
       },
       {
-        "name": "products appear during execution",
+        "name": "unpublished process files stay out of final products",
         "pass": true
       },
       {
@@ -1310,6 +1323,14 @@
         "pass": true
       },
       {
+        "name": "member can browse skill market",
+        "pass": true
+      },
+      {
+        "name": "draft absent from skill market",
+        "pass": true
+      },
+      {
         "name": "draft excluded from runtime",
         "pass": true
       },
@@ -1363,6 +1384,14 @@
       },
       {
         "name": "publish creates version",
+        "pass": true
+      },
+      {
+        "name": "market shows published metadata only",
+        "pass": true
+      },
+      {
+        "name": "private published package absent from other account market",
         "pass": true
       },
       {
@@ -1487,6 +1516,10 @@
       },
       {
         "name": "disable still revokes pinned skills",
+        "pass": true
+      },
+      {
+        "name": "disabled package hidden in market",
         "pass": true
       },
       {
@@ -1659,8 +1692,578 @@
         "name": "delete succeeds",
         "pass": true
       }
+    ],
+    "W33": [
+      {
+        "name": "new account defaults to auto",
+        "pass": true
+      },
+      {
+        "name": "stored personal mode readonly normalizes",
+        "pass": true
+      },
+      {
+        "name": "stored personal mode workdir normalizes",
+        "pass": true
+      },
+      {
+        "name": "stored personal mode ask normalizes",
+        "pass": true
+      },
+      {
+        "name": "stored personal mode auto normalizes",
+        "pass": true
+      },
+      {
+        "name": "legacy default normalizes",
+        "pass": true
+      },
+      {
+        "name": "ask read permission behavior",
+        "pass": true
+      },
+      {
+        "name": "ask write once scope",
+        "pass": true
+      },
+      {
+        "name": "ask write permission behavior",
+        "pass": true
+      },
+      {
+        "name": "ask bash once scope",
+        "pass": true
+      },
+      {
+        "name": "ask bash permission behavior",
+        "pass": true
+      },
+      {
+        "name": "ask danger once scope",
+        "pass": true
+      },
+      {
+        "name": "ask danger permission behavior",
+        "pass": true
+      },
+      {
+        "name": "ask external once scope",
+        "pass": true
+      },
+      {
+        "name": "ask external permission behavior",
+        "pass": true
+      },
+      {
+        "name": "ask outside once scope",
+        "pass": true
+      },
+      {
+        "name": "ask outside permission behavior",
+        "pass": true
+      },
+      {
+        "name": "auto read permission behavior",
+        "pass": true
+      },
+      {
+        "name": "auto write permission behavior",
+        "pass": true
+      },
+      {
+        "name": "auto bash permission behavior",
+        "pass": true
+      },
+      {
+        "name": "auto danger once scope",
+        "pass": true
+      },
+      {
+        "name": "auto danger permission behavior",
+        "pass": true
+      },
+      {
+        "name": "auto external once scope",
+        "pass": true
+      },
+      {
+        "name": "auto external permission behavior",
+        "pass": true
+      },
+      {
+        "name": "auto outside permission behavior",
+        "pass": true
+      },
+      {
+        "name": "API exposes exactly two modes",
+        "pass": true
+      },
+      {
+        "name": "API rejects obsolete or invalid mode readonly",
+        "pass": true
+      },
+      {
+        "name": "API rejects obsolete or invalid mode workdir",
+        "pass": true
+      },
+      {
+        "name": "API rejects obsolete or invalid mode toString",
+        "pass": true
+      },
+      {
+        "name": "API rejects obsolete or invalid mode invalid",
+        "pass": true
+      },
+      {
+        "name": "API accepts ask",
+        "pass": true
+      },
+      {
+        "name": "API accepts auto",
+        "pass": true
+      }
+    ],
+    "W34": [
+      {
+        "name": "REPORT.XLSX type icon",
+        "pass": true
+      },
+      {
+        "name": "report.docx type icon",
+        "pass": true
+      },
+      {
+        "name": "report.pdf type icon",
+        "pass": true
+      },
+      {
+        "name": "report.pptx type icon",
+        "pass": true
+      },
+      {
+        "name": "photo.png type icon",
+        "pass": true
+      },
+      {
+        "name": "other.bin type icon",
+        "pass": true
+      },
+      {
+        "name": "attachment consumption occurs before response completion",
+        "pass": true
+      },
+      {
+        "name": "response completes normally",
+        "pass": true
+      },
+      {
+        "name": "rejected send retains attachment selection",
+        "pass": true
+      }
+    ],
+    "W35": [
+      {
+        "name": "three layers and seeded public roles",
+        "pass": true
+      },
+      {
+        "name": "no task scope cannot edit task/project",
+        "pass": true
+      },
+      {
+        "name": "member cannot manage templates",
+        "pass": true
+      },
+      {
+        "name": "member cannot publish templates",
+        "pass": true
+      },
+      {
+        "name": "personal save works",
+        "pass": true
+      },
+      {
+        "name": "personal stale save rejected with JSON",
+        "pass": true
+      },
+      {
+        "name": "project save works",
+        "pass": true
+      },
+      {
+        "name": "project stale save rejected with JSON",
+        "pass": true
+      },
+      {
+        "name": "task save works",
+        "pass": true
+      },
+      {
+        "name": "task stale save rejected with JSON",
+        "pass": true
+      },
+      {
+        "name": "same project shares project but not task notes",
+        "pass": true
+      },
+      {
+        "name": "admin cannot read foreign task memories",
+        "pass": true
+      },
+      {
+        "name": "admin cannot edit foreign task memories",
+        "pass": true
+      },
+      {
+        "name": "private memory absent from other account view",
+        "pass": true
+      },
+      {
+        "name": "admin cannot read foreign task memories",
+        "pass": true
+      },
+      {
+        "name": "admin cannot edit foreign task memories",
+        "pass": true
+      },
+      {
+        "name": "private memory absent from other account view",
+        "pass": true
+      },
+      {
+        "name": "oversized note rejected",
+        "pass": true
+      },
+      {
+        "name": "reserved role ID rejected",
+        "pass": true
+      },
+      {
+        "name": "admin saves default role",
+        "pass": true
+      },
+      {
+        "name": "catalog stale update rejected",
+        "pass": true
+      },
+      {
+        "name": "public default available to member",
+        "pass": true
+      },
+      {
+        "name": "actual model receives all three scopes and public role",
+        "pass": true
+      },
+      {
+        "name": "sibling task excludes first task memory",
+        "pass": true
+      },
+      {
+        "name": "other account receives public role only",
+        "pass": true
+      },
+      {
+        "name": "user can opt out of role",
+        "pass": true
+      },
+      {
+        "name": "opt out retains personal/project/task",
+        "pass": true
+      },
+      {
+        "name": "explicit role selection works",
+        "pass": true
+      },
+      {
+        "name": "disabled template not loaded",
+        "pass": true
+      },
+      {
+        "name": "deleted selected role still permits disabling memory",
+        "pass": true
+      },
+      {
+        "name": "memory off suppresses all injection",
+        "pass": true
+      },
+      {
+        "name": "invalid role rejected",
+        "pass": true
+      },
+      {
+        "name": "remember respects disabled memory",
+        "pass": true
+      },
+      {
+        "name": "promote_memory respects disabled memory",
+        "pass": true
+      },
+      {
+        "name": "off produces no confirmation and preserves personal notes",
+        "pass": true
+      },
+      {
+        "name": "promotion waiting for user confirmation",
+        "pass": true
+      },
+      {
+        "name": "other account disable does not cancel pending write",
+        "pass": true
+      },
+      {
+        "name": "legacy toggle cancels pending write",
+        "pass": true
+      },
+      {
+        "name": "canceled write does not modify handbook or entries",
+        "pass": true
+      },
+      {
+        "name": "new auto load switch cancels pending write",
+        "pass": true
+      },
+      {
+        "name": "selection stale revision rejected",
+        "pass": true
+      }
+    ],
+    "W36": [
+      {
+        "name": "cannot publish missing or traversing file",
+        "pass": true
+      },
+      {
+        "name": "tool registers final file",
+        "pass": true
+      },
+      {
+        "name": "running output not exposed for synchronization",
+        "pass": true
+      },
+      {
+        "name": "only declared final outcome published",
+        "pass": true
+      },
+      {
+        "name": "sidebar contains final files only",
+        "pass": true
+      },
+      {
+        "name": "server browser includes process file",
+        "pass": true
+      },
+      {
+        "name": "other admin cannot browse task",
+        "pass": true
+      },
+      {
+        "name": "other admin manifest isolated",
+        "pass": true
+      },
+      {
+        "name": "other admin cannot select file",
+        "pass": true
+      },
+      {
+        "name": "sync initially disabled",
+        "pass": true
+      },
+      {
+        "name": "first sync downloads one final file",
+        "pass": true
+      },
+      {
+        "name": "download content verified and local path stable",
+        "pass": true
+      },
+      {
+        "name": "no process material downloaded",
+        "pass": true
+      },
+      {
+        "name": "unchanged version not rewritten",
+        "pass": true
+      },
+      {
+        "name": "registered result updates automatically",
+        "pass": true
+      },
+      {
+        "name": "local modifications preserved",
+        "pass": true
+      },
+      {
+        "name": "server version saved separately on conflict",
+        "pass": true
+      },
+      {
+        "name": "conflict copy not repeatedly downloaded",
+        "pass": true
+      },
+      {
+        "name": "failed run never publishes staged materials",
+        "pass": true
+      },
+      {
+        "name": "failed run retains last successful delivery",
+        "pass": true
+      },
+      {
+        "name": "cannot manually publish failed file",
+        "pass": true
+      },
+      {
+        "name": "manual select works for existing successful process file",
+        "pass": true
+      },
+      {
+        "name": "unselected result excluded from manifest",
+        "pass": true
+      },
+      {
+        "name": "unselect never deletes local copies",
+        "pass": true
+      },
+      {
+        "name": "pause stops downloads",
+        "pass": true
+      },
+      {
+        "name": "other account has separate configuration",
+        "pass": true
+      },
+      {
+        "name": "unsafe path rejected ../escape.txt",
+        "pass": true
+      },
+      {
+        "name": "unsafe path rejected sub/../../escape",
+        "pass": true
+      },
+      {
+        "name": "unsafe path rejected C:/bad.txt",
+        "pass": true
+      },
+      {
+        "name": "unsafe path rejected CON.txt",
+        "pass": true
+      },
+      {
+        "name": "unsafe path rejected bad\\file.txt",
+        "pass": true
+      },
+      {
+        "name": "hash mismatch rejects download",
+        "pass": true
+      },
+      {
+        "name": "connection switch cancels synchronization",
+        "pass": true
+      },
+      {
+        "name": "runtime exposes delivery tool and completes",
+        "pass": true
+      },
+      {
+        "name": "model run publishes only explicit final file",
+        "pass": true
+      }
+    ],
+    "W37": [
+      {
+        "name": "guest cannot reset",
+        "pass": true
+      },
+      {
+        "name": "member cannot reset",
+        "pass": true
+      },
+      {
+        "name": "foreign account hidden",
+        "pass": true
+      },
+      {
+        "name": "platform admin protected",
+        "pass": true
+      },
+      {
+        "name": "self reset uses current-password flow",
+        "pass": true
+      },
+      {
+        "name": "random temporary password issued",
+        "pass": true
+      },
+      {
+        "name": "temporary password not cached",
+        "pass": true
+      },
+      {
+        "name": "old session revoked",
+        "pass": true
+      },
+      {
+        "name": "old password rejected",
+        "pass": true
+      },
+      {
+        "name": "temporary login marked",
+        "pass": true
+      },
+      {
+        "name": "refresh retains required change",
+        "pass": true
+      },
+      {
+        "name": "temporary session cannot read tasks",
+        "pass": true
+      },
+      {
+        "name": "temporary session cannot access management",
+        "pass": true
+      },
+      {
+        "name": "invalid password types rejected",
+        "pass": true
+      },
+      {
+        "name": "wrong current password rejected",
+        "pass": true
+      },
+      {
+        "name": "temporary password cannot be retained",
+        "pass": true
+      },
+      {
+        "name": "password changed",
+        "pass": true
+      },
+      {
+        "name": "password change revokes temporary session",
+        "pass": true
+      },
+      {
+        "name": "new password unlocks account",
+        "pass": true
+      },
+      {
+        "name": "unrelated account remains logged in",
+        "pass": true
+      },
+      {
+        "name": "temporary password never stored as plaintext",
+        "pass": true
+      },
+      {
+        "name": "repeat reset issues different password",
+        "pass": true
+      },
+      {
+        "name": "repeat reset revokes renewed session",
+        "pass": true
+      }
     ]
   },
-  "assertionCount": 400,
+  "assertionCount": 547,
   "overall": "pass"
 }

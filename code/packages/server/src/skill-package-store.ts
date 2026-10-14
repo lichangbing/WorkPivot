@@ -8,7 +8,7 @@ import { ensureWorkpivotDir, readJsonSafe, writeAtomicWithBackup } from './store
 
 export const PACKAGE_LIMIT = 16 * 1024 * 1024;
 const FILE_LIMIT = 8 * 1024 * 1024;
-type Files = Record<string, string>;
+export type Files = Record<string, string>;
 export interface PackageVersion { id: string; label: string; createdAt: string; directories?: string[] }
 interface PackageState { name: string; revision: string; draft: Files; directories?: string[]; published?: string; versions: PackageVersion[] }
 export const packageError = (message: string, status = 400): Error => Object.assign(new Error(message), { status });
@@ -27,7 +27,7 @@ function read(name: string): PackageState {
   return state;
 }
 function commit(state: PackageState): void { state.directories = packageDirectories(state.draft, state.directories); state.revision = randomUUID(); writeAtomicWithBackup(statePath(state.name), JSON.stringify(state)); }
-function packageDirectories(files: Files, explicit: string[] = []): string[] {
+export function packageDirectories(files: Files, explicit: string[] = []): string[] {
   const result = new Set<string>(); const targets = new Map<string, string>();
   for (const path of [...Object.keys(files), ...explicit.map(p => p + '/placeholder')]) {
     const parts = path.split('/'); parts.pop();
@@ -44,7 +44,7 @@ function packageDirectories(files: Files, explicit: string[] = []): string[] {
 function checkRevision(state: PackageState, revision: unknown): void {
   if (typeof revision !== 'string' || state.revision !== revision) throw packageError('草稿或发布版本已改变，请重新打开技能包后再操作；当前编辑内容未被覆盖', 409);
 }
-function checkFiles(files: Files): void {
+export function checkFiles(files: Files): void {
   const names = Object.keys(files); if (names.length > 256) throw packageError('技能包最多256个文件');
   const seen = new Set<string>(); let total = 0;
   for (const name of names) {
@@ -167,7 +167,10 @@ export function savePackageFile(name: string, path: string, data: Buffer | null,
   checkFiles(state.draft); commit(state); return packageDetail(name);
 }
 export function validatePackage(name: string, available: string[]) {
-  const state = read(name); const errors: string[] = []; const warnings: string[] = [];
+  return validatePackageState(name, read(name), available);
+}
+export function validatePackageState(name: string, state: { draft: Files; revision: string }, available: string[]) {
+  const errors: string[] = []; const warnings: string[] = [];
   try { checkFiles(state.draft); const text = packageText(Buffer.from(state.draft['SKILL.md'] ?? '', 'base64')); if (text === null) throw packageError('SKILL.md 必须为256KiB以内 UTF-8 文本'); instructionFields(name, text); } catch (error) { errors.push((error as Error).message); }
   for (const [path, value] of Object.entries(state.draft)) {
     const text = packageText(Buffer.from(value, 'base64'));
@@ -216,6 +219,10 @@ export function discardPackageDraft(name: string, revision: unknown) {
 function crc32(data: Buffer): number { let crc = 0xffffffff; for (const byte of data) { crc ^= byte; for (let i = 0; i < 8; i++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0); } return (crc ^ 0xffffffff) >>> 0; }
 export function importPackageZip(name: string, archive: Buffer, revision: unknown) {
   const state = read(name); checkRevision(state, revision);
+  const { files, directories } = decodePackageZip(name, archive);
+  state.draft = files; state.directories = directories; commit(state); return packageDetail(name);
+}
+export function decodePackageZip(name: string, archive: Buffer): { files: Files; directories: string[] } {
   if (archive.length > PACKAGE_LIMIT) throw packageError('ZIP 不能超过16MiB');
   const files: Files = Object.create(null) as Files;
   const directories: string[] = [];
@@ -246,7 +253,7 @@ export function importPackageZip(name: string, archive: Buffer, revision: unknow
     }
     checkFiles(files); packageDirectories(files, directories); instructionFields(name, packageText(Buffer.from(files['SKILL.md'] ?? '', 'base64')) ?? '');
   } catch (error) { throw packageError(`导入失败：${(error as Error).message}`); }
-  state.draft = files; state.directories = directories; commit(state); return packageDetail(name);
+  return { files, directories };
 }
 export function exportPackageZip(name: string, version?: string): Buffer {
   const state = read(name); const files = version ? copyPackageFiles(versionDirectory(state, version)) : state.draft;

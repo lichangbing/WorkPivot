@@ -44,7 +44,7 @@ export interface RunAgentOptions {
   extraEnv?: Record<string, string>;
   filePolicy?: ToolContext['filePolicy'];
   executeCommand?: ToolContext['executeCommand'];
-  onEvent?: (event: AgentEvent) => void;
+  onEvent?: (event: AgentEvent) => void | Promise<void>;
   signal?: AbortSignal;
 }
 
@@ -113,13 +113,13 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
       wrapAttempted = true;
       stopReason = overSteps ? 'max_steps' : 'time_limit';
       messages.push({ role: 'user', content: FORCED_WRAP_PROMPT });
-      options.onEvent?.({ type: 'assistant_delta', text: '\n\n⚠ 预算已用尽,强制收尾:\n' });
+      await options.onEvent?.({ type: 'assistant_delta', text: '\n\n⚠ 预算已用尽,强制收尾:\n' });
       let finalText = '';
       try {
         for await (const event of client.streamChat(messages, [], signal)) {
           if (event.type === 'delta') {
             finalText += event.text;
-            options.onEvent?.({ type: 'assistant_delta', text: event.text });
+            await options.onEvent?.({ type: 'assistant_delta', text: event.text });
           }
         }
         messages.push({ role: 'assistant', content: finalText });
@@ -127,7 +127,7 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
         if (signal?.aborted) {
           stopReason = 'aborted';
         } else {
-          options.onEvent?.({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+          await options.onEvent?.({ type: 'error', message: err instanceof Error ? err.message : String(err) });
           stopReason = 'error';
         }
       }
@@ -145,9 +145,9 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
       for await (const event of client.streamChat(messages, toolSchemas, signal)) {
         if (event.type === 'delta') {
           assistantText += event.text;
-          options.onEvent?.({ type: 'assistant_delta', text: event.text });
+          await options.onEvent?.({ type: 'assistant_delta', text: event.text });
         } else if (event.type === 'reasoning_delta') {
-          options.onEvent?.({ type: 'reasoning_delta', text: event.text });
+          await options.onEvent?.({ type: 'reasoning_delta', text: event.text });
         } else {
           toolCalls = event.tool_calls;
         }
@@ -157,7 +157,7 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
         stopReason = 'aborted';
         break;
       }
-      options.onEvent?.({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+      await options.onEvent?.({ type: 'error', message: err instanceof Error ? err.message : String(err) });
       stopReason = 'error';
       break;
     }
@@ -175,7 +175,7 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
       }
       const tool = tools.find((t) => t.name === call.function.name);
       const identity = { toolName: call.function.name, displayName: tool?.displayName, callId: call.id };
-      options.onEvent?.({ type: 'tool_use', ...identity, status: tool?.displayName ? 'waiting' : 'running', args: safeParse(call.function.arguments) });
+      await options.onEvent?.({ type: 'tool_use', ...identity, status: tool?.displayName ? 'waiting' : 'running', args: safeParse(call.function.arguments) });
       let startedAt: number | undefined;
       let outcome: AgentEvent['status'];
       let resultText: string;
@@ -202,12 +202,12 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
             if (allowed) ctx.extraAllowedDirs = request.paths.map((p) => p.path);
           }
           if (signal?.aborted) {
-            options.onEvent?.({ type: 'tool_result', ...identity, ok: false, status: 'stopped', durationMs: 0, message: '任务已停止，工具未执行' });
+            await options.onEvent?.({ type: 'tool_result', ...identity, ok: false, status: 'stopped', durationMs: 0, message: '任务已停止，工具未执行' });
             stopReason = 'aborted'; break;
           }
           if (allowed) {
             startedAt = Date.now();
-            options.onEvent?.({ type: 'tool_status', ...identity, status: 'running' });
+            await options.onEvent?.({ type: 'tool_status', ...identity, status: 'running' });
             resultText = await tool.run(safeParse(call.function.arguments), ctx);
           } else {
             outcome = 'denied';
@@ -239,7 +239,7 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
       if (options.stashResult && resultText.length > RESULT_STASH_THRESHOLD) {
         resultText = await options.stashResult(resultText);
       }
-      options.onEvent?.({ type: 'tool_result', ...identity, ok, status: signal?.aborted ? 'stopped' : outcome ?? (ok ? 'ok' : 'error'), durationMs: startedAt === undefined ? 0 : Date.now() - startedAt, message: resultText.slice(0, tool?.displayName ? 8000 : 200) });
+      await options.onEvent?.({ type: 'tool_result', ...identity, ok, status: signal?.aborted ? 'stopped' : outcome ?? (ok ? 'ok' : 'error'), durationMs: startedAt === undefined ? 0 : Date.now() - startedAt, message: resultText.slice(0, tool?.displayName ? 8000 : 200) });
       messages.push({ role: 'tool', tool_call_id: call.id, content: resultText });
     }
     if (stopReason === 'aborted') break;

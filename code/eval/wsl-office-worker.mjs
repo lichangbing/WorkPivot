@@ -1,0 +1,23 @@
+// Runs inside the existing WSL web container. Only temporary sandbox data; no user records created.
+import { createRequire } from 'node:module';
+import { readFile } from 'node:fs/promises';
+const require = createRequire('/app/packages/server/package.json');
+const Excel = require('exceljs'), AdmZip = require('adm-zip');
+const config = process.env.WORKPIVOT_WORKER_URL && process.env.WORKPIVOT_WORKER_TOKEN ? {url:process.env.WORKPIVOT_WORKER_URL,token:process.env.WORKPIVOT_WORKER_TOKEN} : JSON.parse(await readFile('/data/workpivot/worker.json','utf8'));
+const book = new Excel.Workbook(), sheet = book.addWorksheet('Budget');
+sheet.addRow(['Item','Amount']); sheet.addRow(['A',10]); sheet.addRow(['B',20]);
+const input = Buffer.from(await book.xlsx.writeBuffer());
+const script = `const Excel=require('exceljs');const {Document,Packer,Paragraph}=require('docx');const fs=require('fs');
+(async()=>{const book=new Excel.Workbook();await book.xlsx.readFile('/workspace/input.xlsx');let total=0;book.worksheets[0].eachRow((r,n)=>{if(n>1)total+=Number(r.getCell(2).value)});const report=new Document({sections:[{children:[new Paragraph('Budget total: '+total)]}]});fs.writeFileSync('/workspace/report.docx',await Packer.toBuffer(report));const summary=new Excel.Workbook();summary.addWorksheet('Summary').addRow(['Total',total]);await summary.xlsx.writeFile('/workspace/summary.xlsx');console.log('CALCULATED_'+total)})().catch(e=>{console.error(e.message);process.exitCode=1});`;
+const response = await fetch(config.url+'/v1/run',{method:'POST',headers:{authorization:`Bearer ${config.token}`,'content-type':'application/json'},body:JSON.stringify({command:'node /skills/office/generate.cjs',files:[['input.xlsx',input.toString('base64')]],skills:[['office/generate.cjs',Buffer.from(script).toString('base64')]]}),signal:AbortSignal.timeout(140000)});
+const result=await response.json();
+if(!response.ok)throw Error(result.error ?? 'Worker failed');
+const report=result.files.find(([name])=>name==='report.docx');
+if(!report || !result.output.includes('CALCULATED_30'))throw Error('Missing calculated result');
+const xml=new AdmZip(Buffer.from(report[1],'base64')).readAsText('word/document.xml');
+if(!xml.includes('Budget total: 30'))throw Error('Word content incorrect');
+const summary=result.files.find(([name])=>name==='summary.xlsx');
+if(!summary)throw Error('Missing second artifact');
+const outputBook=new Excel.Workbook();await outputBook.xlsx.load(Buffer.from(summary[1],'base64'));
+if(outputBook.worksheets[0].getCell('B1').value!==30)throw Error('Summary calculation incorrect');
+console.log('PASS: real XLSX read and calculation -> binary DOCX and XLSX with correct totals; no user data written.');

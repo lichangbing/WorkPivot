@@ -9,7 +9,8 @@ process.env['WORKPIVOT_HOST'] = '127.0.0.1';
 const { withTenant, withAccount } = await import('../packages/server/src/tenants.js');
 const { registerFirstAdmin, createUser, login } = await import('../packages/server/src/auth.js');
 const { createTask, updateTaskStatus } = await import('../packages/server/src/tasks.js');
-const { beginArtifacts, listArtifacts } = await import('../packages/server/src/artifacts.js');
+const { beginArtifacts, listArtifacts, finishArtifacts } = await import('../packages/server/src/artifacts.js');
+const { beginDeliverables, finishDeliverables, deliveryTool } = await import('../packages/server/src/deliverables.js');
 const { artifactRequest, downloadArtifact } = await import('../apps/desktop/src/artifact.js');
 const { buildPlanTool } = await import('../packages/server/src/plan.js');
 const { createApp } = await import('../packages/server/src/app.js');
@@ -17,7 +18,7 @@ const a = withTenant('default', () => registerFirstAdmin('sidebar-admin', 'fixtu
 const b = withTenant('default', () => { createUser('sidebar-member', 'fixture-password', 'member'); return login('sidebar-member', 'fixture-password'); });
 const task = withAccount(b.user, () => createTask({ name: 'Generate documents', directory: '', temp: true, ownerUserId: b.user.id }));
 writeFileSync(join(task.directory, 'input.csv'), 'old input');
-withAccount(b.user, () => beginArtifacts(task));
+withAccount(b.user, () => {beginArtifacts(task);beginDeliverables(task);});
 for (const dir of ['reports', 'attachments', '.workpivot']) mkdirSync(join(task.directory, dir));
 writeFileSync(join(task.directory, 'reports/result.docx'), 'fixture document');
 writeFileSync(join(task.directory, 'attachments/input.txt'), 'attachment');
@@ -26,6 +27,8 @@ let checks = 0;
 const check = (name: string, condition: unknown): void => { assert.ok(condition, name); checks++; console.log(`✅ ${name}`); };
 const produced = withAccount(b.user, () => listArtifacts(task, true));
 check('only generated files are products', produced.length === 1 && produced[0]!.name === 'reports/result.docx');
+await withAccount(b.user,()=>deliveryTool(task).run({files:['reports/result.docx']},{taskDir:task.directory}));
+withAccount(b.user,()=>{finishArtifacts(task,'completed');finishDeliverables(task,'completed');});
 withAccount(b.user, () => updateTaskStatus(task.id, 'idle', 'completed'));
 await withAccount(b.user, () => buildPlanTool(task.id, () => {}).run({ steps: [{ step: 'Read data', status: 'completed' }, { step: 'Write document', status: 'completed' }] }));
 const http = createApp().listen(0, '127.0.0.1');
@@ -58,7 +61,7 @@ try {
   }
   withAccount(b.user, () => { updateTaskStatus(task.id, 'running'); beginArtifacts(task); });
   writeFileSync(join(task.directory, 'new.txt'), 'in progress');
-  check('products appear during execution', (await (await get('/api/sidebar?taskId=' + task.id, b.token)).json()).artifacts.some((f: { name: string }) => f.name === 'new.txt'));
+  check('unpublished process files stay out of final products', !(await (await get('/api/sidebar?taskId=' + task.id, b.token)).json()).artifacts.some((f: { name: string }) => f.name === 'new.txt'));
   check('new run clears completion marker', !(await (await get('/api/sidebar?taskId=' + task.id, b.token)).json()).tasks[0].lastStopReason);
   console.log(`W27 ${checks}/${checks} passed`);
 } finally { await new Promise<void>((resolve) => http.close(() => resolve())); }

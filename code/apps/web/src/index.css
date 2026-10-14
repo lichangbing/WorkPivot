@@ -72,3 +72,26 @@ button.bg-blue-600, button.bg-blue-500, button.bg-emerald-600 { color: white; }
 
 /* Keep the composer neutral when its text field receives pointer focus. */
 .message-input:focus-visible { outline: none; }
+
+/* Consistent typography across the existing three-column database workspace. */
+.workspace-shell { font-size: 14px; line-height: 1.6; font-weight: 400; }
+.workspace-shell .text-xs { font-size: 13px; line-height: 1.5; }
+.workspace-shell .text-sm { font-size: 14px; line-height: 1.6; }
+.workspace-shell .text-base, .workspace-shell .text-lg { font-size: 16px; line-height: 1.5; }
+.workspace-shell aside h2 { font-size: 14px; font-weight: 600; line-height: 1.5; }
+.workspace-shell button, .workspace-shell input, .workspace-shell select, .workspace-shell textarea { font-family: inherit; }
+.workspace-message { font-size: 15px !important; line-height: 1.75 !important; }
+.workspace-message h1 { font-size: 18px; }
+.workspace-message h2 { font-size: 17px; }
+.workspace-message h3, .workspace-message h4 { font-size: 16px; }
+.workspace-message pre, .workspace-message code { font-size: 13px; line-height: 1.6; }
+.workspace-composer { min-width: 0; }
+.workspace-composer .message-input { font-size: 15px; line-height: 1.65; }
+.composer-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 12px; }
+.composer-mode { flex-shrink: 0; font-size: 13px; }
+.composer-mode select { font-size: inherit; }
+.composer-mode [role="alert"] { display: block; margin-left: 0; max-width: 180px; }
+.composer-actions { display: flex; min-width: 0; justify-content: flex-end; align-items: center; gap: 12px; }
+.composer-model { max-width: 260px; font-size: 13px; }
+.composer-send:focus-visible { outline-offset: 3px; }
+@media (max-width: 900px) { .composer-footer { gap: 8px; } .composer-actions { gap: 8px; } .composer-model { max-width: 140px; } }

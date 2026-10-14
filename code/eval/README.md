@@ -52,4 +52,13 @@ preview.25：W33更新为两种模式32项，验证旧设置转换、默认自�
 
 `W39-task-deletion.mts` 覆盖普通/临时任务删除、跨账号拒绝、运行状态保护、附件和产物清理、共享材料保留与符号链接越界保护：Windows 18 项、Linux 20 项。`task-deletion-ui.mts` 为独立临时账号页面验收入口，不连接真实业务数据。
 
-W38 PostgreSQL 是新存储原型测试，不代表正式后台已使用数据库。preview.32 的部署不包含该原型。
+历史说明：preview.32 当时未包含 PostgreSQL 原型。此描述不适用于后续数据库版和 RC 部署。
+
+
+## 当前数据库与工程检查入口
+
+- pnpm eval:database：W38 及其引入的数据库专项，运行于独立临时 PostgreSQL，不使用业务数据。与 pnpm eval 分开运行。
+- pnpm eval:chat-state：W39-database-chat-state.mts，事件排序、去重、预览替换和分组；不要与历史 W39-task-deletion.mts 混淆。
+- pnpm test:licenses：六个合成依赖场景，覆盖普通包、作用域包、空扫描、损坏清单和缺少许可声明。
+- pnpm eval 默认写入 eval/baseline.json；临时审计应使用 WORKPIVOT_EVAL_BASELINE 指向独立记录，避免覆盖原验收基线。
+- 以上检查不替代真实模型、浏览器、执行服务或线上环境验收；文中旧版本数字是历史记录。

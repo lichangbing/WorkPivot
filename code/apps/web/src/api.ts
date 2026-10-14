@@ -100,11 +100,11 @@ function authHeaders(): Record<string, string> {
   return token ? { authorization: `Bearer ${token}` } : {};
 }
 
-async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
+export async function jsonFetch<T>(url: string, init?: RequestInit, timeoutMs = 15000): Promise<T> {
   const response = await fetch(url, {
     headers: { 'content-type': 'application/json', ...authHeaders() },
     ...init,
-    signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000),
+    signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
   });
   if (response.status === 401) {
     clearToken();

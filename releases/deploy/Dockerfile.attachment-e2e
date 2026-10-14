@@ -1,0 +1,10 @@
+FROM workpivot-server:0.3.0-preview.33
+USER root
+RUN npm install --prefix /opt/database-runtime --omit=dev pg@8.16.3 && ln -sfn /opt/database-runtime/node_modules/pg /app/packages/server/node_modules/pg
+COPY --chown=node:node code/packages/server/src/ /app/packages/server/src/
+COPY --chown=node:node code/packages/core/src/ /app/packages/core/src/
+COPY --chown=node:node code/packages/shared/src/ /app/packages/shared/src/
+COPY --chown=node:node code/apps/web/dist/ /app/apps/web/dist/
+COPY --chown=node:node code/eval/wsl-attachment-server.mts /app/eval/
+USER node
+CMD ["./node_modules/.bin/tsx", "eval/wsl-attachment-server.mts"]

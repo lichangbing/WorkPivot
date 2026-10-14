@@ -1,0 +1,9 @@
+FROM workpivot-server:attachment-e2e
+USER root
+COPY --chown=node:node code/packages/server/src/ /app/packages/server/src/
+COPY --chown=node:node code/packages/core/src/ /app/packages/core/src/
+COPY --chown=node:node code/packages/shared/src/ /app/packages/shared/src/
+COPY --chown=node:node code/apps/web/dist/ /app/apps/web/dist/
+COPY --chown=node:node code/eval/wsl-database-server.mts /app/eval/
+USER node
+CMD ["./node_modules/.bin/tsx", "eval/wsl-database-server.mts"]

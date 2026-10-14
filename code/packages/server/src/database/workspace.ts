@@ -5,8 +5,8 @@ import { RepositoryError, transaction, uuid } from './connection.js';
 export interface DatabaseProject { id: string; name: string; revision: number; workspaceKey: string; createdAt: Date }
 export interface DatabaseTask { id: string; name: string; projectId: string | null; status: string; revision: number }
 export interface DatabaseMessage { id: string; sequence: string; role: string; content: string }
-const projectColumns = 'id,name,revision,workspace_key AS "workspaceKey",created_at AS "createdAt"';
-const taskColumns = 'id,name,project_id AS "projectId",status,revision';
+const projectColumns = 'id,name,revision,expert_id AS "expertId",workspace_key AS "workspaceKey",created_at AS "createdAt"';
+const taskColumns = 'id,name,project_id AS "projectId",expert_id AS "expertId",status,revision';
 function title(value: string, max: number): string {
   if (typeof value !== 'string' || !value.trim() || value.trim().length > max) throw new RepositoryError(400, '名称长度无效');
   return value.trim();
@@ -14,7 +14,7 @@ function title(value: string, max: number): string {
 function revision(value: number): void { if (!Number.isSafeInteger(value) || value < 1) throw new RepositoryError(400, '版本无效'); }
 async function task(client: PoolClient, id: string): Promise<void> {
   uuid(id);
-  if (!(await client.query('SELECT id FROM workpivot.tasks WHERE id=$1 AND deleted_at IS NULL', [id])).rowCount) throw new RepositoryError(404, '任务不存在');
+  if (!(await client.query('SELECT id FROM workpivot.tasks WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [id])).rowCount) throw new RepositoryError(404, '任务不存在');
 }
 
 /** Actor identity must come from server authentication, never request body/query. */
@@ -43,12 +43,67 @@ export class WorkspaceRepository {
   async createTask(actor: string, name: string, projectId?: string): Promise<DatabaseTask> {
     const clean = title(name, 200); if (projectId) uuid(projectId);
     return transaction(this.db, async c => {
-      if (projectId && !(await c.query('SELECT id FROM workpivot.projects WHERE id=$1 AND deleted_at IS NULL', [projectId])).rowCount) throw new RepositoryError(404, '项目不存在');
-      return (await c.query<DatabaseTask>(`INSERT INTO workpivot.tasks(id,owner_user_id,project_id,name) VALUES($1,$2,$3,$4) RETURNING ${taskColumns}`, [randomUUID(), actor, projectId ?? null, clean])).rows[0]!;
+      if (projectId && !(await c.query('SELECT id FROM workpivot.projects WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [projectId])).rowCount) throw new RepositoryError(404, '项目不存在');
+      return (await c.query<DatabaseTask>(`INSERT INTO workpivot.tasks(id,owner_user_id,project_id,name,expert_id) VALUES($1,$2,$3,$4,(SELECT p.expert_id FROM workpivot.projects p JOIN workpivot.experts e ON e.id=p.expert_id WHERE p.id=$3 AND NOT e.disabled)) RETURNING ${taskColumns}`, [randomUUID(), actor, projectId ?? null, clean])).rows[0]!;
     }, actor);
   }
   async listTasks(actor: string): Promise<DatabaseTask[]> {
     return transaction(this.db, async c => (await c.query<DatabaseTask>(`SELECT ${taskColumns} FROM workpivot.tasks WHERE deleted_at IS NULL ORDER BY created_at,id`)).rows, actor);
+  }
+  async deleteTask(actor: string, id: string, expected: number): Promise<void> {
+    uuid(id); revision(expected);
+    await transaction(this.db, async c => {
+      const current = (await c.query('SELECT revision,status,deleted_at FROM workpivot.tasks WHERE id=$1 FOR UPDATE', [id])).rows[0];
+      if (!current) throw new RepositoryError(404, '任务不存在');
+      if (current.deleted_at) return;
+      if (current.revision !== expected) throw new RepositoryError(409, '任务已更新，请刷新后再删除');
+      this.assertDeletable([current]);
+      await this.eraseMemories(c, actor, [id]);
+      await this.eraseTasks(c, actor, [id]);
+    }, actor);
+  }
+  async deleteProject(actor: string, id: string, expected: number): Promise<void> {
+    uuid(id); revision(expected);
+    await transaction(this.db, async c => {
+      // Parent first: creation of tasks/project memories holds this same lock.
+      const current = (await c.query('SELECT revision,deleted_at FROM workpivot.projects WHERE id=$1 FOR UPDATE', [id])).rows[0];
+      if (!current) throw new RepositoryError(404, '项目不存在');
+      if (current.deleted_at) return;
+      if (current.revision !== expected) throw new RepositoryError(409, '项目已更新，请刷新后再删除');
+      const children = (await c.query('SELECT id,status FROM workpivot.tasks WHERE project_id=$1 AND deleted_at IS NULL ORDER BY id FOR UPDATE', [id])).rows;
+      this.assertDeletable(children);
+      const ids = children.map((t: { id: string }) => t.id);
+      await this.eraseMemories(c, actor, ids, id);
+      await this.eraseTasks(c, actor, ids);
+      await c.query('DELETE FROM workpivot.project_members WHERE project_id=$1', [id]);
+      // Keep only the tombstone identity/workspace key required by later file cleanup.
+      await c.query("UPDATE workpivot.projects SET name='已删除项目',deleted_at=now(),revision=revision+1,updated_at=now() WHERE id=$1", [id]);
+      await this.memoryEvent(c, actor, id, expected + 1, 'project_deleted');
+    }, actor);
+  }
+  private assertDeletable(rows: { status: string }[]): void {
+    // Execution cancellation is not ported yet: reject atomically, never pretend an active run stopped.
+    if (rows.some(r => ['queued', 'running', 'waiting'].includes(r.status))) throw new RepositoryError(409, '请先停止运行中的任务再删除');
+  }
+  private async eraseTasks(c: PoolClient, actor: string, ids: string[]): Promise<void> {
+    await c.query('DELETE FROM workpivot.documents WHERE task_id=ANY($1::uuid[])', [ids]);
+    await c.query('DELETE FROM workpivot.run_permissions WHERE task_id=ANY($1::uuid[])', [ids]);
+    await c.query('DELETE FROM workpivot.task_runs WHERE task_id=ANY($1::uuid[])', [ids]);
+    await c.query('DELETE FROM workpivot.conversation_events WHERE task_id=ANY($1::uuid[])', [ids]);
+    await c.query('DELETE FROM workpivot.conversation_turns WHERE task_id=ANY($1::uuid[])', [ids]);
+    await c.query('DELETE FROM workpivot.messages WHERE task_id=ANY($1::uuid[])', [ids]);
+    const deleted = await c.query("UPDATE workpivot.tasks SET name='已删除任务',deleted_at=now(),revision=revision+1 WHERE id=ANY($1::uuid[]) RETURNING id,revision", [ids]);
+    for (const row of deleted.rows) await this.memoryEvent(c, actor, row.id, row.revision, 'task_deleted');
+  }
+  private async eraseMemories(c: PoolClient, actor: string, taskIds: string[], projectId?: string): Promise<void> {
+    await c.query("UPDATE workpivot.memory_suggestions SET status='stale',content='',evidence=NULL WHERE task_id=ANY($1::uuid[])", [taskIds]);
+    const memories = await c.query('SELECT id,revision FROM workpivot.memories WHERE deleted_at IS NULL AND (task_id=ANY($1::uuid[]) OR project_id=$2 OR id IN (SELECT ms.memory_id FROM workpivot.memory_sources ms JOIN workpivot.task_runs r ON r.id=ms.run_id WHERE r.task_id=ANY($1::uuid[]))) ORDER BY id FOR UPDATE', [taskIds, projectId ?? null]);
+    for (const m of memories.rows) {
+      await c.query('INSERT INTO workpivot.forget_rules(memory_id,owner_user_id,deleted_revision) VALUES($1,$2,$3)', [m.id, actor, m.revision]);
+      await c.query('DELETE FROM workpivot.memory_revisions WHERE memory_id=$1 OR memory_id IN (SELECT id FROM workpivot.memories WHERE merged_into=$1)', [m.id]);
+      await c.query('UPDATE workpivot.memories SET deleted_at=now(),revision=revision+1 WHERE id=$1', [m.id]);
+      await this.memoryEvent(c, actor, m.id, m.revision + 1, 'memory_deleted');
+    }
   }
   async appendMessage(actor: string, taskId: string, role: 'user' | 'assistant' | 'tool' | 'system', content: string, requestId: string): Promise<DatabaseMessage> {
     uuid(taskId); uuid(requestId);
@@ -73,6 +128,7 @@ export class WorkspaceRepository {
     return transaction(this.db, async c => (await c.query('SELECT value,revision FROM workpivot.user_settings WHERE owner_user_id=$1 AND key=$2', [actor, key])).rows[0] ?? null, actor);
   }
   async saveSetting(actor: string, key: string, value: unknown, expected: number): Promise<number> {
+    if (key === 'execution.mode' && value !== 'manual' && value !== 'auto') throw new RepositoryError(400, '执行模式只能为确认模式或自动模式');
     if (!/^[a-z][a-z0-9.-]{0,79}$/.test(key) || !Number.isInteger(expected) || expected < 0) throw new RepositoryError(400, '设置参数无效');
     const payload = JSON.stringify(value);
     if (!payload || payload.length > 20000) throw new RepositoryError(400, '设置内容过大或无效');
@@ -83,18 +139,68 @@ export class WorkspaceRepository {
       if (!result.rows[0]) throw new RepositoryError(409, '设置已更新'); return result.rows[0].revision;
     }, actor);
   }
+  async listMemories(actor: string, scope: 'user' | 'project' | 'task', scopeId?: string, after?: string): Promise<{ memories: { id: string; content: string; revision: number }[]; nextCursor: string | null }> {
+    if (!['user', 'project', 'task'].includes(scope)) throw new RepositoryError(400, '记忆层级无效');
+    if (scope !== 'user') { if (!scopeId) throw new RepositoryError(400, '缺少记忆归属'); uuid(scopeId); }
+    else if (scopeId) throw new RepositoryError(400, '个人记忆不指定项目或任务');
+    if (after) uuid(after);
+    return transaction(this.db, async c => {
+      if (scope === 'task') await task(c, scopeId!);
+      if (scope === 'project' && !(await c.query('SELECT id FROM workpivot.projects WHERE id=$1 AND deleted_at IS NULL', [scopeId])).rowCount) throw new RepositoryError(404, '项目不存在');
+      const rows = (await c.query<{ id: string; content: string; revision: number }>(`SELECT m.id,r.content,m.revision,m.locked FROM workpivot.memories m
+        JOIN workpivot.memory_revisions r ON r.memory_id=m.id AND r.revision=m.revision
+        WHERE m.deleted_at IS NULL AND m.scope=$1 AND ($2::uuid IS NULL OR m.project_id=$2 OR m.task_id=$2)
+        AND ($3::uuid IS NULL OR m.id>$3) ORDER BY m.id LIMIT 51`, [scope, scopeId ?? null, after ?? null])).rows;
+      return { memories: rows.slice(0, 50), nextCursor: rows.length > 50 ? rows[49]!.id : null };
+    }, actor);
+  }
   async createMemory(actor: string, content: string, scope: 'user' | 'project' | 'task', scopeId?: string): Promise<{ id: string; revision: number }> {
     if (typeof content !== 'string' || content.length > 20000 || !['user', 'project', 'task'].includes(scope)) throw new RepositoryError(400, '记忆无效');
     if (scope !== 'user') { if (!scopeId) throw new RepositoryError(400, '缺少记忆归属'); uuid(scopeId); }
     else if (scopeId) throw new RepositoryError(400, '个人记忆不指定项目或任务');
     return transaction(this.db, async c => {
       if (scope === 'task') await task(c, scopeId!);
-      if (scope === 'project' && !(await c.query('SELECT id FROM workpivot.projects WHERE id=$1 AND deleted_at IS NULL', [scopeId])).rowCount) throw new RepositoryError(404, '项目不存在');
+      if (scope === 'project' && !(await c.query('SELECT id FROM workpivot.projects WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [scopeId])).rowCount) throw new RepositoryError(404, '项目不存在');
       const id = randomUUID();
       await c.query('INSERT INTO workpivot.memories(id,owner_user_id,scope,project_id,task_id) VALUES($1,$2,$3,$4,$5)', [id, actor, scope, scope === 'project' ? scopeId : null, scope === 'task' ? scopeId : null]);
       await c.query('INSERT INTO workpivot.memory_revisions(owner_user_id,memory_id,revision,content) VALUES($1,$2,1,$3)', [actor, id, content]);
       await this.memoryEvent(c, actor, id, 1, 'memory_updated');
       return { id, revision: 1 };
+    }, actor);
+  }
+  /** One user-reviewed batch, committed atomically. A split retains source provenance. */
+  async saveMemoryEntries(actor: string, entries: unknown, scope: 'user' | 'project' | 'task', scopeId?: string, replace?: { id: string; revision: number }) {
+    if (!Array.isArray(entries) || entries.length < 1 || entries.length > 100 || entries.some(v => typeof v !== 'string' || !v.trim() || v.length > 20000) || entries.join('').length > 100000) throw new RepositoryError(400, '请提供1至100条非空记忆，总长度不超过10万字');
+    if (!['user','project','task'].includes(scope) || (scope === 'user' && scopeId) || (scope !== 'user' && !scopeId)) throw new RepositoryError(400, '记忆归属无效');
+    if (scopeId) uuid(scopeId);
+    if (replace) { uuid(replace.id); revision(replace.revision); }
+    return transaction(this.db, async c => {
+      if (scope === 'task') await task(c, scopeId!);
+      if (scope === 'project' && !(await c.query('SELECT id FROM workpivot.projects WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [scopeId])).rowCount) throw new RepositoryError(404, '项目不存在');
+      let locked = false;
+      if (replace) {
+        const old = (await c.query('SELECT revision,scope,project_id,task_id,locked FROM workpivot.memories WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [replace.id])).rows[0];
+        if (!old) throw new RepositoryError(404, '记忆不存在');
+        if (old.revision !== replace.revision) throw new RepositoryError(409, '记忆已更新，请重新打开');
+        if (old.scope !== scope || (scope !== 'user' && (old.project_id ?? old.task_id) !== scopeId)) throw new RepositoryError(400, '不能通过拆分改变记忆归属');
+        locked = old.locked;
+      }
+      const saved = [];
+      for (const content of entries as string[]) {
+        const id = randomUUID();
+        await c.query('INSERT INTO workpivot.memories(id,owner_user_id,scope,project_id,task_id,locked) VALUES($1,$2,$3,$4,$5,$6)', [id,actor,scope,scope === 'project' ? scopeId : null,scope === 'task' ? scopeId : null,locked]);
+        await c.query('INSERT INTO workpivot.memory_revisions(owner_user_id,memory_id,revision,content) VALUES($1,$2,1,$3)', [actor,id,content.trim()]);
+        if (replace) await c.query('INSERT INTO workpivot.memory_sources(owner_user_id,memory_id,run_id) SELECT owner_user_id,$2,run_id FROM workpivot.memory_sources WHERE memory_id=$1 ON CONFLICT DO NOTHING', [replace.id,id]);
+        await this.memoryEvent(c,actor,id,1,'memory_updated');
+        saved.push({id,revision:1});
+      }
+      if (replace) {
+        await c.query('INSERT INTO workpivot.forget_rules(memory_id,owner_user_id,deleted_revision) VALUES($1,$2,$3)', [replace.id,actor,replace.revision]);
+        await c.query('DELETE FROM workpivot.memory_revisions WHERE memory_id=$1 OR memory_id IN (SELECT id FROM workpivot.memories WHERE merged_into=$1)', [replace.id]);
+        await c.query('UPDATE workpivot.memories SET deleted_at=now(),revision=revision+1 WHERE id=$1', [replace.id]);
+        await this.memoryEvent(c,actor,replace.id,replace.revision+1,'memory_deleted');
+      }
+      return saved;
     }, actor);
   }
   async readMemory(actor: string, id: string): Promise<{ content: string; revision: number } | null> {
@@ -121,12 +227,19 @@ export class WorkspaceRepository {
       if (current.revision !== expected) throw new RepositoryError(409, '记忆已更新');
       await c.query('INSERT INTO workpivot.forget_rules(memory_id,owner_user_id,deleted_revision) VALUES($1,$2,$3)', [id, actor, expected]);
       // Remove online history before tombstone changes its RLS visibility. No plaintext in deletion events.
-      await c.query('DELETE FROM workpivot.memory_revisions WHERE memory_id=$1', [id]);
+      await c.query('DELETE FROM workpivot.memory_revisions WHERE memory_id=$1 OR memory_id IN (SELECT id FROM workpivot.memories WHERE merged_into=$1)', [id]);
       await c.query('UPDATE workpivot.memories SET deleted_at=now(),revision=revision+1 WHERE id=$1', [id]);
       await this.memoryEvent(c, actor, id, expected + 1, 'memory_deleted');
     }, actor);
   }
   private async memoryEvent(c: PoolClient, actor: string, id: string, rev: number, kind: string): Promise<void> {
+    if (kind === 'memory_deleted' || kind === 'task_deleted' || kind === 'project_deleted') {
+      // Conservative closure: old replies may have paraphrased forgotten facts in any task.
+      await c.query("UPDATE workpivot.task_runs SET context_revoked=true,model_messages='[]'::jsonb WHERE owner_user_id=$1", [actor]);
+      await c.query("UPDATE workpivot.memory_jobs SET status='stale',error=NULL WHERE owner_user_id=$1 AND status IN ('pending','running')", [actor]);
+    }
+
+    await c.query("UPDATE workpivot.memory_suggestions SET status='stale',content='',evidence=NULL WHERE owner_user_id=$1 AND status='pending'", [actor]);
     await c.query('INSERT INTO workpivot.knowledge_state(owner_user_id,epoch) VALUES($1,1) ON CONFLICT(owner_user_id) DO UPDATE SET epoch=workpivot.knowledge_state.epoch+1', [actor]);
     await c.query('INSERT INTO workpivot.outbox_events(id,owner_user_id,kind,entity_id,revision) VALUES($1,$2,$3,$4,$5)', [randomUUID(), actor, kind, id, rev]);
   }

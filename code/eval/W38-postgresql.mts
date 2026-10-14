@@ -1,9 +1,36 @@
+import { testMcpFailures } from './database-mcp-failures.mts';
+import { testProcessRecovery } from './database-process-recovery.mts';
+import { testModelRecovery } from './database-model-recovery.mts';
+import { safeModelError } from '../packages/server/src/database/model-error.js';
+import { testMemoryExpertIntegration } from './database-memory-expert-integration.mts';
+import { testMemoryReview } from './database-memory-review.mts';
+import { testMemoryContext } from './database-memory-context.mts';
+import {testMemoryEntries} from './database-memory-entries.mts';
+import {testExperts} from './database-experts.mts';
+import {testRestoreRetention} from './database-restore-retention.mts';
+import { testCompaction } from './database-compaction.mts';
+import { testMemoryControls } from './database-memory-controls.mts';
+import { testKnowledge } from './database-knowledge.mts';
+import { testParsing } from './database-parsing.mts';
+import { DatabaseModelService } from '../packages/server/src/database/model-service.js';
+import { testSkillExecution } from './database-skill-execution.mts';
+import { testMemoryWorker } from './database-memory-worker.mts';
+import { testMemoryTools } from './database-memory-tools.mts';
+import { testSkills } from './database-skills.mts';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { pool, transaction, installSchema, assertRestrictedRole, RepositoryError } from '../packages/server/src/database/connection.js';
 import { AccountRepository } from '../packages/server/src/database/accounts.js';
 import { WorkspaceRepository } from '../packages/server/src/database/workspace.js';
 import { createDatabaseApp } from '../packages/server/src/database/app.js';
+import { ConversationRepository } from '../packages/server/src/database/conversation.js';
+import { DatabaseExecution } from '../packages/server/src/database/execution.js';
+import { RunRepository, replayableMessages } from '../packages/server/src/database/runs.js';
+import type { ModelClient } from '@workpivot/core';
+import { ProviderRepository } from '../packages/server/src/database/providers.js';
+import { McpRepository } from '../packages/server/src/database/mcp.js';
+import { createServer } from 'node:http';
+import { testFiles } from './database-files.mts';
 
 const url = process.env['WORKPIVOT_TEST_PG_URL'];
 if (!url || process.env['WORKPIVOT_TEST_PG_DISPOSABLE'] !== '1') throw Error('Requires an explicitly disposable PostgreSQL instance');
@@ -17,6 +44,8 @@ const authUrl = new URL(url); authUrl.username = 'wp_test_auth'; authUrl.passwor
 const business = pool(appUrl.toString(), { max: 2 }), identity = pool(authUrl.toString(), { max: 2 });
 let checks = 0;
 const check = (condition: unknown, name: string): void => { assert.ok(condition, name); checks++; console.log('✅ ' + name); };
+for(const [input,expected] of [['HTTP 401: secret-example','认证失败'],['HTTP 429: secret-example','请求受限'],['HTTP 503: secret-example','暂时不可用'],['HTTP 400: secret-example','兼容性'],['fetch failed secret-example','无法连接'],['request timed out secret-example','超时']] as const){const result=safeModelError(new Error(input));check(result.includes(expected)&&!result.includes('secret-example'),'model errors classify failures without upstream secrets: '+expected);}
+await testModelRecovery(check);
 async function rejects(action: () => Promise<unknown>, name: string, status?: number): Promise<void> {
   await assert.rejects(action, status === undefined ? undefined : e => e instanceof RepositoryError && e.status === status); checks++; console.log('✅ ' + name);
 }
@@ -24,7 +53,11 @@ let server: ReturnType<Awaited<ReturnType<typeof createDatabaseApp>>['listen']> 
 try {
   await installSchema(admin, 'wp_test_app', 'wp_test_auth');
   await installSchema(admin, 'wp_test_app', 'wp_test_auth');
-  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 1, 'schema installation idempotent');
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 27, 'schema installation idempotent');
+  // Recreate the exact empty v1 shape to exercise the additive upgrade independently.
+  await admin.query('DROP FUNCTION workpivot.clear_memory_review_key() CASCADE; DROP FUNCTION workpivot.clear_memory_suggestion_context() CASCADE; DROP FUNCTION workpivot.expert_epoch_changed() CASCADE; DROP FUNCTION workpivot.expert_source_deleted() CASCADE; DROP TABLE workpivot.expert_suggestions; DROP TABLE workpivot.expert_jobs; DROP TABLE workpivot.expert_experiences; ALTER TABLE workpivot.tasks DROP COLUMN expert_id; ALTER TABLE workpivot.projects DROP COLUMN expert_id; DROP TABLE workpivot.experts; DROP FUNCTION workpivot.notify_task_event() CASCADE; DROP TABLE workpivot.context_checkpoints; DROP FUNCTION workpivot.invalidate_checkpoints() CASCADE; ALTER POLICY personal_memory_revisions ON workpivot.memory_revisions USING(owner_user_id=workpivot.actor_id() AND EXISTS(SELECT 1 FROM workpivot.memories m WHERE m.id=memory_id AND m.deleted_at IS NULL)); ALTER TABLE workpivot.memories DROP COLUMN merged_into; ALTER TABLE workpivot.memories DROP COLUMN locked; DROP TABLE workpivot.memory_controls; DROP TABLE workpivot.memory_templates; DROP TABLE workpivot.knowledge_chunks; DROP TABLE workpivot.knowledge_versions; DROP TABLE workpivot.document_processing; DROP TABLE workpivot.execution_artifacts; DROP TABLE workpivot.skill_executions; DROP TABLE workpivot.memory_sources; DROP TABLE workpivot.memory_jobs; DROP TABLE workpivot.memory_suggestions; DROP TABLE workpivot.skill_selections; DROP TABLE workpivot.skill_catalog; DROP TABLE workpivot.skill_releases; DROP TABLE workpivot.skill_drafts; DROP TABLE workpivot.document_versions; DROP TABLE workpivot.documents; DROP TABLE workpivot.run_permissions; DROP TABLE workpivot.mcp_connections; DROP TABLE workpivot.default_model; DROP TABLE workpivot.model_providers; DROP TABLE workpivot.task_runs; DROP TABLE workpivot.conversation_events; DROP TABLE workpivot.conversation_turns; ALTER TABLE workpivot.tasks DROP COLUMN next_turn_sequence; DELETE FROM workpivot_meta.schema_versions WHERE version>1');
+  await installSchema(admin, 'wp_test_app', 'wp_test_auth');
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 27, 'existing v1 database upgrades to latest schema');
   await assertRestrictedRole(business, 'workpivot'); await assertRestrictedRole(identity, 'identity');
   await rejects(() => assertRestrictedRole(admin, 'workpivot'), 'superuser runtime rejected');
   await rejects(() => business.query('SELECT * FROM identity.credentials'), 'business pool cannot read password hashes');
@@ -81,8 +114,13 @@ try {
   for (const [scope, scopeId] of [['user', undefined], ['project', privateProject.id], ['task', task.id]] as const) {
     const m = await workspace.createMemory(member.id, scope + ' memory', scope, scopeId);
     check((await workspace.readMemory(member.id, m.id))?.content === scope + ' memory', scope + ' memory persists');
+    check((await workspace.listMemories(member.id, scope, scopeId)).memories.some(row => row.id === m.id), scope + ' memory list returns scoped content');
   }
   await rejects(() => workspace.createMemory(owner.user.id, 'forged', 'project', privateProject.id), 'cross-user project memory rejected', 404);
+  check((await workspace.listMemories(owner.user.id, 'user')).memories.length === 0, 'administrator cannot list member personal memory');
+  await rejects(() => workspace.listMemories(owner.user.id, 'project', privateProject.id), 'cross-user memory list scope rejected', 404);
+  await rejects(() => workspace.listMemories(member.id, 'user', privateProject.id), 'personal memory rejects forged scope', 400);
+  await rejects(() => workspace.listMemories(member.id, 'task', task.id, 'bad-cursor'), 'memory cursor validated', 400);
   const memory = await workspace.createMemory(member.id, 'version one', 'project', privateProject.id);
   await workspace.editMemory(member.id, memory.id, 'version two', 1);
   await rejects(() => workspace.editMemory(member.id, memory.id, 'stale', 1), 'stale memory write conflicts', 409);
@@ -95,6 +133,308 @@ try {
   check((await admin.query('SELECT count(*)::int AS n FROM workpivot.forget_rules WHERE memory_id=$1', [memory.id])).rows[0].n === 1, 'deletion tombstone retained without plaintext');
   await rejects(() => workspace.editMemory(member.id, memory.id, 'resurrection', 3), 'deleted memory cannot be resurrected', 404);
   check((await admin.query("SELECT count(*)::int AS n FROM workpivot.outbox_events WHERE entity_id=$1 AND kind='memory_deleted'", [memory.id])).rows[0].n === 1, 'deletion cleanup event committed');
+  const deletionProject = await workspace.createProject(member.id, 'Delete private project');
+  const deletionTask = await workspace.createTask(member.id, 'Delete child', deletionProject.id);
+  const survivingTask = await workspace.createTask(member.id, 'Keep sibling', deletionProject.id);
+  const taskMemory = await workspace.createMemory(member.id, 'private task memory', 'task', deletionTask.id);
+  const projectMemory = await workspace.createMemory(member.id, 'private project memory', 'project', deletionProject.id);
+  const personalMemory = await workspace.createMemory(member.id, 'keep personal memory', 'user');
+  await workspace.appendMessage(member.id, deletionTask.id, 'user', 'private message', randomUUID());
+  await rejects(() => workspace.deleteTask(owner.user.id, deletionTask.id, 1), 'admin cannot delete private task', 404);
+  await rejects(() => workspace.deleteProject(owner.user.id, deletionProject.id, 1), 'admin cannot delete private project', 404);
+  await rejects(() => workspace.deleteTask(member.id, deletionTask.id, 2), 'stale task deletion rejected', 409);
+  await admin.query("UPDATE workpivot.tasks SET status='running' WHERE id=$1", [survivingTask.id]);
+  await rejects(() => workspace.deleteProject(member.id, deletionProject.id, 1), 'active child blocks entire project deletion', 409);
+  check((await workspace.messages(member.id, deletionTask.id)).length === 1 && !!await workspace.readMemory(member.id, projectMemory.id), 'blocked deletion leaves sibling data intact');
+  await admin.query("UPDATE workpivot.tasks SET status='idle' WHERE id=$1", [survivingTask.id]);
+  await workspace.deleteTask(member.id, deletionTask.id, 1);
+  await workspace.deleteTask(member.id, deletionTask.id, 1);
+  check(await workspace.readMemory(member.id, taskMemory.id) === null && !!await workspace.readMemory(member.id, projectMemory.id), 'task deletion clears task memory but preserves project memory');
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot.messages WHERE task_id=$1', [deletionTask.id])).rows[0].n === 0, 'task deletion physically removes messages');
+  await rejects(() => workspace.appendMessage(member.id, deletionTask.id, 'user', 'late', randomUUID()), 'deleted task rejects late message', 404);
+  await rejects(() => workspace.createMemory(member.id, 'late', 'task', deletionTask.id), 'deleted task rejects late memory', 404);
+  await rejects(() => workspace.deleteProject(member.id, deletionProject.id, 2), 'stale project deletion rejected', 409);
+  // Race a new task and project memory against deletion: either committed first and removed, or rejected.
+  const deleteRace = await Promise.allSettled([
+    workspace.deleteProject(member.id, deletionProject.id, 1),
+    workspace.createTask(member.id, 'racing child', deletionProject.id),
+    workspace.createMemory(member.id, 'racing project memory', 'project', deletionProject.id),
+    workspace.appendMessage(member.id, survivingTask.id, 'user', 'racing message', randomUUID()),
+    workspace.createMemory(member.id, 'racing task memory', 'task', survivingTask.id),
+  ]);
+  check(deleteRace[0]!.status === 'fulfilled' && deleteRace.every(r => r.status === 'fulfilled' || (r.reason instanceof RepositoryError && r.reason.status === 404)), 'concurrent project deletion and writes serialize safely');
+  await workspace.deleteProject(member.id, deletionProject.id, 1);
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot.tasks WHERE project_id=$1 AND deleted_at IS NULL', [deletionProject.id])).rows[0].n === 0, 'no live children survive project deletion');
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot.messages m JOIN workpivot.tasks t ON t.id=m.task_id WHERE t.project_id=$1', [deletionProject.id])).rows[0].n === 0, 'racing messages removed');
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot.memory_revisions r JOIN workpivot.memories m ON m.id=r.memory_id WHERE m.project_id=$1 OR m.task_id IN (SELECT id FROM workpivot.tasks WHERE project_id=$1)', [deletionProject.id])).rows[0].n === 0, 'project deletion physically clears all associated memory history');
+  check(!!await workspace.readMemory(member.id, personalMemory.id) && !!await workspace.readMemory(member.id, projectMemory.id) === false, 'personal memory survives project deletion');
+  check((await admin.query("SELECT count(*)::int AS n FROM workpivot.outbox_events WHERE entity_id=$1 AND kind='project_deleted'", [deletionProject.id])).rows[0].n === 1, 'repeat project deletion produces one cleanup event');
+  await rejects(() => workspace.createTask(member.id, 'late task', deletionProject.id), 'deleted project rejects new task', 404);
+  const conversations = new ConversationRepository(business);
+  const conversationTask = await workspace.createTask(member.id, 'Paginated conversation', privateProject.id);
+  check((await conversations.page(member.id, conversationTask.id)).turns.length === 0, 'empty conversation has no turns');
+  const runId = randomUUID(), firstRequest = randomUUID();
+  const firstTurns = await Promise.all([conversations.startTurn(member.id, conversationTask.id, 'Question 1', firstRequest, runId), conversations.startTurn(member.id, conversationTask.id, 'Question 1', firstRequest, runId)]);
+  check(firstTurns[0].id === firstTurns[1].id && (await conversations.page(member.id, conversationTask.id)).turns.length === 1, 'concurrent initial request creates one complete turn');
+  await rejects(() => conversations.startTurn(member.id, conversationTask.id, 'changed', firstRequest, runId), 'turn idempotency rejects changed content', 409);
+  const eventRequest = randomUUID();
+  const eventIds = await Promise.all([conversations.appendEvent(member.id, conversationTask.id, firstTurns[0].id, runId, 'thinking', 'Think', eventRequest), conversations.appendEvent(member.id, conversationTask.id, firstTurns[0].id, runId, 'thinking', 'Think', eventRequest)]);
+  check(eventIds[0] === eventIds[1], 'duplicate streaming event persists once');
+  await rejects(() => conversations.appendEvent(member.id, conversationTask.id, firstTurns[0].id, runId, 'thinking', 'changed', eventRequest), 'duplicate event cannot change content', 409);
+  for (let i = 2; i <= 5; i++) await conversations.startTurn(member.id, conversationTask.id, 'Question ' + i, randomUUID(), randomUUID());
+  check(!(await conversations.page(member.id, conversationTask.id)).hasMore, 'exactly five turns has no older page');
+  for (let i = 6; i <= 12; i++) {
+    const run = randomUUID(), turn = await conversations.startTurn(member.id, conversationTask.id, 'Question ' + i, randomUUID(), run);
+    await conversations.appendEvent(member.id, conversationTask.id, turn.id, run, 'tool_use', 'Tool input', randomUUID());
+    await conversations.appendEvent(member.id, conversationTask.id, turn.id, run, 'tool_result', 'Tool result', randomUUID());
+    await conversations.appendEvent(member.id, conversationTask.id, turn.id, run, 'assistant', 'Answer ' + i, randomUUID());
+  }
+  const latest = await conversations.page(member.id, conversationTask.id);
+  check(latest.turns.map(t => t.sequence).join(',') === '8,9,10,11,12' && latest.turns.every(t => t.events.length === 4), 'latest five turns include messages and tool events in order');
+  const newestTurn = latest.turns.at(-1)!;
+  await conversations.startTurn(member.id, conversationTask.id, 'New after snapshot', randomUUID(), randomUUID());
+  await conversations.appendEvent(member.id, conversationTask.id, newestTurn.id, randomUUID(), 'assistant', 'Retry on same turn', randomUUID());
+  const older = await conversations.page(member.id, conversationTask.id, latest.nextCursor!);
+  const historySequences = older.turns.map(t => t.sequence);
+  let previous = older;
+  while (previous.hasMore) {
+    previous = await conversations.page(member.id, conversationTask.id, previous.nextCursor!);
+    assert.equal(previous.turns.length, 1, 'each upward fetch returns one conversation');
+    historySequences.push(...previous.turns.map(t => t.sequence));
+  }
+  check(older.turns.length === 1 && historySequences.join(',') === '7,6,5,4,3,2,1' && !previous.nextCursor, 'upward loading returns one older turn at a time despite new messages');
+  check((await conversations.turnEvents(member.id, conversationTask.id, newestTurn.id, '0', latest.snapshotSequence)).events.length === 4, 'snapshot excludes events arriving after initial page');
+  await rejects(() => conversations.page(owner.user.id, conversationTask.id), 'administrator cannot page private conversation', 404);
+  await rejects(() => conversations.page(member.id, task.id, latest.nextCursor!), 'cursor cannot be reused on another task', 400);
+  await rejects(() => conversations.page(member.id, conversationTask.id, 'invalid'), 'malformed cursor rejected', 400);
+  await rejects(() => conversations.appendEvent(member.id, task.id, newestTurn.id, randomUUID(), 'assistant', 'wrong association', randomUUID()), 'events cannot reference a different task turn', 404);
+  const largeContent = '长😀'.repeat(20000);
+  const largeId = await conversations.appendEvent(member.id, conversationTask.id, newestTurn.id, runId, 'tool_result', largeContent, randomUUID());
+  for (let i = 0; i < 25; i++) await conversations.appendEvent(member.id, conversationTask.id, newestTurn.id, runId, 'meta', 'event ' + i, randomUUID());
+  const largePage = await conversations.page(member.id, conversationTask.id), bounded = largePage.turns.find(t => t.id === newestTurn.id)!;
+  check(bounded.events.length === 20 && bounded.hasMoreEvents && bounded.events.find(e => e.id === largeId)?.truncated, 'large turn limits event count and previews');
+  const continuation = await conversations.turnEvents(member.id, conversationTask.id, newestTurn.id, bounded.nextEventSequence!, largePage.snapshotSequence);
+  check(continuation.events.length === 11 && !continuation.hasMoreEvents && new Set([...bounded.events, ...continuation.events].map(e => e.id)).size === 31, 'within-turn pagination loses no events');
+  let restored = '', contentOffset: number | null = 0;
+  do {
+    const part = await conversations.eventContent(member.id, conversationTask.id, largeId, contentOffset);
+    restored += part.content; contentOffset = part.nextOffset;
+  } while (contentOffset !== null);
+  check(restored === largeContent, 'large Unicode tool output reconstructs exactly');
+  const changes = await conversations.changes(member.id, conversationTask.id, latest.snapshotSequence);
+  await conversations.appendEvent(member.id, conversationTask.id, newestTurn.id, runId, 'assistant', 'Later than catchup snapshot', randomUUID());
+  const changesTail = await conversations.changes(member.id, conversationTask.id, changes.nextSequence, changes.snapshotSequence);
+  check(changes.hasMore && !changesTail.hasMore && [...changes.events, ...changesTail.events].length === 28, 'bounded catchup retrieves all missed events with frozen watermark');
+  check((await conversations.changes(member.id, conversationTask.id, changesTail.nextSequence)).events.length === 1, 'next catchup retrieves events after frozen watermark');
+  const nowCaught = await conversations.changes(member.id, conversationTask.id, changesTail.nextSequence);
+  check(!(await conversations.changes(member.id, conversationTask.id, nowCaught.nextSequence)).events.length, 'caught up request is empty without duplicates');
+  await rejects(() => conversations.changes(owner.user.id, conversationTask.id, '0'), 'administrator cannot catch up member events', 404);
+  await rejects(() => conversations.eventContent(owner.user.id, conversationTask.id, largeId, 0), 'event content obeys owner isolation', 404);
+  await workspace.deleteTask(member.id, conversationTask.id, 1);
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot.conversation_events WHERE task_id=$1', [conversationTask.id])).rows[0].n === 0 && (await admin.query('SELECT count(*)::int AS n FROM workpivot.conversation_turns WHERE task_id=$1', [conversationTask.id])).rows[0].n === 0, 'task deletion removes conversation events and turns');
+  await rejects(() => conversations.page(member.id, conversationTask.id, latest.nextCursor!), 'deleted task invalidates pagination', 404);
+  await rejects(() => conversations.startTurn(member.id, conversationTask.id, 'resurrect', randomUUID(), randomUUID()), 'deleted task rejects new conversation', 404);
+  const runTask = await workspace.createTask(member.id, 'Real agent loop with fixture model', privateProject.id);
+  const runs = new RunRepository(business);
+  let invokedTools = 0, sawCommittedTool = false, sawHistory = false;
+  const client: ModelClient = { providerId: 'fixture', model: 'fixture', async *streamChat(messages) {
+    sawHistory ||= messages.some(m => m.role === 'assistant' && m.content === 'Final answer');
+    if (messages.at(-1)?.role === 'tool') { yield { type: 'delta', text: 'Final answer' }; return; }
+    yield { type: 'reasoning_delta', text: 'Thinking separately' };
+    yield { type: 'tool_calls', tool_calls: [{ id: randomUUID(), type: 'function', function: { name: 'fixture', arguments: '{}' } }] };
+  } };
+  const execution = new DatabaseExecution(business, async () => ({ client, taskDir: '.', system: 'Test', tools: [{ name: 'fixture', description: 'No IO', parameters: {}, async run() {
+    invokedTools++;
+    sawCommittedTool = (await admin.query("SELECT count(*)::int AS n FROM workpivot.conversation_events WHERE task_id=$1 AND kind='tool_use'", [runTask.id])).rows[0].n > 0;
+    return 'Verified tool output';
+  } }] }));
+  const executionRequest = randomUUID();
+  const accepted = await execution.begin(member.id, runTask.id, 'Run question', executionRequest);
+  const duplicateRun = await execution.begin(member.id, runTask.id, 'Run question', executionRequest);
+  check(!duplicateRun.execute && duplicateRun.run.id === accepted.run.id, 'duplicate message does not execute model twice');
+  await rejects(() => execution.begin(member.id, runTask.id, 'Another request', randomUUID()), 'one active run per task', 409);
+  await rejects(() => execution.begin(owner.user.id, runTask.id, 'Foreign request', randomUUID()), 'administrator cannot execute member task', 404);
+  await rejects(() => workspace.deleteTask(member.id, runTask.id, 2), 'active database run blocks deletion', 409);
+  const deliveredIds: string[] = [];
+  check(await accepted.execute!(e => { deliveredIds.push(e.id); }) === 'completed' && invokedTools === 1 && sawCommittedTool, 'agent executes tool only after durable tool-use event');
+  const durable = await conversations.page(member.id, runTask.id);
+  check(durable.turns[0]!.events.some(e => e.kind === 'thinking') && durable.turns[0]!.events.some(e => e.kind === 'assistant') && deliveredIds.every(id => durable.turns[0]!.events.some(e => e.id === id)), 'stream events match durable history with separate reasoning and answer');
+  check((await workspace.listTasks(member.id)).find(t => t.id === runTask.id)?.status === 'idle', 'completed run returns task to idle');
+  const secondRun = await execution.begin(member.id, runTask.id, 'Follow up', randomUUID());
+  await secondRun.execute!(() => { throw Error('client disconnected'); });
+  check(sawHistory && invokedTools === 2, 'new run reuses model history and disconnected subscriber does not lose execution');
+  const stopRun = await execution.begin(member.id, runTask.id, 'Stop before sampling', randomUUID());
+  await execution.stop(member.id, runTask.id);
+  check(await stopRun.execute!(() => {}) === 'aborted' && invokedTools === 2, 'durable stop prevents further tool execution');
+  await admin.query(`CREATE FUNCTION workpivot.test_reject_tool() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.kind='tool_use' THEN RAISE EXCEPTION 'injected persistence failure'; END IF; RETURN NEW; END $$;
+    CREATE TRIGGER test_reject_tool BEFORE INSERT ON workpivot.conversation_events FOR EACH ROW EXECUTE FUNCTION workpivot.test_reject_tool()`);
+  try {
+    const failedWrite = await execution.begin(member.id, runTask.id, 'Fail before tool side effect', randomUUID());
+    check(await failedWrite.execute!(() => {}) === 'error' && invokedTools === 2, 'failed event persistence stops before tool execution and marks failure');
+  } finally { await admin.query('DROP TRIGGER test_reject_tool ON workpivot.conversation_events; DROP FUNCTION workpivot.test_reject_tool()'); }
+  const abandoned = await runs.start(member.id, runTask.id, randomUUID(), 'Simulate crashed executor');
+  await admin.query("UPDATE workpivot.task_runs SET lease_until=now()-interval '1 second' WHERE id=$1", [abandoned.id]);
+  check(await runs.recover(member.id, runTask.id), 'expired run recovers as interrupted without replaying side effects');
+  await rejects(() => runs.append(member.id, abandoned, { type: 'assistant_delta', text: 'stale output' }), 'expired executor cannot append late output', 409);
+  const replacement = await runs.start(member.id, runTask.id, randomUUID(), 'Explicit continuation');
+  await rejects(() => runs.finish(member.id, abandoned, 'completed', []), 'stale executor cannot complete replacement run', 409);
+  await runs.finish(member.id, replacement, 'completed', []);
+  check(replayableMessages([{ role: 'assistant', content: 'partial', tool_calls: [{ id: 'missing', type: 'function', function: { name: 'fixture', arguments: '{}' } }] }]).every(m => !m.tool_calls), 'interrupted tool calls are not replayed unmatched');
+  await workspace.deleteTask(member.id, runTask.id, (await workspace.listTasks(member.id)).find(t => t.id === runTask.id)!.revision);
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot.task_runs WHERE task_id=$1', [runTask.id])).rows[0].n === 0, 'deletion removes persisted model history and run records');
+  const encryptionKey = randomBytes(32).toString('hex'), providerKey = randomBytes(24).toString('hex');
+  const providers = new ProviderRepository(business, encryptionKey);
+  let modelAuthenticated = false, modelBody: { model?: string } = {}, failModel = false;
+  const modelServer = createServer(async (req, res) => {
+    modelAuthenticated = req.headers.authorization === 'Bearer ' + providerKey;
+    const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    modelBody = JSON.parse(Buffer.concat(chunks).toString());
+    if (failModel) { res.writeHead(401); res.end('upstream echoed secret ' + providerKey); return; }
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    res.end('data: ' + JSON.stringify({ choices: [{ delta: { content: 'Provider-backed response' } }] }) + '\n\ndata: [DONE]\n\n');
+  });
+  modelServer.listen(0, '127.0.0.1'); await new Promise<void>(r => modelServer.once('listening', r));
+  try {
+    const address = modelServer.address(); if (!address || typeof address === 'string') throw Error('No model port');
+    const input = { name: 'Local fixture', baseUrl: `http://127.0.0.1:${address.port}/v1`, modelId: 'test-model', protocol: 'openai' as const, apiKey: providerKey };
+    await rejects(() => providers.save(member.id,{...input,contextBudget:0}), 'invalid model capacity rejected',400);
+    const capacityProvider=await providers.save(member.id,{...input,name:'capacity fixture',contextBudget:32000});
+    check(capacityProvider.contextBudget===32000,'per-model capacity persisted');
+    const preservedCapacity=await providers.save(member.id,input,capacityProvider.id,1);
+    check(preservedCapacity.contextBudget===32000,'legacy client edit preserves configured capacity');
+    await providers.remove(member.id,capacityProvider.id,preservedCapacity.revision);
+    const saved = await providers.save(member.id, input);
+    check(saved.hasApiKey && !JSON.stringify(saved).includes(providerKey) && !('secret' in saved), 'model API returns no plaintext or ciphertext');
+    const encrypted = (await admin.query('SELECT secret FROM workpivot.model_providers WHERE id=$1', [saved.id])).rows[0].secret;
+    check(encrypted.enc === 'aes-256-gcm' && !JSON.stringify(encrypted).includes(providerKey), 'provider key encrypted in PostgreSQL');
+    check((await providers.list(owner.user.id)).length === 0, 'administrator cannot list member providers');
+    await rejects(() => providers.activate(owner.user.id, saved.id, 1), 'administrator cannot activate another user provider', 404);
+    await rejects(() => providers.client(member.id), 'model execution requires active provider', 400);
+    await providers.activate(member.id, saved.id, 1);
+    await rejects(() => providers.save(member.id, input, saved.id, 1), 'stale model update rejected', 409);
+    const edited = await providers.save(member.id, { ...input, apiKey: undefined, name: 'Renamed' }, saved.id, 2);
+    check(edited.hasApiKey && edited.revision === 3, 'editing without key preserves encrypted credential');
+    await rejects(() => providers.save(member.id, { ...input, baseUrl: 'http://localhost:1', apiKey: undefined }, saved.id, 3), 'changing endpoint cannot silently forward previous key', 400);
+    await rejects(() => new ProviderRepository(business, randomBytes(32).toString('hex')).client(member.id), 'wrong server encryption key fails closed', 503);
+    await rejects(() => providers.save(member.id, { ...input, baseUrl: 'https://user:password@example.com' }), 'credentials in provider URL rejected', 400);
+    const providerExecution = new DatabaseExecution(business, async actor => ({ client: await providers.client(actor), tools: [], taskDir: '.', system: 'Fixture' }));
+    const providerTask = await workspace.createTask(member.id, 'Provider HTTP execution', privateProject.id);
+    const prepared = await providerExecution.begin(member.id, providerTask.id, 'A real HTTP client request', randomUUID());
+    const received: string[] = [];
+    check(await prepared.execute!(e => { if (e.text) received.push(e.text); }) === 'completed' && received.join('') === 'Provider-backed response' && modelAuthenticated && modelBody.model === 'test-model', 'database provider drives actual HTTP model client and durable stream');
+    failModel = true;
+    const failed = await providerExecution.begin(member.id, providerTask.id, 'Failure privacy', randomUUID());
+    const errors: unknown[] = [];
+    check(await failed.execute!(e => { errors.push(e); }) === 'error' && !JSON.stringify(errors).includes(providerKey), 'upstream echoed credentials never reach client events');
+    check(!(await admin.query('SELECT content FROM workpivot.conversation_events WHERE task_id=$1', [providerTask.id])).rows.some(r => r.content.includes(providerKey)), 'upstream echoed credentials not persisted in conversation');
+    const cleared = await providers.save(member.id, { ...input, apiKey: null }, saved.id, 3);
+    check(!cleared.hasApiKey, 'explicit null clears stored key');
+    await providers.remove(member.id, saved.id, cleared.revision);
+    check((await providers.list(member.id)).length === 0, 'delete provider removes encrypted key');
+    await rejects(() => providers.client(member.id), 'deleting active provider prevents new calls', 400);
+    failModel = false;
+    const shared = await providers.save(owner.user.id, input);
+    await providers.activate(owner.user.id, shared.id, shared.revision, true);
+    const service = new DatabaseModelService(identity,business,providers);
+    const status = await service.status(member.id);
+    check(status.available && !JSON.stringify(status).includes(providerKey) && !('baseUrl' in status), 'member sees shared model without secret or endpoint');
+    check((await providers.list(member.id)).length===0,'shared usage does not expose administrator registry');
+    let sharedReply='';for await(const e of (await service.client(member.id)).streamChat([{role:'user',content:'shared test'}],[],new AbortController().signal)){if(e.type==='delta')sharedReply+=e.text;}
+    check(sharedReply.includes('Provider-backed response'),'member invokes administrator default model successfully');
+    await admin.query('UPDATE identity.users SET disabled=true WHERE id=$1',[owner.user.id]);
+    check(!(await service.status(member.id)).available,'disabled administrator cannot supply default model');
+    await admin.query('UPDATE identity.users SET disabled=false WHERE id=$1',[owner.user.id]);
+    await providers.remove(owner.user.id,shared.id,2);
+    check(!(await service.status(member.id)).available,'deleted default model immediately unavailable');
+  } finally { modelServer.closeAllConnections(); await new Promise<void>(r => modelServer.close(() => r())); }
+  const mcp = new McpRepository(business, encryptionKey);
+  let mcpCalls = 0, changedSchema = false, mcpAuthenticated = false;
+  const mcpServer = createServer(async (req, res) => {
+    if (req.method === 'DELETE') { res.writeHead(204); res.end(); return; }
+    mcpAuthenticated = req.headers.authorization === 'Bearer ' + providerKey;
+    const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    const packet = JSON.parse(Buffer.concat(chunks).toString());
+    if (!packet.id) { res.writeHead(202); res.end(); return; }
+    let result: unknown;
+    if (packet.method === 'initialize') result = { protocolVersion: '2025-11-25', capabilities: { tools: {} } };
+    else if (packet.method === 'tools/list') result = { tools: [{ name: 'echo', description: changedSchema ? 'Changed' : 'Echo', inputSchema: { type: 'object', properties: { text: { type: 'string' } } } }] };
+    else if (packet.method === 'tools/call') { mcpCalls++; result = { content: [{ type: 'text', text: packet.params.arguments.text }] }; }
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Mcp-Session-Id': 'fixture-session' });
+    res.end(JSON.stringify({ jsonrpc: '2.0', id: packet.id, result }));
+  });
+  mcpServer.listen(0, '127.0.0.1'); await new Promise<void>(r => mcpServer.once('listening', r));
+  try {
+    const address = mcpServer.address(); if (!address || typeof address === 'string') throw Error('No MCP port');
+    let connection = await mcp.save(member.id, { name: 'Fixture MCP', url: `http://127.0.0.1:${address.port}/mcp`, token: providerKey });
+    check(connection.hasToken && !JSON.stringify(connection).includes(providerKey) && !('secret' in connection), 'MCP API hides encrypted credential');
+    check((await admin.query('SELECT secret FROM workpivot.mcp_connections WHERE id=$1', [connection.id])).rows[0].secret.enc === 'aes-256-gcm', 'MCP credentials encrypted in PostgreSQL');
+    check((await mcp.list(owner.user.id)).length === 0, 'administrator cannot list private MCP connections');
+    await rejects(() => mcp.toggle(member.id, connection.id, connection.revision, true), 'untested MCP cannot be enabled', 400);
+    connection = await mcp.discover(member.id, connection.id, connection.revision);
+    check(connection.status === 'ready' && connection.tools.length === 1 && mcpAuthenticated, 'database MCP discovers tools through authenticated HTTP session');
+    connection = await mcp.toggle(member.id, connection.id, connection.revision, true);
+    const tools = await mcp.tools(member.id), tool = tools[0]!;
+    await rejects(() => tool.run({ text: 'denied' }, { taskDir: '.', requestAccess: async () => false }), 'MCP tool explicitly checks permission', 403);
+    check(mcpCalls === 0, 'denied MCP never dispatches remote call');
+    check((await tool.run({ text: 'allowed' }, { taskDir: '.', requestAccess: async () => true })).includes('allowed') && mcpCalls === 1, 'database MCP authorized tool call returns result');
+    changedSchema = true;
+    await rejects(() => tool.run({ text: 'changed' }, { taskDir: '.', requestAccess: async () => true }), 'changed remote schema rejected before dispatch', 409);
+    check(mcpCalls === 1, 'schema change never retries a side effect'); changedSchema = false;
+    connection = await mcp.toggle(member.id, connection.id, connection.revision, false, 'echo');
+    check((await mcp.tools(member.id)).length === 0, 'individual MCP tool can be disabled');
+    await rejects(() => tool.run({}, { taskDir: '.', requestAccess: async () => true }), 'stale tool snapshot cannot bypass disable', 409);
+    await rejects(() => mcp.remove(owner.user.id, connection.id, connection.revision), 'administrator cannot delete private MCP', 404);
+    await rejects(() => mcp.toggle(member.id, connection.id, 1, true), 'MCP stale update conflicts', 409);
+    await mcp.remove(member.id, connection.id, connection.revision);
+    check((await mcp.list(member.id)).length === 0, 'MCP deletion removes configuration and secret');
+  } finally { mcpServer.closeAllConnections(); await new Promise<void>(r => mcpServer.close(() => r())); }
+  await testMcpFailures(business, member.id, check);
+  await testProcessRecovery(business, member.id, check);
+  const permissionTask = await workspace.createTask(member.id, 'Durable authorization', privateProject.id);
+  const permissionRun = await runs.start(member.id, permissionTask.id, randomUUID(), 'Authorize request');
+  const access = { tool: 'mcp_fixture', kind: 'write' as const, paths: [], external: true, command: 'Fixture external request' };
+  const pending = await runs.requestPermission(member.id, permissionRun, access);
+  check((await workspace.listTasks(member.id)).find(t => t.id === permissionTask.id)?.status === 'waiting', 'permission request moves task into waiting');
+  check((await new RunRepository(business).pendingPermissions(member.id, permissionTask.id))[0].id === pending.id, 'new repository instance restores pending approval');
+  await rejects(() => runs.decidePermission(owner.user.id, permissionTask.id, pending.id, 'allow'), 'administrator cannot approve member request', 404);
+  check(await runs.consumePermission(member.id, permissionRun, pending.id) === 'pending', 'unconfirmed permission cannot execute');
+  await runs.decidePermission(member.id, permissionTask.id, pending.id, 'allow');
+  await runs.decidePermission(member.id, permissionTask.id, pending.id, 'allow');
+  const consumed = await Promise.all([runs.consumePermission(member.id, permissionRun, pending.id), runs.consumePermission(member.id, permissionRun, pending.id)]);
+  check(consumed.filter(v => v === 'allow').length === 1, 'duplicate approval consumed once across concurrent executors');
+  await rejects(() => runs.decidePermission(member.id, permissionTask.id, pending.id, 'deny'), 'conflicting decision rejected', 409);
+  const denied = await runs.requestPermission(member.id, permissionRun, access);
+  await runs.decidePermission(member.id, permissionTask.id, denied.id, 'deny');
+  check(await runs.consumePermission(member.id, permissionRun, denied.id) === 'deny', 'explicit denial prevents execution');
+  const expired = await runs.requestPermission(member.id, permissionRun, access);
+  await admin.query("UPDATE workpivot.run_permissions SET expires_at=now()-interval '1 second' WHERE id=$1", [expired.id]);
+  await rejects(() => runs.decidePermission(member.id, permissionTask.id, expired.id, 'allow'), 'expired request cannot be approved', 409);
+  check(await runs.consumePermission(member.id, permissionRun, expired.id) === 'deny', 'timeout resolves to deny');
+  const cancelled = await runs.requestPermission(member.id, permissionRun, access);
+  await runs.decidePermission(member.id, permissionTask.id, cancelled.id, 'allow');
+  await runs.stop(member.id, permissionTask.id);
+  await rejects(() => runs.consumePermission(member.id, permissionRun, cancelled.id), 'stop invalidates even approved but unconsumed request', 409);
+  await runs.finish(member.id, permissionRun, 'aborted', []);
+  const orphanRun = await runs.start(member.id, permissionTask.id, randomUUID(), 'Crash during confirmation');
+  const orphan = await runs.requestPermission(member.id, orphanRun, access);
+  await admin.query("UPDATE workpivot.task_runs SET lease_until=now()-interval '1 second' WHERE id=$1", [orphanRun.id]);
+  await runs.recover(member.id, permissionTask.id);
+  await rejects(() => runs.decidePermission(member.id, permissionTask.id, orphan.id, 'allow'), 'recovered run cannot use old confirmation', 409);
+  await workspace.deleteTask(member.id, permissionTask.id, (await workspace.listTasks(member.id)).find(t => t.id === permissionTask.id)!.revision);
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot.run_permissions WHERE task_id=$1', [permissionTask.id])).rows[0].n === 0, 'deletion clears approval payloads');
+  let authorizedToolCalls = 0;
+  const approvalExecution = new DatabaseExecution(business, async () => ({ client, taskDir: '.', system: 'Fixture', tools: [{ name: 'fixture', description: 'External fixture', parameters: {}, async run(_args, ctx) {
+    if (!await ctx.requestAccess?.(access)) return 'Denied'; authorizedToolCalls++; return 'Approved';
+  } }] }));
+  const approvalTask = await workspace.createTask(member.id, 'Approval execution integration', privateProject.id);
+  let pendingId!: (id: string) => void;
+  const announced = new Promise<string>(resolve => { pendingId = resolve; });
+  const approvalStart = await approvalExecution.begin(member.id, approvalTask.id, 'Ask permission', randomUUID());
+  const executing = approvalStart.execute!(e => { if (e.type === 'permission_request') pendingId(e.id); });
+  const announcedId = await announced;
+  check(authorizedToolCalls === 0, 'agent waits without executing external tool');
+  await runs.decidePermission(member.id, approvalTask.id, announcedId, 'allow');
+  check(await executing === 'completed' && authorizedToolCalls === 1, 'persisted user confirmation resumes actual agent tool');
   const reset = await accounts.resetPassword(owner.token, member.id);
   check(await accounts.resolve(login.token) === null, 'reset revokes existing sessions');
   await rejects(() => accounts.login('member', 'personal-password'), 'reset invalidates old password', 401);
@@ -107,16 +447,87 @@ try {
   const addr = server.address(); if (!addr || typeof addr === 'string') throw Error('No port');
   const base = `http://127.0.0.1:${addr.port}/api`;
   const http = (path: string, token?: string, body?: unknown, method = body === undefined ? 'GET' : 'POST') => fetch(base + path, { method, headers: { ...(token ? { Authorization: 'Bearer ' + token } : {}), 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+
+
   check((await http('/projects')).status === 401, 'HTTP rejects guest');
   check((await http('/projects', resetSession.token)).status === 403, 'HTTP blocks temporary member business access');
   const secondarySession = await accounts.login('second-admin', 'temporary-password');
   check((await http('/users', secondarySession.token)).status === 403, 'HTTP blocks temporary administrator management access');
   check((await http('/auth/password', resetSession.token, { currentPassword: reset.temporaryPassword, newPassword: 'final-password' })).ok, 'HTTP password update uses database');
   const finalSession = await accounts.login('member', 'final-password');
+  check((await http('/admin/memory-templates',finalSession.token,{})).status===403,'HTTP member cannot create shared role templates');
+  check((await http('/admin/memory-templates',owner.token)).status===200,'HTTP admin template editor connected');
+  check((await http('/memory-templates',finalSession.token)).status===200,'HTTP member can browse published templates');
+  check((await http('/memory-controls',finalSession.token)).status===200,'HTTP memory layer controls connected');
+  check((await http('/memory-controls')).status===401,'HTTP memory controls require authentication');
   const listed = await (await http('/projects', owner.token)).json() as { projects: { id: string }[] };
   check(listed.projects.length === 1 && listed.projects[0]!.id === adminProject.id, 'HTTP admin cannot enumerate private projects');
   check((await http('/tasks', owner.token, { name: 'forged', projectId: privateProject.id, ownerUserId: member.id })).status === 404, 'HTTP ignores client-supplied owner');
   check((await http('/tasks/' + task.id + '/messages', finalSession.token, { content: 'run' })).status === 503, 'unported agent route fails explicitly, no legacy fallback');
+  const httpProject = await workspace.createProject(member.id, 'HTTP deletion');
+  const httpTask = await workspace.createTask(member.id, 'HTTP child', httpProject.id);
+  await conversations.startTurn(member.id, httpTask.id, 'HTTP question', randomUUID(), randomUUID());
+  check((await http('/tasks/' + httpTask.id + '/conversation', finalSession.token)).ok, 'HTTP conversation page available');
+  check((await http('/tasks/' + httpTask.id + '/conversation', owner.token)).status === 404, 'HTTP conversation page isolated');
+  check((await http('/tasks/' + httpTask.id + '/conversation?limit=200', finalSession.token)).status === 400, 'HTTP cannot request unlimited turns');
+  check((await http('/tasks/' + httpTask.id + '/conversation-changes?after=0', finalSession.token)).ok, 'HTTP catchup available');
+  check((await http('/tasks/' + httpTask.id + '/conversation-changes?after=-1', finalSession.token)).status === 400, 'HTTP malformed catchup rejected');
+  check((await http('/tasks/' + httpTask.id, owner.token, { revision: 1 }, 'DELETE')).status === 404, 'HTTP task deletion enforces ownership');
+  check((await http('/tasks/' + httpTask.id, finalSession.token, { revision: 1 }, 'DELETE')).ok, 'HTTP task deletion persists');
+  check((await http('/projects/' + httpProject.id, finalSession.token, {}, 'DELETE')).status === 400, 'HTTP deletion requires revision');
+  check((await http('/projects/' + httpProject.id, finalSession.token, { revision: 1 }, 'DELETE')).ok, 'HTTP project deletion persists');
+  await testMemoryTools(business, member.id, owner.user.id, check);
+  await testSkills(business, owner.user.id, member.id, check);
+  const runtimeApp = await createDatabaseApp(identity, business, init, execution, providers, mcp);
+  const runtimeServer = runtimeApp.listen(0, '127.0.0.1'); await new Promise<void>(r => runtimeServer.once('listening', r));
+  try {
+    const address = runtimeServer.address(); if (!address || typeof address === 'string') throw Error('No runtime port');
+    const skillUrl = `http://127.0.0.1:${address.port}/api/skill-packages`;
+    check((await fetch(skillUrl, { headers: { Authorization: 'Bearer ' + finalSession.token } })).status === 403, 'HTTP member cannot access skill package editor');
+    const skillList = await fetch(skillUrl, { headers: { Authorization: 'Bearer ' + owner.token } });
+    check(skillList.ok && Array.isArray((await skillList.json()).packages), 'HTTP admin package editor list connected');
+    const market = await fetch(`http://127.0.0.1:${address.port}/api/skill-market`, { headers: { Authorization: 'Bearer ' + finalSession.token } });
+    check(market.ok && (await market.json()).skills.some((s: { name: string }) => s.name === 'database-skill'), 'HTTP member market exposes published skills');
+    const deniedProvider = await fetch(`http://127.0.0.1:${address.port}/api/providers`, { headers: { Authorization: 'Bearer ' + finalSession.token } });
+    check(deniedProvider.status === 403, 'member cannot read model management configuration');
+    const deniedWrite = await fetch(`http://127.0.0.1:${address.port}/api/providers`, { method: 'POST', headers: { Authorization: 'Bearer ' + finalSession.token, 'Content-Type': 'application/json' }, body: '{}' });
+    check(deniedWrite.status === 403, 'member cannot write model management configuration');
+    const providerResponse = await fetch(`http://127.0.0.1:${address.port}/api/providers`, { headers: { Authorization: 'Bearer ' + owner.token } });
+    check(providerResponse.ok && !JSON.stringify(await providerResponse.json()).includes(providerKey), 'authenticated HTTP provider list exposes no credentials');
+    const mcpResponse = await fetch(`http://127.0.0.1:${address.port}/api/mcp`, { headers: { Authorization: 'Bearer ' + finalSession.token } });
+    check(mcpResponse.ok && Array.isArray(((await mcpResponse.json()) as { connections: unknown[] }).connections), 'HTTP database MCP management route connected');
+    const streamingTask = await workspace.createTask(member.id, 'HTTP execution', privateProject.id);
+    const requestId = randomUUID();
+    const post = (actorToken: string, content: string) => fetch(`http://127.0.0.1:${address.port}/api/tasks/${streamingTask.id}/messages`, { method: 'POST', headers: { Authorization: 'Bearer ' + actorToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ content, requestId }) });
+    check((await post(owner.token, 'HTTP run')).status === 404, 'HTTP runtime enforces task owner');
+    const response = await post(finalSession.token, 'HTTP run'); const frames = await response.text();
+    check(response.ok && response.headers.get('content-type')?.includes('text/event-stream') && frames.includes('Final answer') && frames.includes('"sequence"'), 'HTTP model stream carries durable event identities and final answer');
+    const duplicate = await post(finalSession.token, 'HTTP run');
+    check(duplicate.status === 202 && ((await duplicate.json()) as { duplicate: boolean }).duplicate, 'HTTP retry returns existing run without duplicate execution');
+    const httpPermissionRun = await runs.start(member.id, streamingTask.id, randomUUID(), 'HTTP permission');
+    const httpPermission = await runs.requestPermission(member.id, httpPermissionRun, access);
+    const permissionUrl = `http://127.0.0.1:${address.port}/api/tasks/${streamingTask.id}/permissions`;
+    const listedPermissions = await fetch(permissionUrl, { headers: { Authorization: 'Bearer ' + finalSession.token } });
+    check(listedPermissions.ok && ((await listedPermissions.json()) as { pending: { id: string }[] }).pending[0]!.id === httpPermission.id, 'HTTP pending permission survives reconnect');
+    const decide = (scope: string) => fetch(permissionUrl + '/' + httpPermission.id, { method: 'POST', headers: { Authorization: 'Bearer ' + finalSession.token, 'Content-Type': 'application/json' }, body: JSON.stringify({ decision: 'allow', scope }) });
+    check((await decide('always')).status === 400, 'HTTP rejects permanent external authorization');
+    check((await decide('once')).ok && await runs.consumePermission(member.id, httpPermissionRun, httpPermission.id) === 'allow', 'HTTP decision authorizes only this invocation');
+    await runs.finish(member.id, httpPermissionRun, 'completed', []);
+    await testTaskStream(`http://127.0.0.1:${address.port}`,finalSession.token,owner.token,member.id,streamingTask.id,runs,check);
+  } finally { runtimeServer.closeAllConnections(); await new Promise<void>(r => runtimeServer.close(() => r())); }
+  await testMemoryEntries(business, owner.user.id, member.id, check);
+  await testMemoryWorker(business, owner.user.id, check);
+  await testMemoryContext(business, owner.user.id, check);
+  await testMemoryReview(business, owner.user.id, check);
+  await testSkillExecution(business, owner.user.id, member.id, check);
+  await testParsing(business, owner.user.id, member.id, check);
+  await testKnowledge(business, owner.user.id, member.id, check);
+  await testCompaction(business, owner.user.id, member.id, check);
+  await testMemoryExpertIntegration(business, owner.user.id, member.id, check);
+  await testExperts(business, owner.user.id, member.id, check);
+  await testMemoryControls(business, owner.user.id, member.id, check);
+  await testFiles(business, identity, member.id, owner.user.id, finalSession.token, init, check);
+  await testRestoreRetention(business,member.id,owner.user.id,check);
   await accounts.logout(finalSession.token);
   check((await http('/projects', finalSession.token)).status === 401, 'HTTP logout invalidates session');
   const reopened = pool(appUrl.toString());
@@ -129,3 +540,4 @@ try {
   if (server) { server.closeAllConnections(); await new Promise<void>(r => server!.close(() => r())); }
   await Promise.all([business.end(), identity.end(), admin.end()]);
 }
+import { testTaskStream } from './database-task-stream.mts';
