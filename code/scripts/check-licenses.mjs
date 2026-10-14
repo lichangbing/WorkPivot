@@ -69,9 +69,15 @@ if (scanned === 0 || unreadable.length > 0) {
   console.error(`[K05] 检查未完成：有效依赖 ${scanned} 个，无法解析的清单 ${unreadable.length} 个。请检查依赖安装及运行目录。`);
   process.exit(1);
 }
-if (unknown.length) console.warn(`[K05] ${unknown.length} 个依赖未声明许可，需人工核对：${unknown.join(', ')}`);
+if (unknown.length) {
+  console.warn(`[K05] ${unknown.length} 个依赖未声明许可，需人工核对：${unknown.join(', ')}`);
+  if (process.argv.includes('--strict')) {
+    console.error('[K05] 严格检查未通过：缺失许可声明尚未解决');
+    process.exitCode = 1;
+  }
+}
 if (violations.length > 0) {
   for (const v of violations) console.error(`[K05] ⛔ 违规：${v.name}@${v.version} license=${v.license}`);
   process.exit(1);
 }
-console.log('[K05] ✅ 已声明许可中未命中黑名单（不替代完整许可证审查）');
+if (!process.exitCode) console.log('[K05] ✅ 已声明许可中未命中黑名单（不替代完整许可证审查）');

@@ -59,6 +59,7 @@ preview.25：W33更新为两种模式32项，验证旧设置转换、默认自�
 
 - pnpm eval:database：W38 及其引入的数据库专项，运行于独立临时 PostgreSQL，不使用业务数据。与 pnpm eval 分开运行。
 - pnpm eval:chat-state：W39-database-chat-state.mts，事件排序、去重、预览替换和分组；不要与历史 W39-task-deletion.mts 混淆。
-- pnpm test:licenses：六个合成依赖场景，覆盖普通包、作用域包、空扫描、损坏清单和缺少许可声明。
+- pnpm test:licenses：八个合成依赖场景，覆盖普通包、作用域包、空扫描、损坏清单、缺少许可声明以及严格检查的失败/成功结果。
+- pnpm check:licenses:strict：缺失许可证声明返回非零状态；当前两个旧依赖仍未有充分授权材料，严格检查预期失败，不应通过添加未经核实的白名单绕过。
 - pnpm eval 默认写入 eval/baseline.json；临时审计应使用 WORKPIVOT_EVAL_BASELINE 指向独立记录，避免覆盖原验收基线。
 - 以上检查不替代真实模型、浏览器、执行服务或线上环境验收；文中旧版本数字是历史记录。

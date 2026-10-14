@@ -14,13 +14,14 @@
 | pnpm lint | 静态检查 |
 | pnpm check:deps | 前端依赖边界 |
 | pnpm check:licenses | 已安装 pnpm 依赖的许可证黑名单筛查，缺失声明单独提示；不是完整法律审查 |
+| pnpm check:licenses:strict | 在黑名单检查之外，将缺失许可证声明作为失败；用于发布前明确暴露未解决项 |
 | pnpm test:licenses | 许可证检查脚本自身的边界用例 |
 | pnpm eval:chat-state | 数据库界面事件排序、去重与分组 |
 | pnpm eval | 常规模拟评测；不包含数据库集成和真实模型验收 |
 | pnpm eval:database | 独立临时 PostgreSQL 集成测试，需 Docker；Windows 使用 WSL |
 | pnpm --filter @workpivot/web build | 用户端及管理端构建 |
 
-数据库测试默认需要 postgres:17-alpine 镜像；可通过 WORKPIVOT_TEST_PG_IMAGE 显式指定已准备的受测版本。不要用业务数据库代替临时测试库。Windows 测试期间需保持 WSL 实例存活；本次审计发现无人持有前台进程时连接可能中断，保持实例运行后复测通过，详见工程检查记录。测试覆盖范围见 [eval/README.md](eval/README.md)，部署采用对应环境的最新记录。
+数据库测试默认需要 postgres:17-alpine 镜像；可通过 WORKPIVOT_TEST_PG_IMAGE 显式指定已准备的受测版本。不要用业务数据库代替临时测试库。Windows 测试入口现在自行启动隐藏的 WSL 存活辅助进程，并在完成或异常清理时终止本次辅助进程，无需另外手动保持终端；主机强制终止不保证清理。测试覆盖范围见 [eval/README.md](eval/README.md)，部署采用对应环境的最新记录。
 
 开发规范见 [AGENTS.md](../AGENTS.md)，当前计划见 [数据库与知识开发计划](../docs/03-project/tasks-postgresql-knowledge.md)。
 

@@ -1,4 +1,5 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 const useWsl = process.platform === 'win32';
@@ -9,7 +10,14 @@ const docker = args => {
 const image = process.env.WORKPIVOT_TEST_PG_IMAGE || 'postgres:17-alpine';
 const container = 'workpivot-pg-test-' + Date.now();
 const password = randomBytes(24).toString('hex'); let started = false;
+let keepAlive;
 try {
+  // Keep WSL alive between short Docker CLI calls and the Windows test process.
+  // This helper belongs only to this invocation and does not mount Docker sockets.
+  if (useWsl) {
+    keepAlive = spawn('wsl', ['-d', 'Ubuntu-24.04', '--', 'sleep', 'infinity'], { windowsHide: true, stdio: 'ignore' });
+    await once(keepAlive, 'spawn');
+  }
   docker(['image', 'inspect', image]);
   docker(['run', '-d', '--name', container, '--label', 'workpivot.disposable=postgres-test', '--tmpfs', '/var/lib/postgresql/data:rw,nosuid,size=512m', '-p', '127.0.0.1::5432', '-e', 'POSTGRES_PASSWORD=' + password, '-e', 'POSTGRES_DB=workpivot_test', image]);
   started = true;
@@ -23,10 +31,10 @@ try {
   if (run.error) throw Error('数据库测试未能完成');
   process.exitCode = run.status ?? 1;
 } finally {
-  if (started) {
+  try { if (started) {
     const info = JSON.parse(docker(['inspect', container]))[0];
     if (info.Config.Labels['workpivot.disposable'] !== 'postgres-test') throw Error('拒绝清理非本次测试容器');
     docker(['rm', '-f', container]);
     console.log('Disposable PostgreSQL container cleaned');
-  }
+  } } finally { keepAlive?.kill(); }
 }

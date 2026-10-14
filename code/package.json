@@ -11,6 +11,7 @@
     "typecheck": "tsc -p packages/shared && tsc -p packages/core && tsc -p packages/server && tsc -p apps/web && tsc -p apps/desktop",
     "lint": "eslint .",
     "check:licenses": "node scripts/check-licenses.mjs",
+    "check:licenses:strict": "node scripts/check-licenses.mjs --strict",
     "test:licenses": "node eval/license-check.mjs",
     "eval:chat-state": "tsx eval/W39-database-chat-state.mts",
     "dev:web": "pnpm --filter @workpivot/web dev",
