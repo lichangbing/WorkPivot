@@ -58,6 +58,7 @@ preview.25：W33更新为两种模式32项，验证旧设置转换、默认自�
 ## 当前数据库与工程检查入口
 
 - pnpm eval:database：W38 及其引入的数据库专项，运行于独立临时 PostgreSQL，不使用业务数据。与 pnpm eval 分开运行。
+- pnpm eval:service-recovery：独立 Docker 整服务强制终止/重启回归；Windows 使用 WSL Ubuntu-24.04，默认需要本地 `workpivot-server:0.3.0-rc.1-recovery-validation-20260929` 与 `postgres:15-alpine` 镜像。可用 WORKPIVOT_TEST_SERVICE_IMAGE / WORKPIVOT_TEST_PG_IMAGE 指定兼容镜像。复制当前 server/core/shared 源码到临时容器，依赖使用指定镜像；不更新已有部署、不挂载 Docker socket。等待真实租约过期后核对 HTTP、SSE 和数据库状态，结束清理临时容器与网络。使用预置任务/授权/执行记录，不等同真实模型和外部工具端到端验收。
 - pnpm eval:chat-state：W39-database-chat-state.mts，事件排序、去重、预览替换和分组；不要与历史 W39-task-deletion.mts 混淆。
 - pnpm test:licenses：八个合成依赖场景，覆盖普通包、作用域包、空扫描、损坏清单、缺少许可声明以及严格检查的失败/成功结果。
 - pnpm check:licenses:strict：缺失许可证声明返回非零状态；当前两个旧依赖仍未有充分授权材料，严格检查预期失败，不应通过添加未经核实的白名单绕过。

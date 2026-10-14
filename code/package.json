@@ -39,6 +39,7 @@
     "eval:worker": "node eval/W21-worker.mjs",
     "eval:worker-client": "tsx eval/W22-worker-client.mts",
     "eval:database": "node scripts/test-postgres.mjs",
+    "eval:service-recovery": "node scripts/test-service-recovery.mjs",
     "db:install": "tsx scripts/postgres-schema.mts",
     "dev:database": "tsx scripts/postgres-preview.mts"
   },

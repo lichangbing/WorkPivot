@@ -72,3 +72,13 @@
 许可后续项补充：npm 官方元数据确认 nopt@5.0.0 接受 abbrev 的 1.x，abbrev@1.1.1 声明 ISC；unzipper@0.12.3 已不依赖 binary/buffers，但 ExcelJS@4.4.0 要求 ^0.10.11。后者超出现有兼容范围，需完成普通及流式 Excel 读取、损坏文件等验证后才能替换，不能为了消除提示直接覆盖。两个旧包的许可问题本批仍未关闭。
 
 依据：[nopt 5.0.0](https://registry.npmjs.org/nopt/5.0.0)、[abbrev 1.1.1](https://registry.npmjs.org/abbrev/1.1.1)、[unzipper 0.12.3](https://registry.npmjs.org/unzipper/0.12.3)、[ExcelJS 4.4.0](https://registry.npmjs.org/exceljs/4.4.0)。
+
+## WSL 整服务恢复验收
+
+新增 `pnpm eval:service-recovery`：在独立内部 Docker 网络启动临时 PostgreSQL 与完整 createDatabaseRuntime，使用当前源码和已有依赖镜像。测试不使用业务卷、不开放主机端口、不挂载 Docker socket；测试账号、会话和随机凭据仅存于临时资源。入口校验数据库名称和临时主机名称，避免误连业务库。
+
+预置一条带部分回复、待确认权限及执行中 Skill 记录的任务，心跳在 API 容器进程内运行。强制终止整个 API 容器，等待真实 30 秒租约过期后重启，再做第二次整容器重启；不直接改租约或在验收代码中调用恢复方法。验证登录会话仍可使用、任务及 Skill 状态转中断、失效确认取消且拒绝批准、部分回复恰好一份、旧执行句柄无法追加、没有创建替代执行，以及 SSE 从原游标补回唯一的中断事件。
+
+本轮只新增验收工具，未发现需要修改业务恢复实现的缺陷。初次运行曾遇到 WSL Docker 启动未就绪，以及 Windows 路径传递问题；后者已修正。完整工作区类型检查及新增脚本 ESLint 通过。此测试使用可控预置执行记录，不包含真实模型请求、外部副作用或执行 worker 容器中断，不能据此认定真实工具绝不会重复执行；该端到端边界、浏览器记忆/专家交互及真实多端验收仍需补齐。本轮不更新 39986 或公网部署。
+
+最终 WSL 复验通过：中断前 2 项，两次重启后各 10 项检查通过；临时容器与内部网络清理成功。结果见忽略目录 `releases/deploy/artifacts/service-recovery-20261014.log`。585/585 数据库全量回归是前一批结果，本批未重复执行。
