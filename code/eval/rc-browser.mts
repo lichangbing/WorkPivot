@@ -28,7 +28,11 @@ await runs.recover(actor,interruptedTask.id);
 await workspace.createTask(actor,'无执行记录任务',project.id);
 const app=await createDatabaseApp(auth,db,secret,undefined,undefined,undefined,resolve('apps/web/dist'));
 // Test-only stop route remains behind normal authentication.
-app.post('/api/fixture-stop',(_req,res)=>{res.json({ok:true});void close();});
+app.post('/fixture/stop',async(req,res)=>{
+  const token=req.headers.authorization?.startsWith('Bearer ')?req.headers.authorization.slice(7):'';
+  if(!await new AccountRepository(auth).resolve(token)){res.status(401).json({error:'未授权'});return;}
+  res.json({ok:true});void close();
+});
 const server=app.listen(39987,'127.0.0.1',()=>console.log('RC browser fixture ready: http://127.0.0.1:39987 ; test login rc-preview / RcPreview-2026!'));
 let closing=false;async function close(){if(closing)return;closing=true;server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));await Promise.all([db.end(),auth.end(),schema.end()]);}
 setTimeout(()=>void close(),900000).unref();process.on('SIGINT',()=>void close());process.on('SIGTERM',()=>void close());
