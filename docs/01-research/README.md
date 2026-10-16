@@ -36,6 +36,14 @@
 
 新建竞品分析请复制 [competitors/_template.md](competitors/_template.md)。
 
+### 2026-10-14 WorkBuddy 补充复核
+
+- [REA：Agent 运行与项目记忆复核](competitors/workbuddy-rea-20261014.md)：当前安装包身份、桌面到 CLI 的进程生命周期、ACP 流式协议、会话状态、REA 覆盖限制及历史结论修正。
+- [CLI Agent 内核与记忆触发](competitors/workbuddy-agent-runtime-20261014.md)：模型/工具编排、压缩取消、子代理与记忆触发的静态证据及缺口。
+- [项目本地记忆实证](competitors/workbuddy-local-memory-20261014.md)：中新融创项目的长期文件、43 份日期日志、脱敏结构与完整文件哈希清单。
+
+本次为安装产物静态分析和项目文件快照，未执行目标程序或验证真实会话；原研究收官状态不代表这些动态问题已经验收。
+
 ## 技术调研课题（初步）
 
 1. **后端技术栈选型**：Java/Spring Boot vs Python/FastAPI vs Node.js/NestJS vs 混合架构

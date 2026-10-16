@@ -4,6 +4,8 @@
 > 姊妹文档：[workbuddy.md](workbuddy.md)（产品层面分析）、**[workbuddy-extension-system.md](workbuddy-extension-system.md)（扩展系统专项：专家/技能/连接器/插件的动态加载机制，含 WorkPivot 实现参考）**。
 > 隐私说明：本文只引用结构与机制，不引用本机用户的记忆内容与密钥原文。
 
+> **2026-10-14 复核入口**：[REA：Agent 运行与项目记忆](workbuddy-rea-20261014.md)、[CLI Agent 内核专项](workbuddy-agent-runtime-20261014.md)、[项目本地记忆实证](workbuddy-local-memory-20261014.md)。下文保留 2026-08-27 历史样本，当前包元数据版本为 5.7.7。依赖不等于实际调用、格式相似不等于源码血缘；“全部明文”“唯一 SQLite”等结论不得推广到新版本或未调查范围。
+
 - **分析人**：ZCode
 - **日期**：2026-08-27
 - **分析对象版本**：
@@ -243,6 +245,8 @@ CREATE TABLE edge_sync_artifact_cache (
 ---
 
 ## 5. 记忆架构（核心章节）
+
+> **当前证据修正（2026-10-14）**：目标项目观察到 `MEMORY.md + 43 个日期日志`，全部是普通 Markdown，没有 RAW_JSON 元数据。以下全局画像格式、memorySelector 与 polling lease 的历史观察不能直接推广为项目记忆的读写和锁机制；项目层现状、代码路径及未知项见上述两个专项报告。“基于 OpenClaw”的表述只能作为待核实的血缘推测。
 
 WorkBuddy 的记忆是**四层结构**，全部是 Markdown 文件（人读机读两用），配合一个专职检索子代理：
 
