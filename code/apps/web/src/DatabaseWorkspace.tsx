@@ -22,6 +22,13 @@ interface Project { id: string; name: string; revision: number }
 interface Permission { id: string; request: { tool: string; command?: string }; expiresAt: string }
 const errorText = (e: unknown) => e instanceof Error ? e.message : '操作失败，请重试';
 const button = 'rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800 disabled:opacity-40';
+const selectionKey = (userId: string) => `wp-active-task:${userId}`;
+function rememberedTask(userId: string): string | null {
+  try { return sessionStorage.getItem(selectionKey(userId)); } catch { return null; }
+}
+function rememberTask(userId: string, taskId: string | null) {
+  try { if (taskId) sessionStorage.setItem(selectionKey(userId), taskId); else sessionStorage.removeItem(selectionKey(userId)); } catch { /* Storage may be disabled; task navigation still works. */ }
+}
 
 /** Database-backed client surface. Uses existing desktop connection/login and theme facilities. */
 export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatEnabled: boolean; filesEnabled?: boolean }) {
@@ -31,6 +38,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   const [auth, setAuth] = useState<Awaited<ReturnType<typeof api.authState>> | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]), [projects, setProjects] = useState<Project[]>([]);
   const [active, setActive] = useState<string | null>(null);
+  const selectionOwner = useRef<string | null>(null);
   const [events, setEvents] = useState<StoredEvent[]>([]), [permissions, setPermissions] = useState<Permission[]>([]);
   const [older, setOlder] = useState<string | null>(null), [details, setDetails] = useState<Record<string, { after: string; snapshot: string }>>({});
   const [loading, setLoading] = useState(false), [ready, setReady] = useState(false), [sending, setSending] = useState(false);
@@ -57,9 +65,21 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   useEffect(() => {
     if (!auth?.authenticated || auth.user?.mustChangePassword) return;
     let cancelled = false;
-    void Promise.all([jsonFetch<{ tasks: Task[] }>('/api/tasks'), jsonFetch<{ projects: Project[] }>('/api/projects')]).then(([t, p]) => { if (!cancelled) { setTasks(t.tasks); setProjects(p.projects); } }).catch(e => { if (!cancelled) setError(errorText(e)); });
+    void Promise.all([jsonFetch<{ tasks: Task[] }>('/api/tasks'), jsonFetch<{ projects: Project[] }>('/api/projects')]).then(([t, p]) => { if (!cancelled) {
+      const owner = auth.user?.id;
+      const restored = owner ? rememberedTask(owner) : null;
+      const sameOwner = selectionOwner.current === owner;
+      setTasks(t.tasks); setProjects(p.projects);
+      setActive(current => { const candidate = sameOwner ? current : restored; return candidate && t.tasks.some(task => task.id === candidate) ? candidate : null; });
+      selectionOwner.current = owner ?? null;
+    } }).catch(e => { if (!cancelled) setError(errorText(e)); });
     return () => { cancelled = true; };
   }, [auth]);
+  useEffect(() => {
+    const owner = auth?.user?.id;
+    // Wait for the authenticated task list before persisting or restoring a selection.
+    if (auth?.authenticated && owner && selectionOwner.current === owner) rememberTask(owner, active);
+  }, [active, auth]);
   useEffect(() => {
     const epoch = ++generation.current, controller = new AbortController();
     setAttachmentIds([]); setAttachmentBlocked(false);

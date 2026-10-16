@@ -1,4 +1,5 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 const useWsl = process.platform === 'win32';
@@ -6,10 +7,13 @@ const docker = args => {
   try { return execFileSync(useWsl ? 'wsl' : 'docker', useWsl ? ['-d', 'Ubuntu-24.04', '--', 'docker', ...args] : args, { encoding: 'utf8', timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'] }).trim(); }
   catch { throw Error('PostgreSQL测试容器操作失败（凭据已隐藏）'); }
 };
-const image = process.env.WORKPIVOT_TEST_PG_IMAGE || 'postgres:17-alpine';
+const workflow = process.argv.includes('--workflow');
+if (process.argv.slice(2).some(arg => arg !== '--workflow')) throw Error('Unsupported browser fixture option');
+const image = process.env.WORKPIVOT_TEST_PG_IMAGE || (workflow ? 'postgres:15-alpine' : 'postgres:17-alpine');
 const container = 'workpivot-pg-test-' + Date.now();
-const password = randomBytes(24).toString('hex'); let started = false;
+const password = randomBytes(24).toString('hex'); let started = false, keeper;
 try {
+  if (useWsl) { keeper = spawn('wsl', ['-d', 'Ubuntu-24.04', '--', 'sleep', 'infinity'], { windowsHide: true, stdio: 'ignore' }); await once(keeper, 'spawn'); }
   docker(['image', 'inspect', image]);
   docker(['run', '-d', '--name', container, '--label', 'workpivot.disposable=postgres-test', '--tmpfs', '/var/lib/postgresql/data:rw,nosuid,size=512m', '-p', '127.0.0.1::5432', '-e', 'POSTGRES_PASSWORD=' + password, '-e', 'POSTGRES_DB=workpivot_test', image]);
   started = true;
@@ -19,14 +23,14 @@ try {
   const info = JSON.parse(docker(['inspect', container]))[0];
   const port = info.NetworkSettings.Ports['5432/tcp'][0].HostPort;
   console.log('Disposable PostgreSQL ready; isolated tmpfs, no business volumes, no Docker socket mount');
-  const run = spawnSync(process.execPath, ['--import', 'tsx', 'eval/rc-browser.mts'], { cwd: resolve(import.meta.dirname, '..'), env: { ...process.env, WORKPIVOT_TEST_PG_DISPOSABLE: '1', WORKPIVOT_TEST_PG_URL: `postgresql://postgres:${password}@127.0.0.1:${port}/workpivot_test` }, stdio: 'inherit', timeout: 920000 });
+  const run = spawnSync(process.execPath, ['--import', 'tsx', workflow ? 'eval/browser-workflow.mts' : 'eval/rc-browser.mts'], { cwd: resolve(import.meta.dirname, '..'), env: { ...process.env, WORKPIVOT_TEST_PG_DISPOSABLE: '1', WORKPIVOT_TEST_PG_URL: `postgresql://postgres:${password}@127.0.0.1:${port}/workpivot_test` }, stdio: 'inherit', timeout: 920000 });
   if (run.error) throw Error('数据库测试未能完成');
   process.exitCode = run.status ?? 1;
 } finally {
-  if (started) {
+  try { if (started) {
     const info = JSON.parse(docker(['inspect', container]))[0];
     if (info.Config.Labels['workpivot.disposable'] !== 'postgres-test') throw Error('拒绝清理非本次测试容器');
     docker(['rm', '-f', container]);
     console.log('Disposable PostgreSQL container cleaned');
-  }
+  } } finally { keeper?.kill(); }
 }

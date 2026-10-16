@@ -41,6 +41,7 @@
     "eval:worker-client": "tsx eval/W22-worker-client.mts",
     "eval:database": "node scripts/test-postgres.mjs",
     "eval:service-recovery": "node scripts/test-service-recovery.mjs",
+    "eval:browser-workflow": "node scripts/test-rc-browser.mjs --workflow",
     "db:install": "tsx scripts/postgres-schema.mts",
     "dev:database": "tsx scripts/postgres-preview.mts"
   },

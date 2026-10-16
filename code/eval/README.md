@@ -57,6 +57,8 @@ preview.25：W33更新为两种模式32项，验证旧设置转换、默认自�
 
 ## 当前数据库与工程检查入口
 
+- pnpm eval:browser-workflow：临时 PostgreSQL + 当前数据库 API/执行器/记忆作业 + 当前构建前端，使用可控模型响应做浏览器人工验收。Windows 需 WSL Ubuntu-24.04 和本地 postgres:15-alpine，页面为 127.0.0.1:39987，临时账号 workflow-test / Workflow-Test-2026!。覆盖审批恢复、停止、文本成果、记忆建议确认/纠错/拒绝及新任务读取；15 分钟后关闭，或 POST /fixture/stop 正常结束。先在 apps/web 构建前端；脚本启动不等于所有浏览器检查自动通过。步骤、结果与限制见 [2026-10-16 验收记录](../../docs/03-project/browser-workflow-20261016.md)。
+
 - pnpm eval:worker-recovery：在 WSL/Linux Docker 宿主运行（Windows 可执行 `wsl -d Ubuntu-24.04 -- node /mnt/e/project/WorkPivot/code/eval/worker-recovery.mjs`）。默认使用本地 `workpivot-executor:0.2.0`，可通过 WORKPIVOT_TEST_IMAGE 指定兼容镜像。使用随机实例名、临时目录、动态本地端口和随机凭据，真实终止执行沙箱与 worker 子进程，验证取消、失败不返回半成品、重启清理及显式重试。仅清理本次实例资源，不挂载 Docker socket。该入口不覆盖数据库产物发布和浏览器联动。
 - pnpm eval:database：W38 及其引入的数据库专项，运行于独立临时 PostgreSQL，不使用业务数据。与 pnpm eval 分开运行。
 - pnpm eval:service-recovery：独立 Docker 整服务强制终止/重启回归；Windows 使用 WSL Ubuntu-24.04，默认需要本地 `workpivot-server:0.3.0-rc.1-recovery-validation-20260929` 与 `postgres:15-alpine` 镜像。可用 WORKPIVOT_TEST_SERVICE_IMAGE / WORKPIVOT_TEST_PG_IMAGE 指定兼容镜像。复制当前 server/core/shared 源码到临时容器，依赖使用指定镜像；不更新已有部署、不挂载 Docker socket。等待真实租约过期后核对 HTTP、SSE 和数据库状态，结束清理临时容器与网络。除预置任务/授权/Skill 执行记录外，真实 MCP 客户端还会调用独立测试服务：经持久化一次性授权后写入远端标记、暂缓响应，在 API 崩溃并两次重启后核对调用次数仍为一且未声称收到结果。MCP 服务为可控协议夹具，不代表真实供应商、模型决策或 Skill worker 中断已验收。
