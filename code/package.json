@@ -37,6 +37,7 @@
     "eval:capabilities": "tsx eval/W18-capabilities.mts",
     "eval:skills": "tsx eval/W20-skills.mts",
     "eval:worker": "node eval/W21-worker.mjs",
+    "eval:worker-recovery": "node eval/worker-recovery.mjs",
     "eval:worker-client": "tsx eval/W22-worker-client.mts",
     "eval:database": "node scripts/test-postgres.mjs",
     "eval:service-recovery": "node scripts/test-service-recovery.mjs",
