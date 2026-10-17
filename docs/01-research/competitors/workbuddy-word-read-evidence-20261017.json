@@ -1,0 +1,89 @@
+{
+  "date": "2026-10-17",
+  "method": "test-window transcript inspection and before/after SHA256; no wire capture",
+  "document_path": "E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-word-create.docx",
+  "sha256_before": "120ab97e2148c7687ef2113d5780d5c1a1301fa9653a113bd2867ce97330810d",
+  "sha256_after": "120ab97e2148c7687ef2113d5780d5c1a1301fa9653a113bd2867ce97330810d",
+  "unchanged": true,
+  "calls": [
+    {
+      "timestamp_ms": 1792199390331,
+      "name": "Skill",
+      "status": "completed",
+      "skill": "workbuddy-local-office-edit",
+      "description": null,
+      "file_path": null
+    },
+    {
+      "timestamp_ms": 1792199398204,
+      "name": "Read",
+      "status": "completed",
+      "skill": null,
+      "description": null,
+      "file_path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\skills\\workbuddy-local-office-edit\\doc.md"
+    },
+    {
+      "timestamp_ms": 1792199413092,
+      "name": "Bash",
+      "status": "completed",
+      "skill": null,
+      "description": "验证 editor_sdk 连通并列出 doc 工具",
+      "file_path": null
+    },
+    {
+      "timestamp_ms": 1792199424526,
+      "name": "Bash",
+      "status": "completed",
+      "skill": null,
+      "description": "查询文档结构工具 schema",
+      "file_path": null,
+      "command": "cd \"C:/Users/lichb/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/workbuddy-local-office-edit\" && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py schema doc_resolve_document_structure 2>&1 | head -40",
+      "result": {
+        "type": "text",
+        "text": "Command: cd \"C:/Users/lichb/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/workbuddy-local-office-edit\" && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py schema doc_resolve_document_structure 2>&1 | head -40\nStdout: # doc_resolve_document_structure\r\n\r\n获取文档结构树（DOC），返回扁平节点列表，用于在调用需要 idx/index/ranges 的写类工具前定位位置。DOC 的 idx/begin/end 是 UTF-16 code unit 坐标，包含段落结束符、表格、图片、字段等结构占位；不要按肉眼字符数、段落序号或行号手算。节点 type：Paragraph / Heading（heading_level 1..9）/ Title / Subtitle / Table；编号段的 numbering_type 与写接口一致，可为 bullet / decimal_comma / task / decimal / bullet_arrow / bullet_hollow_circle / multilevel_decimal / chinese_numbering / upper_letter；文字下划线/删除线/高亮通过 has_highlights 标志位 + highlight_spans 嵌入在 Paragraph 内.\r\nparagraph_index（全局 1-based 节点序号）标注第几段（含标题）。paragraph_id 在段属性携带 ID 时返回；没有或为空时省略。该 ID 只保证在当前打开的 editor 实例内用于定位，不保证保存后或重新打开文档仍保持不变；重开后必须重新调用本工具获取。\r\nTable 节点额外输出 table_index / table_id / table_start / table_end / first_row_texts；其中 table_start 与 table_end 均为闭区间（inclusive），即表格占据 [table_start, table_end] 整段坐标。\r\n三档 mode（默认 compact）：outline=只给 Heading / (Sub)Title 节点出 preview，骨架级；compact=每节点 10 字符 preview + has_highlights / row_count×col_count / children_count / is_numbering 等轻量信号位；full=highlight_spans / table cells / numbering 详情全部回填。\r\n定位单段传 idx（自动按 full 回包，跳过分页）；超长文档用 offset/limit 分页（默认 limit=150）。\r\n注意：如果只需要查找/操作表格，请优先使用 doc_list_tables（更精准、更轻量）；本工具适用于需要了解整体文档布局或定位非表格元素的场景。\r\n\r\n参数（✓=必填）：\r\n  [ ] file_id (string): The file_id of the editor to operate on\r\n  [ ] idx (integer): 字符位置索引（GCP 坐标，同 doc_insert_text / doc_find 等）。传入则只返回包含该位置的单块，自动按 full 回填，跳过分页。注意这是查询接口返回的 DOC 坐标，不是段落序号、行号或肉眼字符序号。\r\n  [ ] include_highlights (boolean): compact/outline 下回填 highlight_spans 详情（has_highlights 信号位始终输出）。\r\n  [ ] include_table_cells (boolean): compact/outline 下回填 Table.table_rows[].cells[]（row_count/col_count 始终输出）。\r\n  [ ] include_textbox_children (boolean): compact/outline 下回填 TextBox/CodeBlock/HighlightBlock.children[]（children_count 始终输出）。\r\n  [ ] limit (integer): 顶层 nodes 最大数量，默认 150；0=不分页。idx 模式忽略。\r\n  [ ] mode (string): 信息密度档位，默认 compact。\r\n  [ ] offset (integer): 顶层 nodes 起始下标，默认 0。idx 模式忽略。\r\n  [ ] text_preview_length (integer): text_preview 字符上限。不传走 mode 默认（outline=20 / compact=10 / full=50）；0=关闭；上限 200。\r\n\nStderr: (empty)\nExit Code: 0\nSignal: (none)"
+      }
+    },
+    {
+      "timestamp_ms": 1792199424531,
+      "name": "Bash",
+      "status": "completed",
+      "skill": null,
+      "description": "查询表格列表工具 schema",
+      "file_path": null
+    },
+    {
+      "timestamp_ms": 1792199435635,
+      "name": "Bash",
+      "status": "completed",
+      "skill": null,
+      "description": "读取文档完整结构与正文",
+      "file_path": null,
+      "command": "cd \"C:/Users/lichb/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/workbuddy-local-office-edit\" && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py call doc_resolve_document_structure file_id=a6f1535d-f62b-40ec-b5a9-6d3f5ddada35 mode=full text_preview_length=100 include_table_cells=true 2>&1 | head -80",
+      "result": {
+        "type": "text",
+        "text": "Command: cd \"C:/Users/lichb/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/workbuddy-local-office-edit\" && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py call doc_resolve_document_structure file_id=a6f1535d-f62b-40ec-b5a9-6d3f5ddada35 mode=full text_preview_length=100 include_table_cells=true 2>&1 | head -80\nStdout: {\"effective_mode\":\"full\",\"effective_text_preview_length\":100,\"nodes\":[{\"end_index\":13,\"heading_level\":1,\"paragraph_id\":\"27000F16\",\"paragraph_index\":1,\"start_index\":0,\"text_preview\":\"REA Word 功能测试\",\"type\":\"Heading\"},{\"end_index\":35,\"paragraph_id\":\"3FDB21C9\",\"paragraph_index\":2,\"start_index\":14,\"text_preview\":\"这是用于分析文档处理流程的非敏感测试材料。\",\"type\":\"Paragraph\"},{\"end_index\":54,\"paragraph_id\":\"7DCADB54\",\"paragraph_index\":3,\"start_index\":36,\"text_preview\":\"测试标记 REA-WORD-001。\",\"type\":\"Paragraph\"},{\"col_count\":2,\"end_index\":81,\"first_row_texts\":[\"项目\",\"数量\"],\"paragraph_index\":4,\"row_count\":3,\"start_index\":55,\"table_end\":81,\"table_id\":\"016faall\",\"table_index\":1,\"table_rows\":[{\"cells\":[{\"col\":1,\"end_index\":58,\"row\":1,\"start_index\":56,\"text_preview\":\"项目\"},{\"col\":2,\"end_index\":62,\"row\":1,\"start_index\":60,\"text_preview\":\"数量\"}],\"row\":1},{\"cells\":[{\"col\":1,\"end_index\":67,\"row\":2,\"start_index\":65,\"text_preview\":\"苹果\"},{\"col\":2,\"end_index\":70,\"row\":2,\"start_index\":69,\"text_preview\":\"3\"}],\"row\":2},{\"cells\":[{\"col\":1,\"end_index\":75,\"row\":3,\"start_index\":73,\"text_preview\":\"香蕉\"},{\"col\":2,\"end_index\":78,\"row\":3,\"start_index\":77,\"text_preview\":\"5\"}],\"row\":3}],\"table_start\":55,\"type\":\"Table\"},{\"end_index\":82,\"paragraph_id\":\"4BCF3D07\",\"paragraph_index\":5,\"start_index\":82,\"type\":\"Paragraph\"}],\"numbering_list_summaries\":[],\"pagination\":{\"has_more\":false,\"limit\":150,\"offset\":0,\"returned_nodes\":5,\"total_nodes\":5},\"stats\":{\"total_headings\":1,\"total_numbering_lists\":0,\"total_paragraphs\":3,\"total_tables\":1},\"version\":0}\r\n\nStderr: (empty)\nExit Code: 0\nSignal: (none)"
+      }
+    },
+    {
+      "timestamp_ms": 1792199435708,
+      "name": "Bash",
+      "status": "completed",
+      "skill": null,
+      "description": "列出文档中的所有表格",
+      "file_path": null,
+      "command": "cd \"C:/Users/lichb/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/workbuddy-local-office-edit\" && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py call doc_list_tables file_id=a6f1535d-f62b-40ec-b5a9-6d3f5ddada35 2>&1 | head -40",
+      "result": {
+        "type": "text",
+        "text": "Command: cd \"C:/Users/lichb/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/workbuddy-local-office-edit\" && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py call doc_list_tables file_id=a6f1535d-f62b-40ec-b5a9-6d3f5ddada35 2>&1 | head -40\nStdout: {\"tables\":[{\"col_count\":2,\"editable_cells\":[{\"col\":1,\"end\":58,\"row\":1,\"start\":56},{\"col\":2,\"end\":62,\"row\":1,\"start\":60},{\"col\":1,\"end\":67,\"row\":2,\"start\":65},{\"col\":2,\"end\":70,\"row\":2,\"start\":69},{\"col\":1,\"end\":75,\"row\":3,\"start\":73},{\"col\":2,\"end\":78,\"row\":3,\"start\":77}],\"first_row_texts\":[\"项目\",\"数量\"],\"index\":0,\"merge_ranges\":[],\"row_count\":3,\"table_end\":81,\"table_id\":\"016faall\",\"table_start\":55}],\"total\":1,\"version\":0}\r\n\nStderr: (empty)\nExit Code: 0\nSignal: (none)"
+      }
+    },
+    {
+      "timestamp_ms": 1792199460202,
+      "name": "Edit",
+      "status": "completed",
+      "skill": null,
+      "description": null,
+      "file_path": "C:/Users/lichb/WorkBuddy/2026-10-09-15-30-43/.workbuddy/memory/2026-10-17.md"
+    }
+  ]
+}

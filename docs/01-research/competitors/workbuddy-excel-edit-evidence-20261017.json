@@ -1,0 +1,512 @@
+{
+  "baseline": {
+    "captured_at": "2026-10-17T01:46:00.574069+00:00",
+    "files": [
+      {
+        "name": "main.log",
+        "bytes": 4221595,
+        "mtime": 1792201559.1782966
+      },
+      {
+        "name": "renderer.log",
+        "bytes": 4282177,
+        "mtime": 1792201510.166649
+      },
+      {
+        "name": "daemon.log",
+        "bytes": 7174332,
+        "mtime": 1792201557.2323105
+      },
+      {
+        "name": "file-service.log",
+        "bytes": 2351273,
+        "mtime": 1792200681.4413185
+      }
+    ],
+    "source_path": "E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-create.xlsx",
+    "source_sha256": "ed390ac792aaeb0598d7f58b06671fa8c7bda1c6e1990f4fa1ee903c3ae9b75c",
+    "edit_path": "E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-edit.xlsx",
+    "edit_before_sha256": "ed390ac792aaeb0598d7f58b06671fa8c7bda1c6e1990f4fa1ee903c3ae9b75c"
+  },
+  "files": {
+    "source_path": {
+      "path": "E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-create.xlsx",
+      "bytes": 6750,
+      "sha256": "ed390ac792aaeb0598d7f58b06671fa8c7bda1c6e1990f4fa1ee903c3ae9b75c",
+      "cells": [
+        {
+          "cell": "A1",
+          "formula": null,
+          "cache": "0",
+          "value": "品名"
+        },
+        {
+          "cell": "B1",
+          "formula": null,
+          "cache": "1",
+          "value": "数量"
+        },
+        {
+          "cell": "C1",
+          "formula": null,
+          "cache": "2",
+          "value": "单价"
+        },
+        {
+          "cell": "D1",
+          "formula": null,
+          "cache": "3",
+          "value": "金额"
+        },
+        {
+          "cell": "A2",
+          "formula": null,
+          "cache": "4",
+          "value": "苹果"
+        },
+        {
+          "cell": "B2",
+          "formula": null,
+          "cache": "3",
+          "value": "3"
+        },
+        {
+          "cell": "C2",
+          "formula": null,
+          "cache": "10",
+          "value": "10"
+        },
+        {
+          "cell": "D2",
+          "formula": "B2*C2",
+          "cache": "30",
+          "value": "30"
+        },
+        {
+          "cell": "A3",
+          "formula": null,
+          "cache": "5",
+          "value": "香蕉"
+        },
+        {
+          "cell": "B3",
+          "formula": null,
+          "cache": "5",
+          "value": "5"
+        },
+        {
+          "cell": "C3",
+          "formula": null,
+          "cache": "4",
+          "value": "4"
+        },
+        {
+          "cell": "D3",
+          "formula": "B3*C3",
+          "cache": "20",
+          "value": "20"
+        },
+        {
+          "cell": "A4",
+          "formula": null,
+          "cache": "6",
+          "value": "合计"
+        },
+        {
+          "cell": "D4",
+          "formula": "SUM(D2)",
+          "cache": "30",
+          "value": "30"
+        }
+      ],
+      "parts": {
+        "docProps/custom.xml": "393dff352c42f1c7769ee712f681dd2ff03ccf94a69573ad68a921fe283cd645",
+        "docProps/core.xml": "9100ddadc02b74a1e9ff2a63351bd9c9f3cf7cfe23db6081311d1e1e17bf5d31",
+        "docProps/app.xml": "971fe7de80e232a10bff906cca1e43900acb98a9afa2d9552f1707828a63e45c",
+        "xl/worksheets/sheet1.xml": "3fb5fbbfc894ff581ac7564be305af3693d6cacabe8e58c8d35f8e2064160637",
+        "xl/styles.xml": "d794e5a4ff7e7b4df1c62d97a6dd14cb525d53a80d2da15b2b59a7474d6683d9",
+        "xl/_rels/workbook.xml.rels": "abfdd1d68f8867e6b7e784ecd8839721b05f63651c82cff13ba6c31f084bed56",
+        "xl/workbook.xml": "8c42ca95b97d0e40cee744890830cd250c3aa77f9787b0818f14e85cc388b441",
+        "xl/theme/theme1.xml": "4996c76a4b909a606dfd8c3c9d177b6ec68a75c9d4bbfda2a6f07ff2ba8d4686",
+        "xl/sharedStrings.xml": "fe10590fce463c2cd0ff56b065b766a791d68b324efecfb64000e17716f2fcf7",
+        "_rels/.rels": "7bae967b6af3a4e57aee0fc45988ff6a42aa9db56339ae027715622d17f9cef2",
+        "[Content_Types].xml": "18ef43f7284546b9fa23d137cac3261b5314fe792649b9c61c145be150e88104"
+      }
+    },
+    "edit_path": {
+      "path": "E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-edit.xlsx",
+      "bytes": 6967,
+      "sha256": "5b44a098e71399a325009339fe506aca8bec672bd85bfe9482b4e514dcf46d5b",
+      "cells": [
+        {
+          "cell": "A1",
+          "formula": null,
+          "cache": "0",
+          "value": "品名"
+        },
+        {
+          "cell": "B1",
+          "formula": null,
+          "cache": "1",
+          "value": "数量"
+        },
+        {
+          "cell": "C1",
+          "formula": null,
+          "cache": "2",
+          "value": "单价"
+        },
+        {
+          "cell": "D1",
+          "formula": null,
+          "cache": "3",
+          "value": "金额"
+        },
+        {
+          "cell": "A2",
+          "formula": null,
+          "cache": "4",
+          "value": "苹果"
+        },
+        {
+          "cell": "B2",
+          "formula": null,
+          "cache": "7",
+          "value": "7"
+        },
+        {
+          "cell": "C2",
+          "formula": null,
+          "cache": "10",
+          "value": "10"
+        },
+        {
+          "cell": "D2",
+          "formula": "B2*C2",
+          "cache": "70",
+          "value": "70"
+        },
+        {
+          "cell": "A3",
+          "formula": null,
+          "cache": "5",
+          "value": "香蕉"
+        },
+        {
+          "cell": "B3",
+          "formula": null,
+          "cache": "5",
+          "value": "5"
+        },
+        {
+          "cell": "C3",
+          "formula": null,
+          "cache": "4",
+          "value": "4"
+        },
+        {
+          "cell": "D3",
+          "formula": "B3*C3",
+          "cache": "20",
+          "value": "20"
+        },
+        {
+          "cell": "A4",
+          "formula": null,
+          "cache": "6",
+          "value": "合计"
+        },
+        {
+          "cell": "D4",
+          "formula": "SUM(D2,D3)",
+          "cache": "90",
+          "value": "90"
+        }
+      ],
+      "parts": {
+        "docProps/custom.xml": "a05e5d5fb5a50ac3dc62b26e82c944b14386f2c12997b84a2b38c9816ff30d38",
+        "docProps/core.xml": "880e4c6d86c85ed7f185fa8548b8206969d200d5542b3805bf0378478d3f9dbf",
+        "docProps/app.xml": "971fe7de80e232a10bff906cca1e43900acb98a9afa2d9552f1707828a63e45c",
+        "xl/worksheets/sheet1.xml": "4db76157a4db50d7a1f655f69d78782b89bce11e17e3b767a5296fcf9384b1d7",
+        "xl/styles.xml": "8d81252356a7aa6b384e4fc51fdb6bc605fcf36ed82439d18fa1faa1f27de818",
+        "xl/_rels/workbook.xml.rels": "abfdd1d68f8867e6b7e784ecd8839721b05f63651c82cff13ba6c31f084bed56",
+        "xl/workbook.xml": "6230d7067130e0a9be1a8ebeee88806c5fb1dbe98587f5e6a5228b5f6b01c988",
+        "xl/theme/theme1.xml": "d10a132b7606126f603f69b1e5c63d15dd504ed106ba532f0f22a50ae5aa375b",
+        "xl/sharedStrings.xml": "fe10590fce463c2cd0ff56b065b766a791d68b324efecfb64000e17716f2fcf7",
+        "_rels/.rels": "944c8be478bd8a0f7bc1d1aecdeccad5699b195a23479cd1536bec5397d89f20",
+        "[Content_Types].xml": "3431411feb2212d31031592b1324b059098f6da806011884c557d36e5652b791"
+      }
+    }
+  },
+  "source_unchanged": true,
+  "word_unchanged": {
+    "source_path": true,
+    "edit_path": true
+  },
+  "calls": [
+    {
+      "timestamp_ms": 1792201665978,
+      "name": "Bash",
+      "status": "completed",
+      "description": "确认待编辑的 xlsx 是否存在",
+      "file_path": null,
+      "command": "ls -l \"E:/project/WorkPivot/tmp/rea-office-test/\" 2>&1",
+      "stdout": "total 32\n-rw-r--r-- 1 lichb 197121 6750 Oct 17 09:30 rea-excel-create.xlsx\n-rw-r--r-- 1 lichb 197121 6750 Oct 17 09:30 rea-excel-edit.xlsx\n-rw-r--r-- 1 lichb 197121 7044 Oct 17 09:02 rea-word-create.docx\n-rw-r--r-- 1 lichb 197121 7129 Oct 17 09:17 rea-word-edit.docx\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792201666008,
+      "name": "Read",
+      "status": "completed",
+      "description": null,
+      "file_path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\skills\\workbuddy-local-office-edit\\sheet.md"
+    },
+    {
+      "timestamp_ms": 1792201677978,
+      "name": "Bash",
+      "status": "completed",
+      "description": "打开待编辑工作簿并确认实例",
+      "file_path": null,
+      "command": "cd \"C:/Users/lichb/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/workbuddy-local-office-edit\" && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py call open_file file_path=\"E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-edit.xlsx\" 2>&1 | head -10; echo \"=== pool ===\"; \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py call get_pool_status 2>&1 | head -40",
+      "stdout": "open started (sheet), chunks streaming via /stream for file_id=E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\r\n=== pool ===\n{\r\n  \"open_editors\": [\r\n    {\r\n      \"file_id\": \"E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\",\r\n      \"file_path\": \"E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\",\r\n      \"is_dirty\": false,\r\n      \"last_saved_ms\": 1792200636505,\r\n      \"type\": \"sheet\",\r\n      \"version\": 0\r\n    },\r\n    {\r\n      \"file_id\": \"x70g0vhk5e\",\r\n      \"file_path\": \"E:\\\\project\\\\WorkPivot\\\\tmp\\\\rea-office-test\\\\rea-excel-create.xlsx\",\r\n      \"is_dirty\": false,\r\n      \"last_saved_ms\": 1792200636505,\r\n      \"type\": \"sheet\",\r\n      \"version\": 0\r\n    },\r\n    {\r\n      \"file_id\": \"_default\",\r\n      \"file_path\": \"\",\r\n      \"is_dirty\": false,\r\n      \"last_saved_ms\": -1,\r\n      \"type\": \"sheet\",\r\n      \"version\": 0\r\n    }\r\n  ],\r\n  \"pool_size\": 3\r\n}\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792201691769,
+      "name": "Bash",
+      "status": "completed",
+      "description": "查询子表信息与已用区域参数",
+      "file_path": null,
+      "command": "cd \"C:/Users/lichb/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/workbuddy-local-office-edit\" && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py schema sheet_get_sheet_info 2>&1 | head -25; echo \"==== USED_RANGE ====\"; \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py schema sheet_get_used_range 2>&1 | head -25",
+      "stdout": "# sheet_get_sheet_info\r\n\r\n获取表格的子表信息，包括子表ID、名称、类型、行列数量（SHEET）\r\n\r\n参数（✓=必填）：\r\n  [ ] file_id (string): The file_id of the editor to operate on\r\n==== USED_RANGE ====\n# sheet_get_used_range\r\n\r\n获取指定子表的已使用区域（SHEET）。返回 0-based、闭区间的行列边界及 A1 表示；已使用区域包含单元格内容/公式、样式、数据验证、条件格式结果和透视表数据等。该范围是引擎维护的包围范围，清空边界单元格后可能保留历史边界。空白子表返回 is_empty=true、used_range=null。\r\n\r\n参数（✓=必填）：\r\n  [✓] sheet_id (string): 子表 ID(必填)\r\n  [ ] file_id (string): The file_id of the editor to operate on\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792201691774,
+      "name": "Bash",
+      "status": "completed",
+      "description": "查询读取与写值工具参数",
+      "file_path": null,
+      "command": "cd \"C:/Users/lichb/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/workbuddy-local-office-edit\" && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py schema sheet_get_cell_data 2>&1 | head -30; echo \"==== SET_CELL_VALUE ====\"; \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py schema sheet_set_cell_value 2>&1 | head -30",
+      "stdout": "# sheet_get_cell_data\r\n\r\n获取表格指定区域的单元格数据，支持返回CSV格式或结构化单元格数据（SHEET）。\r\n\r\n【超链接】结构化返回模式下（return_csv=false），若单元格挂有超链接（整格超链接、或富文本 run 内嵌链接），会额外返回 hyperlinks 数组，每项形如 {text, url}：\r\n  - text: 该链接对应的显示文本片段。整格链接时等于该单元格完整 string_value；富文本 run 内链接时为该 run 的原文片段（可能是 string_value 的一部分）。\r\n  - url : 目标 URL\r\n单元格无超链接时不返回 hyperlinks 字段。CSV 模式（return_csv=true）与仅公式模式（return_formula=true）不返回 hyperlinks。\r\n\r\n参数（✓=必填）：\r\n  [✓] sheet_id (string): 子表 ID(必填)\r\n  [✓] start_row (integer): 起始行索引（0-based）\r\n  [✓] start_col (integer): 起始列索引（0-based）\r\n  [✓] end_row (integer): 结束行索引（0-based）\r\n  [✓] end_col (integer): 结束列索引（0-based）\r\n  [ ] file_id (string): The file_id of the editor to operate on\r\n  [ ] include_formula (boolean): true时正常返回计算值的同时，为函数单元格附带 formula 字段（值+公式一次返回）\r\n  [ ] return_csv (boolean): true返回csv_data，false返回cells结构化数据\r\n  [ ] return_formula (boolean): true时只获取函数公式内容（不含计算值），非函数单元格不返回\r\n==== SET_CELL_VALUE ====\n# sheet_set_cell_value\r\n\r\n设置表格指定单元格的值，支持文本、数字、布尔等类型（SHEET）\r\n\r\n参数（✓=必填）：\r\n  [✓] sheet_id (string): 子表 ID(必填)\r\n  [✓] cell (object):\r\n  [ ] file_id (string): The file_id of the editor to operate on\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792201704465,
+      "name": "Bash",
+      "status": "completed",
+      "description": "获取子表 ID 与名称",
+      "file_path": null,
+      "command": "cd \"C:/Users/lichb/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/workbuddy-local-office-edit\" && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py call sheet_get_sheet_info file_id=\"E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\" 2>&1 | head -30",
+      "stdout": "{\"sheets\":[{\"col_count\":26,\"hidden\":false,\"index\":0,\"name\":\"销售\",\"row_count\":200,\"sheet_id\":\"000001\",\"used_col_count\":4,\"used_row_count\":4}]}\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792201704497,
+      "name": "Bash",
+      "status": "completed",
+      "description": "查看写值工具 cell 完整结构",
+      "file_path": null,
+      "command": "cd \"C:/Users/lichb/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/workbuddy-local-office-edit\" && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py schema sheet_set_cell_value --raw 2>&1 | tail -40",
+      "stdout": "        },\r\n        \"number_value\": {\r\n          \"description\": \"数值 (value_type=NUMBER)\",\r\n          \"type\": \"number\"\r\n        },\r\n        \"row\": {\r\n          \"description\": \"行索引（0-based）\",\r\n          \"type\": \"integer\"\r\n        },\r\n        \"string_value\": {\r\n          \"description\": \"字符串值 (value_type=STRING)\",\r\n          \"type\": \"string\"\r\n        },\r\n        \"value_type\": {\r\n          \"description\": \"值类型: NUMBER, STRING, BOOL, FORMULA\",\r\n          \"type\": \"string\"\r\n        }\r\n      },\r\n      \"required\": [\r\n        \"row\",\r\n        \"col\",\r\n        \"value_type\"\r\n      ],\r\n      \"type\": \"object\"\r\n    },\r\n    \"file_id\": {\r\n      \"description\": \"The file_id of the editor to operate on\",\r\n      \"type\": \"string\"\r\n    },\r\n    \"sheet_id\": {\r\n      \"description\": \"子表 ID(必填)\",\r\n      \"type\": \"string\"\r\n    }\r\n  },\r\n  \"required\": [\r\n    \"sheet_id\",\r\n    \"cell\"\r\n  ],\r\n  \"type\": \"object\"\r\n}\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792201724111,
+      "name": "Bash",
+      "status": "completed",
+      "description": "探明真实已用区域",
+      "file_path": null,
+      "command": "cd \"C:/Users/lichb/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/workbuddy-local-office-edit\" && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py call sheet_get_used_range file_id=\"E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\" sheet_id=\"000001\" 2>&1 | head -20",
+      "stdout": "{\"is_empty\":false,\"sheet_id\":\"000001\",\"used_range\":{\"a1_range\":\"A1:D4\",\"col_count\":4,\"end_col\":3,\"end_row\":3,\"row_count\":4,\"start_col\":0,\"start_row\":0}}\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792201724120,
+      "name": "Bash",
+      "status": "completed",
+      "description": "读回目标区域内容与公式",
+      "file_path": null,
+      "command": "cd \"C:/Users/lichb/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/workbuddy-local-office-edit\" && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py call sheet_get_cell_data file_id=\"E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\" sheet_id=\"000001\" start_row=0 start_col=0 end_row=3 end_col=3 include_formula=true 2>&1 | head -60",
+      "stdout": "{\"cells\":[{\"col\":0,\"row\":0,\"string_value\":\"品名\",\"value_type\":\"STRING\"},{\"col\":1,\"row\":0,\"string_value\":\"数量\",\"value_type\":\"STRING\"},{\"col\":2,\"row\":0,\"string_value\":\"单价\",\"value_type\":\"STRING\"},{\"col\":3,\"row\":0,\"string_value\":\"金额\",\"value_type\":\"STRING\"},{\"col\":0,\"row\":1,\"string_value\":\"苹果\",\"value_type\":\"STRING\"},{\"col\":1,\"number_value\":3.0,\"row\":1,\"value_type\":\"NUMBER\"},{\"col\":2,\"number_value\":10.0,\"row\":1,\"value_type\":\"NUMBER\"},{\"col\":3,\"formula\":\"=B2*C2\",\"number_value\":30.0,\"row\":1,\"value_type\":\"NUMBER\"},{\"col\":0,\"row\":2,\"string_value\":\"香蕉\",\"value_type\":\"STRING\"},{\"col\":1,\"number_value\":5.0,\"row\":2,\"value_type\":\"NUMBER\"},{\"col\":2,\"number_value\":4.0,\"row\":2,\"value_type\":\"NUMBER\"},{\"col\":3,\"formula\":\"=B3*C3\",\"number_value\":20.0,\"row\":2,\"value_type\":\"NUMBER\"},{\"col\":0,\"row\":3,\"string_value\":\"合计\",\"value_type\":\"STRING\"},{\"col\":3,\"formula\":\"=SUM(D2)\",\"number_value\":30.0,\"row\":3,\"value_type\":\"NUMBER\"}]}\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792201735304,
+      "name": "Bash",
+      "status": "completed",
+      "description": "确认公式字段名",
+      "file_path": null,
+      "command": "cd \"C:/Users/lichb/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/workbuddy-local-office-edit\" && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py schema sheet_set_cell_value --raw 2>&1 | grep -iE \"formula|\\\"col\\\"|\\\"row\\\"|value_type\" | head -20",
+      "stdout": "          \"description\": \"布尔值 (value_type=BOOL)\",\n        \"col\": {\n        \"formula\": {\n          \"description\": \"公式 (value_type=FORMULA), 如 =SUM(A1:A10)\",\n          \"description\": \"数值 (value_type=NUMBER)\",\n        \"row\": {\n          \"description\": \"字符串值 (value_type=STRING)\",\n        \"value_type\": {\n          \"description\": \"值类型: NUMBER, STRING, BOOL, FORMULA\",\n        \"row\",\n        \"col\",\n        \"value_type\"\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792201748902,
+      "name": "Bash",
+      "status": "completed",
+      "description": "将 B2 由 3 改为 7",
+      "file_path": null,
+      "command": "cd \"C:/Users/lichb/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/workbuddy-local-office-edit\" && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py call sheet_set_cell_value file_id=\"E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\" sheet_id=\"000001\" --json '{\"cell\":{\"row\":1,\"col\":1,\"value_type\":\"NUMBER\",\"number_value\":7}}' 2>&1 | head -10",
+      "stdout": "{\"message\":\"Cell value set\",\"version\":1}\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792201762758,
+      "name": "Bash",
+      "status": "completed",
+      "description": "将 D4 公式改为 SUM(D2,D3)",
+      "file_path": null,
+      "command": "cd \"C:/Users/lichb/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/workbuddy-local-office-edit\" && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py call sheet_set_cell_value file_id=\"E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\" sheet_id=\"000001\" --json '{\"cell\":{\"row\":3,\"col\":3,\"value_type\":\"FORMULA\",\"formula\":\"=SUM(D2,D3)\"}}' 2>&1 | head -10",
+      "stdout": "{\"message\":\"Cell value set\",\"version\":2}\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792201770335,
+      "name": "Bash",
+      "status": "completed",
+      "description": "保存工作簿",
+      "file_path": null,
+      "command": "cd \"C:/Users/lichb/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/workbuddy-local-office-edit\" && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py call save_file file_id=\"E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\" 2>&1 | head -10",
+      "stdout": "File saved to: E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792201779222,
+      "name": "Bash",
+      "status": "completed",
+      "description": "重算并扫描公式错误",
+      "file_path": null,
+      "command": "\"C:/Users/lichb/.workbuddy/binaries/python/envs/default/Scripts/python.exe\" \"C:/Users/lichb/.workbuddy/plugins/cache/workbuddy-builtin/workbuddy-sheetagent/5.8.3-wb.41334564.gdb0e9b51.h4da087921e4a/skills/workbuddy-sheet-generation/scripts/recalc.py\" \"E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\" 60 2>&1 | tail -20",
+      "stdout": "{\r\n  \"error\": \"Formulas were NOT fully recalculated: neither engine produced a complete set of cached values, so formula cells may appear blank or incomplete in previewers (WeChat/mail attachments, pandas, data_only=True). LibreOffice: LibreOffice recalculation timed out after 60s. Python engine: formulas>=1.3.0,<2 is not installed; install it manually, or rerun with --allow-install after the user or platform explicitly authorizes downloading Python packages.\",\r\n  \"engine\": \"static\",\r\n  \"total_formulas\": 3\r\n}\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792201858301,
+      "name": "Bash",
+      "status": "completed",
+      "description": "调大超时重算",
+      "file_path": null,
+      "command": "\"C:/Users/lichb/.workbuddy/binaries/python/envs/default/Scripts/python.exe\" \"C:/Users/lichb/.workbuddy/plugins/cache/workbuddy-builtin/workbuddy-sheetagent/5.8.3-wb.41334564.gdb0e9b51.h4da087921e4a/skills/workbuddy-sheet-generation/scripts/recalc.py\" \"E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\" 180 2>&1 | tail -20",
+      "stdout": "{\r\n  \"error\": \"Formulas were NOT fully recalculated: neither engine produced a complete set of cached values, so formula cells may appear blank or incomplete in previewers (WeChat/mail attachments, pandas, data_only=True). LibreOffice: LibreOffice recalculation timed out after 180s. Python engine: formulas>=1.3.0,<2 is not installed; install it manually, or rerun with --allow-install after the user or platform explicitly authorizes downloading Python packages.\",\r\n  \"engine\": \"static\",\r\n  \"total_formulas\": 3\r\n}\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792202054084,
+      "name": "Bash",
+      "status": "completed",
+      "description": "从磁盘核对公式与缓存值",
+      "file_path": null,
+      "command": "\"C:/Users/lichb/.workbuddy/binaries/python/envs/default/Scripts/python.exe\" -c \"\nimport openpyxl\np=r'E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-edit.xlsx'\nwf=openpyxl.load_workbook(p)\nwv=openpyxl.load_workbook(p, data_only=True)\nsf,sv=wf['销售'],wv['销售']\nprint('sheets:', wf.sheetnames)\nfor r in range(1,5):\n    f=[sf.cell(row=r,column=c).value for c in range(1,5)]\n    v=[sv.cell(row=r,column=c).value for c in range(1,5)]\n    print(f'row{r} F={f}')\n    print(f'      V={v}')\n\" 2>&1",
+      "stdout": "sheets: ['销售']\r\nrow1 F=['品名', '数量', '单价', '金额']\r\n      V=['品名', '数量', '单价', '金额']\r\nrow2 F=['苹果', 7, 10, '==B2*C2']\r\n      V=['苹果', 7, 10, 70]\r\nrow3 F=['香蕉', 5, 4, '==B3*C3']\r\n      V=['香蕉', 5, 4, 20]\r\nrow4 F=['合计', None, None, '==SUM(D2,D3)']\r\n      V=['合计', None, None, 90]\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792202054099,
+      "name": "Bash",
+      "status": "completed",
+      "description": "经编辑器通道读回核对",
+      "file_path": null,
+      "command": "cd \"C:/Users/lichb/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/workbuddy-local-office-edit\" && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py call sheet_get_cell_data file_id=\"E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\" sheet_id=\"000001\" start_row=0 start_col=0 end_row=3 end_col=3 include_formula=true 2>&1 | head -30",
+      "stdout": "{\"cells\":[{\"col\":0,\"row\":0,\"string_value\":\"品名\",\"value_type\":\"STRING\"},{\"col\":1,\"row\":0,\"string_value\":\"数量\",\"value_type\":\"STRING\"},{\"col\":2,\"row\":0,\"string_value\":\"单价\",\"value_type\":\"STRING\"},{\"col\":3,\"row\":0,\"string_value\":\"金额\",\"value_type\":\"STRING\"},{\"col\":0,\"row\":1,\"string_value\":\"苹果\",\"value_type\":\"STRING\"},{\"col\":1,\"number_value\":7.0,\"row\":1,\"value_type\":\"NUMBER\"},{\"col\":2,\"number_value\":10.0,\"row\":1,\"value_type\":\"NUMBER\"},{\"col\":3,\"formula\":\"=B2*C2\",\"number_value\":70.0,\"row\":1,\"value_type\":\"NUMBER\"},{\"col\":0,\"row\":2,\"string_value\":\"香蕉\",\"value_type\":\"STRING\"},{\"col\":1,\"number_value\":5.0,\"row\":2,\"value_type\":\"NUMBER\"},{\"col\":2,\"number_value\":4.0,\"row\":2,\"value_type\":\"NUMBER\"},{\"col\":3,\"formula\":\"=B3*C3\",\"number_value\":20.0,\"row\":2,\"value_type\":\"NUMBER\"},{\"col\":0,\"row\":3,\"string_value\":\"合计\",\"value_type\":\"STRING\"},{\"col\":3,\"formula\":\"=SUM(D2,D3)\",\"number_value\":90.0,\"row\":3,\"value_type\":\"NUMBER\"}]}\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792202086457,
+      "name": "Bash",
+      "status": "completed",
+      "description": "对比两个文件的 OOXML 公式原文",
+      "file_path": null,
+      "command": "\"C:/Users/lichb/.workbuddy/binaries/python/envs/default/Scripts/python.exe\" -c \"\nimport zipfile,re\nfor p in [r'E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-create.xlsx', r'E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-edit.xlsx']:\n    z=zipfile.ZipFile(p)\n    name=[n for n in z.namelist() if n.startswith('xl/worksheets/sheet')][0]\n    xml=z.read(name).decode('utf-8')\n    fs=re.findall(r'<f>(.*?)</f>', xml)\n    vs=re.findall(r'<v>(.*?)</v>', xml)\n    print('==',p.split(chr(92))[-1])\n    print('   formulas:',fs)\n    print('   values  :',vs)\n\" 2>&1",
+      "stdout": "== E:/project/WorkPivot/tmp/rea-office-test/rea-excel-create.xlsx\r\n   formulas: []\r\n   values  : ['0', '1', '2', '3', '4', '3', '10', '30', '5', '5', '4', '20', '6', '30']\r\n== E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\r\n   formulas: ['=SUM(D2,D3)']\r\n   values  : ['1', '2', '3', '4', '5', '7', '10', '70', '6', '5', '4', '20', '7', '90']\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792202106723,
+      "name": "Bash",
+      "status": "completed",
+      "description": "精细诊断 OOXML 公式原文",
+      "file_path": null,
+      "command": "\"C:/Users/lichb/.workbuddy/binaries/python/envs/default/Scripts/python.exe\" -c \"\nimport zipfile,re\nfor p in [r'E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-create.xlsx', r'E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-edit.xlsx']:\n    z=zipfile.ZipFile(p)\n    name=[n for n in z.namelist() if n.startswith('xl/worksheets/sheet')][0]\n    xml=z.read(name).decode('utf-8')\n    print('=====',p.split(chr(92))[-1], '| xml len', len(xml))\n    # 找所有含 f 标签的片段\n    for m in re.finditer(r'<f[^>]*>(.*?)</f>', xml, re.S):\n        print('   <f> tag:', repr(m.group(0))[:120])\n    # 直接搜公式文本\n    print('   contains B2*C2 ?', 'B2*C2' in xml, '| count == :', xml.count('=='))\n    idx=xml.find('B2*C2')\n    if idx>=0:\n        print('   context:', repr(xml[max(0,idx-120):idx+40]))\n\" 2>&1",
+      "stdout": "===== E:/project/WorkPivot/tmp/rea-office-test/rea-excel-create.xlsx | xml len 2955\r\n   <f> tag: '<f aca=\"false\">B2*C2</f>'\r\n   <f> tag: '<f aca=\"false\">B3*C3</f>'\r\n   <f> tag: '<f aca=\"false\">SUM(D2)</f>'\r\n   contains B2*C2 ? True | count == : 0\r\n   context: '\"><v>4</v></c><c r=\"B2\" s=\"0\" t=\"n\"><v>3</v></c><c r=\"C2\" s=\"0\" t=\"n\"><v>10</v></c><c r=\"D2\" s=\"0\" t=\"n\"><f aca=\"false\">B2*C2</f><v>30</v></c></row><row r=\"3\" c'\r\n===== E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx | xml len 2219\r\n   <f> tag: '<f aca=\"0\">=B2*C2</f>'\r\n   <f> tag: '<f aca=\"0\">=B3*C3</f>'\r\n   <f> tag: '<f>=SUM(D2,D3)</f>'\r\n   contains B2*C2 ? True | count == : 0\r\n   context: '><c r=\"A2\" s=\"5\" t=\"s\"><v>5</v></c><c r=\"B2\" s=\"5\"><v>7</v></c><c r=\"C2\" s=\"5\"><v>10</v></c><c r=\"D2\" s=\"5\"><f aca=\"0\">=B2*C2</f><v>70</v></c></row><row r=\"3\" s'\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792202141758,
+      "name": "Bash",
+      "status": "completed",
+      "description": "测试写入不带等号的公式",
+      "file_path": null,
+      "command": "cd \"C:/Users/lichb/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/workbuddy-local-office-edit\" && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py call sheet_set_cell_value file_id=\"E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\" sheet_id=\"000001\" --json '{\"cell\":{\"row\":3,\"col\":3,\"value_type\":\"FORMULA\",\"formula\":\"SUM(D2,D3)\"}}' 2>&1 | head -5 && \"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" edsdk.py call save_file file_id=\"E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\" 2>&1 | head -3 && \"C:/Users/lichb/.workbuddy/binaries/python/envs/default/Scripts/python.exe\" -c \"\nimport zipfile,re\np=r'E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-edit.xlsx'\nz=zipfile.ZipFile(p); name=[n for n in z.namelist() if n.startswith('xl/worksheets/sheet')][0]\nxml=z.read(name).decode('utf-8')\nfor m in re.finditer(r'<f[^>]*>(.*?)</f>', xml, re.S): print('  <f>:', m.group(0))\n\"",
+      "stdout": "error: JSON-RPC 错误 -32603: [-1]SheetEditor::SetCellValueInFormula: not a valid formula string: SUM(D2,D3)\r\n{\"ok\": false, \"exit_code\": 1, \"error\": \"JSON-RPC 错误 -32603: [-1]SheetEditor::SetCellValueInFormula: not a valid formula string: SUM(D2,D3)\", \"rpc_code\": -32603}\r\nerror: JSON-RPC 错误 -32603: [-1]SheetEditor::SetCellValueInFormula: not a valid formula string: SUM(D2,D3)\r\n{\"ok\": false, \"exit_code\": 1, \"error\": \"JSON-RPC 错误 -32603: [-1]SheetEditor::SetCellValueInFormula: not a valid formula string: SUM(D2,D3)\", \"rpc_code\": -32603}\r\nFile saved to: E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\r\n  <f>: <f aca=\"0\">=B2*C2</f>\r\n  <f>: <f aca=\"0\">=B3*C3</f>\r\n  <f>: <f>=SUM(D2,D3)</f>\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792202182709,
+      "name": "Bash",
+      "status": "completed",
+      "description": "修正 OOXML 公式文本并保留缓存值",
+      "file_path": null,
+      "command": "\"C:/Users/lichb/.workbuddy/binaries/python/envs/default/Scripts/python.exe\" -c \"\nimport zipfile, os, re\np = r'E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-edit.xlsx'\nzin = zipfile.ZipFile(p, 'r')\ninfos = zin.infolist()\ndata = {i.filename: zin.read(i.filename) for i in infos}\nzin.close()\n\ntarget = [n for n in data if n.startswith('xl/worksheets/sheet')][0]\nxml = data[target].decode('utf-8')\nbefore = re.findall(r'<f[^>]*>(.*?)</f>', xml, re.S)\nnew_xml, cnt = re.subn(r'(<f[^>]*>)=', r'\\1', xml)\nafter = re.findall(r'<f[^>]*>(.*?)</f>', new_xml, re.S)\nprint('target:', target)\nprint('before:', before)\nprint('after :', after, '| replacements:', cnt)\ndata[target] = new_xml.encode('utf-8')\n\ntmp = p + '.tmp'\nzout = zipfile.ZipFile(tmp, 'w')\nfor i in infos:\n    d = data[i.filename]\n    zi = zipfile.ZipInfo(i.filename, date_time=i.date_time)\n    zi.compress_type = i.compress_type\n    zi.external_attr = i.external_attr\n    zi.create_system = i.create_system\n    zout.writestr(zi, d)\nzout.close()\nos.replace(tmp, p)\nprint('written back to', p)\n\" 2>&1",
+      "stdout": "target: xl/worksheets/sheet1.xml\r\nbefore: ['=B2*C2', '=B3*C3', '=SUM(D2,D3)']\r\nafter : ['B2*C2', 'B3*C3', 'SUM(D2,D3)'] | replacements: 3\r\nwritten back to E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792202198853,
+      "name": "Bash",
+      "status": "completed",
+      "description": "核对最终公式与缓存值",
+      "file_path": null,
+      "command": "\"C:/Users/lichb/.workbuddy/binaries/python/envs/default/Scripts/python.exe\" -c \"\nimport openpyxl, zipfile, re\np=r'E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-edit.xlsx'\nwf=openpyxl.load_workbook(p); wv=openpyxl.load_workbook(p,data_only=True)\nsf,sv=wf['销售'],wv['销售']\nprint('sheets:',wf.sheetnames)\nfor r in range(1,5):\n    print(f'row{r} formula={[sf.cell(row=r,column=c).value for c in range(1,5)]}')\n    print(f'      value  ={[sv.cell(row=r,column=c).value for c in range(1,5)]}')\nz=zipfile.ZipFile(p); n=[x for x in z.namelist() if x.startswith('xl/worksheets/sheet')][0]\nxml=z.read(n).decode('utf-8')\nprint('--- OOXML ---')\nprint(' <f>:', re.findall(r'<f[^>]*>(.*?)</f>', xml, re.S))\nprint(' <v>:', re.findall(r'<v>(.*?)</v>', xml, re.S))\n\" 2>&1",
+      "stdout": "sheets: ['销售']\r\nrow1 formula=['品名', '数量', '单价', '金额']\r\n      value  =['品名', '数量', '单价', '金额']\r\nrow2 formula=['苹果', 7, 10, '=B2*C2']\r\n      value  =['苹果', 7, 10, 70]\r\nrow3 formula=['香蕉', 5, 4, '=B3*C3']\r\n      value  =['香蕉', 5, 4, 20]\r\nrow4 formula=['合计', None, None, '=SUM(D2,D3)']\r\n      value  =['合计', None, None, 90]\r\n--- OOXML ---\r\n <f>: ['B2*C2', 'B3*C3', 'SUM(D2,D3)']\r\n <v>: ['1', '2', '3', '4', '5', '7', '10', '70', '6', '5', '4', '20', '7', '90']\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792202222083,
+      "name": "Bash",
+      "status": "completed",
+      "description": "再次尝试独立重算校验",
+      "file_path": null,
+      "command": "\"C:/Users/lichb/.workbuddy/binaries/python/envs/default/Scripts/python.exe\" \"C:/Users/lichb/.workbuddy/plugins/cache/workbuddy-builtin/workbuddy-sheetagent/5.8.3-wb.41334564.gdb0e9b51.h4da087921e4a/skills/workbuddy-sheet-generation/scripts/recalc.py\" \"E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\" 240 2>&1 | tail -10",
+      "stdout": "{\r\n  \"status\": \"success\",\r\n  \"total_errors\": 0,\r\n  \"total_formulas\": 3,\r\n  \"error_summary\": {},\r\n  \"engine\": \"libreoffice\"\r\n}\r\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792202237880,
+      "name": "Bash",
+      "status": "completed",
+      "description": "最终核对并确认其他文件未变",
+      "file_path": null,
+      "command": "\"C:/Users/lichb/.workbuddy/binaries/python/envs/default/Scripts/python.exe\" -c \"\nimport openpyxl, zipfile, re\np=r'E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-edit.xlsx'\nwf=openpyxl.load_workbook(p); wv=openpyxl.load_workbook(p,data_only=True)\nsf,sv=wf['销售'],wv['销售']\nprint('FINAL CHECK', p)\nfor r in range(2,5):\n    print(f' row{r} F={[sf.cell(row=r,column=c).value for c in range(1,5)]}')\n    print(f'       V={[sv.cell(row=r,column=c).value for c in range(1,5)]}')\nz=zipfile.ZipFile(p); n=[x for x in z.namelist() if x.startswith('xl/worksheets/sheet')][0]\nxml=z.read(n).decode('utf-8')\nprint(' <f>:', re.findall(r'<f[^>]*>(.*?)</f>', xml, re.S))\n\" 2>&1; echo \"=== dir ===\"; ls -l \"E:/project/WorkPivot/tmp/rea-office-test/\" 2>&1",
+      "stdout": "FINAL CHECK E:/project/WorkPivot/tmp/rea-office-test/rea-excel-edit.xlsx\r\n row2 F=['苹果', 7, 10, '=B2*C2']\r\n       V=['苹果', 7, 10, 70]\r\n row3 F=['香蕉', 5, 4, '=B3*C3']\r\n       V=['香蕉', 5, 4, 20]\r\n row4 F=['合计', None, None, '=SUM(D2,D3)']\r\n       V=['合计', None, None, 90]\r\n <f>: ['B2*C2', 'B3*C3', 'SUM(D2,D3)']\r\n=== dir ===\ntotal 32\n-rw-r--r-- 1 lichb 197121 6750 Oct 17 09:30 rea-excel-create.xlsx\n-rw-r--r-- 1 lichb 197121 6967 Oct 17 09:57 rea-excel-edit.xlsx\n-rw-r--r-- 1 lichb 197121 7044 Oct 17 09:02 rea-word-create.docx\n-rw-r--r-- 1 lichb 197121 7129 Oct 17 09:17 rea-word-edit.docx\n",
+      "outer_exit_summary": "Exit Code: 0\nSignal: (none)"
+    },
+    {
+      "timestamp_ms": 1792202255611,
+      "name": "Edit",
+      "status": "completed",
+      "description": null,
+      "file_path": "C:/Users/lichb/WorkBuddy/2026-10-09-15-30-43/.workbuddy/memory/2026-10-17.md"
+    },
+    {
+      "timestamp_ms": 1792202261076,
+      "name": "present_files",
+      "status": "completed",
+      "description": null,
+      "file_path": null,
+      "files": [
+        "E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-edit.xlsx"
+      ]
+    }
+  ],
+  "changed_parts": [
+    "[Content_Types].xml",
+    "_rels/.rels",
+    "docProps/core.xml",
+    "docProps/custom.xml",
+    "xl/styles.xml",
+    "xl/theme/theme1.xml",
+    "xl/workbook.xml",
+    "xl/worksheets/sheet1.xml"
+  ]
+}

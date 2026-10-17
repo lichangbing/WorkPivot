@@ -1,0 +1,165 @@
+{
+  "analysis_date": "2026-10-17",
+  "scope": "static native Office engine investigation",
+  "tool_directory": "C:\\Users\\lichb\\.codex\\visualizations\\2026\\10\\14\\01a1385a-d7df-72c1-a100-bcaef9e98f1b\\rea-native-tools",
+  "downloads": [
+    {
+      "url": "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.4_build/ghidra_12.1.4_PUBLIC_20260921.zip",
+      "name": "ghidra_12.1.4_PUBLIC_20260921.zip",
+      "sha256": "sha256:ddac49f903da9d5bac833e5cc79395098b9c33cfd3279be5f31bd00387d2d4db",
+      "size": 569649598
+    },
+    {
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip",
+      "name": "OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip",
+      "sha256": "f9d6e191ab098c0d416e7d588a24420a8621cd2f4720dab2459b8b7b2d2d8b4e",
+      "size": 205073461
+    }
+  ],
+  "provider": [
+    {
+      "provider": {
+        "id": "ghidra",
+        "name": "Ghidra",
+        "version": null
+      },
+      "availability": {
+        "status": "available",
+        "code": null,
+        "reason": null,
+        "diagnostics": {
+          "install_dir": "C:\\Users\\lichb\\.codex\\visualizations\\2026\\10\\14\\01a1385a-d7df-72c1-a100-bcaef9e98f1b\\rea-native-tools\\ghidra_12.1.4_PUBLIC",
+          "analyze_headless_path": "C:\\Users\\lichb\\.codex\\visualizations\\2026\\10\\14\\01a1385a-d7df-72c1-a100-bcaef9e98f1b\\rea-native-tools\\ghidra_12.1.4_PUBLIC\\support\\analyzeHeadless.bat",
+          "native_decompiler_path": "C:\\Users\\lichb\\.codex\\visualizations\\2026\\10\\14\\01a1385a-d7df-72c1-a100-bcaef9e98f1b\\rea-native-tools\\ghidra_12.1.4_PUBLIC\\Ghidra\\Features\\Decompiler\\os\\win_x86_64\\decompile.exe",
+          "application_properties_path": "C:\\Users\\lichb\\.codex\\visualizations\\2026\\10\\14\\01a1385a-d7df-72c1-a100-bcaef9e98f1b\\rea-native-tools\\ghidra_12.1.4_PUBLIC\\Ghidra\\application.properties",
+          "provider_version": "12.1.4",
+          "java_command": "C:\\Users\\lichb\\.codex\\visualizations\\2026\\10\\14\\01a1385a-d7df-72c1-a100-bcaef9e98f1b\\rea-native-tools\\jdk-21.0.12.1+1\\bin\\java.exe",
+          "java_home": "C:\\Users\\lichb\\.codex\\visualizations\\2026\\10\\14\\01a1385a-d7df-72c1-a100-bcaef9e98f1b\\rea-native-tools\\jdk-21.0.12.1+1",
+          "java_version": "21.0.12.1",
+          "platform": "win32",
+          "architecture": "x64",
+          "checks": [
+            {
+              "name": "configuration",
+              "ok": true,
+              "code": null,
+              "detail": "C:\\Users\\lichb\\.codex\\visualizations\\2026\\10\\14\\01a1385a-d7df-72c1-a100-bcaef9e98f1b\\rea-native-tools\\ghidra_12.1.4_PUBLIC"
+            },
+            {
+              "name": "platform",
+              "ok": true,
+              "code": null,
+              "detail": "win32"
+            },
+            {
+              "name": "architecture",
+              "ok": true,
+              "code": null,
+              "detail": "x64"
+            },
+            {
+              "name": "installation",
+              "ok": true,
+              "code": null,
+              "detail": "C:\\Users\\lichb\\.codex\\visualizations\\2026\\10\\14\\01a1385a-d7df-72c1-a100-bcaef9e98f1b\\rea-native-tools\\ghidra_12.1.4_PUBLIC\\Ghidra\\application.properties"
+            },
+            {
+              "name": "version",
+              "ok": true,
+              "code": null,
+              "detail": "12.1.4"
+            },
+            {
+              "name": "headless",
+              "ok": true,
+              "code": null,
+              "detail": "C:\\Users\\lichb\\.codex\\visualizations\\2026\\10\\14\\01a1385a-d7df-72c1-a100-bcaef9e98f1b\\rea-native-tools\\ghidra_12.1.4_PUBLIC\\support\\analyzeHeadless.bat"
+            },
+            {
+              "name": "native_decompiler",
+              "ok": true,
+              "code": null,
+              "detail": "C:\\Users\\lichb\\.codex\\visualizations\\2026\\10\\14\\01a1385a-d7df-72c1-a100-bcaef9e98f1b\\rea-native-tools\\ghidra_12.1.4_PUBLIC\\Ghidra\\Features\\Decompiler\\os\\win_x86_64\\decompile.exe reports pe x86_64, which matches win32/x64"
+            },
+            {
+              "name": "java",
+              "ok": true,
+              "code": null,
+              "detail": "21.0.12.1; 64-bit; JDK; C:\\Users\\lichb\\.codex\\visualizations\\2026\\10\\14\\01a1385a-d7df-72c1-a100-bcaef9e98f1b\\rea-native-tools\\jdk-21.0.12.1+1; accepted a 64-bit full JDK 21 or newer"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "target_admission": {
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"result\":{\"path\":\"C:\\\\Users\\\\lichb\\\\AppData\\\\Local\\\\Programs\\\\WorkBuddy\\\\resources\\\\app.asar.unpacked\\\\node_modules\\\\@tencent\\\\tencent-docs-ai-engine\\\\bin\\\\win32-x64\\\\editor_sdk.exe\",\"format\":\"pe\",\"kind\":\"executable\",\"sha256\":\"b372679233c2ea586cc9e2ee9f491b06a702780bf72b8ef15cec1761994fd45c\",\"architecture\":\"x86_64\"}}"
+        }
+      ],
+      "structuredContent": {
+        "result": {
+          "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\node_modules\\@tencent\\tencent-docs-ai-engine\\bin\\win32-x64\\editor_sdk.exe",
+          "format": "pe",
+          "kind": "executable",
+          "sha256": "b372679233c2ea586cc9e2ee9f491b06a702780bf72b8ef15cec1761994fd45c",
+          "architecture": "x86_64"
+        }
+      }
+    },
+    "jsonrpc": "2.0",
+    "id": 2
+  },
+  "sandbox_snapshot_failure": {
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"error\":{\"code\":\"execution_failure\",\"category\":\"execution_failure\",\"message\":\"Analysis could not complete. Retry once; if it continues, run `rea doctor`.\",\"retryable\":false,\"remediation\":{\"action\":\"Analysis could not complete. Retry once; if it continues, run `rea doctor`.\"},\"details\":{\"provider_id\":\"ghidra\",\"operation\":\"search_strings\",\"diagnostics\":{\"target_path\":\"C:\\\\Users\\\\lichb\\\\AppData\\\\Local\\\\Programs\\\\WorkBuddy\\\\resources\\\\app.asar.unpacked\\\\node_modules\\\\@tencent\\\\tencent-docs-ai-engine\\\\bin\\\\win32-x64\\\\editor_sdk.exe\",\"target_sha256\":\"b372679233c2ea586cc9e2ee9f491b06a702780bf72b8ef15cec1761994fd45c\",\"transport\":\"authenticated-loopback-tcp\",\"provider_version\":\"12.1.4\",\"profile_digest\":\"249564812a8d83b9b3f461098fc485ccde60c516d4497547a124081c91d654bf\",\"runtime_root\":\"C:\\\\Users\\\\lichb\\\\AppData\\\\Local\\\\Packages\\\\sandbox.{6bdf350d-516a-4430-85ec-f9b248befed8}\\\\AC\\\\Temp\\\\rea-ghidra-8802dfdd76ec125ecb511b76f7bf635e\",\"endpoint_path\":\"C:\\\\Users\\\\lichb\\\\AppData\\\\Local\\\\Packages\\\\sandbox.{6bdf350d-516a-4430-85ec-f9b248befed8}\\\\AC\\\\Temp\\\\rea-ghidra-8802dfdd76ec125ecb511b76f7bf635e\\\\bridge-endpoint.json\",\"failure_cause\":{\"name\":\"Error\",\"message\":\"Create private object relative to its admitted parent failed [C:\\\\Users\\\\lichb\\\\AppData\\\\Local\\\\Packages\\\\sandbox.{6bdf350d-516a-4430-85ec-f9b248befed8}\\\\AC\\\\Temp\\\\rea-ghidra-8802dfdd76ec125ecb511b76f7bf635e\\\\target-b372679233c2.exe] (Win32 5): 拒绝访问。\\r\\n\",\"code\":\"EACCES\"},\"failure_kind\":\"start\",\"failure_message\":\"Ghidra target snapshot failed admission\"}}}}"
+        }
+      ],
+      "isError": true
+    },
+    "jsonrpc": "2.0",
+    "id": 4
+  },
+  "default_deadline_failure": {
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"error\":{\"code\":\"provider_timeout\",\"category\":\"timeout\",\"message\":\"Analysis took too long. Try a smaller request, then run `rea doctor` if it continues.\",\"retryable\":true,\"remediation\":{\"action\":\"Analysis took too long. Try a smaller request, then run `rea doctor` if it continues.\"},\"details\":{\"operation\":\"search_strings\",\"timeout_ms\":330000}}}"
+        }
+      ],
+      "isError": true
+    },
+    "jsonrpc": "2.0",
+    "id": 3
+  },
+  "retry_budget": {
+    "startup_timeout_ms": 1800000,
+    "headless_max_heap": "6G"
+  },
+  "expanded_deadline_failure": {
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"error\":{\"code\":\"provider_timeout\",\"category\":\"timeout\",\"message\":\"Analysis took too long. Try a smaller request, then run `rea doctor` if it continues.\",\"retryable\":true,\"remediation\":{\"action\":\"Analysis took too long. Try a smaller request, then run `rea doctor` if it continues.\"},\"details\":{\"operation\":\"search_strings\",\"timeout_ms\":1800000}}}"
+        }
+      ],
+      "isError": true
+    },
+    "jsonrpc": "2.0",
+    "id": 3
+  },
+  "preserved_diagnostic_log": {
+    "path": "C:\\Users\\lichb\\.codex\\visualizations\\2026\\10\\14\\01a1385a-d7df-72c1-a100-bcaef9e98f1b\\rea-native-tools\\ghidra-native3.log",
+    "bytes": 93633,
+    "sha256": "117e9c0f52763ad32b414bb45f14c2290cacf4dc0b97ade0b835c0d171887cf7"
+  },
+  "native_function_result": "unavailable: full provider auto-analysis did not complete within 1800000ms"
+}

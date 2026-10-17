@@ -1,0 +1,257 @@
+{
+  "date": "2026-10-17",
+  "method": "post-action test-scoped transcript and log deltas plus passive REA metadata; no invocation-level network recording",
+  "file": {
+    "path": "E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-word-create.docx",
+    "bytes": 7044,
+    "sha256": "120ab97e2148c7687ef2113d5780d5c1a1301fa9653a113bd2867ce97330810d",
+    "paragraphs": [
+      "REA Word 功能测试",
+      "这是用于分析文档处理流程的非敏感测试材料。",
+      "测试标记 REA-WORD-001。",
+      "项目",
+      "数量",
+      "苹果",
+      "3",
+      "香蕉",
+      "5"
+    ],
+    "tables": [
+      [
+        [
+          "项目"
+        ],
+        [
+          "数量"
+        ]
+      ],
+      [
+        [
+          "苹果"
+        ],
+        [
+          "3"
+        ]
+      ],
+      [
+        [
+          "香蕉"
+        ],
+        [
+          "5"
+        ]
+      ]
+    ],
+    "members": [
+      "word/",
+      "word/document.xml",
+      "word/styles.xml",
+      "word/settings.xml",
+      "word/fontTable.xml",
+      "word/theme/",
+      "word/theme/theme1.xml",
+      "docProps/",
+      "docProps/core.xml",
+      "docProps/app.xml",
+      "docProps/custom.xml",
+      "word/_rels/",
+      "word/_rels/document.xml.rels",
+      "_rels/",
+      "_rels/.rels",
+      "[Content_Types].xml"
+    ]
+  },
+  "runtime_artifacts": [
+    {
+      "path": "C:\\Users\\lichb\\.workbuddy\\plugins\\cache\\workbuddy-builtin\\workbuddy-docx\\5.8.3-wb.41334564.gdb0e9b51.h4da087921e4a\\skills\\html-to-doc\\scripts\\convert_doc.py",
+      "bytes": 12620,
+      "sha256": "9b326657f4ed55d203410774e61fe15caee439528a4d5295e75cbc05550679fe"
+    },
+    {
+      "path": "C:\\Users\\lichb\\.workbuddy\\plugins\\cache\\workbuddy-builtin\\workbuddy-docx\\5.8.3-wb.41334564.gdb0e9b51.h4da087921e4a\\skills\\brief-compose\\SKILL.md",
+      "bytes": 8643,
+      "sha256": "9f901bbd71cebb715c905d17c933bfe32bed5e5d1df9ae3040043ab5c4b7c8ad"
+    },
+    {
+      "path": "C:\\Users\\lichb\\WorkBuddy\\2026-10-09-15-30-43\\output\\brief-compose\\rea-word-create.html",
+      "bytes": 1494,
+      "sha256": "192f6ce2a66befca69050f3fc8b3dca67115e868ac51f569212f187c9ef69ae4"
+    }
+  ],
+  "calls": [
+    {
+      "timestamp_ms": 1792198814331,
+      "name": "Skill",
+      "status": "completed",
+      "description": null,
+      "skill": "workbuddy-office-routing",
+      "file_path": null,
+      "conversion_command": null
+    },
+    {
+      "timestamp_ms": 1792198830753,
+      "name": "Skill",
+      "status": "completed",
+      "description": null,
+      "skill": "workbuddy-docx",
+      "file_path": null,
+      "conversion_command": null
+    },
+    {
+      "timestamp_ms": 1792198835276,
+      "name": "Read",
+      "status": "completed",
+      "description": null,
+      "skill": null,
+      "file_path": "C:\\Users\\lichb\\.workbuddy\\plugins\\cache\\workbuddy-builtin\\workbuddy-docx\\5.8.3-wb.41334564.gdb0e9b51.h4da087921e4a\\skills\\tdoc-orchestrator\\SKILL.md",
+      "conversion_command": null
+    },
+    {
+      "timestamp_ms": 1792198844309,
+      "name": "Read",
+      "status": "completed",
+      "description": null,
+      "skill": null,
+      "file_path": "C:\\Users\\lichb\\.workbuddy\\plugins\\cache\\workbuddy-builtin\\workbuddy-docx\\5.8.3-wb.41334564.gdb0e9b51.h4da087921e4a\\skills\\brief-compose\\SKILL.md",
+      "conversion_command": null
+    },
+    {
+      "timestamp_ms": 1792198860987,
+      "name": "Bash",
+      "status": "completed",
+      "description": "检查路径脚本与目标目录是否存在",
+      "skill": null,
+      "file_path": null,
+      "conversion_command": null
+    },
+    {
+      "timestamp_ms": 1792198871151,
+      "name": "Bash",
+      "status": "completed",
+      "description": "定位 convert_doc.py 脚本真实路径",
+      "skill": null,
+      "file_path": null,
+      "conversion_command": null
+    },
+    {
+      "timestamp_ms": 1792198883436,
+      "name": "Bash",
+      "status": "completed",
+      "description": "解析最终 docx 输出路径",
+      "skill": null,
+      "file_path": null,
+      "conversion_command": null
+    },
+    {
+      "timestamp_ms": 1792198883445,
+      "name": "Bash",
+      "status": "completed",
+      "description": "查看转换脚本参数用法",
+      "skill": null,
+      "file_path": null,
+      "conversion_command": null
+    },
+    {
+      "timestamp_ms": 1792198901884,
+      "name": "Bash",
+      "status": "completed",
+      "description": "预建中间 HTML 输出目录",
+      "skill": null,
+      "file_path": null,
+      "conversion_command": null
+    },
+    {
+      "timestamp_ms": 1792198917801,
+      "name": "Write",
+      "status": "completed",
+      "description": null,
+      "skill": null,
+      "file_path": "C:/Users/lichb/WorkBuddy/2026-10-09-15-30-43/output/brief-compose/rea-word-create.html",
+      "conversion_command": null
+    },
+    {
+      "timestamp_ms": 1792198925923,
+      "name": "Bash",
+      "status": "completed",
+      "description": "将 HTML 转换为 docx 交付文件",
+      "skill": null,
+      "file_path": null,
+      "conversion_command": "\"C:/Users/lichb/.workbuddy/binaries/python/versions/3.13.12/python.exe\" \"C:/Users/lichb/.workbuddy/plugins/cache/workbuddy-builtin/workbuddy-docx/5.8.3-wb.41334564.gdb0e9b51.h4da087921e4a/skills/html-to-doc/scripts/convert_doc.py\" --html \"C:/Users/lichb/WorkBuddy/2026-10-09-15-30-43/output/brief-compose/rea-word-create.html\" --output \"E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-word-create.docx\" --no-preflight --no-verify 2>&1"
+    },
+    {
+      "timestamp_ms": 1792198941956,
+      "name": "Bash",
+      "status": "completed",
+      "description": "检查文件存在与大小",
+      "skill": null,
+      "file_path": null,
+      "conversion_command": null
+    },
+    {
+      "timestamp_ms": 1792198941998,
+      "name": "Bash",
+      "status": "completed",
+      "description": "解析 docx 内容验证文本与表格",
+      "skill": null,
+      "file_path": null,
+      "conversion_command": null
+    },
+    {
+      "timestamp_ms": 1792198960093,
+      "name": "Bash",
+      "status": "completed",
+      "description": "检查今日工作日志是否存在",
+      "skill": null,
+      "file_path": null,
+      "conversion_command": null
+    },
+    {
+      "timestamp_ms": 1792198968562,
+      "name": "Bash",
+      "status": "completed",
+      "description": "创建 memory 目录",
+      "skill": null,
+      "file_path": null,
+      "conversion_command": null
+    },
+    {
+      "timestamp_ms": 1792198980716,
+      "name": "Write",
+      "status": "completed",
+      "description": null,
+      "skill": null,
+      "file_path": "C:/Users/lichb/WorkBuddy/2026-10-09-15-30-43/.workbuddy/memory/2026-10-17.md",
+      "conversion_command": null
+    },
+    {
+      "timestamp_ms": 1792198985460,
+      "name": "present_files",
+      "status": "completed",
+      "description": null,
+      "skill": null,
+      "file_path": null,
+      "conversion_command": null
+    }
+  ],
+  "conversion_result": {
+    "success": true,
+    "exit_code": 0,
+    "preflight": null,
+    "verify": null,
+    "aigc_tag": true,
+    "error": null
+  },
+  "rea_evidence_ids": {
+    "renderer_discovery": "ev_e48e3b9266db67f0758462897c73d5514a81bf240a9a09605850d298c249a5f8",
+    "baseline": "ev_2f2ec2313b5c7c9d6b77e0770525e5a39afcbb0e7e32e380c1d7e1108dc2ba2b",
+    "after_create": "ev_d3881d6edf5e98681b5abc68bd4943948c18e88a5bd9091609ad66f063258312",
+    "editor_page_discovery": "ev_6a607abd2f79c7f9bb54635a1e62d01782ecadb442a5fc20f7f21e9db576f919"
+  },
+  "limitations": [
+    "No individual MCP call was recorded on the wire.",
+    "Native function algorithms remain unrecovered.",
+    "Read and edit tests have not run.",
+    "No visual layout acceptance.",
+    "HTTP editor guest was not an eligible page target in discovery."
+  ]
+}

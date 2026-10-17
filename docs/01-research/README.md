@@ -1,5 +1,7 @@
 # 产品研究
 
+2026-10-17开发交接：[Office 处理开发参考：WorkBuddy 分析](../02-design/architecture/Office处理开发参考-WorkBuddy分析-20261017.md)，将下方静态与运行证据整理为实现注意事项和验收要求，供后续功能开发使用。
+
 ~~项目当前阶段的工作重心。~~ **研究阶段已收官（2026-08-28）**：竞品与技术选型完成、结论汇总落盘，正式进入设计阶段（`../02-design/`）。本目录转为存档与补充调研入口。
 
 ## 研究计划
@@ -43,6 +45,19 @@
 - [项目本地记忆实证](competitors/workbuddy-local-memory-20261014.md)：中新融创项目的长期文件、43 份日期日志、脱敏结构与完整文件哈希清单。
 
 本次为安装产物静态分析和项目文件快照，未执行目标程序或验证真实会话；原研究收官状态不代表这些动态问题已经验收。
+
+### 2026-10-17 WorkBuddy Office 静态复核
+
+- [Word、Excel、PPT 文件处理](competitors/workbuddy-office-static-20261017.md)：5.8.3 版本的读取、既有文件修改与新建流程，本地文档引擎、表格子代理、SlideDSL、质量检查与证据边界。
+- [关键文件证据清单](competitors/workbuddy-office-evidence-20261017.json)：本次原始安装文件的路径、大小与 SHA-256。仅做静态分析，未验证真实执行与格式保真。
+- 实现深入复核：[Word 解析与原生边界](competitors/workbuddy-office-deep-word-20261017.md)、[Excel 读取与 Worker 编辑链](competitors/workbuddy-office-deep-excel-20261017.md)、[PPT DSL 到引擎修订提交](competitors/workbuddy-office-deep-ppt-20261017.md)。已修正初轮 PPT 独立生成器的误判，记录 REA 实际覆盖、资源限制和原生反编译环境缺口。
+- [原生 Office 引擎分析](competitors/workbuddy-office-native-20261017.md)：独立 Ghidra/JDK 环境、原生目标身份、实际内嵌空白模板、索引与函数追踪状态。环境已补齐，功能还原程度以专项结果为准。
+- [Word 新建运行实证](competitors/workbuddy-word-runtime-20261017.md)：非敏感测试的真实短文路由、HTML 转换命令、产物结构与预览入口；区分 REA 被动快照、会话工具记录和同哈希静态代码。
+- [Word 读取运行实证](competitors/workbuddy-word-read-runtime-20261017.md)：复用编辑实例、实际结构与表格查询、UTF-16 定位和只读前后哈希。
+- [Word 局部修改运行实证](competitors/workbuddy-word-edit-runtime-20261017.md)：真实替换/表格写入/保存、源文件保护、路径形式 file_id 与保存重序列化。
+- [Excel 生成与重算运行实证](competitors/workbuddy-excel-create-runtime-20261017.md)：openpyxl 建表、LibreOffice 重算、公式缓存及实际输入差异。
+- [Excel 读取与核算运行实证](competitors/workbuddy-excel-read-runtime-20261017.md)：真实子代理调用、Windows 路径解析缺陷、数据与公式读取、只读哈希。
+- [Excel 局部修改与修复运行实证](competitors/workbuddy-excel-edit-runtime-20261017.md)：单元格 API 编辑、重算超时、公式前导等号异常、Agent XML 修补及最终公式/缓存核对。
 
 ## 技术调研课题（初步）
 

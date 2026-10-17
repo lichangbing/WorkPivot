@@ -1,0 +1,276 @@
+{
+  "baseline": {
+    "captured_at": "2026-10-17T01:37:59.264273+00:00",
+    "files": [
+      {
+        "name": "main.log",
+        "bytes": 4169626,
+        "mtime": 1792201079.046993
+      },
+      {
+        "name": "renderer.log",
+        "bytes": 3817624,
+        "mtime": 1792201039.3849492
+      },
+      {
+        "name": "daemon.log",
+        "bytes": 7120981,
+        "mtime": 1792201077.165788
+      },
+      {
+        "name": "file-service.log",
+        "bytes": 2351273,
+        "mtime": 1792200681.4413185
+      }
+    ],
+    "document_path": "E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-create.xlsx",
+    "document_sha256": "ed390ac792aaeb0598d7f58b06671fa8c7bda1c6e1990f4fa1ee903c3ae9b75c"
+  },
+  "after_sha256": "ed390ac792aaeb0598d7f58b06671fa8c7bda1c6e1990f4fa1ee903c3ae9b75c",
+  "unchanged": true,
+  "parent_calls": [
+    {
+      "timestamp_ms": 1792201238559,
+      "name": "Skill",
+      "status": "completed",
+      "description": null,
+      "subagent_type": null
+    },
+    {
+      "timestamp_ms": 1792201254390,
+      "name": "Agent",
+      "status": "completed",
+      "description": "读取并核算销售表合计",
+      "subagent_type": "sheet-agent"
+    },
+    {
+      "timestamp_ms": 1792201347208,
+      "name": "Edit",
+      "status": "completed",
+      "description": null,
+      "subagent_type": null
+    }
+  ],
+  "subagent_calls": [
+    {
+      "timestamp_ms": 1792201261920,
+      "name": "mcp__sheetagent__resolve_local_excel",
+      "arguments": {
+        "local_path": "E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-create.xlsx"
+      },
+      "status": "completed",
+      "decoded_result": [
+        {
+          "error": "local_path 不是可解析的完整 Excel 绝对路径：E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-create.xlsx",
+          "hint": "local_path 必须是以 / 开头的完整绝对路径。请主 Agent 重新传入当前文档的真实完整绝对路径；不要只传文件名、相对路径或猜测 Desktop/Downloads/Documents 等目录。",
+          "error_code": "INVALID_LOCAL_PATH",
+          "stage": "validate_path",
+          "debug": {
+            "local_path": "E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-create.xlsx",
+            "likely_cause": "main_agent_passed_missing_or_wrong_path"
+          }
+        }
+      ]
+    },
+    {
+      "timestamp_ms": 1792201268547,
+      "name": "mcp__sheetagent__resolve_local_excel",
+      "arguments": {},
+      "status": "completed",
+      "decoded_result": [
+        {
+          "error": "解析工作簿失败：MCP error -32603: No workbook open",
+          "hint": "当前默认 session 没有可用工作簿。请主 Agent 传入当前文档的真实完整绝对路径 local_path，或直接传 file_id/sheet_id。",
+          "error_code": "NO_DEFAULT_WORKBOOK",
+          "stage": "list_sheets",
+          "debug": {
+            "file_id": "_default",
+            "open_attempts": 0,
+            "list_error": "MCP error -32603: No workbook open",
+            "likely_cause": "main_agent_did_not_pass_path_or_file_id"
+          }
+        }
+      ]
+    },
+    {
+      "timestamp_ms": 1792201273507,
+      "name": "mcp__sheetagent__resolve_local_excel",
+      "arguments": {
+        "local_path": "E:/project/WorkPivot/tmp/rea-office-test/rea-excel-create.xlsx"
+      },
+      "status": "completed",
+      "decoded_result": [
+        {
+          "error": "local_path 不是可解析的完整 Excel 绝对路径：E:/project/WorkPivot/tmp/rea-office-test/rea-excel-create.xlsx",
+          "hint": "local_path 必须是以 / 开头的完整绝对路径。请主 Agent 重新传入当前文档的真实完整绝对路径；不要只传文件名、相对路径或猜测 Desktop/Downloads/Documents 等目录。",
+          "error_code": "INVALID_LOCAL_PATH",
+          "stage": "validate_path",
+          "debug": {
+            "local_path": "E:/project/WorkPivot/tmp/rea-office-test/rea-excel-create.xlsx",
+            "likely_cause": "main_agent_passed_missing_or_wrong_path"
+          }
+        }
+      ]
+    },
+    {
+      "timestamp_ms": 1792201277259,
+      "name": "mcp__sheetagent__resolve_local_excel",
+      "arguments": {
+        "local_path": "/E:/project/WorkPivot/tmp/rea-office-test/rea-excel-create.xlsx"
+      },
+      "status": "completed",
+      "decoded_result": [
+        {
+          "error": "本地文件不存在或不可读取：/E:/project/WorkPivot/tmp/rea-office-test/rea-excel-create.xlsx",
+          "hint": "本地路径检查失败：ENOENT: no such file or directory, stat 'c:\\E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-create.xlsx'。请主 Agent 重新传入当前文档的真实完整绝对路径；不要继续尝试猜测路径。",
+          "error_code": "LOCAL_PATH_NOT_FOUND",
+          "stage": "stat_path",
+          "debug": {
+            "local_path": "/E:/project/WorkPivot/tmp/rea-office-test/rea-excel-create.xlsx",
+            "open_attempts": 0,
+            "likely_cause": "main_agent_passed_wrong_path"
+          }
+        }
+      ]
+    },
+    {
+      "timestamp_ms": 1792201287337,
+      "name": "mcp__sheetagent__resolve_local_excel",
+      "arguments": {
+        "local_path": "/e/project/WorkPivot/tmp/rea-office-test/rea-excel-create.xlsx"
+      },
+      "status": "completed",
+      "decoded_result": [
+        {
+          "error": "本地文件不存在或不可读取：/e/project/WorkPivot/tmp/rea-office-test/rea-excel-create.xlsx",
+          "hint": "本地路径检查失败：ENOENT: no such file or directory, stat 'c:\\e\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-create.xlsx'。请主 Agent 重新传入当前文档的真实完整绝对路径；不要继续尝试猜测路径。",
+          "error_code": "LOCAL_PATH_NOT_FOUND",
+          "stage": "stat_path",
+          "debug": {
+            "local_path": "/e/project/WorkPivot/tmp/rea-office-test/rea-excel-create.xlsx",
+            "open_attempts": 0,
+            "likely_cause": "main_agent_passed_wrong_path"
+          }
+        }
+      ]
+    },
+    {
+      "timestamp_ms": 1792201298658,
+      "name": "mcp__sheetagent__read_table",
+      "arguments": {
+        "file_id": "E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-create.xlsx",
+        "sheet_id": "销售"
+      },
+      "status": "completed",
+      "decoded_result": [
+        "[read_table] sheet_id \"销售\" 不存在，可用子表: [{\"sheet_id\":\"000001\",\"name\":\"销售\"}]。请从上列中选择后重试。"
+      ]
+    },
+    {
+      "timestamp_ms": 1792201305492,
+      "name": "mcp__sheetagent__read_table",
+      "arguments": {
+        "file_id": "E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-create.xlsx",
+        "sheet_id": "000001"
+      },
+      "status": "completed",
+      "decoded_result": [
+        {
+          "sheet_id": "000001",
+          "tables": [
+            {
+              "start_row": 1,
+              "start_col": 1,
+              "end_row": 4,
+              "end_col": 4,
+              "orientation": "MATRIX",
+              "structured": true,
+              "grid": [
+                [
+                  "品名",
+                  "数量",
+                  "单价",
+                  "金额"
+                ],
+                [
+                  "苹果",
+                  3,
+                  10,
+                  30
+                ],
+                [
+                  "香蕉",
+                  5,
+                  4,
+                  20
+                ],
+                [
+                  "合计",
+                  null,
+                  null,
+                  30
+                ]
+              ],
+              "header_rows": [
+                [
+                  "数量",
+                  "单价",
+                  "金额"
+                ]
+              ],
+              "data_start_row": 1,
+              "data_start_col": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "timestamp_ms": 1792201309574,
+      "name": "mcp__sheetagent__get_cell_ranges",
+      "arguments": {
+        "file_id": "E:\\project\\WorkPivot\\tmp\\rea-office-test\\rea-excel-create.xlsx",
+        "include_formulas": true,
+        "include_number_formats": true,
+        "ranges": [
+          "A1:D4"
+        ],
+        "sheet_id": "000001"
+      },
+      "status": "completed",
+      "decoded_result": [
+        {
+          "values": {
+            "A1": "品名",
+            "B1": "数量",
+            "C1": "单价",
+            "D1": "金额",
+            "A2": "苹果",
+            "B2": 3,
+            "C2": 10,
+            "D2": 30,
+            "A3": "香蕉",
+            "B3": 5,
+            "C3": 4,
+            "D3": 20,
+            "A4": "合计",
+            "D4": 30
+          },
+          "sheet_id": "000001",
+          "number_formats": {},
+          "formulas": {
+            "D2": "=B2*C2",
+            "D3": "=B3*C3",
+            "D4": "=SUM(D2)"
+          }
+        }
+      ]
+    }
+  ],
+  "resolver_source": {
+    "path": "C:\\Users\\lichb\\.workbuddy\\plugins\\cache\\workbuddy-builtin\\workbuddy-sheetagent\\5.8.3-wb.41334564.gdb0e9b51.h4da087921e4a\\mcp\\server.mjs",
+    "sha256": "7c4945550273b7bebcbb171fe01edacd94ebd76f85b88c24c84cd5af19e7cfc4",
+    "startsWith_slash_utf16_offset": 512537,
+    "check": "UN rejects non-slash-prefixed paths before stat"
+  }
+}
