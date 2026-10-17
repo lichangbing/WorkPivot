@@ -19,7 +19,7 @@ const seeds: Catalog = { revision: 'initial', defaultId: null, templates: [
 ] };
 const revision = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fail = (message: string, status = 400): never => { throw Object.assign(Error(message), { status }); };
-// Only deliberately public role templates live at tenant level, never personal memories.
+// 租户层仅保存明确公开的角色模板，禁止保存个人记忆。
 export function memoryCatalog(): Catalog { return withTenant(tenantId(), () => readJsonSafe<Catalog>(join(ensureWorkpivotDir('config'), 'memory-roles.json'), seeds).value); }
 function saveCatalog(input: Catalog) {
   if (!input || typeof input !== 'object') fail('模板格式无效');

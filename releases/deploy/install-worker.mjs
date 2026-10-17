@@ -1,5 +1,5 @@
-// Run on the designated Linux Docker host, as the existing WorkPivot deployment user.
-// Input directory must contain skill-worker.mjs, workpivot-worker.service, compose.worker.yml, snapshot.mjs.
+// 在指定 Linux Docker 宿主上，以现有 WorkPivot 部署用户运行。
+// 输入目录必须包含 skill-worker.mjs、workpivot-worker.service、compose.worker.yml 和 snapshot.mjs。
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, mkdirSync, writeFileSync, copyFileSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';

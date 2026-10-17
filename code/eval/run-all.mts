@@ -34,9 +34,9 @@ const suites: Array<[string, string]> = [
   ['W36', 'eval/W36-deliverables.mts'],
   ['W37', 'eval/W37-password-reset.mts'],
 ];
-// Retained for historical design comparison, not current acceptance: these suites
-// assume shared account data / administrator delegation / in-process shell execution.
-// Their replacement coverage is documented in eval/README.md; do not weaken isolation.
+// 这些套件用于历史设计比较，不计入当前验收：
+// 其前提是共享账号数据、管理员代执行及进程内命令执行。
+// 替代覆盖见 eval/README.md；不得降低隔离要求。
 if (process.env['WORKPIVOT_EVAL_LEGACY'] === '1') suites.push(
   ['legacy-W2', 'eval/W2-smoke.mts'], ['legacy-W4', 'eval/W4-smoke.mts'],
   ['legacy-W6', 'eval/W6-structure.mts'], ['legacy-W9', 'eval/W9-office.mts'],

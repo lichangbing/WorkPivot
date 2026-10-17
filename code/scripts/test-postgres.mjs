@@ -7,13 +7,13 @@ const docker = args => {
   try { return execFileSync(useWsl ? 'wsl' : 'docker', useWsl ? ['-d', 'Ubuntu-24.04', '--', 'docker', ...args] : args, { encoding: 'utf8', timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'] }).trim(); }
   catch { throw Error('PostgreSQL测试容器操作失败（凭据已隐藏）'); }
 };
-const image = process.env.WORKPIVOT_TEST_PG_IMAGE || 'postgres:17-alpine';
+const image = process.env.WORKPIVOT_TEST_PG_IMAGE || 'pgvector/pgvector:pg16';
 const container = 'workpivot-pg-test-' + Date.now();
 const password = randomBytes(24).toString('hex'); let started = false;
 let keepAlive;
 try {
-  // Keep WSL alive between short Docker CLI calls and the Windows test process.
-  // This helper belongs only to this invocation and does not mount Docker sockets.
+  // 在短暂 Docker 命令调用和 Windows 测试进程之间保持 WSL 运行。
+  // 此辅助进程仅属于本次调用，不挂载 Docker 套接字。
   if (useWsl) {
     keepAlive = spawn('wsl', ['-d', 'Ubuntu-24.04', '--', 'sleep', 'infinity'], { windowsHide: true, stdio: 'ignore' });
     await once(keepAlive, 'spawn');

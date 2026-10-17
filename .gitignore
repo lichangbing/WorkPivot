@@ -27,6 +27,8 @@ yarn-error.log*
 .env
 .env.local
 .env.*.local
+# 本机部署凭据与运行配置，不入库。
+local-runtime/
 
 # ===== Python =====
 __pycache__/

@@ -27,7 +27,7 @@ await transaction(db,async c=>{await c.query("INSERT INTO workpivot.skill_execut
 await runs.recover(actor,interruptedTask.id);
 await workspace.createTask(actor,'无执行记录任务',project.id);
 const app=await createDatabaseApp(auth,db,secret,undefined,undefined,undefined,resolve('apps/web/dist'));
-// Test-only stop route remains behind normal authentication.
+// 测试专用停止接口仍须通过正常认证。
 app.post('/fixture/stop',async(req,res)=>{
   const token=req.headers.authorization?.startsWith('Bearer ')?req.headers.authorization.slice(7):'';
   if(!await new AccountRepository(auth).resolve(token)){res.status(401).json({error:'未授权'});return;}

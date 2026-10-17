@@ -1,3 +1,4 @@
+import { DatabaseSkillBuilds } from './DatabaseSkillBuilds';
 import {DatabaseExperts} from './DatabaseExperts';
 import { DatabaseSkillMarket } from './DatabaseSkillMarket';
 import { useEffect, useRef, useState } from 'react';
@@ -14,7 +15,7 @@ const button = 'rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-n
 const field = 'block w-full rounded border border-neutral-700 bg-neutral-900 p-2';
 const titles = { projects: '项目管理', providers: '模型配置', mcp: 'MCP 配置', skills: 'Skill', experts: '专家' };
 
-/** Configuration drafts remain in component memory; credentials are never read back or persisted locally. */
+/** 配置草稿只保留在组件内存中，凭据不得回读或持久化到本地。 */
 export function DatabaseSettings({ onClose, onChanged, configurationEnabled, initialSection = 'mcp' }: { initialSection?: SettingsSection; onClose: () => void; onChanged: () => Promise<void>; configurationEnabled: boolean }) {
   const [section, setSection] = useState<SettingsSection>(initialSection);
   const dialog = useRef<HTMLDialogElement>(null);
@@ -23,7 +24,7 @@ export function DatabaseSettings({ onClose, onChanged, configurationEnabled, ini
     <div className="flex h-[80vh] w-full max-w-4xl overflow-hidden rounded-xl border border-neutral-700 bg-neutral-950 text-neutral-100 shadow-xl">
       <nav aria-label="设置菜单" className="w-40 shrink-0 space-y-2 border-r border-neutral-800 p-3">{(['mcp', 'skills', 'experts'] as SettingsSection[]).map(key => <button key={key} className={`${button} w-full text-left ${section === key ? 'bg-neutral-800' : ''}`} onClick={() => setSection(key)}>{titles[key]}</button>)}</nav>
       <div className="min-w-0 flex-1 overflow-auto p-5"><header className="mb-4 flex items-center justify-between"><h2>{titles[section]}</h2><button className={button} onClick={onClose}>关闭</button></header>
-        {section === 'experts' ? <DatabaseExperts /> : section === 'skills' ? <DatabaseSkillMarket /> : !configurationEnabled ? <p>后台尚未启用模型与 MCP 配置。</p> : <Registry key={section} section={section} onChanged={onChanged} />}
+        {section === 'experts' ? <DatabaseExperts /> : section === 'skills' ? <><DatabaseSkillBuilds /><DatabaseSkillMarket /></> : !configurationEnabled ? <p>后台尚未启用模型与 MCP 配置。</p> : <Registry key={section} section={section} onChanged={onChanged} />}
       </div>
     </div>
   </dialog>;

@@ -1,7 +1,7 @@
 import pg from 'pg';
 import type { PoolClient, PoolConfig } from 'pg';
 import { createHash } from 'node:crypto';
-import { schemaSql, schemaVersion, personalTables, schemaUpgrades } from './schema.js';
+import { schemaSql, schemaVersion, personalTables, schemaUpgrades, matchesV1Checksum } from './schema.js';
 
 export class RepositoryError extends Error {
   constructor(public readonly status: number, message: string) { super(message); }
@@ -13,7 +13,7 @@ export function pool(connectionString: string, extra: PoolConfig = {}): pg.Pool 
   if (!connectionString) throw new Error('缺少数据库连接配置');
   const result = new pg.Pool({ connectionString, max: 8, connectionTimeoutMillis: 5000,
     idleTimeoutMillis: 30000, statement_timeout: 15000, idle_in_transaction_session_timeout: 15000, ...extra });
-  // Never log the connection string, SQL parameters or credentials on idle-client errors.
+  // 空闲连接错误日志不得记录连接串、SQL 参数或凭据。
   result.on('error', () => { console.error('PostgreSQL 空闲连接失效，将在下一次请求重新连接'); });
   return result;
 }
@@ -35,7 +35,7 @@ function identifier(value: string): string {
   return '"' + value + '"';
 }
 
-/** Uses a separate privileged connection, never called automatically by the HTTP server. */
+/** 使用独立高权限连接，不由 HTTP 服务器自动调用。 */
 export async function installSchema(db: pg.Pool, appRole: string, authRole: string): Promise<void> {
   const app = identifier(appRole), auth = identifier(authRole);
   if (appRole === authRole) throw new Error('身份与业务数据库角色必须分离');
@@ -50,7 +50,7 @@ export async function installSchema(db: pg.Pool, appRole: string, authRole: stri
     const checksum = createHash('sha256').update(schemaSql + personalTables.join(',')).digest('hex');
     const versions = await client.query('SELECT version,checksum,app_role,auth_role FROM workpivot_meta.schema_versions ORDER BY version');
     if (versions.rowCount) {
-      if (versions.rowCount > schemaUpgrades.length + 1 || versions.rows[0].version !== schemaVersion || versions.rows[0].checksum !== checksum || versions.rows.some(r => r.app_role !== appRole || r.auth_role !== authRole)) throw new Error('数据库结构版本、角色或校验不匹配');
+      if (versions.rowCount > schemaUpgrades.length + 1 || versions.rows[0].version !== schemaVersion || !matchesV1Checksum(versions.rows[0].checksum, checksum) || versions.rows.some(r => r.app_role !== appRole || r.auth_role !== authRole)) throw new Error('数据库结构版本、角色或校验不匹配');
     } else {
     await client.query(schemaSql);
     for (const table of personalTables) await client.query(`ALTER TABLE workpivot.${table} ENABLE ROW LEVEL SECURITY;

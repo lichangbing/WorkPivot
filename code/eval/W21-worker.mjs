@@ -1,4 +1,4 @@
-// Linux Docker-host integration. No socket mounts; test artifacts stay in temporary workers.
+// Linux Docker 宿主联调；不挂载套接字，测试产物留在临时执行器中。
 import { startWorker, validateFiles } from '../scripts/skill-worker.mjs';
 import { randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';

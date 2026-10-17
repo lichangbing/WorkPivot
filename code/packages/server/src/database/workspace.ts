@@ -1,3 +1,4 @@
+import {captureTrash,revokeTrashAutomations} from './trash-capture.js';
 import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { RepositoryError, transaction, uuid } from './connection.js';
@@ -17,9 +18,9 @@ async function task(client: PoolClient, id: string): Promise<void> {
   if (!(await client.query('SELECT id FROM workpivot.tasks WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [id])).rowCount) throw new RepositoryError(404, '任务不存在');
 }
 
-/** Actor identity must come from server authentication, never request body/query. */
+/** 操作者身份必须来自服务器认证，不能取自请求体或查询参数。 */
 export class WorkspaceRepository {
-  constructor(private readonly db: Pool) {}
+  constructor(private readonly db: Pool,private readonly retainTrash=true) {}
   async listProjects(actor: string): Promise<DatabaseProject[]> {
     return transaction(this.db, async c => (await c.query<DatabaseProject>(`SELECT ${projectColumns} FROM workpivot.projects WHERE deleted_at IS NULL ORDER BY created_at,id`)).rows, actor);
   }
@@ -47,8 +48,8 @@ export class WorkspaceRepository {
       return (await c.query<DatabaseTask>(`INSERT INTO workpivot.tasks(id,owner_user_id,project_id,name,expert_id) VALUES($1,$2,$3,$4,(SELECT p.expert_id FROM workpivot.projects p JOIN workpivot.experts e ON e.id=p.expert_id WHERE p.id=$3 AND NOT e.disabled)) RETURNING ${taskColumns}`, [randomUUID(), actor, projectId ?? null, clean])).rows[0]!;
     }, actor);
   }
-  async listTasks(actor: string): Promise<DatabaseTask[]> {
-    return transaction(this.db, async c => (await c.query<DatabaseTask>(`SELECT ${taskColumns} FROM workpivot.tasks WHERE deleted_at IS NULL ORDER BY created_at,id`)).rows, actor);
+  async listTasks(actor: string, includeAutomation = false): Promise<DatabaseTask[]> {
+    return transaction(this.db, async c => (await c.query<DatabaseTask>(`SELECT ${taskColumns} FROM workpivot.tasks WHERE deleted_at IS NULL ${includeAutomation ? '' : "AND origin='chat'"} ORDER BY created_at,id`)).rows, actor);
   }
   async deleteTask(actor: string, id: string, expected: number): Promise<void> {
     uuid(id); revision(expected);
@@ -58,6 +59,9 @@ export class WorkspaceRepository {
       if (current.deleted_at) return;
       if (current.revision !== expected) throw new RepositoryError(409, '任务已更新，请刷新后再删除');
       this.assertDeletable([current]);
+      if(!this.retainTrash)await c.query("SELECT set_config('workpivot.skip_trash','1',true)");
+      await captureTrash(c,'task',id);
+      await revokeTrashAutomations(c,'task',id);
       await this.eraseMemories(c, actor, [id]);
       await this.eraseTasks(c, actor, [id]);
     }, actor);
@@ -65,24 +69,28 @@ export class WorkspaceRepository {
   async deleteProject(actor: string, id: string, expected: number): Promise<void> {
     uuid(id); revision(expected);
     await transaction(this.db, async c => {
-      // Parent first: creation of tasks/project memories holds this same lock.
+      // 先锁父项目；创建任务或项目记忆时持有同一把锁。
       const current = (await c.query('SELECT revision,deleted_at FROM workpivot.projects WHERE id=$1 FOR UPDATE', [id])).rows[0];
       if (!current) throw new RepositoryError(404, '项目不存在');
       if (current.deleted_at) return;
       if (current.revision !== expected) throw new RepositoryError(409, '项目已更新，请刷新后再删除');
       const children = (await c.query('SELECT id,status FROM workpivot.tasks WHERE project_id=$1 AND deleted_at IS NULL ORDER BY id FOR UPDATE', [id])).rows;
       this.assertDeletable(children);
+      if(!this.retainTrash)await c.query("SELECT set_config('workpivot.skip_trash','1',true)");
+      await captureTrash(c,'project',id);
+      await revokeTrashAutomations(c,'project',id);
+      for(const child of children){await captureTrash(c,'task',child.id);await revokeTrashAutomations(c,'task',child.id);}
       const ids = children.map((t: { id: string }) => t.id);
       await this.eraseMemories(c, actor, ids, id);
       await this.eraseTasks(c, actor, ids);
       await c.query('DELETE FROM workpivot.project_members WHERE project_id=$1', [id]);
-      // Keep only the tombstone identity/workspace key required by later file cleanup.
+      // 只保留后续文件清理所需的删除标记身份和工作区键。
       await c.query("UPDATE workpivot.projects SET name='已删除项目',deleted_at=now(),revision=revision+1,updated_at=now() WHERE id=$1", [id]);
       await this.memoryEvent(c, actor, id, expected + 1, 'project_deleted');
     }, actor);
   }
   private assertDeletable(rows: { status: string }[]): void {
-    // Execution cancellation is not ported yet: reject atomically, never pretend an active run stopped.
+    // 尚未接入执行取消：原子拒绝删除，不得假称活动运行已停止。
     if (rows.some(r => ['queued', 'running', 'waiting'].includes(r.status))) throw new RepositoryError(409, '请先停止运行中的任务再删除');
   }
   private async eraseTasks(c: PoolClient, actor: string, ids: string[]): Promise<void> {
@@ -99,7 +107,8 @@ export class WorkspaceRepository {
     await c.query("UPDATE workpivot.memory_suggestions SET status='stale',content='',evidence=NULL WHERE task_id=ANY($1::uuid[])", [taskIds]);
     const memories = await c.query('SELECT id,revision FROM workpivot.memories WHERE deleted_at IS NULL AND (task_id=ANY($1::uuid[]) OR project_id=$2 OR id IN (SELECT ms.memory_id FROM workpivot.memory_sources ms JOIN workpivot.task_runs r ON r.id=ms.run_id WHERE r.task_id=ANY($1::uuid[]))) ORDER BY id FOR UPDATE', [taskIds, projectId ?? null]);
     for (const m of memories.rows) {
-      await c.query('INSERT INTO workpivot.forget_rules(memory_id,owner_user_id,deleted_revision) VALUES($1,$2,$3)', [m.id, actor, m.revision]);
+      await captureTrash(c,'memory',m.id);
+      await c.query('INSERT INTO workpivot.forget_rules(memory_id,owner_user_id,deleted_revision) VALUES($1,$2,$3) ON CONFLICT(memory_id) DO UPDATE SET deleted_revision=EXCLUDED.deleted_revision', [m.id, actor, m.revision]);
       await c.query('DELETE FROM workpivot.memory_revisions WHERE memory_id=$1 OR memory_id IN (SELECT id FROM workpivot.memories WHERE merged_into=$1)', [m.id]);
       await c.query('UPDATE workpivot.memories SET deleted_at=now(),revision=revision+1 WHERE id=$1', [m.id]);
       await this.memoryEvent(c, actor, m.id, m.revision + 1, 'memory_deleted');
@@ -109,7 +118,7 @@ export class WorkspaceRepository {
     uuid(taskId); uuid(requestId);
     if (typeof content !== 'string' || content.length > 200000) throw new RepositoryError(400, '消息长度无效');
     return transaction(this.db, async c => {
-      // A row lock serializes per-task ordering and duplicate request checks; rollback consumes no sequence.
+      // 通过行锁串行处理任务排序和重复请求检查；回滚不消耗序号。
       if (!(await c.query('SELECT id FROM workpivot.tasks WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [taskId])).rowCount) throw new RepositoryError(404, '任务不存在');
       const existing = await c.query<DatabaseMessage>('SELECT id,sequence,role,content FROM workpivot.messages WHERE task_id=$1 AND request_id=$2', [taskId, requestId]);
       if (existing.rows[0]) {
@@ -168,7 +177,7 @@ export class WorkspaceRepository {
       return { id, revision: 1 };
     }, actor);
   }
-  /** One user-reviewed batch, committed atomically. A split retains source provenance. */
+  /** 用户核对过的一批条目原子提交；拆分保留来源依据。 */
   async saveMemoryEntries(actor: string, entries: unknown, scope: 'user' | 'project' | 'task', scopeId?: string, replace?: { id: string; revision: number }) {
     if (!Array.isArray(entries) || entries.length < 1 || entries.length > 100 || entries.some(v => typeof v !== 'string' || !v.trim() || v.length > 20000) || entries.join('').length > 100000) throw new RepositoryError(400, '请提供1至100条非空记忆，总长度不超过10万字');
     if (!['user','project','task'].includes(scope) || (scope === 'user' && scopeId) || (scope !== 'user' && !scopeId)) throw new RepositoryError(400, '记忆归属无效');
@@ -225,8 +234,9 @@ export class WorkspaceRepository {
       const current = (await c.query('SELECT revision FROM workpivot.memories WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [id])).rows[0];
       if (!current) throw new RepositoryError(404, '记忆不存在');
       if (current.revision !== expected) throw new RepositoryError(409, '记忆已更新');
-      await c.query('INSERT INTO workpivot.forget_rules(memory_id,owner_user_id,deleted_revision) VALUES($1,$2,$3)', [id, actor, expected]);
-      // Remove online history before tombstone changes its RLS visibility. No plaintext in deletion events.
+      await captureTrash(c,'memory',id);
+      await c.query('INSERT INTO workpivot.forget_rules(memory_id,owner_user_id,deleted_revision) VALUES($1,$2,$3) ON CONFLICT(memory_id) DO UPDATE SET deleted_revision=EXCLUDED.deleted_revision', [id, actor, expected]);
+      // 删除标记改变 RLS 可见性前先清理在线历史；删除事件不含明文。
       await c.query('DELETE FROM workpivot.memory_revisions WHERE memory_id=$1 OR memory_id IN (SELECT id FROM workpivot.memories WHERE merged_into=$1)', [id]);
       await c.query('UPDATE workpivot.memories SET deleted_at=now(),revision=revision+1 WHERE id=$1', [id]);
       await this.memoryEvent(c, actor, id, expected + 1, 'memory_deleted');
@@ -234,7 +244,7 @@ export class WorkspaceRepository {
   }
   private async memoryEvent(c: PoolClient, actor: string, id: string, rev: number, kind: string): Promise<void> {
     if (kind === 'memory_deleted' || kind === 'task_deleted' || kind === 'project_deleted') {
-      // Conservative closure: old replies may have paraphrased forgotten facts in any task.
+      // 保守失效处理：任意任务的旧回复都可能转述已遗忘事实。
       await c.query("UPDATE workpivot.task_runs SET context_revoked=true,model_messages='[]'::jsonb WHERE owner_user_id=$1", [actor]);
       await c.query("UPDATE workpivot.memory_jobs SET status='stale',error=NULL WHERE owner_user_id=$1 AND status IN ('pending','running')", [actor]);
     }

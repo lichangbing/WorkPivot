@@ -5,7 +5,7 @@ import { RepositoryError } from './connection.js';
 import { FileRepository } from './files.js';
 
 const textExtensions = new Set(['.txt', '.md', '.markdown', '.csv', '.tsv', '.json', '.jsonl', '.log']);
-/** Read immutable server uploads, never user-supplied local paths or executable content. */
+/** 只读取服务器不可变上传文件，不读取用户提供的本地路径或执行内容。 */
 export class DatabaseFileTools {
   constructor(private readonly files: FileRepository, private readonly processing?: DocumentProcessing) {}
   async read(actor: string, taskId: string, versionId: string, offset = 0) {

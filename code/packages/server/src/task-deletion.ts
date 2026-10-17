@@ -24,7 +24,7 @@ export function recordTaskUpload(task: Task, name: string): void {
   writeAtomic(path, JSON.stringify([...new Set([...names, name])]));
 }
 
-/** Delete only task-owned data. Shared project materials and promoted memories remain project/user-owned. */
+/** 只删除任务独占数据；共享项目资料和已晋升记忆仍归项目或用户所有。 */
 export function deleteTaskData(taskId: string, validateOnly = false): void {
   const task = getTask(taskId);
   if (!task) throw Error('任务不存在');
@@ -41,7 +41,7 @@ export function deleteTaskData(taskId: string, validateOnly = false): void {
   }
   const peerText = peers.map(peer => JSON.stringify(readTranscript(peer.id))).join('\n');
   const candidates = [...new Set([...attachments(task), ...(ownIndex.produced ?? []).filter(name => !Object.hasOwn(ownIndex.baseline ?? {}, name))])];
-  // Resolve and validate every target before making any filesystem changes; never recursively remove a shared directory.
+  // 修改文件系统前解析并校验全部目标，禁止递归删除共享目录。
   const files = candidates.filter(name => !protectedNames.has(name) && !peerText.includes(name)).map(name => requireWithin(name, task.directory))
     .filter(path => !peers.some(peer => canonicalPath(peer.directory) !== canonicalPath(task.directory) && pathWithin(canonicalPath(path), canonicalPath(peer.directory))));
   if (!pathWithin(canonicalPath(task.directory), canonicalPath(workspaceRoot()))) throw Error('任务目录不属于当前账号工作区');
@@ -60,6 +60,6 @@ export function deleteTaskData(taskId: string, validateOnly = false): void {
     const row = JSON.parse(line) as { payload?: { taskId?: string } };
     return row.payload?.taskId !== taskId;
   }).join('\n') + '\n');
-  // Metadata, transcript, task memory, plans, pending requests and immutable artifact revisions live here.
+  // 此处保存元数据、转写、任务记忆、计划、待处理请求及不可变成果修订。
   rmSync(dataDir(task), { recursive: true, force: true });
 }

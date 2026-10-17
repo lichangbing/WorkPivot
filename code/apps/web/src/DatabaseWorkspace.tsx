@@ -1,10 +1,16 @@
+import type {ReactNode} from 'react';
+import {DatabaseCitation} from './DatabaseCitation';
+import {retrievalStatus} from './chat-content';
+import {DatabaseTrash} from './DatabaseTrash';
+import {DatabaseAutomations,AutomationDraftNotice} from './DatabaseAutomations';
+import { DatabaseSkillBuilds } from './DatabaseSkillBuilds';
 import {ExpertSelector,ExpertSuggestions} from './DatabaseExperts';
 import { DatabaseParsing } from './DatabaseParsing';
 import { DatabaseSummary } from './DatabaseSummary';
 import { DatabaseExecutionMode } from './DatabaseExecutionMode';
 import { DatabaseModelStatus } from './DatabaseModelStatus';
 import { DatabaseExecutionStatus } from './DatabaseExecutionStatus';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { DatabaseAttachments, AttachmentLabel, type AttachmentActions } from './DatabaseAttachments';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -27,17 +33,23 @@ function rememberedTask(userId: string): string | null {
   try { return sessionStorage.getItem(selectionKey(userId)); } catch { return null; }
 }
 function rememberTask(userId: string, taskId: string | null) {
-  try { if (taskId) sessionStorage.setItem(selectionKey(userId), taskId); else sessionStorage.removeItem(selectionKey(userId)); } catch { /* Storage may be disabled; task navigation still works. */ }
+  try { if (taskId) sessionStorage.setItem(selectionKey(userId), taskId); else sessionStorage.removeItem(selectionKey(userId)); } catch { /* 存储可能被禁用，任务导航仍可使用。 */ }
 }
 
-/** Database-backed client surface. Uses existing desktop connection/login and theme facilities. */
+/** 基于数据库的客户端界面，复用现有桌面连接、登录和主题设施。 */
 export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatEnabled: boolean; filesEnabled?: boolean }) {
+  const [trashPage,setTrashPage]=useState(location.hash==='#trash');
+  useEffect(()=>{const change=()=>setTrashPage(location.hash==='#trash');window.addEventListener('hashchange',change);return()=>window.removeEventListener('hashchange',change);},[]);
+  const [automationPage,setAutomationPage]=useState(location.hash.startsWith('#automations'));
+  useEffect(()=>{const change=()=>setAutomationPage(location.hash.startsWith('#automations'));window.addEventListener('hashchange',change);return()=>window.removeEventListener('hashchange',change);},[]);
   const attachmentControl = useRef<AttachmentActions>(null);
   const [attachmentIds, setAttachmentIds] = useState<string[]>([]), [attachmentBlocked, setAttachmentBlocked] = useState(false), [attachmentEpoch, setAttachmentEpoch] = useState(0);
   const attachmentChange = useCallback((ids: string[], blocked: boolean) => { setAttachmentIds(ids); setAttachmentBlocked(blocked); }, []);
   const [auth, setAuth] = useState<Awaited<ReturnType<typeof api.authState>> | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]), [projects, setProjects] = useState<Project[]>([]);
   const [active, setActive] = useState<string | null>(null);
+  // 保持渲染器身份稳定，后台事件刷新不能卸载已经打开的引用窗口。
+  const citationComponents=useMemo(()=>({a:({href,children}:{href?:string;children?:ReactNode})=>{const match=href?.match(/^#citation\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);return match&&active?<DatabaseCitation taskId={active} chunkId={match[1]!}>{children}</DatabaseCitation>:<a href={href}>{children}</a>;}}),[active]);
   const selectionOwner = useRef<string | null>(null);
   const [events, setEvents] = useState<StoredEvent[]>([]), [permissions, setPermissions] = useState<Permission[]>([]);
   const [older, setOlder] = useState<string | null>(null), [details, setDetails] = useState<Record<string, { after: string; snapshot: string }>>({});
@@ -77,7 +89,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   }, [auth]);
   useEffect(() => {
     const owner = auth?.user?.id;
-    // Wait for the authenticated task list before persisting or restoring a selection.
+    // 取得已认证任务列表后，再持久化或恢复当前选择。
     if (auth?.authenticated && owner && selectionOwner.current === owner) rememberTask(owner, active);
   }, [active, auth]);
   useEffect(() => {
@@ -99,7 +111,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     };
     const catchup = async () => {
       try {
-        // Finish one frozen catchup window before advancing the watermark.
+        // 完成当前固定追赶窗口后，再推进水位。
         let through: string | undefined, more = true;
         while (more && current()) {
           const changes = await jsonFetch<{ events: StoredEvent[]; nextSequence: string; snapshotSequence: string; hasMore: boolean }>(`/api/tasks/${active}/conversation-changes?after=${watermark.current}${through ? `&through=${through}` : ''}`, options);
@@ -190,7 +202,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
       if (!response.ok) throw new Error(((await response.json()) as { error: string }).error);
       if (pendingSend.current?.id === requestId) pendingSend.current = null;
       if (epoch === generation.current) { setInput(''); setAttachmentIds([]); setAttachmentBlocked(false); setAttachmentEpoch(v => v + 1); }
-      if (response.status !== 202 && response.body) await readChatStream(response.body, () => { /* Durable catchup is the sole display source, avoiding stream duplication. */ }, controller.signal);
+      if (response.status !== 202 && response.body) await readChatStream(response.body, () => { /* 只使用持久化追赶结果展示，避免流内容重复。 */ }, controller.signal);
     } catch (e) { if (epoch === generation.current) setError(errorText(e)); }
     finally { streams.current.delete(controller); setSending(false); void refreshTasks().catch(() => {}); }
   };
@@ -203,19 +215,23 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   if (!auth.authenticated) return <LoginView needsSetup={auth.needsSetup} setupTokenRequired={auth.setupTokenRequired} onAuthed={reloadAuth} />;
   if (auth.user?.mustChangePassword) return <RequiredPasswordChange onDone={reloadAuth} />;
   const task = tasks.find(t => t.id === active), busy = sending || ['running', 'queued', 'waiting'].includes(task?.status ?? '');
+  if(trashPage)return <DatabaseTrash onBack={()=>{location.hash='';void refreshWorkspace();}}/>;
+  if(automationPage)return <DatabaseAutomations username={auth.user?.username} onBack={()=>{location.hash='';}} onLogout={()=>{void api.logout().finally(()=>{clearToken();reloadAuth();});}}/>;
   return <div className="workspace-shell flex h-screen bg-neutral-950 text-neutral-100">
-    <DatabaseWorkspaceNavigation projects={projects} tasks={tasks} active={active} username={auth.user?.username} onSelect={setActive} onRefresh={refreshWorkspace} onSettings={section => setSettings(section)} onError={setError} onLogout={() => { void api.logout().finally(() => { for (const c of streams.current) c.abort(); clearToken(); setActive(null); setTasks([]); reloadAuth(); }); }} />
+    <DatabaseWorkspaceNavigation onAutomations={()=>{location.hash='automations';}} projects={projects} tasks={tasks} active={active} username={auth.user?.username} onSelect={setActive} onRefresh={refreshWorkspace} onSettings={section => setSettings(section)} onError={setError} onLogout={() => { void api.logout().finally(() => { for (const c of streams.current) c.abort(); clearToken(); setActive(null); setTasks([]); reloadAuth(); }); }} />
     <main className="flex min-w-0 flex-1 flex-col">
       <header className="flex items-center justify-between gap-3 border-b border-neutral-800 px-4 py-2 text-xs"><h1 className="min-w-0 flex-1 truncate text-left text-sm font-medium">{projects.find(p => p.id === task?.projectId)?.name ?? '临时任务'} / {task?.name ?? '选择任务'}</h1><button className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-neutral-100 hover:bg-neutral-800" aria-label={rightOpen ? '收起右侧任务侧栏' : '展开右侧任务侧栏'} aria-expanded={rightOpen} aria-controls="task-results-panel" onClick={() => { setRightOpen(!rightOpen); localStorage.setItem('wp-right-panel-open', String(!rightOpen)); }}><Icon name={rightOpen ? 'panelClose' : 'panelOpen'} size={19} /></button></header>
       {task && <ExpertSelector task={task} project={projects.find(p=>p.id===task.projectId)} onChanged={refreshWorkspace}/>}
       {error && <div role="alert" className="px-6 py-2 text-sm text-red-400">{error}<button className="ml-3 underline" onClick={() => { setError(''); if (!ready) { setAuth({ ...auth }); } else void loadOlder(); }}>重试</button></div>}
       <div ref={viewport} aria-label="聊天记录" className="min-h-0 flex-1 overflow-y-auto px-6 py-4" onWheel={e => { if (e.deltaY < 0 && e.currentTarget.scrollTop < 32) { follow.current = false; void loadOlder(); } }} onScroll={e => { const el = e.currentTarget; const upward = el.scrollTop < previousTop.current; previousTop.current = el.scrollTop; follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; if (upward && el.scrollTop < 32) void loadOlder(); }}>
         {!active && <p className="mt-10 text-center text-sm text-neutral-500">选择或新建一个任务，发送第一条消息开始工作</p>}
+        {active && <AutomationDraftNotice taskId={active}/>}
         {active && <p className="mb-3 text-center text-xs text-neutral-500">{loading ? '正在加载…' : !ready ? '正在读取对话…' : older ? '向上滚动查看更早对话' : '已到最早消息'}</p>}
         {active && <ExpertSuggestions key={"expert-"+active} task={active}/>} 
         {groupEvents(events).map(group => <section key={group.id} data-turn={group.id} className="mb-6">
           {group.events.map(e => e.kind === 'meta' ? null : <div key={e.id} className={`mb-3 ${e.kind === 'user' ? 'workspace-message ml-auto max-w-[75%] rounded-lg bg-neutral-800 px-3 py-2 text-sm' : 'message-body workspace-message max-w-none text-sm'}`}>
-            {e.kind === 'thinking' || e.kind.startsWith('tool_') ? <details><summary className="cursor-pointer whitespace-nowrap text-sm text-neutral-400">{e.kind === 'thinking' ? '思考' : '工具调用'}</summary><pre className="whitespace-pre-wrap break-words text-xs">{e.content}</pre></details> : <ReactMarkdown remarkPlugins={[remarkGfm]}>{e.content}</ReactMarkdown>}
+            {e.kind === 'thinking' || e.kind.startsWith('tool_') ? <details><summary className="cursor-pointer whitespace-nowrap text-sm text-neutral-400">{e.kind === 'thinking' ? '思考' : '工具调用'}</summary><pre className="whitespace-pre-wrap break-words text-xs">{e.content}</pre></details> : <ReactMarkdown remarkPlugins={[remarkGfm]} components={e.kind==='assistant'?citationComponents:undefined}>{e.content}</ReactMarkdown>}
+            {e.kind==='tool_result'&&retrievalStatus(e.content)&&<p role="status" className="my-2 text-xs text-neutral-400">{retrievalStatus(e.content)}</p>}
             {e.truncated && <button className={button} onClick={() => { void expandContent(e); }}>展开完整内容</button>}
             {!!e.attachments?.length && <div className="mt-2 flex flex-wrap gap-2">{e.attachments.map(a => <AttachmentLabel key={a.id} attachment={a} />)}</div>}
           </div>)}
@@ -224,6 +240,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
         {active && <DatabaseSummary key={'summary-'+active} taskId={active} busy={busy} />}
         {active && <DatabaseParsing key={"parse-"+active} taskId={active} />}
         {active && <DatabaseExecutionStatus key={active} taskId={active} />}
+        {active && <DatabaseSkillBuilds key={'skills-'+active} taskId={active} autoOpen />}
         {permissions.map(p => <div key={p.id} className="mb-3 rounded border border-neutral-700 p-4"><strong>{p.request.tool === 'execute_skill' ? '确认隔离执行' : '确认外部工具调用'}</strong>{p.request.tool === 'execute_skill' && <p className="mt-2 text-sm text-neutral-400">在无网络隔离环境处理所选文件，仅保存指定成果。本次允许不会变成永久授权。</p>}<pre className="my-3 whitespace-pre-wrap break-words text-sm">{p.request.command ?? p.request.tool}</pre><button className={button} onClick={() => { void decide(p.id, 'deny'); }}>拒绝</button><button className={button + ' ml-2'} onClick={() => { void decide(p.id, 'allow'); }}>允许本次</button></div>)}
       </div>
       {newMessages && <button className={button} onClick={() => { follow.current = true; if (viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight; setNewMessages(false); }}>查看新消息</button>}

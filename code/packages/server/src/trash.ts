@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { ensureWorkpivotDir } from './store.js';
 
-/** Preserve a complete backup before deleting across Docker volumes or physical disks. */
+/** 跨 Docker 卷或物理磁盘删除前，先保存完整备份。 */
 export function moveToTrash(absPath: string, label: string): { ok: boolean; trashPath?: string; error?: string } {
   if (!existsSync(absPath)) return { ok: true };
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -31,7 +31,7 @@ export function moveToTrash(absPath: string, label: string): { ok: boolean; tras
     }
     return { ok: true, trashPath };
   } catch (err) {
-    // If source cleanup failed, preserve the complete backup for recovery.
+    // 源数据清理失败时，保留完整备份用于恢复。
     if (!copied) rmSync(trashPath, { recursive: true, force: true });
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

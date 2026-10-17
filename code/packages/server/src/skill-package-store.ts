@@ -135,7 +135,7 @@ export function packageDetail(name: string) {
   const publishedDirectories = published ? packageDirectories(published, state.versions.find(v => v.id === state.published)?.directories) : [];
   const dirty = !published || Object.keys(published).length !== files.length || files.some(f => published[f.path] !== state.draft[f.path]) || JSON.stringify(directories) !== JSON.stringify(publishedDirectories);
   let dependencies: unknown = null;
-  try { if (state.draft['skill.json']) dependencies = JSON.parse(Buffer.from(state.draft['skill.json'], 'base64').toString('utf8')); } catch { /* validation reports malformed manifest */ }
+  try { if (state.draft['skill.json']) dependencies = JSON.parse(Buffer.from(state.draft['skill.json'], 'base64').toString('utf8')); } catch { /* 由校验流程报告清单格式错误 */ }
   return { name, revision: state.revision, published: state.published ?? null, versions: state.versions, files, directories, dirty, dependencies };
 }
 export function createPackageDirectory(name: string, path: string, revision: unknown) {
@@ -208,7 +208,7 @@ export function publishPackage(name: string, revision: unknown, available: strin
 }
 export function rollbackPackage(name: string, version: string, revision: unknown) {
   const state = read(name); checkRevision(state, revision); versionDirectory(state, version);
-  // Keep the current draft so rollback never discards unfinished editing.
+  // 保留当前草稿，确保回退不会丢弃未完成的编辑。
   state.published = version; commit(state); return packageDetail(name);
 }
 export function discardPackageDraft(name: string, revision: unknown) {

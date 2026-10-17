@@ -625,7 +625,7 @@ export default function App(): React.JSX.Element {
   const logout = useCallback(async (): Promise<void> => {
     await api.logout().catch(() => undefined);
     clearToken();
-    // A fresh document discards all task streams, cached messages and attachment drafts.
+    // 重新加载页面会丢弃所有任务流、缓存消息及附件草稿。
     window.location.reload();
   }, []);
 
@@ -932,7 +932,7 @@ export default function App(): React.JSX.Element {
                 onClick={() => {
                   const open = !rightPanelOpen;
                   setRightPanelOpen(open);
-                  try { localStorage.setItem('wp-right-panel-open', String(open)); } catch { /* Session state still applies. */ }
+                  try { localStorage.setItem('wp-right-panel-open', String(open)); } catch { /* 当前会话状态仍然生效。 */ }
                 }}
               ><Icon name={rightPanelOpen ? 'panelClose' : 'panelOpen'} size={19} /></button>
             </div>

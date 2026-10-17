@@ -1,4 +1,4 @@
-/** Local disposable browser fixture; no real accounts, credentials or database. */
+/** 本地一次性浏览器夹具，不使用真实账号、凭据或数据库。 */
 import { createRequire } from 'node:module';
 const express = createRequire(new URL('../packages/server/package.json', import.meta.url))('express');
 import { resolve } from 'node:path';

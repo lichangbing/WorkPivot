@@ -6,7 +6,7 @@ import { RepositoryError, transaction, uuid } from './connection.js';
 
 export interface RunHandle { id: string; taskId: string; turnId: string; fence: string; duplicate: boolean }
 const leaseSeconds = 30;
-/** Interrupted tool groups cannot be replayed as unmatched model protocol messages. */
+/** 中断的工具消息组不得作为未配对的模型协议消息重放。 */
 export function replayableMessages(messages: ChatMessage[]): ChatMessage[] {
   const result: ChatMessage[] = [];
   for (let i = 0; i < messages.length; i++) {
@@ -125,7 +125,7 @@ export class RunRepository {
     }, actor);
   }
   async requestPermission(actor: string, run: RunHandle, request: ToolAccessRequest) {
-    // Initial port only supports one-shot external calls, never arbitrary paths or shell approval.
+    // 初版仅支持一次性外部调用，不授权任意路径或命令行操作。
     if (!request.external || request.paths.length || request.kind !== 'write' || !request.tool || JSON.stringify(request).length > 24000) throw new RepositoryError(400, '此类授权尚未接入数据库');
     return transaction(this.db, async c => {
       await this.active(c, run);
@@ -159,7 +159,7 @@ export class RunRepository {
       if (!run) throw new RepositoryError(409, '任务执行已失效');
       await c.query('UPDATE workpivot.run_permissions SET state=$2,decision=$3,resolved_at=now() WHERE id=$1', [id, decision === 'allow' ? 'allowed' : 'denied', decision]);
       await event(c, actor, { ...run, taskId, duplicate: false }, 'meta', JSON.stringify({ type: 'permission_resolved', id, decision }));
-      // Keep waiting until the executor consumes the decision, so UI cannot claim execution resumed early.
+      // 等待执行器消费审批决定后再继续，避免界面提前宣称已恢复执行。
     }, actor);
   }
   async consumePermission(actor: string, run: RunHandle, id: string): Promise<'pending' | 'allow' | 'deny'> {

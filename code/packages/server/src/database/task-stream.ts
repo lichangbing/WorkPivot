@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import type { ConversationRepository } from './conversation.js';
 import type { TaskNotifications } from './task-notifications.js';
 
-/** Durable sequence replay plus commit notifications. Slow consumers reconnect instead of buffering indefinitely. */
+/** 使用持久序号重放及提交通知；慢消费者通过重连恢复，避免无限缓存。 */
 export async function taskStream(req: Request, res: Response, options: {
   actor: string; task: string; after: string; conversation: ConversationRepository; notifications: TaskNotifications;
   authorized: () => Promise<boolean>; state: () => Promise<unknown>;
@@ -33,7 +33,7 @@ export async function taskStream(req: Request, res: Response, options: {
     } catch { if (!closed) { send({type:'unavailable',status:409}); close(); } }
     finally { busy = false; }
   };
-  // Validate access/cursor before emitting HTTP 200, then subscribe before the replay query.
+  // 返回 HTTP 200 前校验权限和游标；重放查询前先订阅通知。
   await options.conversation.changes(options.actor, options.task, after);
   if (closed) return;
   resources.unsubscribe = await options.notifications.subscribe(options.task, () => { void flush(); });
@@ -41,7 +41,7 @@ export async function taskStream(req: Request, res: Response, options: {
   res.writeHead(200, {'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'}); res.flushHeaders();
   resources.heartbeat = setInterval(() => {
     void options.notifications.recover().catch(() => undefined);
-    // Also recovers lost notifications and observes logout/expiry when idle.
+    // 同时补偿丢失通知，并在空闲时检查退出或会话过期。
     void flush();
     if (!closed && !res.write(': ping\n\n')) close();
   }, 15000);

@@ -6,7 +6,7 @@ import {summaryBatches} from './summary-batches.js';
 
 interface Source { id: string; sequence: string; content: string; messages: ChatMessage[]; attachments: string[] }
 interface Checkpoint { id: string; task_id: string; status: string; through_sequence: string; source_hash: string; source_ids: string[]; content: string; revision: number; error: string | null; lease_until: Date }
-// UTF-8 bytes are a conservative token estimate, not a model-specific tokenizer.
+// 使用 UTF-8 字节保守估算令牌数量，不代表模型专用分词结果。
 export const contextBytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value), 'utf8');
 const outputReserve = 8192;
 export const defaultContextBudget = 65536;
@@ -82,7 +82,7 @@ export class CompactionService {
       await c.query('UPDATE workpivot.context_checkpoints SET total_batches=$2 WHERE id=$1',[id,plan.batches.length]);
       return { id, plan };
     }, actor);
-    if (job) void this.generate(actor, task, job.id, job.plan,budget).catch(() => { /* Expired durable jobs are surfaced on the next poll. */ });
+    if (job) void this.generate(actor, task, job.id, job.plan,budget).catch(() => { /* 过期持久化作业在下次轮询时显示。 */ });
   }
   private async generate(actor: string, task: string, id: string, plan:ReturnType<typeof summaryBatches>,budget:number) {
     try {

@@ -21,7 +21,7 @@ export async function testRestoreRetention(db:Pool,actor:string,foreign:string,c
   const experience=(await e.experiences(actor,expert.id))[0];
   const manifest=await exportRetention(db,actor);
   check(!manifest.memories.some(r=>r.id===foreignMemory.id),'retention inventory excludes another user');
-  // Represents a later authoritative inventory after deletion / revision updates.
+  // 模拟删除或修订之后的最新权威清单。
   manifest.projects=manifest.projects.filter(r=>r.id!==project.id);manifest.tasks=manifest.tasks.filter(r=>r.id!==task.id);
   manifest.documents=manifest.documents.filter(r=>r.id!==file.documentId);manifest.memories=manifest.memories.filter(r=>r.id!==memory.id);
   manifest.experiences=manifest.experiences.filter(r=>r.id!==experience.id);

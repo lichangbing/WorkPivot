@@ -20,7 +20,7 @@ export async function testProcessRecovery(db: Pool, actor: string, check: (v: un
   const run = started.message.run as RunHandle;
   const exit = once(started.child, 'exit'); started.child.kill('SIGKILL'); await exit;
   check(!started.child.connected, 'executor process really exits before recovery');
-  // Advance the lease in this disposable DB to avoid waiting 30 seconds for expiry.
+  // 在临时数据库中提前到期租约，避免等待 30 秒。
   await transaction(db, c => c.query("UPDATE workpivot.task_runs SET lease_until=now()-interval '1 second' WHERE id=$1", [run.id]), actor);
   const restored = await launch(true);
   check(restored.message.recovered === 1, 'fresh process marks orphaned execution interrupted');

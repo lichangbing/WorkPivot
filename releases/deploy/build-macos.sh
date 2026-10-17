@@ -10,7 +10,7 @@ if ! command -v node >/dev/null || ! command -v pnpm >/dev/null; then
   echo "请先安装 Node.js 22 或以上版本及 pnpm，然后重试。" >&2
   exit 1
 fi
-# Thin client: no local backend or model credentials enter the package.
+# 轻量客户端，不把本地后端或模型凭据打入安装包。
 pnpm install --frozen-lockfile
 pnpm --filter @workpivot/desktop build
 version="$(node -p "JSON.parse(require('fs').readFileSync('apps/desktop/package.json','utf8')).version")"

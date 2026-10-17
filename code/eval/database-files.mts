@@ -43,7 +43,7 @@ export async function testFiles(db: Pool, identity: Pool, owner: string, foreign
     check((await fetch(`http://127.0.0.1:${addr.port}/api/tasks/${artifactTask.id}/artifacts`)).status === 401, 'artifact list requires authentication');
     await workspace.deleteTask(owner, artifactTask.id, artifactTask.revision);
     await fail(() => files.download(owner, artifactTask.id, saved.id), 404, 'task deletion revokes old artifact downloads');
-    check(await files.collect(owner) === 2, 'task deletion physically clears every artifact version');
+    check(await files.collect(owner) === 0, '任务删除保留回收站成果版本');
     const request = randomUUID(), content = Buffer.from('中文原始资料\n金额,2026\n预算,100');
     const v1 = await files.upload(owner, task.id, '预算.csv', content, request);
     check((await files.download(owner, task.id, v1.id)).data.equals(content), 'file originals preserved byte for byte');
@@ -97,7 +97,7 @@ export async function testFiles(db: Pool, identity: Pool, owner: string, foreign
     await fail(() => runs.start(owner, unrelated.id, randomUUID(), 'foreign task', [v1.id]), 404, 'same owner cannot attach files from another task');
     await workspace.deleteTask(owner, unrelated.id, unrelated.revision);
     const orphan = randomUUID(); await writeFile(join(root, owner, orphan), 'uncommitted');
-    check(await files.collect(owner) === 1 && (await readdir(join(root, owner))).length === 2, 'orphan collection keeps committed originals');
+    check(await files.collect(owner) === 1 && (await readdir(join(root, owner))).length === 7, '清理孤儿文件同时保留在线及回收站原件');
     const response = await fetch(base + '/files?name=report.pdf&requestId=' + randomUUID(), { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/octet-stream' }, body: Buffer.from('%PDF-fixture') });
     check(response.ok, 'authenticated binary upload endpoint works');
     const httpFile = (await response.json() as { file: { id: string; documentId: string; revision: number } }).file;
@@ -111,7 +111,7 @@ export async function testFiles(db: Pool, identity: Pool, owner: string, foreign
     await memorySuggestions.decide(owner,proposal.id,true);
     const derivedId=await transaction(db,async c=>(await c.query('SELECT memory_id FROM workpivot.memory_sources WHERE run_id=$1',[attachedRun.id])).rows[0].memory_id,owner);
     const deleted = await fetch(base + '/files/' + httpFile.documentId, { method: 'DELETE', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ revision: httpFile.revision }) });
-    check(deleted.ok && !(await deleted.json() as { cleanupPending: boolean }).cleanupPending, 'file deletion purges physical original');
+    check(deleted.ok && !(await deleted.json() as { cleanupPending: boolean }).cleanupPending, '文件移入回收站且清理不误删原件');
     check(await transaction(db,async c=>(await c.query('SELECT count(*) FROM workpivot.memory_revisions WHERE memory_id=$1',[derivedId])).rows[0].count==='0',owner),'file deletion purges derived memory revision text');
     check(await transaction(db,async c=>(await c.query('SELECT content,evidence FROM workpivot.memory_suggestions WHERE id=$1',[proposal.id])).rows.every(s=>!s.content&&!s.evidence),owner),'file deletion clears accepted suggestion evidence and text');
     await fail(() => files.download(owner, task.id, httpFile.id), 404, 'deleted file cannot be downloaded');
@@ -124,8 +124,8 @@ export async function testFiles(db: Pool, identity: Pool, owner: string, foreign
     check((await reader.read(owner, task.id, v1.id)).content === content.toString(), 'file reader uses pinned old version after newer upload');
     await runs.finish(owner, linkedRun, 'completed', []);
     await workspace.deleteTask(owner, task.id, (await workspace.listTasks(owner)).find(t => t.id === task.id)!.revision);
-    check(await files.collect(owner) === 2, 'task deletion removes all retained file versions');
-    check((await readdir(join(root, owner))).length === 0, 'task original files physically cleared');
+    check(await files.collect(owner) === 0, '任务删除保留所有回收站文件版本');
+    check((await readdir(join(root, owner))).length === 8, '回收站磁盘原件完整保留');
     await fail(() => files.upload(owner, task.id, 'late', content, randomUUID()), 404, 'deleted task rejects late upload');
     check(await files.collect(owner) === 0, 'repeated physical cleanup is idempotent');
     const project = await workspace.createProject(owner, 'file project deletion');
@@ -133,7 +133,7 @@ export async function testFiles(db: Pool, identity: Pool, owner: string, foreign
     const childFile = await files.upload(owner, child.id, 'child.txt', content, randomUUID());
     await workspace.deleteProject(owner, project.id, project.revision);
     await fail(() => files.download(owner, child.id, childFile.id), 404, 'project deletion immediately revokes file access');
-    check(await files.collect(owner) === 1, 'project deletion clears child originals');
+    check(await files.collect(owner) === 0, '项目删除保留子资料回收站原件');
   } finally {
     server.closeAllConnections(); await new Promise<void>(r => server.close(() => r()));
     if (dirname(root) !== resolve(tmpdir()) || !root.includes('workpivot-files-')) throw Error('Unexpected test cleanup path');

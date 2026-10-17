@@ -1,4 +1,4 @@
-# Narrow host-worker API only. No Docker socket, SSH keys or Docker CLI access is added to the backend.
+# 仅开放受限宿主执行器接口，不向后端添加 Docker 套接字、SSH 密钥或 Docker 命令行访问。
 services:
   workpivot:
     environment:

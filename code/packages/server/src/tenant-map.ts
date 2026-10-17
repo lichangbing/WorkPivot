@@ -1,6 +1,6 @@
 import { accountKey } from './tenants.js';
 
-/** Request-local view over process memory, including concurrent streams and approvals. */
+/** 为进程内存提供请求级视图，覆盖并发流和审批。 */
 export class TenantMap<K, V> {
   private readonly tenants = new Map<string, Map<K, V>>();
   private scoped(): Map<K, V> {

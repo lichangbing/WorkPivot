@@ -42,7 +42,7 @@ function listenOn(app: Express, port: number): Promise<Server> {
 
 /** 端口从 WORKPIVOT_PORT 或默认值起尝试，被占用则向后顺延（最多 10 个）。 */
 export async function startServer(opts: Parameters<typeof createApp>[0] & { port?: number } = {}): Promise<ServerHandle> {
-  // Refuse startup before any migration writes if account/session storage is corrupt.
+  // 账号或会话存储损坏时，在任何迁移写入前拒绝启动。
   needsSetup();
   validateInitialization();
   migrateTenantData();

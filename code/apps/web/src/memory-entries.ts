@@ -1,4 +1,4 @@
-/** Deterministic preview only. The user reviews every entry before any write. */
+/** 只生成确定性预览；每条内容须经用户核对后才能写入。 */
 export function splitMemoryEntries(text: string): string[] {
   const entries: string[] = [];
   let heading = '', current = '';

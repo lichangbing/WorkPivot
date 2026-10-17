@@ -2,7 +2,7 @@ import type { Pool } from 'pg';
 import { RepositoryError, transaction } from './connection.js';
 import { ProviderRepository } from './providers.js';
 
-/** Only this server-side service resolves the admin-owned default; no credentials reach users. */
+/** 仅由此服务端服务解析管理员默认模型，凭据不下发给用户。 */
 export class DatabaseModelService {
   constructor(private readonly auth: Pool, private readonly db: Pool, private readonly providers: ProviderRepository) {}
   private async resolve(actor: string) {
@@ -15,7 +15,7 @@ export class DatabaseModelService {
       }
       return null;
     }
-    // Existing administrator configurations remain usable until published as the default.
+    // 发布为默认模型前，现有管理员配置仍可使用。
     const row = (await this.providers.list(actor)).find(p => p.active);
     return row ? { owner: actor, row, shared: false } : null;
   }

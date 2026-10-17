@@ -24,7 +24,7 @@ async function lockTask(c: PoolClient, id: string, write: boolean): Promise<{ ne
   return result.rows[0];
 }
 
-/** Persistence only: execution owns run IDs; retries append to the original turn. */
+/** 只负责持久化；执行层管理运行标识，重试追加到原轮次。 */
 export class ConversationRepository {
   constructor(private readonly db: Pool) {}
   async startTurn(actor: string, taskId: string, content: string, requestId: string, runId: string): Promise<Turn> {
@@ -71,7 +71,7 @@ export class ConversationRepository {
   async page(actor: string, taskId: string, before?: string) {
     uuid(taskId); const bounds = before === undefined ? undefined : cursor(before, taskId);
     return transaction(this.db, async c => {
-      // Writers also lock the task, so the whole response has one stable event watermark.
+      // 写入者同样锁定任务，保证整份响应使用稳定事件水位。
       const head = await lockTask(c, taskId, false);
       const snapshot = bounds?.snapshot ?? String(BigInt(head.nextSequence) - 1n);
       if (BigInt(snapshot) >= BigInt(head.nextSequence)) throw new RepositoryError(400, '历史快照无效');
@@ -112,7 +112,7 @@ export class ConversationRepository {
       if (BigInt(snapshotSequence) >= BigInt(head.nextSequence) || BigInt(after) > BigInt(snapshotSequence)) throw new RepositoryError(400, '补拉快照无效');
       const rows = (await c.query<Event>(`SELECT ${eventColumns} FROM workpivot.conversation_events WHERE task_id=$1 AND sequence>$2 AND sequence<=$3 ORDER BY sequence LIMIT $4`, [taskId, after, snapshotSequence, eventLimit + 1])).rows;
       const events = rows.slice(0, eventLimit), hasMore = rows.length > eventLimit;
-      // Once exhausted, advance over persistence-only notes as well; do not loop over sequence gaps.
+      // 读取结束后也推进仅持久化备注的水位，避免在序号间隙循环。
       return { events, hasMore, snapshotSequence, nextSequence: hasMore ? events.at(-1)!.sequence : snapshotSequence };
     }, actor);
   }
@@ -121,7 +121,7 @@ export class ConversationRepository {
     if (!Number.isSafeInteger(offset) || offset < 0 || offset > 200000) throw new RepositoryError(400, '内容位置无效');
     return transaction(this.db, async c => {
       await lockTask(c, taskId, false);
-      // SQL substring bounds network and application memory even for large stored tool results.
+      // 使用 SQL 子串限制网络和应用内存占用，兼容大型工具结果。
       const row = (await c.query('SELECT substring(content FROM $3 FOR 16000) AS content,length(content) AS length FROM workpivot.conversation_events WHERE task_id=$1 AND id=$2', [taskId, eventId, offset + 1])).rows[0];
       if (!row) throw new RepositoryError(404, '事件不存在');
       return { content: row.content as string, nextOffset: offset + 16000 < row.length ? offset + 16000 : null };

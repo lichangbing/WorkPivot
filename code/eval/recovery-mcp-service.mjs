@@ -1,4 +1,4 @@
-// Isolated protocol fixture: persist a real side effect, then withhold its response.
+// 隔离协议夹具：先持久化真实副作用，再暂缓返回响应。
 import { createServer } from 'node:http';
 import { appendFile, readFile } from 'node:fs/promises';
 if (process.env.WORKPIVOT_SERVICE_RECOVERY_FIXTURE !== '1') throw Error('Disposable fixture only');

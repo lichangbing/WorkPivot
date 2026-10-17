@@ -1,4 +1,4 @@
-// Run on the Linux Docker host. No Docker socket is mounted into a container.
+// 在 Linux Docker 宿主运行，禁止将 Docker 套接字挂入容器。
 import assert from 'node:assert/strict';
 import { fork, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
@@ -92,7 +92,7 @@ if (process.argv[2] === '--child') {
       if (!/^wp-skill-[a-f0-9-]{36}$/.test(name)) throw Error('Unexpected test container name');
       docker(['rm', '-f', name]);
     }
-    // Exact directory returned by mkdtemp above; never an existing worker state directory.
+    // 仅清理上方 mkdtemp 返回的目录，不涉及已有执行器状态目录。
     await rm(stateDir, { recursive: true, force: true });
   }
 }

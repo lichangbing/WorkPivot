@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { listTenants, withTenant, tenantId } from './tenants.js';
 import { ensureWorkpivotDir, readJsonSafe, writeAtomicWithBackup } from './store.js';
 
-/** Add explicit ownership in place; paths and encrypted provider data remain unchanged. */
+/** 原地补充明确归属，保持路径与加密供应商数据不变。 */
 export function migrateTenantData(): void {
   for (const tenant of listTenants()) withTenant(tenant.id, () => {
     const path = join(ensureWorkpivotDir('data'), 'users.json');

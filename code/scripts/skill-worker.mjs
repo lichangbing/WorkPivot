@@ -1,4 +1,4 @@
-// Run on the Docker host as a dedicated service. No socket is mounted into any container.
+// 作为专用服务在 Docker 宿主运行，禁止向任何容器挂载套接字。
 import { createServer } from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -21,9 +21,9 @@ export function validateFiles(value) {
     seen.add(entry[0]); return [entry[0], bytes];
   });
 }
-// Executed in the sandbox, where all files remain untrusted. No host writes from exported paths.
+// 在沙箱中执行，所有文件均不可信；不得依据导出路径直接写入宿主。
 function exportFiles() {
-  // Serialized into `node -e` inside the sandbox, which uses CommonJS.
+  // 序列化后交给沙箱内的 node -e 执行，使用 CommonJS。
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const fs = require('node:fs'), path = require('node:path');
   const files = []; let total = 0, entries = 0;
@@ -46,7 +46,7 @@ export async function startWorker({ host = '127.0.0.1', port = 39990, token, ima
   if (!/^[a-z0-9-]{1,64}$/.test(owner)) throw Error('Invalid worker instance');
   const docker = (args, signal, maxBuffer = 1024 * 1024) => execute('docker', args, { signal, timeout: timeoutMs + 10000, maxBuffer });
   await docker(['image', 'inspect', image]);
-  // Remove only our own stranded, short-lived workers; never business containers.
+  // 只清理本服务遗留的短期执行器，禁止清理业务容器。
   const old = await docker(['ps', '-a', '--filter', `label=workpivot.worker=${owner}`, '--format', '{{.Names}}']);
   for (const name of old.stdout.trim().split('\n').filter(Boolean)) if (/^wp-skill-[a-f0-9-]{36}$/.test(name)) await docker(['rm', '-f', name]);
   mkdirSync(stateDir, { recursive: true, mode: 0o700 });
@@ -86,7 +86,7 @@ export async function startWorker({ host = '127.0.0.1', port = 39990, token, ima
       const files = JSON.parse(output.stdout); validateFiles(files);
       reply(200, { files, output: (result.stdout + result.stderr).slice(0, 65536) });
     } catch (error) {
-      // Never include worker environment, Docker arguments or host staging paths in errors.
+      // 错误信息不得包含执行器环境、Docker 参数或宿主暂存路径。
       const detail = error && typeof error === 'object' && 'stderr' in error ? String(error.stderr ?? '').slice(0, 4000) : '';
       reply(400, { error: controller.signal.aborted ? '执行已停止或超时，未回写文件' : `执行失败，未回写文件${detail ? `：${detail}` : ''}` });
     } finally {

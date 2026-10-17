@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CompatibilityError, checkServiceHealth } from '@workpivot/shared';
 
-/** Poll connection health only. Never reload the app or replay a task after a disconnect. */
+/** 只轮询连接健康状态；断线后不重载应用或重放任务。 */
 export function ConnectionStatus() {
   const [message, setMessage] = useState('');
   const [failed, setFailed] = useState(false);

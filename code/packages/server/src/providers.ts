@@ -32,7 +32,7 @@ interface ProviderRegistry {
 
 const EMPTY: ProviderRegistry = { version: 1, providers: [] };
 
-/** Validate all existing secrets first; migrate both primary and backup so readable legacy keys do not remain in .bak. */
+/** 先校验全部现有密钥，再迁移主文件和备份，防止 .bak 留下可读的旧密钥。 */
 export function migrateProviderSecrets(): void {
   const updates: Array<{ path: string; data: string }> = [];
   for (const path of [registryPath(), registryPath() + '.bak']) {

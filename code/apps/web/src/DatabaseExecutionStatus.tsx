@@ -8,7 +8,7 @@ export function DatabaseExecutionStatus({ taskId }: { taskId: string }) {
     const c = new AbortController(); let timer: ReturnType<typeof setTimeout>;
     const refresh = async () => {
       try { const result = await jsonFetch<{executions:Execution[]}>(`/api/tasks/${taskId}/executions`,{signal:c.signal}); if(!c.signal.aborted)setResult({taskId,rows:result.executions}); }
-      catch { /* Durable records will be fetched on the next refresh. */ }
+      catch { /* 下次刷新时重新获取持久记录。 */ }
       finally { if(!c.signal.aborted)timer=setTimeout(()=>{void refresh();},3000); }
     }; void refresh(); return ()=>{c.abort();clearTimeout(timer);};
   },[taskId]);

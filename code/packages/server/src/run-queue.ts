@@ -1,6 +1,6 @@
 import { TenantMap } from './tenant-map.js';
 const queues = new TenantMap<string, { active: number; waiting: Array<() => void> }>();
-/** FIFO slots scoped to the authenticated account; canceled waiters never execute. */
+/** 按已认证账号分配先进先出执行槽；取消等待后不再执行。 */
 export async function inRunSlot<T>(limit: number, signal: AbortSignal, start: () => Promise<T>): Promise<T> {
   let state = queues.get('slots');
   if (!state) { state = { active: 0, waiting: [] }; queues.set('slots', state); }

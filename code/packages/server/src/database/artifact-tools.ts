@@ -4,7 +4,7 @@ import type { Tool } from '@workpivot/core';
 import { RepositoryError } from './connection.js';
 import { FileRepository } from './files.js';
 
-/** Text deliverables use the same immutable original/version/deletion pipeline as uploads. */
+/** 文本成果与上传文件共用不可变原件、版本和删除处理链路。 */
 export class DatabaseArtifactTools {
   constructor(private readonly files: FileRepository) {}
   async save(actor: string, taskId: string, args: Record<string, unknown>, signal?: AbortSignal) {

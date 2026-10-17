@@ -19,7 +19,7 @@ function check(packages, expected, text, args = []) {
     assert.equal(run.status, expected, run.stdout + run.stderr);
     assert.match(run.stdout + run.stderr, text);
   } finally {
-    // Only remove the temporary directory created by this test invocation.
+    // 只删除本次测试创建的临时目录。
     rmSync(root, { recursive: true, force: true });
   }
 }

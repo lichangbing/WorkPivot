@@ -5,12 +5,12 @@ import { modelFailureDetails } from './model-error.js';
 export function retryableModelError(error: unknown): boolean {
   const details = modelFailureDetails(error);
   if (details.name === 'AbortError') return false;
-  // An explicit HTTP response takes precedence over a nested transport failure.
+  // 明确的 HTTP 响应优先于嵌套的传输错误。
   if (details.status !== undefined) return ['502', '503', '504'].includes(details.status);
   return details.code !== undefined;
 }
 
-/** Retry one unanswered model request, never a tool or a partially delivered stream. */
+/** 只重试一次尚无输出的模型请求，不重试工具或已输出部分内容的流。 */
 export async function* streamWithRecovery(client: ModelClient, args: Parameters<ModelClient['streamChat']>, delayMs = 500): AsyncGenerator<StreamEvent> {
   const signal = args[2];
   for (let attempt = 0; attempt < 2; attempt++) {

@@ -6,6 +6,8 @@
 - **分析人**：ZCode
 - **日期**：2026-08-28
 
+> 2026-10-16 补充：下文保留历史分析，不代表当前 main 的全部默认行为。本轮补核了官方[技能文档](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/skills.md)及[管理工具](https://github.com/NousResearch/hermes-agent/blob/main/tools/skill_manager_tool.py)：默认技能目录为 `~/.hermes/skills/`，支持按需读取；写审批是可选配置，不能将下文的用户确认描述理解为所有当前安装均强制审批。WorkPivot 已确认采用对话沉淀与修订闭环，但强制应用弹窗确认、私人隔离、数据库不可变版本和软删除恢复，具体采用边界及验收见[对话 Skill 与基础定时任务设计](../../02-design/architecture/对话搭建Skill与基础定时任务.md)，统一排期见[主计划](../../02-design/architecture/单用户正式发布补强方案.md)。这些均为设计，尚未实现；本轮未复验历史 Curator、提醒间隔等其余细节。
+
 ---
 
 ## 1. 项目身份

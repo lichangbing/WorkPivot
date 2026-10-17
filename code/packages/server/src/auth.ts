@@ -143,7 +143,7 @@ export function login(username: string, password: string): { token: string; user
   return { token, user: { id: user.id, tenantId: user.tenantId ?? tenantId(), platformAdmin: user.platformAdmin === true, mustChangePassword: user.mustChangePassword === true, username: user.username, email: user.email, role: user.role, tier: user.tier, lastLoginTime: user.lastLoginTime } };
 }
 
-/** No user-controlled namespace selector. Ambiguous legacy names fail closed. */
+/** 不允许用户选择命名空间；旧名称含糊时默认拒绝。 */
 export function loginAccount(username: string, password: string): { token: string; user: PublicUser } {
   const matches = listTenants().filter((t) => withTenant(t.id, () => loadUsers().users.some((u) => u.username === username.trim())));
   if (matches.length !== 1) throw new Error('用户名或密码错误');
@@ -263,7 +263,7 @@ export function setUserTier(userId: string, tier: Tier | null): { ok: boolean; e
   return { ok: true };
 }
 
-/** Reset credentials without exposing personal business data. */
+/** 重置凭据时不得暴露个人业务数据。 */
 export function resetUserPassword(userId: string, actor: PublicUser): { temporaryPassword: string } {
   if (actor.role !== 'admin') throw new Error('仅管理员可重置密码');
   const file = loadUsers();

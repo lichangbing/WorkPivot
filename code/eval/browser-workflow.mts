@@ -1,4 +1,4 @@
-/** Real database/API/UI workflow with deterministic model responses; never uses live credentials. */
+/** 使用真实数据库、接口和界面的工作流验收；模型回复固定，不使用真实服务凭据。 */
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -92,7 +92,7 @@ async function close() {
   for (const task of await workspace.listTasks(actor)) await execution.stop(actor, task.id);
   server.closeAllConnections(); await new Promise<void>(r => server.close(() => r()));
   await Promise.all([db.end(), auth.end(), schema.end()]);
-  // mkdtemp created this directory; no user-selected or business path is removed.
+  // 此目录由 mkdtemp 创建；清理范围不包含用户指定目录和业务目录。
   if (dirname(resolve(root)) !== resolve(tmpdir()) || !basename(root).startsWith('workpivot-browser-workflow-')) throw Error('Refusing unexpected fixture cleanup path');
   await rm(root, { recursive: true, force: true });
 }

@@ -3,7 +3,7 @@ import type {Pool} from 'pg';
 import type {ModelClient} from '@workpivot/core';
 import {transaction} from './connection.js';
 
-/** A durable review job proposes methods only; never writes active experience. */
+/** 持久化审核作业只建议方法，不直接写入生效经验。 */
 export class ExpertWorker {
  constructor(private db:Pool,private model:(actor:string)=>Promise<ModelClient>){}
  async recover(actor:string){await transaction(this.db,c=>c.query(`INSERT INTO workpivot.expert_jobs(run_id,owner_user_id,task_id,expert_id,epoch)

@@ -1,10 +1,10 @@
-/** WSL integration entry with real configured models and durable encrypted configuration. */
+/** WSL 联调入口，使用已配置的真实模型及持久化加密配置。 */
 import { randomBytes } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { pool } from '../packages/server/src/database/connection.js';
 import { createDatabaseRuntime } from '../packages/server/src/database/runtime.js';
 if (process.env.WORKPIVOT_ATTACHMENT_FIXTURE !== '1') throw Error('WSL integration only');
-// The protected key lives in the existing persistent service volume and is never printed.
+// 受保护密钥保存在现有持久服务卷中，禁止输出。
 const keyPath = '/data/workpivot/database-secret.key';
 try { await writeFile(keyPath, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 }); }
 catch (e) { if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e; }

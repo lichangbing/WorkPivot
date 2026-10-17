@@ -22,7 +22,7 @@ export class DocumentProcessing {
       const original=await this.files.download(actor,job.task_id,job.version_id);
       const parts=await this.parse(extname(job.name).toLowerCase(),original.data);
       await transaction(this.db,async c=>{
-        // Deletion locks the same task, then cascades the job. A late result cannot recreate it.
+        // 删除锁定同一任务后级联清理作业；迟到结果无法重建记录。
         await c.query('SELECT id FROM workpivot.tasks WHERE id=$1 FOR UPDATE',[job.task_id]);
         await c.query("UPDATE workpivot.document_processing SET status='completed',parts=$3::jsonb,error=NULL,fence=NULL,lease_until=NULL WHERE version_id=$1 AND fence=$2 AND status='running' AND lease_until>now()",[job.version_id,fence,JSON.stringify(parts)]);
       },actor);

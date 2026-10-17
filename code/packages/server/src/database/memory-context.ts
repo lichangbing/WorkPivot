@@ -3,7 +3,7 @@ import { RepositoryError, uuid } from './connection.js';
 
 export interface MemorySource { runId: string; evidence: string }
 
-/** Older user messages only. Never include future turns, assistant output or other tasks. */
+/** 只读取较早的用户消息，不包含未来轮次、助手输出或其他任务。 */
 export async function memoryContext(c: PoolClient, taskId: string, runId: string, currentLength: number): Promise<MemorySource[]> {
   const rows = (await c.query(`SELECT DISTINCT ON (t.sequence) r.id AS "runId",e.content AS evidence,t.sequence
     FROM workpivot.task_runs current_run
@@ -16,7 +16,7 @@ export async function memoryContext(c: PoolClient, taskId: string, runId: string
   let remaining = 24000 - currentLength;
   const context: MemorySource[] = [];
   for (const row of rows) {
-    // Do not truncate facts or skip a large intervening turn and reinterpret older facts.
+    // 不得截断事实或跳过中间的大轮次后重新解释旧事实。
     if (!row.evidence || row.evidence.length > remaining) break;
     remaining -= row.evidence.length;
     context.unshift({ runId: row.runId, evidence: row.evidence });
@@ -24,7 +24,7 @@ export async function memoryContext(c: PoolClient, taskId: string, runId: string
   return context;
 }
 
-/** Recheck all dependencies at both proposal creation and confirmation. */
+/** 创建建议和确认建议时均重新检查全部依赖。 */
 export async function validateMemoryContext(c: PoolClient, taskId: string, source: MemorySource, context: MemorySource[]) {
   if (!Array.isArray(context) || context.length > 5) throw new RepositoryError(400, '参考对话数量无效');
   const seen = new Set<string>();

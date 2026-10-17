@@ -3,7 +3,7 @@ import { statSync } from 'node:fs';
 import { win32, posix } from 'node:path';
 import { canonicalPath, pathWithin } from '@workpivot/shared/node';
 
-/** Explicit deployment mappings only; never interpret a Windows path as a Linux relative path. */
+/** 只接受显式部署映射，禁止把 Windows 路径解释为 Linux 相对路径。 */
 export function resolveClientDirectory(directory: string, workspace: string, configuration = tenantId() === 'default' ? process.env['WORKPIVOT_CLIENT_DIRECTORIES'] : process.env['WORKPIVOT_CLIENT_DIRECTORIES_' + tenantId().toUpperCase().replaceAll('-', '_')]): string {
   if (!configuration) throw new Error('所选本机目录尚未连接到后台，请联系部署管理员配置目录挂载。');
   if (!/^[a-zA-Z]:[\\/]/.test(directory) || directory.includes('\0') || directory.slice(2).includes(':')) throw new Error('请选择本机磁盘上的文件夹。');

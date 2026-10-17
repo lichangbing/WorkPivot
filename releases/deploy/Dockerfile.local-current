@@ -1,0 +1,12 @@
+# 构建目录由部署步骤准备，仅包含运行代码和前端产物。
+FROM workpivot-executor:closeout-20261016
+USER root
+WORKDIR /app
+COPY --chown=node:node node_modules/ /app/node_modules/
+COPY --chown=node:node packages/ /app/packages/
+COPY --chown=node:node scripts/ /app/scripts/
+COPY --chown=node:node apps/web/dist/ /app/apps/web/dist/
+COPY --chown=node:node package.json /app/package.json
+RUN mkdir -p /data/files && chown node:node /data/files
+USER node
+CMD ["./node_modules/.bin/tsx", "scripts/database-server.mts"]

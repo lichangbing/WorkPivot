@@ -15,7 +15,7 @@ const hash = (data: Buffer): string => createHash('sha256').update(data).digest(
 type Policy = (path: string, mode: 'read' | 'write') => boolean;
 const recovered = new Map<string, Promise<void>>();
 
-/** Docker receives an isolated copy, never the project, application-data or socket mounts. */
+/** Docker 只接收隔离副本，禁止挂载项目、应用数据或套接字。 */
 export function sandboxCommand(task: Task, allowed: Policy, signal: AbortSignal): (command: string) => Promise<string> {
   return async (command) => {
     const owner = hash(Buffer.from(`${canonicalPath(workpivotHome())}:${process.env['WORKPIVOT_EXECUTION_VOLUME'] ?? ''}`)).slice(0, 16);
@@ -95,7 +95,7 @@ export function sandboxCommand(task: Task, allowed: Policy, signal: AbortSignal)
       if (source.includes(',') || volume?.includes(',')) throw new Error('隔离目录配置包含无效字符');
       const mount = volume ? `type=volume,src=${volume},dst=/input,volume-subpath=${job}/input,readonly` : `type=bind,src=${source},dst=/input,readonly`;
       const image = process.env['WORKPIVOT_EXECUTION_IMAGE'] ?? 'workpivot-server:0.3.0-dev';
-      created = true; // Also clean up an uncertain create response from the daemon.
+      created = true; // 守护进程创建响应不明时也执行清理。
       await docker(['create', '--rm', '--name', job, '--label', 'workpivot.execution=true', '--label', `workpivot.execution.owner=${owner}`, '--network', 'none', '--read-only', '--cap-drop', 'ALL',
         '--security-opt', 'no-new-privileges:true', '--pids-limit', '128', '--memory', '512m', '--cpus', '1', '--user', '1000:1000',
         '--mount', mount, '--tmpfs', '/workspace:rw,nosuid,nodev,size=192m,uid=1000,gid=1000', '--tmpfs', '/tmp:rw,nosuid,nodev,size=64m',
@@ -109,11 +109,11 @@ export function sandboxCommand(task: Task, allowed: Policy, signal: AbortSignal)
         const failure = err as { code?: number | string; stdout?: string; stderr?: string };
         throw new Error(`命令执行失败（${failure.code ?? 'unknown'}）：${failure.stdout ?? ''}${failure.stderr ?? ''}；文件变更未回写`);
       });
-      // Export bounded, untrusted bytes through stdout; never mount a writable host directory.
+      // 通过标准输出导出有界的不可信字节，不挂载可写宿主目录。
       const exported = await execute(program, [...prefix, 'exec', job, 'node', '-e', EXPORT_WORKSPACE], {
         windowsHide: true, timeout: 30000, maxBuffer: 192 * 1024 * 1024, signal,
       });
-      // Terminate all background processes before any host-side validation or writes.
+      // 在宿主校验或写入之前终止全部后台进程。
       await removeContainer(); created = false;
       if (signal.aborted) throw new Error('任务已停止');
       bytes = 0;
@@ -141,7 +141,7 @@ export function sandboxCommand(task: Task, allowed: Policy, signal: AbortSignal)
         if (current !== originals.get(name)) throw new Error('项目文件已被其他任务修改，拒绝覆盖；请重新执行');
         changes.push({ target, data });
       }
-      // All paths and conflicts are checked before the first change; writes are individually atomic.
+      // 首次修改前检查所有路径和冲突；每次写入分别保持原子性。
       for (const change of changes) {
         if (signal.aborted || !allowed(change.target, 'write')) throw new Error('任务已停止或权限已变更');
         if (!change.data) { const moved = moveToTrash(change.target, `${job}-${randomUUID()}`); if (!moved.ok) throw new Error(moved.error); }
@@ -153,7 +153,7 @@ export function sandboxCommand(task: Task, allowed: Policy, signal: AbortSignal)
       }
       return `exit=0\n${result.stdout}${result.stderr}`.slice(0, 65536);
     } finally {
-      // Never remove staging while a container could still be using it.
+      // 容器可能仍在使用暂存目录时禁止清理。
       if (created) await removeContainer();
       const verified = requireWithin(stage, stageRoot);
       if (verified === canonicalPath(stageRoot)) throw new Error('不能清理隔离根目录');

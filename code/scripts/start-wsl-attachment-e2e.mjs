@@ -6,7 +6,7 @@ if (docker(['ps', '-a', '--filter', 'name=workpivot-attachment-e2e', '--format',
 if (docker(['volume', 'ls', '--filter', 'name=workpivot-attachment-e2e', '--format', '{{.Name}}'])) throw Error('Existing fixture data volumes found; restore existing environment instead of reinitializing');
 const password = randomBytes(24).toString('hex'), app = randomBytes(24).toString('hex'), auth = randomBytes(24).toString('hex');
 docker(['network', 'create', '--internal', '--label', 'workpivot.test=attachment-e2e', network]);
-docker(['run', '-d', '--name', pg, '--network', network, '--label', 'workpivot.test=attachment-e2e', '-v', 'workpivot-attachment-e2e-db:/var/lib/postgresql/data', '-e', 'POSTGRES_DB=workpivot', '-e', 'POSTGRES_PASSWORD=' + password, 'postgres:15-alpine']);
+docker(['run', '-d', '--name', pg, '--network', network, '--label', 'workpivot.test=attachment-e2e', '-v', 'workpivot-attachment-e2e-db:/var/lib/postgresql/data', '-e', 'POSTGRES_DB=workpivot', '-e', 'POSTGRES_PASSWORD=' + password, 'pgvector/pgvector:pg15']);
 let ready = false;
 for (let i = 0; i < 30; i++) { try { docker(['exec', pg, 'pg_isready', '-U', 'postgres', '-d', 'workpivot']); ready = true; break; } catch { await new Promise(r => setTimeout(r, 500)); } }
 if (!ready) throw Error('Database not ready');

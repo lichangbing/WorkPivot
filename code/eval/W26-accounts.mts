@@ -22,7 +22,7 @@ const { TenantMap } = await import('../packages/server/src/tenant-map.js');
 const { writeHandbook } = await import('../packages/server/src/memory.js');
 const { initializeSecretBox } = await import('../packages/server/src/secret.js');
 const { runScheduleNow } = await import('../packages/server/src/schedules.js');
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- heterogeneous HTTP fixture bodies
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试夹具的 HTTP 请求体结构不一致
 type Body = Record<string, any>;
 let checks = 0;
 function check(name: string, condition: unknown): void { assert.ok(condition, name); checks++; console.log(`✅ ${name}`); }
@@ -30,7 +30,7 @@ const password = 'account-fixture-password';
 const admin = withTenant('default', () => auth.registerFirstAdmin('admin-one', password));
 const member = withTenant('default', () => auth.createUser('member-one', password, 'member'));
 const secondAdmin = withTenant('default', () => auth.createUser('admin-two', password, 'admin'));
-// Recreate preview.13 storage: no account marker, explicit task/project ownership.
+// 重建 preview.13 存储：没有账号标记，任务与项目归属明确。
 for (const user of [admin.user, member, secondAdmin]) unlinkSync(join(root, 'home/accounts', user.id, 'account-migration.json'));
 const legacy = withTenant('default', () => {
   ensureDefaultProject();

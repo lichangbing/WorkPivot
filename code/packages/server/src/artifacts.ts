@@ -45,7 +45,7 @@ export function listArtifacts(task: Task, finalize = false): Array<{ name: strin
   return [...produced].filter((name) => files[name]).map((name) => ({ name, size: files[name]!.size, updatedAt: files[name]!.modified, state: (['running', 'waiting'].includes(task.status) && !finalize ? 'generating' : old.outcome && old.outcome !== 'completed' ? 'failed' : 'ready') as 'generating' | 'ready' | 'failed', versions: Object.hasOwn(old.versions ?? {}, name) ? old.versions![name]! : [] })).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-/** Save immutable revisions at the end of each run, deduplicated by content hash. */
+/** 每次运行结束后保存不可变修订，按内容哈希去重。 */
 export function finishArtifacts(task: Task, outcome: string): void {
   const files = listArtifacts(task, true);
   const old = readJsonSafe<Index>(indexPath(task), { baseline: {}, produced: [] }).value;
@@ -60,7 +60,7 @@ export function finishArtifacts(task: Task, outcome: string): void {
     const rows = versions[file.name] ?? [];
     if (rows.at(-1)?.hash === hash && rows.at(-1)?.status === (outcome === 'completed' ? 'ready' : 'failed')) continue;
     const version: ArtifactVersion = { id: randomUUID(), createdAt: Date.now(), size: bytes.length, hash, status: outcome === 'completed' ? 'ready' : 'failed' };
-    // Atomic byte-preserving snapshots; metadata is committed only after the file exists.
+    // 原子保存且保持原始字节；文件就绪后才能提交元数据。
     writeFileSync(join(snapshotRoot(task), version.id), bytes, { flag: 'wx', mode: 0o600 });
     versions[file.name] = [...rows, version];
   }

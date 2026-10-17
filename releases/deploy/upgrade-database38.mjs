@@ -1,4 +1,4 @@
-// Run on 192.168.1.158 after building the release image. Preserve existing DB, keys and volumes.
+// 构建发布镜像后在 192.168.1.158 运行，保留已有数据库、密钥和数据卷。
 import { execFileSync } from 'node:child_process';
 import { mkdirSync,readFileSync,writeFileSync,copyFileSync,openSync,closeSync,existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -40,7 +40,7 @@ try {
   for(const path of ['/','/admin'])if(!(await fetch('http://127.0.0.1:39800'+path)).ok)throw Error('UI unavailable');
   console.log(JSON.stringify({deployed:state.version,backup,override}));
 } catch {
-  // Additive schema upgrades remain in place; old image and original mounts are preserved.
+  // 保留增量结构升级结果、旧镜像及原挂载。
   if(stopped){try{writeFileSync(join(root,'compose.rollback37.yml'),['services:','  server:',`    image: ${old.Config.Image}`,'    volumes:',...mounts.map((m,i)=>`      - retained${i}:${m.Destination}`),'volumes:',...mounts.flatMap((m,i)=>[`  retained${i}:`,`    external: true`,`    name: ${m.Name}`])].join('\n')+'\n',{mode:0o600});docker(['compose','-p','workpivot-database34','-f',compose,'-f',join(root,'compose.database35.yml'),'-f',join(root,'compose.database36.yml'),'-f',join(root,'compose.database37.yml'),'-f',join(root,'compose.rollback37.yml'),'up','-d','--no-deps','server']);}catch{}}
   console.error('Upgrade failed; inspect service status. Backup: '+backup);process.exitCode=1;
 }

@@ -1,7 +1,7 @@
 export interface StoredEvent { id: string; sequence: string; turnId: string; runId: string; kind: string; content: string; truncated: boolean; attachments?: { id: string; name: string | null; deleted?: boolean }[] }
 export interface StoredTurn { id: string; sequence: string; events: StoredEvent[]; hasMoreEvents: boolean; nextEventSequence: string | null }
 export interface ConversationPage { turns: StoredTurn[]; nextCursor: string | null; hasMore: boolean; snapshotSequence: string }
-/** Durable IDs, not text equality, deduplicate overlap between history, catchup and retries. */
+/** 使用持久化标识去除历史、追赶和重试重叠，不按文本是否相同判断。 */
 export function mergeEvents(old: StoredEvent[], added: StoredEvent[]): StoredEvent[] {
   const rows = new Map(old.map(e => [e.id, e]));
   for (const e of added) {

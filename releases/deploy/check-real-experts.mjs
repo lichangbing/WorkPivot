@@ -6,7 +6,7 @@ const docker = args => execFileSync('docker', args, { encoding: 'utf8', timeout:
 const secret = randomBytes(32).toString('hex');
 let created = false;
 try {
-  docker(['run', '-d', '--name', name, '--label', label + '=true', '--network', 'workpivot-attachment-e2e', '--tmpfs', '/var/lib/postgresql/data:rw,nosuid,size=512m', '-e', 'POSTGRES_DB=workpivot_memory_test', '-e', 'POSTGRES_PASSWORD=' + secret, 'postgres:15-alpine']);
+  docker(['run', '-d', '--name', name, '--label', label + '=true', '--network', 'workpivot-attachment-e2e', '--tmpfs', '/var/lib/postgresql/data:rw,nosuid,size=512m', '-e', 'POSTGRES_DB=workpivot_memory_test', '-e', 'POSTGRES_PASSWORD=' + secret, 'pgvector/pgvector:pg15']);
   created = true;
   let ready = false;
   for (let i = 0; i < 30; i++) { try { docker(['exec', name, 'pg_isready', '-U', 'postgres']); ready = true; break; } catch { await new Promise(r => setTimeout(r, 500)); } }

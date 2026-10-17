@@ -11,7 +11,7 @@ function apply(theme: Theme): void {
   document.documentElement.style.colorScheme = theme;
   listeners.forEach((listener) => listener());
 }
-try { current = localStorage.getItem(key) === 'dark' ? 'dark' : 'light'; } catch { /* Storage may be unavailable in private contexts. */ }
+try { current = localStorage.getItem(key) === 'dark' ? 'dark' : 'light'; } catch { /* 隐私模式可能无法使用存储。 */ }
 apply(current);
 window.addEventListener('storage', (event) => {
   if (event.key === key || event.key === null) apply(event.newValue === 'dark' ? 'dark' : 'light');
@@ -22,7 +22,7 @@ export function useTheme() {
   const theme = useSyncExternalStore(subscribe, () => current);
   return { theme, setTheme: (value: Theme) => {
     apply(value);
-    try { localStorage.setItem(key, value); } catch { /* Session theme remains available. */ }
+    try { localStorage.setItem(key, value); } catch { /* 当前会话主题仍可使用。 */ }
   } };
 }
 
@@ -31,12 +31,12 @@ export function ThemeSwitch({ single = false }: { single?: boolean } = {}): Reac
   if (single) return <button type="button" className="flex w-full items-center gap-2 rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800" aria-label={`切换为${theme === 'light' ? '深色' : '浅色'}风格`} onClick={() => {
     const next = theme === 'light' ? 'dark' : 'light';
     apply(next);
-    try { localStorage.setItem(key, next); } catch { /* The selection still applies for this session. */ }
+    try { localStorage.setItem(key, next); } catch { /* 当前会话仍使用所选项。 */ }
   }}><Icon name={theme === 'light' ? 'sun' : 'moon'} /><span>风格：{theme === 'light' ? '浅色' : '深色'}</span></button>;
   return <div className="theme-switch" role="group" aria-label="界面风格">
     {(['light', 'dark'] as const).map((value) => <button key={value} type="button" aria-pressed={theme === value} onClick={() => {
       apply(value);
-      try { localStorage.setItem(key, value); } catch { /* The selection still applies for this session. */ }
+      try { localStorage.setItem(key, value); } catch { /* 当前会话仍使用所选项。 */ }
     }}><Icon name={value === 'light' ? 'sun' : 'moon'} />{value === 'light' ? '浅色' : '深色'}</button>)}
   </div>;
 }

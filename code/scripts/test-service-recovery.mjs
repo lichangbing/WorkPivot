@@ -8,7 +8,7 @@ const prefix = `workpivot-recovery-test-${Date.now()}`;
 const database = prefix + '-db', server = prefix + '-api';
 const mcp = prefix + '-mcp';
 const image = process.env.WORKPIVOT_TEST_SERVICE_IMAGE || 'workpivot-server:0.3.0-rc.1-recovery-validation-20260929';
-const pgImage = process.env.WORKPIVOT_TEST_PG_IMAGE || 'postgres:15-alpine';
+const pgImage = process.env.WORKPIVOT_TEST_PG_IMAGE || 'pgvector/pgvector:pg15';
 const docker = args => {
   try {
     return execFileSync(windows ? 'wsl' : 'docker', windows ? ['-d', 'Ubuntu-24.04', '--', 'docker', ...args] : args,
@@ -44,7 +44,7 @@ try {
     '-e', 'WORKPIVOT_RECOVERY_MCP_URL=http://' + mcp + ':39801',
     '-e', 'WORKPIVOT_DATABASE_URL=' + url('wp_recovery_app'), '-e', 'WORKPIVOT_AUTH_DATABASE_URL=' + url('wp_recovery_auth'),
     image, './node_modules/.bin/tsx', 'eval/wsl-service-recovery.mts', 'serve']); apiCreated = true;
-  // Test current checkout source using the existing dependency image, without touching the deployed service.
+  // 用已有依赖镜像验证当前检出源码，不操作已部署服务。
   for (const folder of ['server', 'core', 'shared']) docker(['cp', linuxPath(resolve(code, `packages/${folder}/src/.`)) + '/.', `${server}:/app/packages/${folder}/src/`]);
   docker(['cp', linuxPath(resolve(code, 'eval/wsl-service-recovery.mts')), `${server}:/app/eval/wsl-service-recovery.mts`]);
   docker(['start', server]);
@@ -65,7 +65,7 @@ try {
   console.log(probe('after'));
   console.log('PASS second full restart preserves single recovery event; no Docker socket mounted');
 } finally {
-  // Only uniquely named resources created by this invocation are removed.
+  // 只清理本次调用创建且名称唯一的资源。
   try {
     for (const [created, name] of [[apiCreated, server], [mcpCreated, mcp], [dbCreated, database]]) {
       if (created) {

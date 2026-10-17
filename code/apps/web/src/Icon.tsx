@@ -33,7 +33,7 @@ const paths = {
 } as const;
 export type IconName = keyof typeof paths;
 
-/** One vector family; currentColor follows the surrounding theme and status. */
+/** 统一矢量图标风格；currentColor 跟随周围主题和状态。 */
 export function Icon({ name, size = 16, style }: { name: IconName; size?: number; style?: CSSProperties }): React.JSX.Element {
   return <svg aria-hidden="true" focusable="false" className="wp-icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={style}><path d={paths[name]} /></svg>;
 }

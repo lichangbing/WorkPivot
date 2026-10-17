@@ -1,4 +1,4 @@
-// Dedicated WSL host service; never run this inside a container or mount a Docker socket.
+// 专用 WSL 宿主服务；禁止在容器内运行或挂载 Docker 套接字。
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, existsSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs';
 import { homedir } from 'node:os';

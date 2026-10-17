@@ -1,3 +1,10 @@
+import type {Embeddings} from './embeddings.js';
+import type {EmbeddingInput} from './embedding-client.js';
+import {TrashRepository} from './trash.js';
+import { Automations } from './automations.js';
+import { automationRoutes } from './automation-routes.js';
+import { SkillBuilds } from './skill-builds.js';
+import { skillBuildRoutes } from './skill-build-routes.js';
 import { MemoryTemplates } from './memory-templates.js';
 import {expertRoutes} from './expert-routes.js';
 import {Experts} from './experts.js';
@@ -24,8 +31,8 @@ import type { McpRepository } from './mcp.js';
 import { API_PROTOCOL } from '@workpivot/shared';
 import type { FileRepository } from './files.js';
 
-/** Integration surface for K01. Not wired to the production UI until all services are ported. */
-export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken: string, execution?: DatabaseExecution, providers?: ProviderRepository, mcp?: McpRepository, webDist?: string, files?: FileRepository): Promise<Express> {
+/** K01 联调接口；各服务适配完成后接入生产界面。 */
+export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken: string, execution?: DatabaseExecution, providers?: ProviderRepository, mcp?: McpRepository, webDist?: string, files?: FileRepository, skillBuilds?: SkillBuilds, automations?: Automations, embeddings?: Embeddings): Promise<Express> {
   await assertRestrictedRole(authPool, 'identity'); await assertRestrictedRole(appPool, 'workpivot');
   const accounts = new AccountRepository(authPool), workspace = new WorkspaceRepository(appPool);
   const conversation = new ConversationRepository(appPool);
@@ -43,7 +50,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     res.json({ ok: true, name: 'workpivot', version: '0.3.0-rc.1', releaseStage: 'rc', releaseScope: 'single-user', apiProtocol: API_PROTOCOL, storage: 'postgresql', productionReady: false, chatEnabled: !!execution, filesEnabled: !!files, providersEnabled: !!providers, mcpEnabled: !!mcp });
   });
   app.get('/api/auth/state', async (req, res) => { const user = await accounts.resolve(token(req)); res.json({ needsSetup: await accounts.needsSetup(), setupTokenRequired: true, authenticated: !!user, user }); });
-  const throttle = authThrottle(() => { /* Database preview must never persist a legacy file audit. */ });
+  const throttle = authThrottle(() => { /* 数据库预览入口不得持久化旧文件审计。 */ });
   app.post('/api/auth/register', throttle, async (req, res) => { const b = body(req); res.json(await accounts.registerFirst(str(b.username), str(b.password), str(b.initToken), initToken)); });
   app.post('/api/auth/login', throttle, async (req, res) => { const b = body(req); res.json(await accounts.login(str(b.username), str(b.password))); });
   app.use('/api', async (req, res, next) => {
@@ -52,10 +59,24 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     if (user.mustChangePassword && !['/auth/password', '/auth/logout'].includes(req.path)) throw new RepositoryError(403, '请先修改临时密码');
     res.locals['user'] = user; next();
   });
-  const knowledge = new KnowledgeRepository(appPool);
+  app.use('/api/automations', automationRoutes(automations ?? new Automations(appPool)));
+  if(embeddings){
+    app.use('/api/embeddings',(_req,res,next)=>{if(actor(res).role!=='admin')throw new RepositoryError(403,'仅管理员可配置本地向量服务');next();});
+    app.get('/api/embeddings',async(_req,res)=>res.json({spaces:await embeddings.list(actor(res).id)}));
+    app.post('/api/embeddings',async(req,res)=>res.json(await embeddings.create(actor(res).id,body(req) as unknown as EmbeddingInput)));
+    app.post('/api/embeddings/:id/test',async(req,res)=>res.json(await embeddings.test(actor(res).id,str(req.params['id']),num(body(req).revision))));
+    app.post('/api/embeddings/:id/action',async(req,res)=>res.json(await embeddings.action(actor(res).id,str(req.params['id']),num(body(req).revision),str(body(req).action))));
+    app.post('/api/embeddings/search',async(req,res)=>res.json(await embeddings.search(actor(res).id,str(body(req).taskId),str(body(req).query))));
+  }
+  const trash=new TrashRepository(appPool,files);
+  app.get('/api/trash',async(_req,res)=>res.json(await trash.list(actor(res).id)));
+  app.post('/api/trash/:id/restore',async(req,res)=>res.json(await trash.restore(actor(res).id,str(req.params['id']),str(body(req).revision))));
+  app.post('/api/trash/:id/purge',async(req,res)=>res.json(await trash.purge(actor(res).id,str(req.params['id']),str(body(req).revision),str(body(req).confirmation))));
+  const knowledge = new KnowledgeRepository(appPool,embeddings);
   app.get('/api/tasks/:id/knowledge',async(req,res)=>{res.json(await knowledge.search(actor(res).id,str(req.params['id']),str(req.query['q'])));});
   app.get('/api/tasks/:id/knowledge/:chunkId',async(req,res)=>{res.json(await knowledge.read(actor(res).id,str(req.params['id']),str(req.params['chunkId'])));});
   const skills = new DatabaseSkills(appPool);
+  app.use('/api/skill-builds', skillBuildRoutes(skillBuilds ?? new SkillBuilds(appPool,files)));
   app.use('/api/skill-packages', databaseSkillRoutes(skills));
   app.get('/api/skill-market', async (_req, res) => { res.json({ skills: await skills.market(actor(res).id) }); });
   app.put('/api/skill-market/:name', async (req, res) => { if (typeof body(req).loaded !== 'boolean') throw new RepositoryError(400, '加载状态无效'); await skills.select(actor(res).id, str(req.params['name']), body(req).loaded as boolean); res.json({ ok: true }); });
@@ -180,7 +201,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   app.delete('/api/projects/:id', async (req, res) => { await workspace.deleteProject(actor(res).id, str(req.params['id']), num(body(req).revision)); res.json({ ok: true, cleanupPending: await cleanup(actor(res).id) }); });
   app.delete('/api/tasks/:id', async (req, res) => { await workspace.deleteTask(actor(res).id, str(req.params['id']), num(body(req).revision)); res.json({ ok: true, cleanupPending: await cleanup(actor(res).id) }); });
   app.post('/api/tasks', async (req, res) => { const b = body(req); res.json({ task: await workspace.createTask(actor(res).id, str(b.name), b.projectId == null ? undefined : str(b.projectId)) }); });
-  // Explicit persistence-only endpoint. /messages remains unavailable so callers cannot mistake a saved message for an agent run.
+  // 明确的仅持久化接口；不开放 /messages，避免把保存消息误认为执行智能体。
   app.post('/api/tasks/:id/notes', async (req, res) => { const b = body(req); res.json({ message: await workspace.appendMessage(actor(res).id, str(req.params['id']), 'user', str(b.content), str(b.requestId)) }); });
   app.get('/api/tasks/:id/notes', async (req, res) => { res.json({ messages: await workspace.messages(actor(res).id, str(req.params['id']), req.query['after'] === undefined ? '0' : str(req.query['after'])) }); });
   app.get('/api/preferences/:key', async (req, res) => { res.json({ setting: await workspace.setting(actor(res).id, str(req.params['key'])) }); });
@@ -221,7 +242,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   app.use('/api', (_req, res) => { res.status(503).json({ error: '此功能尚未接入 PostgreSQL 验证服务', code: 'DATABASE_PORT_PENDING' }); });
   if (webDist) app.use(express.static(webDist));
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
-    void _next; // Express identifies error handlers by their four-argument signature.
+    void _next; // Express 通过四参数签名识别错误处理器。
     if (error instanceof RepositoryError) { res.status(error.status).json({ error: error.message }); return; }
     const code = (error as { code?: string })?.code;
     if (code === '23505') { res.status(409).json({ error: '记录已存在或操作冲突' }); return; }

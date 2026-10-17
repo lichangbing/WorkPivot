@@ -1,3 +1,4 @@
+import { testSkillBuilds } from './database-skill-builds.mts';
 import { testMcpFailures } from './database-mcp-failures.mts';
 import { testProcessRecovery } from './database-process-recovery.mts';
 import { testModelRecovery } from './database-model-recovery.mts';
@@ -36,7 +37,7 @@ const url = process.env['WORKPIVOT_TEST_PG_URL'];
 if (!url || process.env['WORKPIVOT_TEST_PG_DISPOSABLE'] !== '1') throw Error('Requires an explicitly disposable PostgreSQL instance');
 const admin = pool(url);
 const appPassword = randomBytes(24).toString('hex'), authPassword = randomBytes(24).toString('hex');
-// Dedicated instance owned by this fixture; never point this test at business databases.
+// 本测试独占的专用实例；禁止指向业务数据库。
 await admin.query(`CREATE ROLE wp_test_app LOGIN PASSWORD '${appPassword}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
  CREATE ROLE wp_test_auth LOGIN PASSWORD '${authPassword}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`);
 const appUrl = new URL(url); appUrl.username = 'wp_test_app'; appUrl.password = appPassword;
@@ -53,11 +54,11 @@ let server: ReturnType<Awaited<ReturnType<typeof createDatabaseApp>>['listen']> 
 try {
   await installSchema(admin, 'wp_test_app', 'wp_test_auth');
   await installSchema(admin, 'wp_test_app', 'wp_test_auth');
-  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 27, 'schema installation idempotent');
-  // Recreate the exact empty v1 shape to exercise the additive upgrade independently.
-  await admin.query('DROP FUNCTION workpivot.clear_memory_review_key() CASCADE; DROP FUNCTION workpivot.clear_memory_suggestion_context() CASCADE; DROP FUNCTION workpivot.expert_epoch_changed() CASCADE; DROP FUNCTION workpivot.expert_source_deleted() CASCADE; DROP TABLE workpivot.expert_suggestions; DROP TABLE workpivot.expert_jobs; DROP TABLE workpivot.expert_experiences; ALTER TABLE workpivot.tasks DROP COLUMN expert_id; ALTER TABLE workpivot.projects DROP COLUMN expert_id; DROP TABLE workpivot.experts; DROP FUNCTION workpivot.notify_task_event() CASCADE; DROP TABLE workpivot.context_checkpoints; DROP FUNCTION workpivot.invalidate_checkpoints() CASCADE; ALTER POLICY personal_memory_revisions ON workpivot.memory_revisions USING(owner_user_id=workpivot.actor_id() AND EXISTS(SELECT 1 FROM workpivot.memories m WHERE m.id=memory_id AND m.deleted_at IS NULL)); ALTER TABLE workpivot.memories DROP COLUMN merged_into; ALTER TABLE workpivot.memories DROP COLUMN locked; DROP TABLE workpivot.memory_controls; DROP TABLE workpivot.memory_templates; DROP TABLE workpivot.knowledge_chunks; DROP TABLE workpivot.knowledge_versions; DROP TABLE workpivot.document_processing; DROP TABLE workpivot.execution_artifacts; DROP TABLE workpivot.skill_executions; DROP TABLE workpivot.memory_sources; DROP TABLE workpivot.memory_jobs; DROP TABLE workpivot.memory_suggestions; DROP TABLE workpivot.skill_selections; DROP TABLE workpivot.skill_catalog; DROP TABLE workpivot.skill_releases; DROP TABLE workpivot.skill_drafts; DROP TABLE workpivot.document_versions; DROP TABLE workpivot.documents; DROP TABLE workpivot.run_permissions; DROP TABLE workpivot.mcp_connections; DROP TABLE workpivot.default_model; DROP TABLE workpivot.model_providers; DROP TABLE workpivot.task_runs; DROP TABLE workpivot.conversation_events; DROP TABLE workpivot.conversation_turns; ALTER TABLE workpivot.tasks DROP COLUMN next_turn_sequence; DELETE FROM workpivot_meta.schema_versions WHERE version>1');
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 31, 'schema installation idempotent');
+  // 重建准确的空 v1 结构，独立验证增量升级。
+  await admin.query('DROP TABLE workpivot.embedding_jobs; DROP TABLE workpivot.embedding_spaces; DROP TABLE workpivot.trash_entries; DROP FUNCTION workpivot.automation_source_invalidated() CASCADE; DROP TABLE workpivot.automation_notices; DROP TABLE workpivot.automation_runs; DROP TABLE workpivot.automations; ALTER TABLE workpivot.tasks DROP COLUMN origin; DROP FUNCTION workpivot.invalidate_skill_builds() CASCADE; DROP FUNCTION workpivot.skill_visibility_guard() CASCADE; DROP TABLE workpivot.skill_trials; DROP TABLE workpivot.skill_builds; DROP FUNCTION workpivot.clear_memory_review_key() CASCADE; DROP FUNCTION workpivot.clear_memory_suggestion_context() CASCADE; DROP FUNCTION workpivot.expert_epoch_changed() CASCADE; DROP FUNCTION workpivot.expert_source_deleted() CASCADE; DROP TABLE workpivot.expert_suggestions; DROP TABLE workpivot.expert_jobs; DROP TABLE workpivot.expert_experiences; ALTER TABLE workpivot.tasks DROP COLUMN expert_id; ALTER TABLE workpivot.projects DROP COLUMN expert_id; DROP TABLE workpivot.experts; DROP FUNCTION workpivot.notify_task_event() CASCADE; DROP TABLE workpivot.context_checkpoints; DROP FUNCTION workpivot.invalidate_checkpoints() CASCADE; ALTER POLICY personal_memory_revisions ON workpivot.memory_revisions USING(owner_user_id=workpivot.actor_id() AND EXISTS(SELECT 1 FROM workpivot.memories m WHERE m.id=memory_id AND m.deleted_at IS NULL)); ALTER TABLE workpivot.memories DROP COLUMN merged_into; ALTER TABLE workpivot.memories DROP COLUMN locked; DROP TABLE workpivot.memory_controls; DROP TABLE workpivot.memory_templates; DROP TABLE workpivot.knowledge_chunks; DROP TABLE workpivot.knowledge_versions; DROP TABLE workpivot.document_processing; DROP TABLE workpivot.execution_artifacts; DROP TABLE workpivot.skill_executions; DROP TABLE workpivot.memory_sources; DROP TABLE workpivot.memory_jobs; DROP TABLE workpivot.memory_suggestions; DROP TABLE workpivot.skill_selections; DROP TABLE workpivot.skill_catalog; DROP TABLE workpivot.skill_releases; DROP TABLE workpivot.skill_drafts; DROP TABLE workpivot.document_versions; DROP TABLE workpivot.documents; DROP TABLE workpivot.run_permissions; DROP TABLE workpivot.mcp_connections; DROP TABLE workpivot.default_model; DROP TABLE workpivot.model_providers; DROP TABLE workpivot.task_runs; DROP TABLE workpivot.conversation_events; DROP TABLE workpivot.conversation_turns; ALTER TABLE workpivot.tasks DROP COLUMN next_turn_sequence; DELETE FROM workpivot_meta.schema_versions WHERE version>1');
   await installSchema(admin, 'wp_test_app', 'wp_test_auth');
-  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 27, 'existing v1 database upgrades to latest schema');
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 31, 'existing v1 database upgrades to latest schema');
   await assertRestrictedRole(business, 'workpivot'); await assertRestrictedRole(identity, 'identity');
   await rejects(() => assertRestrictedRole(admin, 'workpivot'), 'superuser runtime rejected');
   await rejects(() => business.query('SELECT * FROM identity.credentials'), 'business pool cannot read password hashes');
@@ -154,7 +155,7 @@ try {
   await rejects(() => workspace.appendMessage(member.id, deletionTask.id, 'user', 'late', randomUUID()), 'deleted task rejects late message', 404);
   await rejects(() => workspace.createMemory(member.id, 'late', 'task', deletionTask.id), 'deleted task rejects late memory', 404);
   await rejects(() => workspace.deleteProject(member.id, deletionProject.id, 2), 'stale project deletion rejected', 409);
-  // Race a new task and project memory against deletion: either committed first and removed, or rejected.
+  // 让新任务和项目记忆与删除并发：先提交的数据随后删除，否则拒绝写入。
   const deleteRace = await Promise.allSettled([
     workspace.deleteProject(member.id, deletionProject.id, 1),
     workspace.createTask(member.id, 'racing child', deletionProject.id),
@@ -478,6 +479,7 @@ try {
   check((await http('/projects/' + httpProject.id, finalSession.token, { revision: 1 }, 'DELETE')).ok, 'HTTP project deletion persists');
   await testMemoryTools(business, member.id, owner.user.id, check);
   await testSkills(business, owner.user.id, member.id, check);
+  await testSkillBuilds(business, member.id, owner.user.id, check);
   const runtimeApp = await createDatabaseApp(identity, business, init, execution, providers, mcp);
   const runtimeServer = runtimeApp.listen(0, '127.0.0.1'); await new Promise<void>(r => runtimeServer.once('listening', r));
   try {

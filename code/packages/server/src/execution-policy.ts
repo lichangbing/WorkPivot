@@ -4,7 +4,7 @@ import type { Tool } from '@workpivot/core';
 
 export type ExecutionMode = 'disabled' | 'docker' | 'worker' | 'trusted-local';
 
-/** Explicit opt-in; production must never fall back to host command execution. */
+/** 须显式启用；生产环境禁止降级为宿主命令执行。 */
 export function executionMode(env: NodeJS.ProcessEnv = process.env): ExecutionMode {
   if (env['WORKPIVOT_EXECUTION_MODE'] === 'worker' && env['WORKPIVOT_WORKER_URL'] && env['WORKPIVOT_WORKER_TOKEN']) return 'worker';
   if (currentTenant()?.userId || (currentTenant() && listTenants().length > 1)) return 'disabled';

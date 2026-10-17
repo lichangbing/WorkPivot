@@ -1,4 +1,4 @@
-/** Opt-in live test: run inside deployed container. No account changes or command tools. */
+/** 显式启用的真实服务测试，在已部署容器中运行；不改账号、不使用命令工具。 */
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

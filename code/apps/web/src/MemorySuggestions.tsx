@@ -7,7 +7,7 @@ export function MemorySuggestions() {
   const [editing, setEditing] = useState<string | null>(null), [draft, setDraft] = useState(''), [busy, setBusy] = useState(false);
   useEffect(() => { const c = new AbortController(); let timer: ReturnType<typeof setTimeout>; const poll = async () => {
     try { const r = await jsonFetch<{ suggestions: Suggestion[] }>('/api/memory-suggestions', { signal: c.signal }); if (!c.signal.aborted) setRows(r.suggestions); }
-    catch { /* A transient poll failure keeps current suggestions visible. */ }
+    catch { /* 轮询暂时失败时继续显示当前建议。 */ }
     finally { if (!c.signal.aborted) timer = setTimeout(() => { void poll(); }, 3000); }
   }; void poll(); return () => { c.abort(); clearTimeout(timer); }; }, []);
   const decide = async (s: Suggestion, accept: boolean) => {

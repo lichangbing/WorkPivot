@@ -1,4 +1,4 @@
-// Server-side opt-in runner. Model/worker settings stay in the existing web container.
+// 服务器端显式启用的测试入口，模型和执行器配置留在现有网页容器中。
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';

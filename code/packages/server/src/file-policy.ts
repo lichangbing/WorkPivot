@@ -5,7 +5,7 @@ import { listProjects, projectMemoryEditableBy, projectVisibleTo } from './proje
 import { listTasks, type Task } from './tasks.js';
 import { join } from 'node:path';
 
-/** A task's owner is the authority even when an administrator runs it on their behalf. Re-read roles on every access. */
+/** 即使管理员代执行，也以任务所有者的权限为准；每次访问重新读取角色。 */
 export function taskFilePolicy(task: Pick<Task, 'id' | 'directory' | 'projectId' | 'ownerUserId'>, fallbackUserId: string): (path: string, mode: 'read' | 'write') => boolean {
   return (path, mode) => {
     try {

@@ -105,7 +105,7 @@ try {
  detail=await body(await raw('/import?revision=',nested.toBuffer(),detail.revision));
  check('nested zip imports as draft',detail.files.length===2 && detail.published===v1 && detail.dirty);
  const evil=new Zip();evil.addFile('SKILL.md',Buffer.from(instructions));evil.addFile('escape.txt',Buffer.from('bad'));const evilBytes=evil.toBuffer();
- // Change both local and central names without altering their length.
+ // 同时修改本地目录和中央目录中的名称，保持长度不变。
  for(let at=evilBytes.indexOf(Buffer.from('escape.txt'));at>=0;at=evilBytes.indexOf(Buffer.from('escape.txt'),at+1))Buffer.from('../bad.txt').copy(evilBytes,at);
  check('zip traversal rejected',(await raw('/import?revision=',evilBytes,detail.revision)).status===400);
  const link=new Zip();link.addFile('SKILL.md',Buffer.from(instructions));const e=link.addFile('references/link',Buffer.from('/etc/passwd'));e.attr=(0xa1ff<<16)>>>0;

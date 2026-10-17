@@ -1,19 +1,19 @@
-# Thin desktop client: remote UI, local connection settings and tray only.
-# Backend, model credentials, skills and document libraries are deployed on the server.
+# 轻量桌面客户端：只包含远程界面、本地连接设置及托盘。
+# 后端、模型凭据、技能和文档库均部署在服务器。
 appId: com.workpivot.desktop
 productName: WorkPivot
 copyright: Copyright © 2026 WorkPivot
 directories:
   output: release
   buildResources: build
-# No bundled backend dependencies or native dependency rebuild.
+# 不打包后端依赖，也不重新构建原生依赖。
 npmRebuild: false
 buildDependenciesFromSource: false
-# Main/preload bundles and the local connection page.
+# 主进程、预加载包及本地连接页面。
 files:
   - dist/**
   - package.json
-# Client branding only.
+# 仅包含客户端品牌资源。
 extraResources:
   - from: build/icon.png
     to: icon.png

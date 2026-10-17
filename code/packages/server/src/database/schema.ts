@@ -1,8 +1,19 @@
+import {embeddingSchema} from './embedding-schema.js';
+import {trashSchema} from './trash-schema.js';
+import { automationSchema } from './automation-schema.js';
+import { skillBuildSchema } from './skill-build-schema.js';
 import { memoryReviewSchema } from './memory-review.js';
 import { memoryContextSchema } from './memory-context-schema.js';
 import { expertSchema } from './expert-schema.js';
-/** Versioned fresh-database schema. No legacy filesystem import. */
+/** 采用版本化的新数据库结构，不导入旧文件系统数据。 */
 export const schemaVersion = 1;
+// v1 仅将 SQL 注释翻译为中文；保留此前已部署结构的校验值，不改变任何建表语句。
+export const legacyV1Checksum = '1f9e155f434ec33d0ad80216978187a3bee49ade54391b7e5f4129734a5d4b62';
+const chineseV1Checksum = '2005cc5c41df2099114defb9e50fb4b20ec7765b8e3dbb0dc8f552a938a84fb8';
+// 只兼容本次纯注释翻译，后续若误改 v1 结构，不得借历史校验值跳过检查。
+export function matchesV1Checksum(stored: string, current: string): boolean {
+  return stored === current || current === chineseV1Checksum && stored === legacyV1Checksum;
+}
 export const schemaSql = `
 CREATE SCHEMA identity;
 CREATE SCHEMA workpivot;
@@ -41,7 +52,7 @@ CREATE TABLE workpivot.project_members (
  role text NOT NULL CHECK(role IN ('owner','editor','reader')), revoked_at timestamptz,
  PRIMARY KEY(project_id,user_id)
 );
--- Personal first release: no invitation or member-driven access yet. Project data is not tied to its creator by FK.
+-- 首版只开放个人使用，暂不提供邀请或成员授权访问；项目数据不通过外键绑定创建者。
 CREATE TABLE workpivot.tasks (
  id uuid PRIMARY KEY, owner_user_id uuid NOT NULL REFERENCES identity.users(id),
  project_id uuid REFERENCES workpivot.projects(id), name text NOT NULL CHECK(length(btrim(name)) BETWEEN 1 AND 200),
@@ -114,7 +125,7 @@ CREATE POLICY personal_memory_revisions ON workpivot.memory_revisions
 
 export const personalTables = ['messages', 'user_settings', 'forget_rules', 'knowledge_state', 'outbox_events'] as const;
 
-/** Additive schema upgrades; v1 remains checksum-stable. No legacy conversation import. */
+/** 只做增量结构升级，保留 v1 历史校验兼容，不导入旧对话。 */
 export const schemaUpgrades = [{ version: 2, sql: `
 ALTER TABLE workpivot.tasks ADD COLUMN next_turn_sequence bigint NOT NULL DEFAULT 1;
 CREATE TABLE workpivot.conversation_turns (
@@ -420,4 +431,4 @@ END $$;
 CREATE TRIGGER notify_conversation AFTER INSERT ON workpivot.conversation_events FOR EACH ROW EXECUTE FUNCTION workpivot.notify_task_event();
 CREATE TRIGGER notify_permissions AFTER INSERT OR UPDATE OR DELETE ON workpivot.run_permissions FOR EACH ROW EXECUTE FUNCTION workpivot.notify_task_event();
 CREATE TRIGGER notify_task_state AFTER UPDATE OF status,deleted_at ON workpivot.tasks FOR EACH ROW EXECUTE FUNCTION workpivot.notify_task_event();
-` }, {version:25,sql:expertSchema}, {version:26,sql:memoryContextSchema}, {version:27,sql:memoryReviewSchema}] as const;
+` }, {version:25,sql:expertSchema}, {version:26,sql:memoryContextSchema}, {version:27,sql:memoryReviewSchema}, {version:28,sql:skillBuildSchema}, {version:29,sql:automationSchema}, {version:30,sql:trashSchema}, {version:31,sql:embeddingSchema}] as const;

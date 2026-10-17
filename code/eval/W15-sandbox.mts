@@ -1,4 +1,4 @@
-/** Real Docker integration. Missing Docker/image is a failure, never a skipped pass. */
+/** 真实 Docker 联调；缺少 Docker 或镜像视为失败，不得跳过后宣称通过。 */
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

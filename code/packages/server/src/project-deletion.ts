@@ -5,7 +5,7 @@ import { listTasks, workspaceRoot } from './tasks.js';
 import { deleteTaskData } from './task-deletion.js';
 import { ensureWorkpivotDir } from './store.js';
 
-/** Full project deletion requires exclusive directories inside this account's workspace. */
+/** 完整删除项目要求目录为账号工作区内的独占目录。 */
 export function deleteProjectData(id: string): string[] {
   const project = getProject(id);
   if (!project) throw Error('项目不存在');

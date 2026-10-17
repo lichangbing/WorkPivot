@@ -1,4 +1,4 @@
-/** Desktop shell only. Accounts, model calls and task execution live on the remote server. */
+/** 仅提供桌面外壳；账号、模型调用和任务执行均位于远端服务器。 */
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Tray, shell } from 'electron';
 import { downloadArtifact, artifactRequest } from './artifact.js';
 import { ArtifactSync, fetchManifest } from './artifact-sync.js';

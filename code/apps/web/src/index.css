@@ -54,7 +54,7 @@ button:not(:disabled), summary { cursor: pointer; }
 .theme-switch { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--color-neutral-700); border-radius: 10px; background: var(--color-neutral-800); }
 .theme-switch button { display: flex; flex: 1; align-items: center; justify-content: center; gap: 7px; padding: 7px 12px; border-radius: 7px; font-size: 12px; white-space: nowrap; color: var(--color-neutral-400); }
 .theme-switch button[aria-pressed="true"] { background: var(--color-neutral-950); color: var(--color-neutral-100); box-shadow: 0 1px 4px #00000014; }
-/* Accent buttons retain white ink in both themes. */
+/* 强调按钮在两种主题中均保留白色文字。 */
 button.bg-blue-600, button.bg-blue-500, button.bg-emerald-600 { color: white; }
 .message-body { overflow-wrap: anywhere; color: var(--color-neutral-200); }
 .message-body > :first-child { margin-top: 0; }
@@ -70,10 +70,10 @@ button.bg-blue-600, button.bg-blue-500, button.bg-emerald-600 { color: white; }
 .message-body table { display: block; overflow-x: auto; border-collapse: collapse; }
 .message-body th, .message-body td { border: 1px solid var(--color-neutral-700); padding: 7px 12px; }
 
-/* Keep the composer neutral when its text field receives pointer focus. */
+/* 输入框获得指针焦点时，编辑器仍保持中性色。 */
 .message-input:focus-visible { outline: none; }
 
-/* Consistent typography across the existing three-column database workspace. */
+/* 现有数据库三栏工作区统一使用一致的排版。 */
 .workspace-shell { font-size: 14px; line-height: 1.6; font-weight: 400; }
 .workspace-shell .text-xs { font-size: 13px; line-height: 1.5; }
 .workspace-shell .text-sm { font-size: 14px; line-height: 1.6; }

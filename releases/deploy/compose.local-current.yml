@@ -1,0 +1,63 @@
+name: workpivot-local
+services:
+  embedding:
+    image: ollama/ollama:0.6.8@sha256:50ab2378567a62b811a2967759dd91f254864c3495cbe50576bd8a85bc6edd56
+    environment:
+      OLLAMA_NUM_PARALLEL: '1'
+      OLLAMA_MAX_LOADED_MODELS: '1'
+      OLLAMA_MAX_QUEUE: '8'
+    volumes:
+      - embedding_models:/root/.ollama
+    cpus: 2.0
+    mem_limit: 4g
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+  database:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: workpivot
+      POSTGRES_USER: workpivot_schema
+      POSTGRES_PASSWORD: ${DATABASE_ADMIN_PASSWORD:?需要数据库管理密码}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U workpivot_schema -d workpivot"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  server:
+    image: workpivot-server:local-hybrid-20261017
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:39986:39800"
+    environment:
+      WORKPIVOT_DATABASE_URL: postgresql://workpivot_app:${DATABASE_APP_PASSWORD}@database:5432/workpivot
+      WORKPIVOT_AUTH_DATABASE_URL: postgresql://workpivot_auth:${DATABASE_AUTH_PASSWORD}@database:5432/workpivot
+      WORKPIVOT_ADMIN_INIT_TOKEN: ${WORKPIVOT_ADMIN_INIT_TOKEN}
+      WORKPIVOT_SECRET_KEY: ${WORKPIVOT_SECRET_KEY}
+      WORKPIVOT_DATABASE_FILES_ROOT: /data/files
+      WORKPIVOT_WORKER_URL: http://host.docker.internal:39990
+      WORKPIVOT_WORKER_TOKEN: ${WORKPIVOT_WORKER_TOKEN}
+      TZ: Asia/Shanghai
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - files:/data/files
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:rw,nosuid,nodev,size=256m"]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:39800/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+volumes:
+  embedding_models:
+  postgres:
+  files:

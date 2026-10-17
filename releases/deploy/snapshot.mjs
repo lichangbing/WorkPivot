@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Run on the Linux Docker host. Restore always creates new volumes.
+// 在 Linux Docker 宿主运行；恢复时始终创建新数据卷。
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, createReadStream } from 'node:fs';
 import { resolve, join } from 'node:path';

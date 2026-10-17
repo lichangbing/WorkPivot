@@ -1,6 +1,6 @@
 import type { Pool, PoolClient, Notification } from 'pg';
 
-/** One LISTEN connection per app, shared by all task subscriptions; no message data in NOTIFY. */
+/** 每个应用共用一条 LISTEN 连接服务全部任务订阅；NOTIFY 不含消息正文。 */
 export class TaskNotifications {
   private listeners = new Map<string, Set<() => void>>();
   private client?: PoolClient;

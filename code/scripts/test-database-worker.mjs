@@ -1,4 +1,4 @@
-// Linux/WSL host runner: dedicated PostgreSQL, real worker, controlled model fixture.
+// Linux/WSL 宿主测试入口：专用 PostgreSQL、真实执行器及受控模型夹具。
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomBytes } from 'node:crypto';
@@ -45,11 +45,11 @@ try {
     } catch { res.writeHead(500).end('Fixture control failed'); }
   });
   await new Promise(r => control.listen(0, '127.0.0.1', r));
-  await docker(['run', '-d', '--name', database, '--label', 'workpivot.disposable=joint-worker', '--tmpfs', '/var/lib/postgresql/data:rw,nosuid,size=512m', '-p', '127.0.0.1::5432', '-e', 'POSTGRES_DB=workpivot_joint', '-e', 'POSTGRES_PASSWORD=' + password, process.env.WORKPIVOT_TEST_PG_IMAGE || 'postgres:15-alpine']); dbCreated = true;
+  await docker(['run', '-d', '--name', database, '--label', 'workpivot.disposable=joint-worker', '--tmpfs', '/var/lib/postgresql/data:rw,nosuid,size=512m', '-p', '127.0.0.1::5432', '-e', 'POSTGRES_DB=workpivot_joint', '-e', 'POSTGRES_PASSWORD=' + password, process.env.WORKPIVOT_TEST_PG_IMAGE || 'pgvector/pgvector:pg15']); dbCreated = true;
   await wait(async () => { try { await docker(['exec', database, 'pg_isready', '-U', 'postgres', '-d', 'workpivot_joint']); return true; } catch { return false; } });
   const dbInfo = JSON.parse(await docker(['inspect', database]))[0];
   const port = dbInfo.NetworkSettings.Ports['5432/tcp'][0].HostPort;
-  // Trusted test code needs host loopback for the dedicated worker; skill sandboxes still use network=none.
+  // 可信测试代码通过宿主回环连接专用执行器；技能沙箱仍使用 network=none。
   await docker(['create', '--name', api, '--label', 'workpivot.disposable=joint-worker', '--network', 'host', '--user', 'node',
     '-e', 'WORKPIVOT_JOINT_FIXTURE=1', '-e', `WORKPIVOT_TEST_PG_URL=postgresql://postgres:${password}@127.0.0.1:${port}/workpivot_joint`,
     '-e', 'WORKPIVOT_WORKER_URL=' + workerUrl, '-e', 'WORKPIVOT_WORKER_TOKEN=' + token,
@@ -63,7 +63,7 @@ try {
   console.log((logs.stdout + logs.stderr).replaceAll(password, '[redacted]').replaceAll(token, '[redacted]'));
   if (status !== '0') throw Error('Database worker integration failed');
 } catch (error) {
-  // execFile errors include argv (including temporary passwords), so never print the error object.
+  // execFile 错误包含参数及临时密码，禁止打印整个错误对象。
   console.error(error.message === 'Database worker integration failed' ? error.message : 'Joint fixture failed; credentials withheld'); process.exitCode = 1;
 } finally {
   control?.closeAllConnections(); if (control) await new Promise(r => control.close(r));

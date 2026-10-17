@@ -23,7 +23,7 @@ function* packageJsonPaths(rootDir) {
     if (!existsSync(nm)) continue;
     for (const pkg of readdirSync(nm)) {
       if (pkg.startsWith('.')) continue;
-      // Scoped packages live one level below @scope, not at @scope/package.json.
+      // 作用域包位于 @scope 下一级，而非 @scope/package.json。
       const packages = pkg.startsWith('@')
         ? readdirSync(join(nm, pkg)).map(name => join(nm, pkg, name))
         : [join(nm, pkg)];

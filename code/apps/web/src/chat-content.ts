@@ -11,7 +11,7 @@ export interface ContentItem {
   durationMs?: number;
 }
 
-/** Keep response text separate from reasoning and tools, including interleaved streams. */
+/** 将回复正文与思考、工具内容分离，兼容交错输出的流。 */
 export function appendContent<T extends ContentItem>(items: T[], kind: 'assistant' | 'thought', text: string): Array<T | ContentItem> {
   if (!text) return items;
   const last = items.at(-1);
@@ -25,4 +25,8 @@ export function toolSummary(name: string, args: unknown): string {
   const data = args as Record<string, unknown>;
   const detail = data['path'] ?? data['pattern'] ?? data['command'] ?? data['name'];
   return typeof detail === 'string' ? detail.split('\n')[0]!.slice(0, 180) : name;
+}
+
+export function retrievalStatus(content:string):string|null {
+ try{const event=JSON.parse(content);if(event.toolName!=='search_project_documents'||event.ok!==true||typeof event.message!=='string')return null;const mode=event.message.match(/^\{"mode":"(hybrid|keyword)"/);return mode?.[1]==='hybrid'?'已使用关键词＋语义混合检索':mode?.[1]==='keyword'?'当前使用关键词检索：向量服务未启用、未就绪或暂时不可用':null;}catch{return null;}
 }

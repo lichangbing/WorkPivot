@@ -3,7 +3,7 @@ import type { Pool, PoolClient } from 'pg';
 import type { Tool } from '@workpivot/core';
 import { RepositoryError, transaction, uuid } from './connection.js';
 
-/** A task can only retrieve personal memory, its own project and its own task memory. */
+/** 任务只能检索个人记忆、所属项目记忆和本任务记忆。 */
 export class DatabaseMemoryTools {
   constructor(private readonly db: Pool, private readonly purpose:'load'|'update'='load') {}
   private async scope(c: PoolClient, taskId: string) {

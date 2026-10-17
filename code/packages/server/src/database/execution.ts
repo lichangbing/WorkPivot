@@ -4,7 +4,7 @@ import { RepositoryError } from './connection.js';
 import { RunRepository, type RunHandle } from './runs.js';
 import type { CompactionService } from './compaction.js';
 
-/** Configured by trusted server services, never by HTTP-supplied paths, keys or tools. */
+/** 由可信服务器服务配置，不接受 HTTP 提供的路径、密钥或工具。 */
 export type PrepareExecution = (actor: string, taskId: string, context: { run?: RunHandle }) => Promise<Omit<RunAgentOptions, 'messages' | 'onEvent' | 'signal'>>;
 export type DurableEvent = Omit<AgentEvent, 'type'> & { type: AgentEvent['type'] | 'permission_request' | 'permission_resolved'; id: string; sequence: string; turnId: string; runId: string; eventId?: string };
 export class DatabaseExecution {
@@ -36,7 +36,7 @@ export class DatabaseExecution {
         const requestAccess: NonNullable<RunAgentOptions['requestAccess']> = options.requestAccess ?? (async request => {
           if (!request.external || request.paths.length || request.kind !== 'write') return false;
           const permission = await this.runs.requestPermission(actor, run, request);
-          try { if (!permission.automatic) send(permission); } catch { /* Pending requests remain queryable after disconnect. */ }
+          try { if (!permission.automatic) send(permission); } catch { /* 断线后仍可查询待处理请求。 */ }
           while (!controller.signal.aborted) {
             const decision = await this.runs.consumePermission(actor, run, permission.id);
             if (decision !== 'pending') return decision === 'allow';
@@ -52,24 +52,24 @@ export class DatabaseExecution {
           onEvent: async value => {
             try {
               const saved = await this.runs.append(actor, run, value);
-              // Never tell the client an event exists until it has committed.
-              try { send({ ...value, ...saved }); } catch { /* Client may reconnect using persisted events. */ }
+              // 事件提交成功后才能通知客户端。
+              try { send({ ...value, ...saved }); } catch { /* 客户端可通过持久化事件重连。 */ }
             } catch (error) { persistenceFailed = true; controller.abort(); throw error; }
           },
         });
         reason = await this.runs.finish(actor, run, persistenceFailed ? 'error' : result.stopReason, result.messages.slice(messages.length + 1));
       } catch {
         reason = controller.signal.aborted && !persistenceFailed ? 'aborted' : 'error';
-        // A stale executor must not mark a newer run complete; the repository fences every write.
-        try { reason = await this.runs.finish(actor, run, reason, []); } catch { /* Lease recovery retains interrupted state. */ }
+        // 过期执行器不得将新运行标记完成；仓库层对每次写入检查栅栏。
+        try { reason = await this.runs.finish(actor, run, reason, []); } catch { /* 租约恢复保留中断状态。 */ }
       } finally { clearInterval(timer); this.controllers.delete(run.id); }
-      if (reason === 'completed' && this.onCompleted) { try { await this.onCompleted(actor, taskId, run.id); } catch { /* Durable recovery can enqueue finished runs later. */ } }
+      if (reason === 'completed' && this.onCompleted) { try { await this.onCompleted(actor, taskId, run.id); } catch { /* 持久化恢复稍后可将已完成运行加入队列。 */ } }
       return reason;
     } };
   }
   async stop(actor: string, taskId: string): Promise<void> {
     await this.runs.stop(actor, taskId);
     for (const local of this.controllers.values()) if (local.actor === actor && local.taskId === taskId) local.controller.abort();
-    // Other server processes observe the stop through the durable heartbeat.
+    // 其他服务器进程通过持久化心跳感知停止。
   }
 }

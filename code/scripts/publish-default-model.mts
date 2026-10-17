@@ -10,7 +10,7 @@ try {
   if(candidates.length!==1)throw Error('Requires exactly one active administrator model; choose default in admin UI');
   const selected=candidates[0]!;await providers.activate(selected.owner,selected.model.id,selected.model.revision,true);
   const models=new DatabaseModelService(auth,db,providers);
-  // A real bounded connectivity probe uses existing configuration; no conversation or user data is sent.
+  // 使用现有配置执行有界真实连通性探测，不发送对话或用户数据。
   const client=await models.client(selected.owner);let output='';
   for await(const e of client.streamChat([{role:'user',content:'Reply only WORKPIVOT_OK.'}],[],AbortSignal.timeout(45000))){if(e.type==='delta')output+=e.text;}
   console.log(JSON.stringify({published:true,name:selected.model.name,model:selected.model.modelId,probeResponded:output.trim().length>0}));

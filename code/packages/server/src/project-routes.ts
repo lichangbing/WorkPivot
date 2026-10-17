@@ -11,7 +11,7 @@ type AuthRequest = Request<{ id: string }> & { user?: PublicUser };
 
 export function projectRoutes(onAccessChanged?: (projectId: string) => void): Router {
   const router = Router();
-  // Project ownership is immutable in the personal workspace model.
+  // 个人工作区模型中项目归属不可变。
   void onAccessChanged;
   router.put('/:id/access', (_req, res) => { res.status(403).json({ error: '个人项目不能分配给其他账号' }); });
   router.get('/:id/memory', (req: AuthRequest, res) => {

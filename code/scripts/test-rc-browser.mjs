@@ -8,8 +8,10 @@ const docker = args => {
   catch { throw Error('PostgreSQL测试容器操作失败（凭据已隐藏）'); }
 };
 const workflow = process.argv.includes('--workflow');
-if (process.argv.slice(2).some(arg => arg !== '--workflow')) throw Error('Unsupported browser fixture option');
-const image = process.env.WORKPIVOT_TEST_PG_IMAGE || (workflow ? 'postgres:15-alpine' : 'postgres:17-alpine');
+const live = process.argv.includes('--live');
+if (process.argv.slice(2).some(arg => !['--workflow', '--live'].includes(arg)) || workflow && live) throw Error('Unsupported browser fixture option');
+if (live && process.env.WORKPIVOT_LIVE_EVAL !== '1') throw Error('Real model calls require WORKPIVOT_LIVE_EVAL=1');
+const image = process.env.WORKPIVOT_TEST_PG_IMAGE || (workflow ? 'pgvector/pgvector:pg15' : 'pgvector/pgvector:pg16');
 const container = 'workpivot-pg-test-' + Date.now();
 const password = randomBytes(24).toString('hex'); let started = false, keeper;
 try {
@@ -23,7 +25,7 @@ try {
   const info = JSON.parse(docker(['inspect', container]))[0];
   const port = info.NetworkSettings.Ports['5432/tcp'][0].HostPort;
   console.log('Disposable PostgreSQL ready; isolated tmpfs, no business volumes, no Docker socket mount');
-  const run = spawnSync(process.execPath, ['--import', 'tsx', workflow ? 'eval/browser-workflow.mts' : 'eval/rc-browser.mts'], { cwd: resolve(import.meta.dirname, '..'), env: { ...process.env, WORKPIVOT_TEST_PG_DISPOSABLE: '1', WORKPIVOT_TEST_PG_URL: `postgresql://postgres:${password}@127.0.0.1:${port}/workpivot_test` }, stdio: 'inherit', timeout: 920000 });
+  const run = spawnSync(process.execPath, ['--import', 'tsx', live ? 'eval/live-browser-workflow.mts' : workflow ? 'eval/browser-workflow.mts' : 'eval/rc-browser.mts'], { cwd: resolve(import.meta.dirname, '..'), env: { ...process.env, WORKPIVOT_TEST_PG_DISPOSABLE: '1', WORKPIVOT_TEST_PG_URL: `postgresql://postgres:${password}@127.0.0.1:${port}/workpivot_test` }, stdio: 'inherit', timeout: live ? 3620000 : 920000 });
   if (run.error) throw Error('数据库测试未能完成');
   process.exitCode = run.status ?? 1;
 } finally {

@@ -30,7 +30,7 @@ export class ProviderRepository {
     if (id) version(expected!);
     const secret = value.apiKey ? JSON.stringify(this.box.encrypt(JSON.stringify({ actor, providerId, key: value.apiKey }))) : null;
     return transaction(this.db, async c => {
-      // Serialize all registry mutations for this owner, including active selection.
+      // 将该所有者的全部配置修改串行化，包括激活模型选择。
       await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', ['providers:' + actor]);
       if (id) {
         const old = (await c.query('SELECT revision,base_url FROM workpivot.model_providers WHERE id=$1', [id])).rows[0];

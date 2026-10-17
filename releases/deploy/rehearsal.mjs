@@ -1,4 +1,4 @@
-// Synthetic Linux deployment rehearsal. No Docker socket is passed to any container.
+// Linux 合成部署演练，不向任何容器传入 Docker 套接字。
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -76,7 +76,7 @@ try {
 finally {
   for (const name of containers.reverse()) { try { docker(['rm', '-f', '-v', name]); } catch { /* only this run's fixtures */ } }
   for (const name of volumes) { try { docker(['volume', 'rm', name]); } catch { /* missing or retained for investigation */ } }
-  // root is the unique mkdtemp fixture; no existing host directory is removed.
+  // root 是 mkdtemp 创建的唯一测试目录，不删除宿主已有目录。
   rmSync(root, { recursive: true, force: true });
 }
 const report = { date: new Date().toISOString(), results, overall: results.every((r) => r.pass) ? 'pass' : 'fail' };

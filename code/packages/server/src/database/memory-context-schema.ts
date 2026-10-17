@@ -1,4 +1,4 @@
-/** Keep contextual evidence only while a proposal awaits the user's decision. */
+/** 只在建议等待用户决定期间保留上下文证据。 */
 export const memoryContextSchema = `
 ALTER TABLE workpivot.memory_suggestions ADD COLUMN source_context jsonb NOT NULL DEFAULT '[]'::jsonb CHECK(jsonb_typeof(source_context)='array');
 CREATE FUNCTION workpivot.clear_memory_suggestion_context() RETURNS trigger LANGUAGE plpgsql AS $$

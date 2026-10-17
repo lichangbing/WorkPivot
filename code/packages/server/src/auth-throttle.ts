@@ -1,7 +1,7 @@
 import type { RequestHandler } from 'express';
 import { audit } from './audit.js';
 
-/** Short-lived request throttling, never a persistent account lock. Trust only Express's configured peer address. */
+/** 只做短期请求限流，不持久锁定账号；仅信任 Express 配置的对端地址。 */
 export function authThrottle(onThrottled: (ip: string) => void = (ip) => { audit({ event: 'auth_throttled', detail: ip }); }): RequestHandler {
   const counters = new Map<string, { count: number; expires: number }>();
   return (req, res, next) => {
@@ -19,7 +19,7 @@ export function authThrottle(onThrottled: (ip: string) => void = (ip) => { audit
         return;
       }
     }
-    // A full limiter rejects new identities until existing buckets expire; never evict to bypass limits.
+    // 限流器满额时拒绝新身份直至现有桶过期，禁止通过淘汰记录绕过限制。
     if (counters.size >= 10000 && keys.some(([key]) => !counters.has(key))) { res.status(429).json({ error: '登录请求繁忙，请稍后重试' }); return; }
     for (const [key] of keys) {
       const bucket = counters.get(key) ?? { count: 0, expires: now + 60000 };

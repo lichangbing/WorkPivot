@@ -39,11 +39,21 @@
     "eval:worker": "node eval/W21-worker.mjs",
     "eval:worker-recovery": "node eval/worker-recovery.mjs",
     "eval:worker-client": "tsx eval/W22-worker-client.mts",
+    "eval:skill-build": "node scripts/test-skill-build.mjs",
     "eval:database": "node scripts/test-postgres.mjs",
     "eval:service-recovery": "node scripts/test-service-recovery.mjs",
     "eval:browser-workflow": "node scripts/test-rc-browser.mjs --workflow",
+    "backup:create": "tsx scripts/workpivot-backup.mts create",
+    "backup:verify": "tsx scripts/workpivot-backup.mts verify",
+    "backup:restore": "tsx scripts/workpivot-backup.mts restore",
+    "eval:backup": "tsx eval/backup-package.mts",
+    "eval:backup-database": "node scripts/test-backup-database.mjs",
     "db:install": "tsx scripts/postgres-schema.mts",
-    "dev:database": "tsx scripts/postgres-preview.mts"
+    "dev:database": "tsx scripts/postgres-preview.mts",
+    "eval:automations": "node scripts/test-automations.mjs",
+    "eval:hybrid": "node scripts/test-hybrid.mjs",
+    "eval:embeddings": "node scripts/test-embeddings.mjs",
+    "eval:trash": "node scripts/test-trash.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

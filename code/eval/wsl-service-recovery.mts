@@ -1,4 +1,4 @@
-/** Disposable full-runtime fixture. Never run against a business database. */
+/** 一次性的完整运行环境夹具；禁止连接业务数据库。 */
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -116,7 +116,7 @@ async function serve() {
     await writeFile(fixturePath, JSON.stringify(fixture), { mode: 0o600, flag: 'wx' });
   }
   const app = await createDatabaseRuntime(auth, db, { initToken: init, secretKey: fixture.secret, filesRoot: '/tmp/recovery-files', webDist: '/app/apps/web/dist' });
-  // Seeded executor heartbeat lives in the API process and dies with SIGKILL.
+  // 预置执行器心跳位于 API 进程中，随 SIGKILL 一并终止。
   if (first) {
     const f = fixture;
     const runs = new RunRepository(db);

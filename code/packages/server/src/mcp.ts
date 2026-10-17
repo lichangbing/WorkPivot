@@ -27,7 +27,7 @@ export function saveMcp(input: { id?: string; revision?: string; name?: unknown;
   const name = input.name.trim();
   if (rows.some(r => r.id !== old?.id && r.name === name)) throw mcpError('服务名称已存在');
   const token = typeof input.token === 'string' ? input.token : '';
-  // Changing endpoints never forwards an old endpoint's credential implicitly.
+  // 更换端点时不得隐式转发原端点凭据。
   const secret = token ? getSecretBox().encrypt(token) : input.clearToken === true || old?.url !== url.href ? undefined : old?.secret;
   const value: Connection = { id: old?.id ?? randomUUID(), revision: randomUUID(), name: input.name.trim(), url: url.href, secret, enabled: false, tools: [], disabledTools: old?.disabledTools ?? [], status: 'untested' };
   if (old) { cancel(old.id); rows[rows.findIndex(r => r.id === old.id)] = value; } else rows.push(value);
@@ -73,7 +73,7 @@ export class HttpSession {
   private async packet(packet: Rpc, id: string): Promise<{ found: boolean; result?: unknown }> {
     if (packet.jsonrpc !== '2.0') throw mcpError('MCP 响应格式无效', 502);
     if (packet.method && packet.id !== undefined) {
-      // No sampling, roots or elicitation capabilities were advertised.
+      // 未声明采样、根目录或信息征询能力。
       const reply = await this.post({ jsonrpc: '2.0', id: packet.id, error: { code: -32601, message: 'Client capability not supported' } }); await reply.body?.cancel(); return { found: false };
     }
     if (packet.id !== id) return { found: false };

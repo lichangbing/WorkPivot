@@ -1,4 +1,4 @@
-/** Explicit reset for the named local attachment fixture only. */
+/** 只对指定名称的本地附件测试夹具执行显式重置。 */
 import { pool } from '../packages/server/src/database/connection.js';
 import { FileRepository } from '../packages/server/src/database/files.js';
 if (process.env.WORKPIVOT_ATTACHMENT_FIXTURE !== '1' || new URL(process.env.WORKPIVOT_DATABASE_ADMIN_URL!).hostname !== 'workpivot-attachment-e2e-db') throw Error('Not the local attachment fixture');

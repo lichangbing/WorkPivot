@@ -1,4 +1,4 @@
-// Disposable manual UI fixture; no production accounts or volumes.
+// 一次性手动界面测试，不使用生产账号或数据卷。
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';

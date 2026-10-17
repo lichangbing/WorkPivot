@@ -55,7 +55,7 @@ export class AccountRepository {
   async login(username: string, password: string): Promise<{ token: string; user: DatabaseUser }> {
     if (typeof username !== 'string' || typeof password !== 'string' || Buffer.byteLength(password) > 72) throw new RepositoryError(401, '用户名或密码错误');
     const row = (await this.db.query(`SELECT ${userColumns},c.password_hash,c.auth_version FROM identity.users u JOIN identity.credentials c ON c.user_id=u.id WHERE u.username_key=$1 AND NOT u.disabled`, [username.trim().normalize('NFKC').toLowerCase()])).rows[0];
-    // Fixed dummy hash also performs bcrypt work for unknown usernames.
+    // 未知用户名也通过固定占位哈希执行 bcrypt 校验。
     const valid = await bcrypt.compare(password, row?.password_hash ?? '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy');
     if (!row || !valid) throw new RepositoryError(401, '用户名或密码错误');
     return transaction(this.db, async client => {

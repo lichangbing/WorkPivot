@@ -9,7 +9,7 @@ for (const value of ['file:///etc/passwd', 'javascript:alert(1)', 'https://user:
   let rejected = false; try { normalizeServerUrl(value); } catch { rejected = true; }
   assert(`客户端拒绝非法服务地址 ${value === null ? 'null' : value.split(':')[0] || 'empty'}`, rejected);
 }
-// Verify the shipped bundle, not just source imports. Backend dependencies must never reach the client.
+// 检查实际发布包及源码导入，防止后端依赖进入客户端。
 const built = spawnSync(process.platform === 'win32' ? 'cmd.exe' : 'sh', process.platform === 'win32' ? ['/c', 'pnpm --filter @workpivot/desktop build'] : ['-c', 'pnpm --filter @workpivot/desktop build'], { encoding: 'utf8' });
 assert('纯客户端可独立构建', built.status === 0);
 if (built.status !== 0) console.error(built.stdout, built.stderr);

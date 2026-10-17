@@ -11,7 +11,7 @@ const registry = (): string => join(baseHome(), 'tenants.json');
 export const tenantId = (): string => currentTenant()?.id ?? DEFAULT_TENANT;
 export const tenantHome = (): string => tenantId() === DEFAULT_TENANT ? baseHome() : join(baseHome(), 'tenants', tenantId());
 export const accountKey = (): string => `${tenantId()}:${currentTenant()?.userId ?? ''}`;
-/** Identity/configuration stays in the legacy registry; business data is always personal. */
+/** 身份与配置仍在旧注册表中；业务数据始终属于个人。 */
 export function withAccount<T>(user: { id: string; tenantId?: string }, action: () => T): T {
   if (!/^[a-zA-Z0-9_-]+$/.test(user.id)) throw new Error('账户标识无效');
   return withTenant(user.tenantId ?? DEFAULT_TENANT, () => {
@@ -27,7 +27,7 @@ export function withAccount<T>(user: { id: string; tenantId?: string }, action: 
     return runInTenant({ id: parent.id, userId: user.id, home, workspace }, action);
   });
 }
-/** Fresh accounts must not be re-imported from legacy storage on the next restart. */
+/** 下次重启时不得从旧存储重复导入新账号。 */
 export function markFreshAccount(user: { id: string; tenantId?: string }): void {
   withAccount(user, () => {
     const file = join(currentTenant()!.home, 'account-migration.json');
@@ -60,10 +60,10 @@ export function addTenant(id: string, name: string): Tenant {
   return tenant;
 }
 
-/** This boundary cannot be expanded by a tenant admin's file permission grants. */
+/** 租户管理员授予的文件权限不能扩大此边界。 */
 export function tenantPathAllowed(path: string): boolean {
   const scope = currentTenant();
-  if (!scope) return true; // Standalone tools/tests; HTTP always installs a scope.
+  if (!scope) return true; // 独立工具或测试；HTTP 请求始终设置作用域。
   try {
     const actual = canonicalPath(path);
     if (pathWithin(actual, baseHome())) return false;

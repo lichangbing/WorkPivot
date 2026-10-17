@@ -19,11 +19,15 @@
 | pnpm eval:chat-state | 数据库界面事件排序、去重与分组 |
 | pnpm eval | 常规模拟评测；不包含数据库集成和真实模型验收 |
 | pnpm eval:database | 独立临时 PostgreSQL 集成测试，需 Docker；Windows 使用 WSL |
+| pnpm eval:backup | 离线备份包完整性与路径边界检查 |
+| pnpm eval:backup-database | Linux Docker 宿主上的真实 PostgreSQL 联合备份/隔离恢复验收 |
 | pnpm --filter @workpivot/web build | 用户端及管理端构建 |
 
 数据库测试默认需要 postgres:17-alpine 镜像；可通过 WORKPIVOT_TEST_PG_IMAGE 显式指定已准备的受测版本。不要用业务数据库代替临时测试库。Windows 测试入口现在自行启动隐藏的 WSL 存活辅助进程，并在完成或异常清理时终止本次辅助进程，无需另外手动保持终端；主机强制终止不保证清理。测试覆盖范围见 [eval/README.md](eval/README.md)，部署采用对应环境的最新记录。
 
 开发规范见 [AGENTS.md](../AGENTS.md)，当前计划见 [数据库与知识开发计划](../docs/03-project/tasks-postgresql-knowledge.md)。
+
+联合备份和恢复入口为 `pnpm backup:create <目录>`、`pnpm backup:verify <目录>`、`pnpm backup:restore <备份目录>`；离线停写、独立目标、安全快照、角色及密钥要求见[备份恢复操作与验收](../docs/03-project/backup-recovery-20261016.md)。
 
 ## 以下为早期实现记录
 

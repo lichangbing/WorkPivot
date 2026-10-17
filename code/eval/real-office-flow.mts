@@ -1,5 +1,5 @@
 import { DocumentProcessing } from '../packages/server/src/database/document-processing.js';
-/** Opt-in real-model check in a disposable PostgreSQL database; never creates production user records. */
+/** 显式启用的真实模型检查，使用临时 PostgreSQL，禁止创建生产用户记录。 */
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -60,7 +60,7 @@ try {
   const createExecution=()=>new DatabaseExecution(db,async(actor,taskId,context)=>({client,tools:[...skills.tools(actor,versions),...new DatabaseFileTools(files,processing).tools(actor,taskId),...new DatabaseArtifactTools(files).tools(actor,taskId),new DatabaseSkillExecution(db,files,skills,worker,()=>context.run).tool(actor,taskId,versions)],taskDir:'.',maxSteps:12,maxDurationMs:240000,system:'You are an office assistant. Use the loaded office-acceptance skill for Excel and Word work. Read its SKILL.md first. Use actual tools and saved files; never invent results.',requestAccess:async request=>request.tool==='execute_skill' && request.external===true}));
   let artifactDocumentId: string | undefined;
   for(const [index,prompt] of ['Read the uploaded budget.xlsx and create budget-report.docx summarizing the total. Use multiplier 1.','Update that same Word report to apply multiplier 2. Keep the same document identity and publish a new version.'].entries()) {
-    const execution=createExecution(); // Recreate the orchestration object; conversation state must come from PostgreSQL.
+    const execution=createExecution(); // 重建编排对象；对话状态必须从 PostgreSQL 读取。
     const started=await execution.begin(user.id,task.id,prompt,randomUUID(),index===0?[uploaded.id]:[]);
     let text='',calls=0;
     const reason=await started.execute!(event=>{if(event.type==='tool_use'){calls++;console.log('tool: '+String(event.toolName ?? 'call'));}if(event.type==='assistant_delta')text+=event.text??'';if(event.type==='tool_result'||event.type==='error'){const message=String(event.message??'');console.log(JSON.stringify({diagnostic:event.type,tool:event.toolName,failure:event.type==='error'||event.ok===false?message.replace(/Bearer\s+\S+|sk-[\w-]+|https?:\/\/\S+/gi,'[redacted]').slice(0,300):undefined,ok:event.ok,status:event.status,durationMs:event.durationMs,categories:['timeout','超时','fetch','connect','socket','429','401','403','quota','permission','denied','不存在','ENOENT','worker','abort'].filter(word=>message.toLowerCase().includes(word.toLowerCase()))}));}});

@@ -29,7 +29,7 @@ export function rejectionHash(actor: string, taskId: string, scope: string, key?
   return createHash('sha256').update(JSON.stringify([actor, taskId, scope, key.normalize('NFKC').toLowerCase().replace(/\s+/g, '')])).digest('hex');
 }
 
-/** Called under the task lock. A late model result cannot replace a newer user decision. */
+/** 持有任务锁时调用；迟到模型结果不能替换更新的用户决定。 */
 export async function validateReplacements(c: PoolClient, taskId: string, scope: string, epoch: string, runId: string | undefined,
   ids: string[], targetId?: string, targetRevision?: number, mergeTargets: { id: string; revision: number }[] = [], contextRunIds: string[] = []) {
   if (!Array.isArray(ids) || ids.length > 10 || new Set(ids).size !== ids.length) throw new RepositoryError(400, '替代建议无效');

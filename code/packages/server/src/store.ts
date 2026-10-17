@@ -24,7 +24,7 @@ export function writeAtomic(path: string, data: string): void {
 export function writeAtomicWithBackup(path: string, data: string): void {
   ensureDir(path);
   if (existsSync(path)) {
-    // Keep the primary in place until its replacement is ready; failed backup must stop the update.
+    // 替代文件就绪前保留主文件；备份失败必须停止更新。
     writeAtomic(`${path}.bak`, readFileSync(path, 'utf8'));
   }
   writeAtomic(path, data);
@@ -68,7 +68,7 @@ export class DataIntegrityError extends Error {
   constructor() { super('应用数据损坏，无法安全读取；请管理员检查备份并恢复后重试'); this.name = 'DataIntegrityError'; }
 }
 
-/** Defaults apply only to never-created data. Corruption must not reopen initialization. */
+/** 默认值只用于从未创建的数据；存储损坏不得重新开放初始化。 */
 export function readJsonSafe<T>(path: string, fallback: T, validate?: (value: unknown) => boolean): { value: T; source: ReadResult['source'] } {
   const primary = existsSync(path);
   const backup = existsSync(`${path}.bak`);
@@ -79,7 +79,7 @@ export function readJsonSafe<T>(path: string, fallback: T, validate?: (value: un
     return value as T;
   };
   if (primary) {
-    try { return { value: parse(path), source: 'primary' }; } catch { /* Try a validated backup. */ }
+    try { return { value: parse(path), source: 'primary' }; } catch { /* 尝试读取经过校验的备份。 */ }
   }
   let value: T;
   try { value = parse(`${path}.bak`); } catch { throw new DataIntegrityError(); }

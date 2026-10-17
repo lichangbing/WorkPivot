@@ -19,7 +19,7 @@ const { migrateTenantData } = await import('../packages/server/src/tenant-migrat
 const { readTool } = await import('../packages/core/src/tools.js');
 const { ensureWorkpivotDir } = await import('../packages/server/src/store.js');
 const server = await startServer({ port: 0 });
-// port=0 returns the requested value in this project; use the app directly on an OS-assigned port.
+// 本项目 port=0 返回请求值；直接使用应用绑定操作系统分配的端口。
 await server.close();
 const { createApp } = await import('../packages/server/src/app.js');
 const app = createApp();
@@ -40,8 +40,8 @@ const model = createServer((req, res) => {
 model.listen(0, '127.0.0.1');
 await new Promise<void>((resolve) => model.once('listening', resolve));
 const modelAddress = model.address(); if (!modelAddress || typeof modelAddress === 'string') throw Error('No model port');
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- heterogeneous test fixture JSON
-type Body = Record<string, any>; // JSON test fixture responses.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- 测试夹具的 JSON 结构不一致
+type Body = Record<string, any>; // JSON 测试夹具响应。
 async function request(path: string, token = '', method = 'GET', body?: unknown): Promise<{ status: number; body: Body }> {
   const response = await fetch(url + '/api' + path, { method, headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   return { status: response.status, body: await response.json() as Body };

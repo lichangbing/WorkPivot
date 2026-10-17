@@ -1,4 +1,4 @@
-// Destructive operator command. Applies only to the named WorkPivot LAN deployment.
+// 破坏性运维命令，仅适用于指定名称的 WorkPivot 局域网部署。
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, readdirSync, existsSync, realpathSync, rmSync, lstatSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';

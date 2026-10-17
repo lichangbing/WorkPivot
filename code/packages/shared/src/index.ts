@@ -30,3 +30,5 @@ export function createTagLogger(tag: string): TagLogger {
     error: (m, ...e) => emit('error', m, e),
   };
 }
+
+export * from './automation.js';

@@ -1,6 +1,6 @@
 import type { WorkerConfiguration } from './skill-execution.js';
 
-// Fixed program, never a command supplied by the document. Runs only in the isolated worker.
+// 固定程序，不执行文档提供的命令；仅在隔离执行器中运行。
 export const parserProgram = String.raw`
 import sys,json,zipfile,xml.etree.ElementTree as ET,subprocess,pathlib
 path=pathlib.Path('/workspace/source'+sys.argv[1]); parts=[]; total=0

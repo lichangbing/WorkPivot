@@ -17,7 +17,7 @@ export const TIER_LABELS: Record<string, string> = {
 };
 
 const DEFAULT_TIER: Tier = 'auto';
-/** Legacy stored values remain readable; new UI/API only expose the two modes. */
+/** 兼容读取旧存储值；新界面和接口只开放两种模式。 */
 export function normalizeTier(tier: unknown): 'ask' | 'auto' {
   return tier === 'auto' || tier === 'workdir' ? 'auto' : 'ask';
 }
@@ -109,7 +109,7 @@ function withinDir(path: string, dir: string): boolean {
   try { return pathWithin(path, dir); } catch { return false; }
 }
 
-/** Advisory command checks; actual confinement is enforced by the execution sandbox. */
+/** 命令检查仅提供预判；实际隔离由执行沙箱强制实施。 */
 function extractCommandPaths(command: string): string[] {
   const matches: string[] = command.match(/[A-Za-z]:[\\/][^\s"'|&;*)]*/g) ?? [];
   if (process.platform !== 'win32') for (const match of command.matchAll(/(?:^|[\s"'=])(\/[^\s"'|&;*)]*)/g)) matches.push(match[1]!);

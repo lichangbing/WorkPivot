@@ -6,7 +6,7 @@ import { FileRepository } from './files.js';
 import { DatabaseSkills } from './skills.js';
 
 export interface WorkerConfiguration { url: string; token: string }
-/** Fixed host service owns sandbox creation; the web container never receives a Docker socket. */
+/** 由固定宿主服务创建沙箱，网页容器不接收 Docker 套接字。 */
 export class DatabaseSkillExecution {
   constructor(private readonly db: Pool, private readonly files: FileRepository, private readonly skills: DatabaseSkills, private readonly config: WorkerConfiguration, private readonly boundRun?: () => { id: string; fence: string } | undefined) {}
   async run(actor: string, taskId: string, versions: ReadonlyMap<string,string>, args: Record<string,unknown>, signal?: AbortSignal) {
@@ -69,7 +69,7 @@ export class DatabaseSkillExecution {
     });
     signal?.throwIfAborted();
     const artifacts = await this.files.uploadArtifacts(actor, taskId, entries, signal, async c => {
-      // Task lock is held by upload. Stop/deletion cannot race the publication transaction.
+      // 上传持有任务锁，停止和删除不会与发布事务发生竞态。
       const live = await c.query("SELECT id FROM workpivot.task_runs WHERE id=$1 AND fence=$2 AND status='running' AND NOT context_revoked AND lease_until>now() FOR UPDATE", [run.id,run.fence]);
       if (!live.rowCount) throw new RepositoryError(409, '运行已停止，未发布产物');
       const job = await c.query("SELECT id FROM workpivot.skill_executions WHERE id=$1 AND status='running' FOR UPDATE", [jobId]);
@@ -84,7 +84,7 @@ export class DatabaseSkillExecution {
     });
     return { artifact: artifacts[0]!, artifacts, output: typeof result.output === 'string' ? result.output.slice(0,16000) : '' };
     } catch (error) {
-      try { await transaction(this.db,c => c.query("UPDATE workpivot.skill_executions SET status=$2,error=$3,finished_at=now() WHERE id=$1 AND status='running'", [jobId, signal?.aborted ? 'interrupted' : 'failed', signal?.aborted ? '执行已停止；请检查已有产物后重新发起' : '执行未完成；请查看对话中的错误详情']),actor); } catch { /* Recovery classifies uncertain jobs after lease expiry. */ }
+      try { await transaction(this.db,c => c.query("UPDATE workpivot.skill_executions SET status=$2,error=$3,finished_at=now() WHERE id=$1 AND status='running'", [jobId, signal?.aborted ? 'interrupted' : 'failed', signal?.aborted ? '执行已停止；请检查已有产物后重新发起' : '执行未完成；请查看对话中的错误详情']),actor); } catch { /* 租约到期后由恢复流程判定结果不明的作业。 */ }
       throw error;
     }
   }

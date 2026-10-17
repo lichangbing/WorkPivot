@@ -1,4 +1,4 @@
-// Runs inside the existing WSL web container. Only temporary sandbox data; no user records created.
+// 在现有 WSL 网页容器内运行，仅使用临时沙箱数据，不创建用户记录。
 import { createRequire } from 'node:module';
 import { readFile } from 'node:fs/promises';
 const require = createRequire('/app/packages/server/package.json');

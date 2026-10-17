@@ -1,5 +1,5 @@
-# Explicit opt-in for a dedicated Docker host. This grants Docker control to the service.
-# docker compose -f docker-compose.yml -f docker-compose.execution.yml up -d
+# 专用 Docker 宿主须显式启用；启用后服务可控制 Docker。
+# 启动命令：docker compose -f docker-compose.yml -f docker-compose.execution.yml up -d
 services:
   workpivot:
     environment:

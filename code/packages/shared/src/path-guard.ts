@@ -1,7 +1,7 @@
 import { lstatSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
-/** Resolve existing ancestors before appending a not-yet-created leaf. Dangling links fail closed. */
+/** 先解析已有祖先目录，再追加尚未创建的叶子路径；悬空链接默认拒绝。 */
 export function canonicalPath(path: string, base = process.cwd()): string {
   if (typeof path !== 'string' || path.includes('\0')) throw new Error('无效路径');
   if (process.platform === 'win32' && (/^[\\/]{2}[?.]/.test(path) || /:/.test(path.replace(/^[a-z]:/i, '')) || /^[a-z]:[^\\/]/i.test(path))) {
@@ -16,7 +16,7 @@ export function canonicalPath(path: string, base = process.cwd()): string {
       return process.platform === 'win32' ? real.toLowerCase() : real;
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-      // If lstat succeeds but realpath fails, this is a dangling link: never treat it as a new file.
+      // lstat 成功而 realpath 失败表示悬空链接，不得当作新文件。
       try { if (lstatSync(cursor).isSymbolicLink()) throw new Error('路径包含失效符号链接'); }
       catch (check) { if ((check as NodeJS.ErrnoException).code !== 'ENOENT') throw check; }
       const parent = dirname(cursor);

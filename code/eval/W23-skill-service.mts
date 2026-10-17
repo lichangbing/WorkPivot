@@ -1,4 +1,4 @@
-// Run in an isolated backend test container against the host worker (see W23-host.mjs).
+// 在隔离后端测试容器中连接宿主执行器运行，详见 W23-host.mjs。
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -26,7 +26,7 @@ const results: boolean[] = [];
 const assert = (name: string, pass: boolean) => { results.push(pass); console.log(`${pass ? '✅' : '❌'} ${name}`); };
 try {
   token = (await (await api('/api/auth/register', { username: 'admin', password: 'synthetic-skill-test' })).json()).token;
-  setTier('auto'); // Synthetic account only, not the deployed user's settings.
+  setTier('auto'); // 只修改合成账号，不修改已部署用户的设置。
   await api('/api/providers', { name: 'test', baseUrl: 'http://127.0.0.1:40071/v1', modelId: 'test' });
   const { task } = await (await api('/api/tasks', { name: 'Skill执行验收' })).json();
   const stream = await (await api(`/api/tasks/${task.id}/messages`, { content: '执行测试技能' })).text();

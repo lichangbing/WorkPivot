@@ -10,7 +10,7 @@ export function ArtifactSyncController() {
   useEffect(() => {
     let stopped = false, timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
-      try { const token = getToken(); if (token && window.workpivotDesktop?.syncArtifacts) { const status = await window.workpivotDesktop.syncArtifacts(token); if (!stopped) window.dispatchEvent(new CustomEvent('wp:artifact-sync', { detail: status })); } } catch { /* Next tick retries after reconnection. */ }
+      try { const token = getToken(); if (token && window.workpivotDesktop?.syncArtifacts) { const status = await window.workpivotDesktop.syncArtifacts(token); if (!stopped) window.dispatchEvent(new CustomEvent('wp:artifact-sync', { detail: status })); } } catch { /* 重连后在下次定时触发时重试。 */ }
       if (!stopped) timer = setTimeout(() => void poll(), 30000);
     };
     void poll(); return () => { stopped = true; clearTimeout(timer); void window.workpivotDesktop?.stopSync?.(); };

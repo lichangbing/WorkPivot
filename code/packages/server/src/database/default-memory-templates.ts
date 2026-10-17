@@ -1,4 +1,4 @@
-/** Editable research frameworks, not factual claims about any company or universal trading rules. */
+/** 可编辑的研究框架，不代表任何公司的事实结论或通用交易规则。 */
 export const defaultMemoryTemplates = [
  {name:'权益研究员',scope:'user',content:`角色定位：以企业基本面和可验证证据开展权益研究，区分事实、假设、预测与判断。
 研究习惯：优先使用公司公告、财务报告、交易所及行业公开数据；标明来源、日期、统计区间、币种与口径。缺失信息标记待核实，不编造数据。

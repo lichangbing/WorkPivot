@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-// Available only to the local connection page; main validates the sender on every call.
+// 仅向本地连接页面开放，主进程每次调用都校验发送方。
 contextBridge.exposeInMainWorld('workpivotConnection', {
   settings: () => ipcRenderer.invoke('connection:settings'),
   connect: (serverUrl: string) => ipcRenderer.invoke('connection:connect', serverUrl),

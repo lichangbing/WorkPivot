@@ -1,4 +1,4 @@
-// Full HTTP workflow through an isolated host worker; run via W32-host.mjs.
+// 通过隔离宿主执行器完成 HTTP 工作流；使用 W32-host.mjs 运行。
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

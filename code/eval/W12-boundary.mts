@@ -68,7 +68,7 @@ try {
   assert('RL2-03 权限引擎识别链接界外并询问', asked && !decision.allowed);
   grantPath(owner, link, 'read', 'session');
   const another = join(root, 'another'); mkdirSync(another);
-  // Only unlink the verified fixture junction itself; never recursively delete through a link.
+  // 只解除已验证的测试目录联接本身，禁止沿链接递归删除。
   unlinkSync(link); symlinkSync(another, link, process.platform === 'win32' ? 'junction' : 'dir');
   assert('RL2-03 替换链接不能继承旧授权', !pathIsGranted(owner, link, 'read'));
   unlinkSync(link); symlinkSync(outside, link, process.platform === 'win32' ? 'junction' : 'dir');
@@ -104,8 +104,8 @@ try {
 } catch (err) { console.error(err); assert('执行无未捕获异常', false); }
 finally {
   await server.close(); await new Promise<void>((resolve) => mock.close(() => resolve()));
-  for (const fixtureLink of [link, join(inside, 'attachments')]) { try { unlinkSync(fixtureLink); } catch { /* May not have been created. */ } }
-  // root is the sole mkdtemp fixture created above, all junctions removed first.
+  for (const fixtureLink of [link, join(inside, 'attachments')]) { try { unlinkSync(fixtureLink); } catch { /* 可能尚未创建。 */ } }
+  // root 是上方 mkdtemp 创建的唯一测试目录；先移除所有目录联接。
   rmSync(root, { recursive: true, force: true });
 }
 console.log(`\n===== W12 冒烟：${results.filter(Boolean).length}/${results.length} 通过 =====`);

@@ -5,7 +5,7 @@ export function DatabaseParsing({taskId}:{taskId:string}) {
   const [rows,setRows]=useState<Row[]>([]),[error,setError]=useState('');
   useEffect(()=>{
     const c=new AbortController();let timer:ReturnType<typeof setTimeout>;
-    const refresh=async()=>{try {const r=await jsonFetch<{files:Row[]}>(`/api/tasks/${taskId}/parsing`,{signal:c.signal});if(!c.signal.aborted)setRows(r.files);}catch{/* Retry on next refresh. */}finally{if(!c.signal.aborted)timer=setTimeout(()=>{void refresh();},3000);}};
+    const refresh=async()=>{try {const r=await jsonFetch<{files:Row[]}>(`/api/tasks/${taskId}/parsing`,{signal:c.signal});if(!c.signal.aborted)setRows(r.files);}catch{/* 下次刷新时重试。 */}finally{if(!c.signal.aborted)timer=setTimeout(()=>{void refresh();},3000);}};
     setRows([]);void refresh();return()=>{c.abort();clearTimeout(timer);};
   },[taskId]);
   if(!rows.length)return null;

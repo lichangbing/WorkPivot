@@ -142,7 +142,7 @@ export function skillRevision(skill: Skill): string {
   return createHash('sha256').update(skill.source + '\n' + skill.content).digest('hex');
 }
 
-/** Published files are immutable; still re-discover to honour disable/revoke immediately. */
+/** 发布文件不可变；仍须重新发现配置，使禁用或撤权立即生效。 */
 export function pinPublishedSkills(discover: () => Skill[]): () => Skill[] {
   const pinned = new Map<string, Skill>();
   return () => discover().map(skill => {
@@ -152,7 +152,7 @@ export function pinPublishedSkills(discover: () => Skill[]): () => Skill[] {
   });
 }
 
-/** Personal instruction overrides preserve the original resource/script directory. */
+/** 个人指令覆盖时保留原有资源和脚本目录。 */
 export function editSkill(taskDir: string, name: string, content: string, revision: string): void {
   if (managedPackageNames().includes(name)) throw packageError('此技能已使用文件包管理，请编辑草稿并发布', 409);
   const skill = listSkills(taskDir, { includeDisabled: true }).find((item) => item.name === name);

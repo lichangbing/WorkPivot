@@ -1,7 +1,7 @@
 import { Icon } from './Icon';
 import { useState } from 'react';
 
-/** Compact disclosure inspired by DeepSeek Harness's reasoning/tool rows. */
+/** 参考 DeepSeek Harness 的思考和工具行，使用紧凑的折叠展示。 */
 export function ActivityRow({ title, summary, input, output, running, failed, status, durationMs }: {
   title: string; summary: string; input?: string; output?: string; running?: boolean; failed?: boolean; status?: string; durationMs?: number;
 }) {

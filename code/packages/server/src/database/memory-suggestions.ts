@@ -6,7 +6,7 @@ import type { Pool } from 'pg';
 import type { Tool } from '@workpivot/core';
 import { RepositoryError, transaction, uuid } from './connection.js';
 
-/** Proposals are not memories: only the authenticated user's decision publishes one. */
+/** 建议不等于生效记忆；只有已认证用户的决定才能发布。 */
 export class MemorySuggestions {
   constructor(private readonly db: Pool) {}
   async epoch(actor: string): Promise<string> { return transaction(this.db, async c => String((await c.query('SELECT epoch FROM workpivot.knowledge_state WHERE owner_user_id=$1', [actor])).rows[0]?.epoch ?? 0), actor); }
@@ -48,8 +48,8 @@ export class MemorySuggestions {
       }
       let fingerprint = createHash('sha256').update(scope + ':' + (targetId ?? '') + ':' + (targetRevision ?? '') + ':' + content.trim().normalize('NFKC') + (mergeTargets.length ? JSON.stringify(mergeTargets) : '')).digest('hex');
       let existing = (await c.query('SELECT id,status,replaced_by FROM workpivot.memory_suggestions WHERE task_id=$1 AND fingerprint=$2', [taskId, fingerprint])).rows[0];
-      // A later explicit correction may return to a previously superseded value.
-      // Forgotten/stale and rejected proposals remain protected against replay.
+      // 后续明确纠正可以恢复为曾被替代的值。
+      // 已遗忘、失效和拒绝的建议仍禁止重放。
       if (existing?.status === 'stale' && existing.replaced_by && source && replaces.length) {
         fingerprint = createHash('sha256').update(fingerprint + ':' + source.runId).digest('hex');
         existing = (await c.query('SELECT id,status FROM workpivot.memory_suggestions WHERE task_id=$1 AND fingerprint=$2', [taskId, fingerprint])).rows[0];
@@ -69,7 +69,7 @@ export class MemorySuggestions {
   async decide(actor: string, id: string, accept: boolean, content?: string) {
     uuid(id); if (content !== undefined && (typeof content !== 'string' || !content.trim() || content.length > 20000)) throw new RepositoryError(400, '确认内容无效');
     return transaction(this.db, async c => {
-      // Same task-first lock order as task/project deletion.
+      // 与任务和项目删除保持一致，先锁任务。
       const source = (await c.query('SELECT task_id,target_id,merge_targets FROM workpivot.memory_suggestions WHERE id=$1', [id])).rows[0];
       if (!source) throw new RepositoryError(404, '建议不存在');
       const task = (await c.query('SELECT id FROM workpivot.tasks WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [source.task_id])).rows[0];
@@ -98,7 +98,7 @@ export class MemorySuggestions {
       const mergedIds = (s.merge_targets as { id: string }[]).map(t => t.id);
       if (mergedIds.length) {
         await c.query('INSERT INTO workpivot.memory_sources(owner_user_id,memory_id,run_id) SELECT owner_user_id,$1,run_id FROM workpivot.memory_sources WHERE memory_id=ANY($2::uuid[]) ON CONFLICT DO NOTHING', [memoryId, mergedIds]);
-        // Flatten prior merge ancestry so forgetting the current memory erases all retained versions.
+        // 展开历史合并来源，使遗忘当前记忆时清除全部保留版本。
         await c.query('UPDATE workpivot.memories SET merged_into=$1 WHERE merged_into=ANY($2::uuid[])', [memoryId, mergedIds]);
         await c.query('UPDATE workpivot.memories SET merged_into=$1,deleted_at=now() WHERE id=ANY($2::uuid[])', [memoryId, mergedIds]);
       }

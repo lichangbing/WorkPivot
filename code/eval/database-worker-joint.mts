@@ -1,4 +1,4 @@
-/** Disposable PostgreSQL + real worker integration, with a deterministic model. */
+/** 使用一次性 PostgreSQL、真实执行器和固定模型回复进行联调。 */
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { ModelClient } from '@workpivot/core';

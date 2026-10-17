@@ -19,7 +19,7 @@ function copy(source: string, target: string): void {
     filter: (path) => !lstatSync(path).isSymbolicLink() });
 }
 
-/** Copy only explicit ownership. Legacy shared/unknown data stays archived, never broadcast. */
+/** 只复制归属明确的数据；旧共享或未知归属数据保持归档，不向用户分发。 */
 export function migrateAccountData(): void {
   for (const tenant of listTenants()) withTenant(tenant.id, () => {
     const legacy = currentTenant()!;
@@ -35,7 +35,7 @@ export function migrateAccountData(): void {
       let archivedDirectories = 0;
       const copyWorkspace = (source: string, target: string): void => {
         mkdirSync(target, { recursive: true });
-        // Root-wide/shared directories are ambiguous. Preserve the originals for offline recovery.
+        // 根目录范围和共享目录归属不明确，保留原件用于离线恢复。
         if (!pathWithin(source, legacy.workspace) || pathWithin(legacy.workspace, source) || pathWithin(source, baseHome()) ||
           pathWithin(source, join(legacy.workspace, '.accounts')) || pathWithin(source, join(legacy.workspace, '.tenants')) ||
           foreign.some((r) => pathWithin(source, r.directory) || pathWithin(r.directory, source))) { archivedDirectories++; return; }

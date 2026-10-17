@@ -4,7 +4,7 @@ import { pathWithin } from '@workpivot/shared/node';
 import type { Tool } from '@workpivot/core';
 import type { Skill } from './skills.js';
 
-/** Re-discover for each invocation: disabled skills and revoked project access take effect immediately. */
+/** 每次调用重新发现配置，使禁用技能与撤销项目访问立即生效。 */
 export function buildSkillTools(discover: () => Skill[], projectAllowed: (path: string) => boolean, onLoaded?: (name: string) => void): Tool[] {
   return [{
     name: 'load_skill', kind: 'read',

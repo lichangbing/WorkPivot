@@ -5,14 +5,14 @@ import AdmZip from 'adm-zip';
 import { transaction, RepositoryError } from './connection.js';
 import { validSkillName, validPackagePath, checkFiles, packageDirectories, packageText, instructionFields, validatePackageState, decodePackageZip, type Files } from '../skill-package-store.js';
 
-interface Draft { name: string; revision: string; files: Files; directories: string[]; published: string | null; disabled: boolean }
+interface Draft { name: string; revision: string; visibility?: string; files: Files; directories: string[]; published: string | null; disabled: boolean }
 interface Release { id: string; files: Files; directories: string[]; label: string; createdAt: string }
 
 export class DatabaseSkills {
   constructor(private readonly db: Pool) {}
   private async draft(c: PoolClient, name: string, lock = false): Promise<Draft> {
     validSkillName(name);
-    const row = (await c.query<Draft>('SELECT name,revision,files,directories,published,disabled FROM workpivot.skill_drafts WHERE name=$1' + (lock ? ' FOR UPDATE' : ''), [name])).rows[0];
+    const row = (await c.query<Draft>('SELECT name,revision,visibility,files,directories,published,disabled FROM workpivot.skill_drafts WHERE name=$1' + (lock ? ' FOR UPDATE' : ''), [name])).rows[0];
     if (!row) throw new RepositoryError(404, '技能草稿不存在或无权管理');
     row.files = Object.assign(Object.create(null) as Files, row.files); return row;
   }
@@ -26,7 +26,7 @@ export class DatabaseSkills {
   }
   async list(actor: string) {
     return transaction(this.db, async c => {
-      const rows = (await c.query<Draft>('SELECT name,revision,files,directories,published,disabled FROM workpivot.skill_drafts ORDER BY name')).rows;
+      const rows = (await c.query<Draft>('SELECT name,revision,visibility,files,directories,published,disabled FROM workpivot.skill_drafts ORDER BY name')).rows;
       return Promise.all(rows.map(async d => ({ name: d.name, description: '', source: 'global', managed: true, disabled: d.disabled, hasPublished: !!d.published, published: d.published, dirty: (await this.detail(c, d)).dirty })));
     }, actor);
   }
@@ -42,6 +42,7 @@ export class DatabaseSkills {
   async mutate(actor: string, name: string, revision: unknown, action: (draft: Draft, c: PoolClient) => Promise<void> | void) {
     return transaction(this.db, async c => {
       const d = await this.draft(c, name, true);
+      if (d.visibility === 'private') throw new RepositoryError(403, '私人技能请使用草稿确认流程');
       if (revision !== d.revision) throw new RepositoryError(409, '草稿或发布版本已改变，请重新打开技能包');
       await action(d, c); checkFiles(d.files); d.directories = packageDirectories(d.files, d.directories); d.revision = randomUUID();
       await c.query('UPDATE workpivot.skill_drafts SET revision=$2,files=$3,directories=$4,published=$5,disabled=$6 WHERE name=$1', [name, d.revision, JSON.stringify(d.files), JSON.stringify(d.directories), d.published, d.disabled]);
@@ -75,6 +76,7 @@ export class DatabaseSkills {
   async validate(actor: string, name: string) { return transaction(this.db, async c => { const d = await this.draft(c, name); return validatePackageState(name, { draft: d.files, revision: d.revision }, (await c.query('SELECT name FROM workpivot.skill_catalog WHERE NOT disabled')).rows.map(r => r.name)); }, actor); }
   async publish(actor: string, name: string, rev: unknown) {
     return this.mutate(actor, name, rev, async (d, c) => {
+      if (d.visibility === 'private') throw new RepositoryError(403, '私人技能必须通过草稿确认窗口发布');
       const validation = validatePackageState(name, { draft: d.files, revision: d.revision }, (await c.query('SELECT name FROM workpivot.skill_catalog WHERE NOT disabled')).rows.map(r => r.name));
       if (!validation.valid) throw new RepositoryError(400, validation.errors.join('\n'));
       const detail = await this.detail(c, d); if (!detail.dirty) throw new RepositoryError(409, '草稿与已发布版本一致');
@@ -93,17 +95,17 @@ export class DatabaseSkills {
     });
   }
   async toggle(actor: string, name: string, disabled: boolean) {
-    return transaction(this.db, async c => { await this.draft(c, name, true); await c.query('UPDATE workpivot.skill_drafts SET disabled=$2,revision=$3 WHERE name=$1', [name, disabled, randomUUID()]); await c.query('UPDATE workpivot.skill_catalog SET disabled=$2 WHERE name=$1', [name, disabled]); }, actor);
+    return transaction(this.db, async c => { const d = await this.draft(c, name, true); if (d.visibility === 'private') throw new RepositoryError(403, '私人技能请使用我的技能入口'); await c.query('UPDATE workpivot.skill_drafts SET disabled=$2,revision=$3 WHERE name=$1', [name, disabled, randomUUID()]); await c.query('UPDATE workpivot.skill_catalog SET disabled=$2 WHERE name=$1', [name, disabled]); }, actor);
   }
   async export(actor: string, name: string, version?: string) {
     return transaction(this.db, async c => { const d = await this.draft(c, name); const r = version ? (await c.query<Release>('SELECT files,directories FROM workpivot.skill_releases WHERE id::text=$1 AND name=$2', [version, name])).rows[0] : d; if (!r) throw new RepositoryError(404, '版本不存在'); const zip = new AdmZip(); for (const p of r.directories) zip.addFile(p + '/', Buffer.alloc(0)); for (const [p, v] of Object.entries(r.files)) zip.addFile(p, Buffer.from(v, 'base64')); return zip.toBuffer(); }, actor);
   }
   async market(actor: string) {
-    return transaction(this.db, async c => (await c.query<{ name: string; description: string; version: string; loaded: boolean }>(`SELECT c.name,r.description,c.release_id AS version,s.name IS NOT NULL AS loaded FROM workpivot.skill_catalog c JOIN workpivot.skill_releases r ON r.id=c.release_id LEFT JOIN workpivot.skill_selections s ON s.name=c.name AND s.owner_user_id=$1 WHERE NOT c.disabled ORDER BY c.name`, [actor])).rows, actor);
+    return transaction(this.db, async c => (await c.query<{ name: string; displayName: string; visibility: string; description: string; version: string; loaded: boolean }>(`SELECT c.name,c.display_name AS "displayName",c.visibility,r.description,c.release_id AS version,s.name IS NOT NULL AS loaded FROM workpivot.skill_catalog c JOIN workpivot.skill_releases r ON r.id=c.release_id LEFT JOIN workpivot.skill_selections s ON s.name=c.name AND s.owner_user_id=$1 WHERE NOT c.disabled ORDER BY c.name`, [actor])).rows, actor);
   }
   async select(actor: string, name: string, loaded: boolean) {
     validSkillName(name);
-    return transaction(this.db, async c => { if (!loaded) { await c.query('DELETE FROM workpivot.skill_selections WHERE name=$1', [name]); return; } if (!(await c.query('SELECT name FROM workpivot.skill_catalog WHERE name=$1 AND NOT disabled', [name])).rowCount) throw new RepositoryError(404, '技能未发布或已禁用'); await c.query('INSERT INTO workpivot.skill_selections(owner_user_id,name) VALUES($1,$2) ON CONFLICT DO NOTHING', [actor, name]); }, actor);
+    return transaction(this.db, async c => { if (!loaded) { await c.query('DELETE FROM workpivot.skill_selections WHERE name=$1', [name]); return; } const selected = (await c.query('SELECT name,visibility FROM workpivot.skill_catalog WHERE name=$1 AND NOT disabled', [name])).rows[0]; if (selected?.visibility === 'private') throw new RepositoryError(403, '私人技能启用需要在我的技能中确认'); if (!selected) throw new RepositoryError(404, '技能未发布或已禁用'); await c.query('INSERT INTO workpivot.skill_selections(owner_user_id,name) VALUES($1,$2) ON CONFLICT DO NOTHING', [actor, name]); }, actor);
   }
   async executionResources(actor: string, name: string, version: string) {
     validSkillName(name);

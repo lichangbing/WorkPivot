@@ -29,7 +29,7 @@ export function snapshotFiles(root: string, allowed: (path: string) => boolean):
   walk(''); return files;
 }
 
-/** The host service accepts bounded files/commands only, never Docker arguments or host paths. */
+/** 宿主服务只接收有界文件和命令，不接受 Docker 参数或宿主路径。 */
 export function workerCommand(task: Task, allowed: (path: string, mode: 'read' | 'write') => boolean, signal: AbortSignal, skills: () => Skill[]): (command: string) => Promise<string> {
   return async (command) => {
     signal.throwIfAborted();
@@ -41,7 +41,7 @@ export function workerCommand(task: Task, allowed: (path: string, mode: 'read' |
     for (const skill of skills()) for (const [name, data] of snapshotFiles(skill.dir, (path) => skill.source !== 'project' || allowed(path, 'read'))) resources.push([`${skill.name}/${name}`, data]);
     if ([...files, ...resources].reduce((size, [, data]) => size + Buffer.byteLength(data, 'base64'), 0) > LIMIT) throw new Error('任务及技能资源合计超过16MiB');
     const response = await fetch(`${url.replace(/\/$/, '')}/v1/run`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ command, files, skills: resources }), redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(140000)]) });
-    // Bound untrusted service output before JSON parsing.
+    // 解析 JSON 前先限制不可信服务输出的大小。
     if (!response.body) throw new Error('技能执行服务未返回结果');
     const reader = response.body.getReader(); const chunks: Uint8Array[] = []; let size = 0;
     try { for (;;) { const item = await reader.read(); if (item.done) break; size += item.value.length; if (size > 24 * 1024 * 1024) throw new Error('执行结果超过大小限制'); chunks.push(item.value); } }

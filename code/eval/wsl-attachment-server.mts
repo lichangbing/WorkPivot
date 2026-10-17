@@ -1,4 +1,4 @@
-/** Local WSL integration fixture: real PostgreSQL/auth/files, deterministic model, no external tools. */
+/** 本地 WSL 联调夹具：真实 PostgreSQL、认证和文件，固定模型回复，不调用外部工具。 */
 import { pool, installSchema } from '../packages/server/src/database/connection.js';
 import { FileRepository } from '../packages/server/src/database/files.js';
 import { DatabaseExecution } from '../packages/server/src/database/execution.js';

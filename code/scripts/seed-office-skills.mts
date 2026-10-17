@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { pool } from '../packages/server/src/database/connection.js';
 import { DatabaseSkills } from '../packages/server/src/database/skills.js';
 
-// Explicit deployment step: preserve existing drafts, releases and user selections.
+// 显式部署步骤：保留已有草稿、发布版本及用户选择。
 const db = pool(process.env.WORKPIVOT_DATABASE_URL!);
 const auth = pool(process.env.WORKPIVOT_AUTH_DATABASE_URL!);
 try {

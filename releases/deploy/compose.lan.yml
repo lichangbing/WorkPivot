@@ -1,4 +1,4 @@
-# Standalone LAN deployment. No build context and no Docker socket required.
+# 独立局域网部署，无需构建上下文或 Docker 套接字。
 services:
   workpivot:
     image: workpivot-server:0.3.0-preview.33
@@ -23,7 +23,7 @@ services:
     read_only: true
     tmpfs:
       - /tmp:rw,nosuid,nodev,size=256m
-      # Reset deployment: start with an empty skill catalog, including bundled skills.
+      # 重置部署：从空技能目录启动，内置技能也不保留。
       - /app/packages/server/skills:ro,size=1m
     volumes:
       - workpivot-data:/data/workpivot

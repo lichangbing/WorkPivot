@@ -1,4 +1,4 @@
-/** Runs inside the worker. Output remains untrusted and is validated again by the host. */
+/** 在执行器内部运行；输出仍不可信，须由宿主再次校验。 */
 export const EXPORT_WORKSPACE = String.raw`
 const fs = require('node:fs');
 const path = require('node:path');

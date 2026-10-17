@@ -1,7 +1,7 @@
 import type { ChatMessage } from '@workpivot/core';
 import { RepositoryError } from './connection.js';
 const bytes=(value:unknown)=>Buffer.byteLength(JSON.stringify(value),'utf8');
-/** Keep a full user turn and all its paired tool messages together. */
+/** 保留完整用户轮次及其全部配对工具消息，不拆开处理。 */
 export function summaryBatches(messages:ChatMessage[],budget:number){
  const inputLimit=budget-8192-1024,summaryLimit=Math.min(16000,Math.floor(inputLimit/3));
  const groupLimit=inputLimit-summaryLimit-256;

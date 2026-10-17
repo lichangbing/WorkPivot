@@ -502,7 +502,7 @@ export function createApp(opts: AppOptions = {}): Express {
       if ((!snapshot && !taskFilePolicy(task, user.id)(file, 'read')) || !statSync(file).isFile()) return res.status(403).json({ error: '产物不可访问' });
       res.setHeader('cache-control', 'no-store');
       res.setHeader('x-content-type-options', 'nosniff');
-      // The validated personal workspace lives beneath the internal .accounts directory.
+      // 已校验的个人工作区位于内部 .accounts 目录下。
       res.download(file, name.split('/').pop()!, { dotfiles: 'allow' });
     } catch { res.status(404).json({ error: '产物不可访问' }); }
   });
@@ -883,7 +883,7 @@ ${capped}
         send({ type: 'done', stopReason: result.stopReason, steps: result.steps });
       })
       .catch((err: unknown) => {
-        try { if (started) finishArtifacts(task, controller.signal.aborted ? 'aborted' : 'error'); } catch { /* Preserve the original failure. */ }
+        try { if (started) finishArtifacts(task, controller.signal.aborted ? 'aborted' : 'error'); } catch { /* 保留原始失败原因。 */ }
         updateTaskStatus(task.id, controller.signal.aborted ? 'stopped' : 'failed', controller.signal.aborted ? 'aborted' : 'error');
         send({ type: 'error', message: err instanceof Error ? err.message : String(err) });
       })

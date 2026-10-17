@@ -1,4 +1,4 @@
-/** Expose actionable categories without echoing upstream bodies, addresses or credentials. */
+/** 只公开可操作的错误分类，不回显上游正文、地址或凭据。 */
 export function safeModelError(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
   const status = /HTTP\s+(\d{3})\b/i.exec(message)?.[1];
@@ -12,7 +12,7 @@ export function safeModelError(error: unknown): string {
   return '模型请求失败，请联系管理员检查服务配置后重试';
 }
 
-/** Bounded diagnostics; never retain provider text or request data. */
+/** 诊断信息有界，不保留供应商原文或请求数据。 */
 export function modelFailureDetails(error: unknown) {
   const e = error instanceof Error ? error : undefined;
   const cause = e?.cause as { code?: unknown } | undefined;

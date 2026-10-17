@@ -1,4 +1,4 @@
-/** Explicit live evaluation; uses existing model config, isolated temporary skill and files. */
+/** 显式启用的真实服务评测，使用现有模型配置及隔离的临时技能和文件。 */
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
