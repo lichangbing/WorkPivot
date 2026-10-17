@@ -1,0 +1,31 @@
+name: workpivot-local-browser
+services:
+  browser:
+    image: workpivot-browser:local-shared-20261017
+    env_file:
+      - ../../local-runtime/browser.env.local
+    environment:
+      WORKPIVOT_BROWSER_HOST: 0.0.0.0
+      WORKPIVOT_BROWSER_EXECUTABLE_PATH: /opt/google/chrome/chrome
+      HOME: /tmp
+      XDG_CONFIG_HOME: /tmp/config
+      XDG_CACHE_HOME: /tmp/cache
+    init: true
+    read_only: true
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./browser-seccomp.json
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=512m,mode=1777
+    shm_size: 256m
+    mem_limit: 1536m
+    cpus: 2.0
+    pids_limit: 256
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:39991/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped

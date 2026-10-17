@@ -53,7 +53,10 @@
     "eval:automations": "node scripts/test-automations.mjs",
     "eval:hybrid": "node scripts/test-hybrid.mjs",
     "eval:embeddings": "node scripts/test-embeddings.mjs",
-    "eval:trash": "node scripts/test-trash.mjs"
+    "eval:trash": "node scripts/test-trash.mjs",
+    "eval:web": "node --import tsx eval/web-tools.mts",
+    "eval:web-browser": "node --import tsx eval/web-tools.mts --browser",
+    "eval:web-database": "node scripts/test-automations.mjs --web"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

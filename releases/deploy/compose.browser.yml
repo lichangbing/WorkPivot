@@ -1,0 +1,33 @@
+# 从仓库根目录执行：docker compose -f releases/deploy/compose.browser.yml up -d --build
+# API 后端需配置 WORKPIVOT_BROWSER_URL 和相同的 WORKPIVOT_BROWSER_TOKEN。
+services:
+  browser:
+    build:
+      context: ../../code
+      dockerfile: Dockerfile.browser
+    image: workpivot-browser:playwright-1.64.1
+    ports:
+      - "127.0.0.1:39991:39991"
+    environment:
+      WORKPIVOT_BROWSER_TOKEN: ${WORKPIVOT_BROWSER_TOKEN:?请配置独立的至少32位浏览器服务令牌}
+    init: true
+    read_only: true
+    user: pwuser
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./browser-seccomp.json
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=512m,mode=1777
+      - /home/pwuser:rw,nosuid,nodev,size=64m,uid=1000,gid=1000
+    shm_size: 256m
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 256
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:39991/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    stop_grace_period: 15s

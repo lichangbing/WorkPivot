@@ -212,7 +212,7 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
           } else {
             outcome = 'denied';
             ok = false;
-            resultText = request?.external ? 'MCP 调用未获授权：用户拒绝或当前策略禁止本次外部操作。' : '权限不足：用户拒绝或当前策略禁止本次访问。请改用任务目录内的路径，或提示用户调整权限档位。';
+            resultText = request?.external ? '外部工具调用未获授权：用户拒绝或当前策略禁止本次外部操作。' : '权限不足：用户拒绝或当前策略禁止本次访问。请改用任务目录内的路径，或提示用户调整权限档位。';
           }
         } catch (err) {
           ok = false;

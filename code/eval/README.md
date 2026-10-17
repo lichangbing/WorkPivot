@@ -1,5 +1,7 @@
 # eval/ — 评测题库（K01）
 
+网页专项：`pnpm eval:web`（URL/IP/DNS/重定向、解析和授权）；`pnpm eval:web-browser`（真实Chromium受控页面）；`pnpm eval:web-database`（临时PostgreSQL对话授权、定时采集、成果发布和撤销）。网络实测及测试浏览器路径见[部署与验收说明](../../releases/deploy/网页访问部署.md)。
+
 - 自动回归脚本使用 `W序号-主题.mts`，由run-all.mts运行并写入断言级baseline.json。
 - `pnpm eval` 跑当前账号隔离/独立后台架构的常规验收；Linux主机执行专项单独运行。历史设计套件可设置 `WORKPIVOT_EVAL_LEGACY=1` 一并比较，当前仍有与产品设计不一致的失败，不计入发布通过项。
 - 模拟 LLM 原则：零成本跑 CI，不打真实模型（题库分层 L1/L2/L3 见需求清单 K01）。

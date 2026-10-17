@@ -8,13 +8,13 @@ const planColumns='id,revision,state,config,draft,origin,source_task_id AS "sour
 export const automationRunColumns='id,plan_id AS "planId",task_id AS "taskId",status,scheduled_for AS "scheduledFor",started_at AS "startedAt",finished_at AS "finishedAt",error,summary,config,events';
 export type AutomationInput={id:string;name:string;taskId:string;size:number};
 export class Automations {
- constructor(readonly db:Pool,readonly workerAvailable=false){}
+ constructor(readonly db:Pool,readonly workerAvailable=false,readonly browserAvailable=false){}
  async get(c:PoolClient,id:string,lock=false){uuid(id);const p=(await c.query<AutomationPlan & {grant_id:string|null;source_invalid:boolean;source_run_id:string|null}>(`SELECT ${planColumns},grant_id,source_invalid,source_run_id FROM workpivot.automations WHERE id=$1${lock?' FOR UPDATE':''}`,[id])).rows[0];if(!p)throw new RepositoryError(404,'自动化不存在');return p;}
  async options(actor:string){return transaction(this.db,async c=>({
   skills:(await c.query('SELECT c.name,c.display_name AS "displayName",r.id AS version,r.label,r.description FROM workpivot.skill_catalog c JOIN workpivot.skill_releases r ON r.id=c.release_id JOIN workpivot.skill_selections s ON s.name=c.name WHERE NOT c.disabled ORDER BY c.name')).rows,
   projects:(await c.query('SELECT id,name FROM workpivot.projects WHERE deleted_at IS NULL ORDER BY created_at')).rows,
   files:(await c.query(`SELECT v.id,v.name,v.revision,t.project_id AS "projectId",t.id AS "taskId" FROM workpivot.document_versions v JOIN workpivot.documents d ON d.id=v.document_id JOIN workpivot.tasks t ON t.id=d.task_id WHERE t.deleted_at IS NULL AND t.origin='chat' AND d.purpose='upload' ORDER BY v.created_at DESC LIMIT 1000`)).rows,
-  workerAvailable:this.workerAvailable,
+  workerAvailable:this.workerAvailable,browserAvailable:this.browserAvailable,
  }),actor);}
  async dependencies(c:PoolClient,p:AutomationConfig,resolveInputs=true):Promise<AutomationInput[]> {
   if(!this.workerAvailable)throw new RepositoryError(409,'隔离执行服务尚未配置');
@@ -93,7 +93,7 @@ export class Automations {
  async readNotice(actor:string,id:string){uuid(id);await transaction(this.db,c=>c.query('UPDATE workpivot.automation_notices SET read_at=now() WHERE id=$1',[id]),actor);}
  tools(actor:string,taskId:string,bound:()=>{id:string;fence:string}|undefined):Tool[]{
   const guard=async()=>{const run=bound();if(!run)throw new RepositoryError(409,'对话运行尚未绑定');await transaction(this.db,c=>this.source(c,taskId,run),actor);return run;};
-  const configSchema={type:'object',description:'完整计划配置；先用get_automation_options读取可用技能版本、项目和文件。使用config对象：name、skill、releaseId、projectId(null表示独立成果)、requirements、input{mode:none|fixed|latest,versionIds:[],pattern:""}、timing{kind:once|daily|weekly|interval|cron,zone:Asia/Shanghai,at:"YYYY-MM-DDTHH:mm"或空,time:"09:00",days:[1,2,3,4,5],minutes:120,cron:"0 9 * * *",end:""}、catchup:once|skip、notify:issues|all、timeoutMinutes:10。缺失项应询问，不猜测执行范围。'};
+  const configSchema={type:'object',description:'完整计划配置；先用get_automation_options读取可用技能版本、项目和文件。使用config对象：name、skill、releaseId、projectId(null表示独立成果)、requirements、input{mode:none|fixed|latest,versionIds:[],pattern:""}、timing{kind:once|daily|weekly|interval|cron,zone:Asia/Shanghai,at:"YYYY-MM-DDTHH:mm"或空,time:"09:00",days:[1,2,3,4,5],minutes:120,cron:"0 9 * * *",end:""}、catchup:once|skip、notify:issues|all、timeoutMinutes:10、webOrigins:[]。联网采集必须显式填写用户确认的完整网页来源origin（如https://example.com），包括需要的跳转和子资源来源；空数组表示不允许联网。缺失项应询问，不猜测执行范围。'};
   return [
    {name:'get_automation_options',kind:'read',description:'读取当前用户可用的已加载Skill、发布版本、项目和文件版本，供创建计划草稿。',parameters:{type:'object',properties:{},additionalProperties:false},run:async()=>{await guard();return JSON.stringify(await this.options(actor));}},
    {name:'list_my_schedules',kind:'read',description:'列出本人自动化计划及配置；用于准确定位要修改或暂停的计划。',parameters:{type:'object',properties:{},additionalProperties:false},run:async()=>{await guard();return JSON.stringify((await this.list(actor)).map(p=>({...p,lastRun:undefined})));}},

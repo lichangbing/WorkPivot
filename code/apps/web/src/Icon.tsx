@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 
 const paths = {
+  pin: 'M8 3h8l-1 6 4 4v2h-6v7l-2-3v-4H5v-2l4-4-1-6Z',
   fileExcel: 'M14 2H4v20h16V8l-6-6Zm0 0v6h6M7 11h10v8H7v-8Zm5 0v8m-5-4h10',
   fileWord: 'M14 2H4v20h16V8l-6-6Zm0 0v6h6M7 12l2 7 3-5 3 5 2-7',
   filePpt: 'M14 2H4v20h16V8l-6-6Zm0 0v6h6M8 19v-8h4a3 3 0 0 1 0 6H8',

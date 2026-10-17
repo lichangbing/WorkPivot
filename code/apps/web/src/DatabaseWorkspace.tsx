@@ -1,3 +1,5 @@
+import { DatabaseBrowser } from './DatabaseBrowser';
+import { DatabaseFloating } from './DatabaseFloating';
 import type {ReactNode} from 'react';
 import {DatabaseCitation} from './DatabaseCitation';
 import {retrievalStatus} from './chat-content';
@@ -18,7 +20,7 @@ import { api, clearToken, getToken, jsonFetch } from './api';
 import { LoginView } from './LoginView';
 import { RequiredPasswordChange } from './AccountAccess';
 import { Icon } from './Icon';
-import { DatabaseWorkspaceNavigation, DatabaseWorkspaceSidebar } from './DatabaseWorkspaceNavigation';
+import { DatabaseWorkspaceNavigation } from './DatabaseWorkspaceNavigation';
 import { readChatStream } from './chat-stream';
 import { DatabaseSettings, type SettingsSection } from './DatabaseSettings';
 import { mergeEvents, groupEvents, type StoredEvent, type ConversationPage, type StoredTurn } from './database-chat-state';
@@ -220,7 +222,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   return <div className="workspace-shell flex h-screen bg-neutral-950 text-neutral-100">
     <DatabaseWorkspaceNavigation onAutomations={()=>{location.hash='automations';}} projects={projects} tasks={tasks} active={active} username={auth.user?.username} onSelect={setActive} onRefresh={refreshWorkspace} onSettings={section => setSettings(section)} onError={setError} onLogout={() => { void api.logout().finally(() => { for (const c of streams.current) c.abort(); clearToken(); setActive(null); setTasks([]); reloadAuth(); }); }} />
     <main className="flex min-w-0 flex-1 flex-col">
-      <header className="flex items-center justify-between gap-3 border-b border-neutral-800 px-4 py-2 text-xs"><h1 className="min-w-0 flex-1 truncate text-left text-sm font-medium">{projects.find(p => p.id === task?.projectId)?.name ?? '临时任务'} / {task?.name ?? '选择任务'}</h1><button className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-neutral-100 hover:bg-neutral-800" aria-label={rightOpen ? '收起右侧任务侧栏' : '展开右侧任务侧栏'} aria-expanded={rightOpen} aria-controls="task-results-panel" onClick={() => { setRightOpen(!rightOpen); localStorage.setItem('wp-right-panel-open', String(!rightOpen)); }}><Icon name={rightOpen ? 'panelClose' : 'panelOpen'} size={19} /></button></header>
+      <header className="flex items-center justify-between gap-3 border-b border-neutral-800 px-4 py-2 text-xs"><h1 className="min-w-0 flex-1 truncate text-left text-sm font-medium">{projects.find(p => p.id === task?.projectId)?.name ?? '临时任务'} / {task?.name ?? '选择任务'}</h1><DatabaseFloating key={auth.user?.id} user={auth.user?.id??'user'} active={active} tasks={tasks} onSelect={setActive} onSettings={()=>setSettings('mcp')} /><button className="rounded-lg p-2 text-neutral-400 hover:bg-neutral-800" aria-label={rightOpen?'隐藏右侧浏览器':'显示右侧浏览器'} onClick={()=>{setRightOpen(!rightOpen);localStorage.setItem('wp-right-panel-open',String(!rightOpen));}}><Icon name={rightOpen?'panelClose':'panelOpen'} size={19}/></button></header>
       {task && <ExpertSelector task={task} project={projects.find(p=>p.id===task.projectId)} onChanged={refreshWorkspace}/>}
       {error && <div role="alert" className="px-6 py-2 text-sm text-red-400">{error}<button className="ml-3 underline" onClick={() => { setError(''); if (!ready) { setAuth({ ...auth }); } else void loadOlder(); }}>重试</button></div>}
       <div ref={viewport} aria-label="聊天记录" className="min-h-0 flex-1 overflow-y-auto px-6 py-4" onWheel={e => { if (e.deltaY < 0 && e.currentTarget.scrollTop < 32) { follow.current = false; void loadOlder(); } }} onScroll={e => { const el = e.currentTarget; const upward = el.scrollTop < previousTop.current; previousTop.current = el.scrollTop; follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; if (upward && el.scrollTop < 32) void loadOlder(); }}>
@@ -250,7 +252,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
         <div className="composer-footer"><div className="flex shrink-0 items-center gap-2">{filesEnabled && <button type="button" aria-label="添加文件" title="添加文件（最多10个，单个10MB）；也可拖拽或粘贴" disabled={!active || busy || !ready || attachmentBlocked || attachmentIds.length >= 10} className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40" onClick={() => attachmentControl.current?.open()}><Icon name="plus" size={22} /></button>}<DatabaseExecutionMode /></div><div className="composer-actions"><DatabaseModelStatus />{busy && <button type="button" className={button} onClick={() => { void jsonFetch(`/api/tasks/${active}/stop`, { method: 'POST' }).catch(e => setError(errorText(e))); }}>停止</button>}<button title="发送" aria-label="发送" className="composer-send flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-950 hover:opacity-80 disabled:opacity-40" disabled={!chatEnabled || !active || busy || !ready || attachmentBlocked || (!input.trim() && !attachmentIds.length)}><Icon name="up" size={18} /></button></div></div>
       </form>
     </main>
-    {rightOpen && <DatabaseWorkspaceSidebar active={active} tasks={tasks} onSelect={setActive} onSettings={() => setSettings('mcp')} />}
+    {rightOpen && <DatabaseBrowser key={active??'empty'} taskId={active} onHide={()=>{setRightOpen(false);localStorage.setItem('wp-right-panel-open','false');}} />}
     {settings && <DatabaseSettings initialSection={settings} configurationEnabled={chatEnabled} onClose={() => setSettings(null)} onChanged={refreshWorkspace} />}
   </div>;
 }

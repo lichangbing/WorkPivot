@@ -134,7 +134,7 @@ export class RunRepository {
       await c.query("INSERT INTO workpivot.run_permissions(id,owner_user_id,task_id,run_id,request,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '3 minutes')", [id, actor, run.taskId, run.id, JSON.stringify(request)]);
       if (automatic) await c.query("UPDATE workpivot.run_permissions SET state='allowed',decision='allow',resolved_at=now() WHERE id=$1", [id]);
       else await c.query("UPDATE workpivot.tasks SET status='waiting',revision=revision+1 WHERE id=$1", [run.taskId]);
-      const payload = { type: 'permission_request' as const, id, tool: request.tool, command: request.command, paths: [], scope: 'once', reason: request.tool === 'execute_skill' ? '本次隔离执行需要确认' : '本次MCP外部调用需要确认' };
+      const payload = { type: 'permission_request' as const, id, tool: request.tool, command: request.command, paths: [], scope: 'once', reason: request.tool === 'execute_skill' ? '本次隔离执行需要确认' : ['web_fetch','browser_visit'].includes(request.tool) ? '本次网页访问需要确认' : '本次MCP外部调用需要确认' };
       const saved = await event(c, actor, run, 'meta', JSON.stringify(automatic ? { type: 'permission_resolved', id, decision: 'allow', reason: '自动模式：本次隔离执行', tool: request.tool } : payload));
       return { ...saved, ...payload, automatic, eventId: saved.id };
     }, actor);

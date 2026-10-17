@@ -27,7 +27,10 @@ services:
       retries: 20
     restart: unless-stopped
   server:
-    image: workpivot-server:local-hybrid-20261017
+    networks: [default, browser]
+    env_file:
+      - ../../local-runtime/browser.env.local
+    image: workpivot-server:local-browser-ui-20261017
     depends_on:
       database:
         condition: service_healthy
@@ -41,6 +44,7 @@ services:
       WORKPIVOT_DATABASE_FILES_ROOT: /data/files
       WORKPIVOT_WORKER_URL: http://host.docker.internal:39990
       WORKPIVOT_WORKER_TOKEN: ${WORKPIVOT_WORKER_TOKEN}
+      WORKPIVOT_BROWSER_URL: http://browser:39991
       TZ: Asia/Shanghai
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -61,3 +65,9 @@ volumes:
   embedding_models:
   postgres:
   files:
+
+networks:
+  default: {}
+  browser:
+    external: true
+    name: workpivot-local-browser_default

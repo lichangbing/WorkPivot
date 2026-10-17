@@ -64,3 +64,8 @@ docker build -f releases/deploy/Dockerfile.local-current -t workpivot-server:loc
 ## 混合检索升级（2026-10-17）
 
 当前应用镜像`workpivot-server:local-hybrid-20261017`，schema仍为31。真实聊天已接入混合检索、降级提示和原文引用窗口。升级前回退包`local-runtime/backups/pre-hybrid-1792203722087`，旧镜像`workpivot-server:local-embedding-20261017`。验收和限制见[混合检索交付](../../docs/03-project/hybrid-retrieval-closeout-20261017.md)。
+
+
+## 网页工具、共享浏览器及悬浮区升级（2026-10-17）
+
+当前应用镜像为`workpivot-server:local-browser-ui-20261017`，独立浏览器镜像`workpivot-browser:local-shared-20261017`，schema仍为31。右上“动态与资料”可固定/隐藏，右侧真实浏览器与当前对话AI共享页面。升级前停写回退包为`local-runtime/backups/pre-web-1792225781000`；旧hybrid镜像保留。本次只部署网页/UI范围，工作区并行Office、用量等变更未纳入。配置、实际验收和回退见[本批上线记录](网页浏览器上线-20261017.md)。

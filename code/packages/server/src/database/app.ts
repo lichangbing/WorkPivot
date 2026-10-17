@@ -1,3 +1,4 @@
+import type { BrowserWorkspace } from '../web/browser-workspace.js';
 import type {Embeddings} from './embeddings.js';
 import type {EmbeddingInput} from './embedding-client.js';
 import {TrashRepository} from './trash.js';
@@ -32,7 +33,7 @@ import { API_PROTOCOL } from '@workpivot/shared';
 import type { FileRepository } from './files.js';
 
 /** K01 联调接口；各服务适配完成后接入生产界面。 */
-export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken: string, execution?: DatabaseExecution, providers?: ProviderRepository, mcp?: McpRepository, webDist?: string, files?: FileRepository, skillBuilds?: SkillBuilds, automations?: Automations, embeddings?: Embeddings): Promise<Express> {
+export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken: string, execution?: DatabaseExecution, providers?: ProviderRepository, mcp?: McpRepository, webDist?: string, files?: FileRepository, skillBuilds?: SkillBuilds, automations?: Automations, embeddings?: Embeddings, browserWorkspace?: BrowserWorkspace): Promise<Express> {
   await assertRestrictedRole(authPool, 'identity'); await assertRestrictedRole(appPool, 'workpivot');
   const accounts = new AccountRepository(authPool), workspace = new WorkspaceRepository(appPool);
   const conversation = new ConversationRepository(appPool);
@@ -59,6 +60,10 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     if (user.mustChangePassword && !['/auth/password', '/auth/logout'].includes(req.path)) throw new RepositoryError(403, '请先修改临时密码');
     res.locals['user'] = user; next();
   });
+  if(browserWorkspace){
+    app.get('/api/tasks/:id/browser',async(req,res)=>{res.json(await browserWorkspace.request(actor(res).id,str(req.params['id'])));});
+    app.post('/api/tasks/:id/browser',async(req,res)=>{const controller=new AbortController();const cancel=()=>{if(!res.writableEnded)controller.abort();};res.on('close',cancel);try{res.json(await browserWorkspace.request(actor(res).id,str(req.params['id']),body(req),controller.signal));}finally{res.removeListener('close',cancel);}});
+  }
   app.use('/api/automations', automationRoutes(automations ?? new Automations(appPool)));
   if(embeddings){
     app.use('/api/embeddings',(_req,res,next)=>{if(actor(res).role!=='admin')throw new RepositoryError(403,'仅管理员可配置本地向量服务');next();});
