@@ -1,3 +1,4 @@
+import { parserFingerprint } from '../packages/server/src/database/document-parser.js';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm} from 'node:fs/promises';
@@ -13,7 +14,7 @@ export async function testKnowledge(db:Pool,actor:string,foreign:string,check:(o
  const root=await mkdtemp(join(tmpdir(),'wp-knowledge-')),files=new FileRepository(db,root),workspace=new WorkspaceRepository(db),knowledge=new KnowledgeRepository(db),runs=new RunRepository(db);
  const project=await workspace.createProject(actor,'Knowledge project'),otherProject=await workspace.createProject(actor,'Other project');
  const source=await workspace.createTask(actor,'Source',project.id),reader=await workspace.createTask(actor,'Reader',project.id),outside=await workspace.createTask(actor,'Outside',otherProject.id),privateTask=await workspace.createTask(foreign,'Private');
- const publish=async(owner:string,versionId:string,text:string)=>{await transaction(db,c=>c.query("UPDATE workpivot.document_processing SET status='completed',parts=$2::jsonb WHERE version_id=$1",[versionId,JSON.stringify([{location:'page:2',text}])]),owner);await knowledge.indexNext(owner);};
+ const publish=async(owner:string,versionId:string,text:string)=>{await transaction(db,c=>c.query("UPDATE workpivot.document_processing SET status='completed',parts=$2::jsonb,parser_fingerprint=$3 WHERE version_id=$1",[versionId,JSON.stringify([{location:'page:2',text}]),parserFingerprint]),owner);await knowledge.indexNext(owner);};
  try{
  const split=splitKnowledge([{location:'page:1',text:'😀'.repeat(2500)}]);check(split.length===3&&Array.from(split[0]!.content).length===1200&&split[1]!.offset===1080,'chunks preserve Unicode and overlap');
  const first=await files.upload(actor,source.id,'report.pdf',Buffer.from('v1'),randomUUID());await publish(actor,first.id,'收入增长 confidential first revision');
@@ -32,6 +33,19 @@ export async function testKnowledge(db:Pool,actor:string,foreign:string,check:(o
  await assert.rejects(knowledge.read(actor,reader.id,found.matches[0].chunkId));check(true,'superseded citation cannot silently serve stale text');
  check((await knowledge.search(actor,reader.id,'下降')).matches[0].versionId===second.id,'new version is retrievable');
  check(await knowledge.indexNext(actor)===false,'index publication idempotent');
+ const tableFile=await files.upload(actor,source.id,'table.xlsx',Buffer.from('合成索引夹具'),randomUUID());
+ const tableParts=[{location:'sheet:销售',text:'',object:{kind:'sheet',sheet:'销售'}},...['地区','销售额（万元）','华东','120'].map((text,i)=>({location:'sheet:销售!'+['A1','B1','A2','B2'][i],text,object:{kind:'cell',parent:'sheet:销售',sheet:'销售',address:['A1','B1','A2','B2'][i],headerRow:i<2?'true':'false'}}))];
+ await transaction(db,c=>c.query("UPDATE workpivot.document_processing SET status='completed',parts=$2,parser_fingerprint=$3 WHERE version_id=$1",[tableFile.id,JSON.stringify(tableParts),parserFingerprint]),actor);
+ await knowledge.indexNext(actor);
+ const tableMatches=(await knowledge.search(actor,reader.id,'华东销售额')).matches.filter(m=>m.versionId===tableFile.id);
+ const east=tableMatches.find(m=>m.content.includes('120'))!;
+ check(!!east&&east.content.includes('华东')&&east.content.includes('销售额（万元）'),'数据库检索保留表头、单位及同一行数值');
+ const citation=await knowledge.read(actor,reader.id,east.chunkId);
+ check(citation.sourceOffsetScope==='derived-row-body'&&citation.content.includes('sheet:销售!B2'),'组合引用标明派生偏移并保留原单元格定位');
+ await transaction(db,c=>c.query("UPDATE workpivot.document_processing SET parser_fingerprint='旧解析版本' WHERE version_id=$1",[tableFile.id]),actor);
+ check(!(await knowledge.search(actor,reader.id,'华东')).matches.some(m=>m.versionId===tableFile.id),'旧解析指纹的表格片段立即不可检索');
+ await assert.rejects(knowledge.read(actor,reader.id,east.chunkId));check(true,'旧表格引用不能继续读取');
+ await files.remove(actor,source.id,tableFile.documentId,1);
  const run=await runs.start(actor,reader.id,randomUUID(),'use project knowledge');await runs.finish(actor,run,'completed',[]);
  await files.remove(actor,source.id,first.documentId,2);
  check((await knowledge.search(actor,reader.id,'收入')).matches.length===0,'deleted file immediately excluded from project retrieval');

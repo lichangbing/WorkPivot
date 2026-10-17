@@ -431,4 +431,19 @@ END $$;
 CREATE TRIGGER notify_conversation AFTER INSERT ON workpivot.conversation_events FOR EACH ROW EXECUTE FUNCTION workpivot.notify_task_event();
 CREATE TRIGGER notify_permissions AFTER INSERT OR UPDATE OR DELETE ON workpivot.run_permissions FOR EACH ROW EXECUTE FUNCTION workpivot.notify_task_event();
 CREATE TRIGGER notify_task_state AFTER UPDATE OF status,deleted_at ON workpivot.tasks FOR EACH ROW EXECUTE FUNCTION workpivot.notify_task_event();
-` }, {version:25,sql:expertSchema}, {version:26,sql:memoryContextSchema}, {version:27,sql:memoryReviewSchema}, {version:28,sql:skillBuildSchema}, {version:29,sql:automationSchema}, {version:30,sql:trashSchema}, {version:31,sql:embeddingSchema}] as const;
+` }, {version:25,sql:expertSchema}, {version:26,sql:memoryContextSchema}, {version:27,sql:memoryReviewSchema}, {version:28,sql:skillBuildSchema}, {version:29,sql:automationSchema}, {version:30,sql:trashSchema}, {version:31,sql:embeddingSchema}, {version:32,sql:`
+ALTER TABLE workpivot.document_processing ADD COLUMN parser_fingerprint text;
+ALTER TABLE workpivot.document_processing ADD COLUMN coverage text NOT NULL DEFAULT 'unknown' CHECK(coverage IN ('unknown','text-only','partial'));
+ALTER TABLE workpivot.document_processing ADD COLUMN warnings jsonb NOT NULL DEFAULT '[]' CHECK(jsonb_typeof(warnings)='array');
+`}, {version:33,sql:`
+INSERT INTO workpivot.document_processing(version_id,owner_user_id)
+SELECT v.id,v.owner_user_id FROM workpivot.document_versions v JOIN workpivot.documents d ON d.id=v.document_id
+WHERE d.purpose='upload' AND lower(v.name) ~ '[.](png|jpg|jpeg)$'
+ON CONFLICT(version_id) DO NOTHING;
+UPDATE workpivot.document_processing p SET status='pending',attempts=0,error=NULL
+FROM workpivot.document_versions v WHERE v.id=p.version_id AND p.status='failed' AND lower(v.name) ~ '[.]pdf$';
+`}, {version:34,sql:usageSchema}, {version:35,sql:`
+ALTER TABLE identity.sessions ADD COLUMN id uuid NOT NULL DEFAULT gen_random_uuid();
+ALTER TABLE identity.sessions ADD CONSTRAINT sessions_public_id UNIQUE(id);
+`}] as const;
+import { usageSchema } from './usage-schema.js';

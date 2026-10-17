@@ -1,3 +1,5 @@
+import { testUsage } from './database-usage.mts';
+import { testOfficeSkills } from './database-office-skills.mts';
 import { testSkillBuilds } from './database-skill-builds.mts';
 import { testMcpFailures } from './database-mcp-failures.mts';
 import { testProcessRecovery } from './database-process-recovery.mts';
@@ -54,11 +56,11 @@ let server: ReturnType<Awaited<ReturnType<typeof createDatabaseApp>>['listen']> 
 try {
   await installSchema(admin, 'wp_test_app', 'wp_test_auth');
   await installSchema(admin, 'wp_test_app', 'wp_test_auth');
-  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 31, 'schema installation idempotent');
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 35, 'schema installation idempotent');
   // 重建准确的空 v1 结构，独立验证增量升级。
-  await admin.query('DROP TABLE workpivot.embedding_jobs; DROP TABLE workpivot.embedding_spaces; DROP TABLE workpivot.trash_entries; DROP FUNCTION workpivot.automation_source_invalidated() CASCADE; DROP TABLE workpivot.automation_notices; DROP TABLE workpivot.automation_runs; DROP TABLE workpivot.automations; ALTER TABLE workpivot.tasks DROP COLUMN origin; DROP FUNCTION workpivot.invalidate_skill_builds() CASCADE; DROP FUNCTION workpivot.skill_visibility_guard() CASCADE; DROP TABLE workpivot.skill_trials; DROP TABLE workpivot.skill_builds; DROP FUNCTION workpivot.clear_memory_review_key() CASCADE; DROP FUNCTION workpivot.clear_memory_suggestion_context() CASCADE; DROP FUNCTION workpivot.expert_epoch_changed() CASCADE; DROP FUNCTION workpivot.expert_source_deleted() CASCADE; DROP TABLE workpivot.expert_suggestions; DROP TABLE workpivot.expert_jobs; DROP TABLE workpivot.expert_experiences; ALTER TABLE workpivot.tasks DROP COLUMN expert_id; ALTER TABLE workpivot.projects DROP COLUMN expert_id; DROP TABLE workpivot.experts; DROP FUNCTION workpivot.notify_task_event() CASCADE; DROP TABLE workpivot.context_checkpoints; DROP FUNCTION workpivot.invalidate_checkpoints() CASCADE; ALTER POLICY personal_memory_revisions ON workpivot.memory_revisions USING(owner_user_id=workpivot.actor_id() AND EXISTS(SELECT 1 FROM workpivot.memories m WHERE m.id=memory_id AND m.deleted_at IS NULL)); ALTER TABLE workpivot.memories DROP COLUMN merged_into; ALTER TABLE workpivot.memories DROP COLUMN locked; DROP TABLE workpivot.memory_controls; DROP TABLE workpivot.memory_templates; DROP TABLE workpivot.knowledge_chunks; DROP TABLE workpivot.knowledge_versions; DROP TABLE workpivot.document_processing; DROP TABLE workpivot.execution_artifacts; DROP TABLE workpivot.skill_executions; DROP TABLE workpivot.memory_sources; DROP TABLE workpivot.memory_jobs; DROP TABLE workpivot.memory_suggestions; DROP TABLE workpivot.skill_selections; DROP TABLE workpivot.skill_catalog; DROP TABLE workpivot.skill_releases; DROP TABLE workpivot.skill_drafts; DROP TABLE workpivot.document_versions; DROP TABLE workpivot.documents; DROP TABLE workpivot.run_permissions; DROP TABLE workpivot.mcp_connections; DROP TABLE workpivot.default_model; DROP TABLE workpivot.model_providers; DROP TABLE workpivot.task_runs; DROP TABLE workpivot.conversation_events; DROP TABLE workpivot.conversation_turns; ALTER TABLE workpivot.tasks DROP COLUMN next_turn_sequence; DELETE FROM workpivot_meta.schema_versions WHERE version>1');
+  await admin.query('ALTER TABLE identity.sessions DROP COLUMN id; DROP TABLE workpivot.model_usage; DROP TABLE workpivot.usage_budgets; DROP TABLE workpivot.usage_alerts; DROP TABLE workpivot.embedding_jobs; DROP TABLE workpivot.embedding_spaces; DROP TABLE workpivot.trash_entries; DROP FUNCTION workpivot.automation_source_invalidated() CASCADE; DROP TABLE workpivot.automation_notices; DROP TABLE workpivot.automation_runs; DROP TABLE workpivot.automations; ALTER TABLE workpivot.tasks DROP COLUMN origin; DROP FUNCTION workpivot.invalidate_skill_builds() CASCADE; DROP FUNCTION workpivot.skill_visibility_guard() CASCADE; DROP TABLE workpivot.skill_trials; DROP TABLE workpivot.skill_builds; DROP FUNCTION workpivot.clear_memory_review_key() CASCADE; DROP FUNCTION workpivot.clear_memory_suggestion_context() CASCADE; DROP FUNCTION workpivot.expert_epoch_changed() CASCADE; DROP FUNCTION workpivot.expert_source_deleted() CASCADE; DROP TABLE workpivot.expert_suggestions; DROP TABLE workpivot.expert_jobs; DROP TABLE workpivot.expert_experiences; ALTER TABLE workpivot.tasks DROP COLUMN expert_id; ALTER TABLE workpivot.projects DROP COLUMN expert_id; DROP TABLE workpivot.experts; DROP FUNCTION workpivot.notify_task_event() CASCADE; DROP TABLE workpivot.context_checkpoints; DROP FUNCTION workpivot.invalidate_checkpoints() CASCADE; ALTER POLICY personal_memory_revisions ON workpivot.memory_revisions USING(owner_user_id=workpivot.actor_id() AND EXISTS(SELECT 1 FROM workpivot.memories m WHERE m.id=memory_id AND m.deleted_at IS NULL)); ALTER TABLE workpivot.memories DROP COLUMN merged_into; ALTER TABLE workpivot.memories DROP COLUMN locked; DROP TABLE workpivot.memory_controls; DROP TABLE workpivot.memory_templates; DROP TABLE workpivot.knowledge_chunks; DROP TABLE workpivot.knowledge_versions; DROP TABLE workpivot.document_processing; DROP TABLE workpivot.execution_artifacts; DROP TABLE workpivot.skill_executions; DROP TABLE workpivot.memory_sources; DROP TABLE workpivot.memory_jobs; DROP TABLE workpivot.memory_suggestions; DROP TABLE workpivot.skill_selections; DROP TABLE workpivot.skill_catalog; DROP TABLE workpivot.skill_releases; DROP TABLE workpivot.skill_drafts; DROP TABLE workpivot.document_versions; DROP TABLE workpivot.documents; DROP TABLE workpivot.run_permissions; DROP TABLE workpivot.mcp_connections; DROP TABLE workpivot.default_model; DROP TABLE workpivot.model_providers; DROP TABLE workpivot.task_runs; DROP TABLE workpivot.conversation_events; DROP TABLE workpivot.conversation_turns; ALTER TABLE workpivot.tasks DROP COLUMN next_turn_sequence; DELETE FROM workpivot_meta.schema_versions WHERE version>1');
   await installSchema(admin, 'wp_test_app', 'wp_test_auth');
-  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 31, 'existing v1 database upgrades to latest schema');
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 35, 'existing v1 database upgrades to latest schema');
   await assertRestrictedRole(business, 'workpivot'); await assertRestrictedRole(identity, 'identity');
   await rejects(() => assertRestrictedRole(admin, 'workpivot'), 'superuser runtime rejected');
   await rejects(() => business.query('SELECT * FROM identity.credentials'), 'business pool cannot read password hashes');
@@ -81,6 +83,21 @@ try {
   check(await accounts.resolve(temporary.token) === null, 'password change revokes old token');
   const login = await accounts.login('member', 'personal-password');
   check(!login.user.mustChangePassword, 'new password clears required change');
+  const secondLogin = await accounts.login('member', 'personal-password');
+  const ownSessions = await accounts.sessions(login.token);
+  check(ownSessions.length === 2 && ownSessions.filter(s => s.current).length === 1, '会话列表仅展示本人有效登录并标记当前会话');
+  check(!JSON.stringify(ownSessions).includes('token') && !JSON.stringify(ownSessions).includes('digest'), '会话管理标识不泄露凭据摘要');
+  const otherSession = ownSessions.find(s => !s.current)!;
+  await rejects(() => accounts.revokeSession(owner.token, otherSession.id), '管理员不能撤销他人的会话', 404);
+  await accounts.revokeSession(login.token, otherSession.id);
+  check(await accounts.resolve(secondLogin.token) === null && !!await accounts.resolve(login.token), '撤销指定会话立即失效且保留当前登录');
+  await rejects(() => accounts.sessions(secondLogin.token), '失效会话不能读取列表', 401);
+  await rejects(() => accounts.revokeSession(login.token, otherSession.id), '重复撤销返回失效状态', 404);
+  const selfLogin = await accounts.login('member', 'personal-password');
+  const selfSession = (await accounts.sessions(selfLogin.token)).find(s => s.current)!;
+  await accounts.revokeSession(selfLogin.token, selfSession.id);
+  check(await accounts.resolve(selfLogin.token) === null, '允许主动撤销当前会话');
+
   await rejects(() => accounts.listUsers(login.token), 'member cannot list accounts', 403);
   const raw = await admin.query('SELECT token_digest FROM identity.sessions');
   check(raw.rows.every(r => /^[a-f0-9]{64}$/.test(r.token_digest) && r.token_digest !== login.token), 'only token digests persisted');
@@ -334,7 +351,10 @@ try {
     check((await providers.list(member.id)).length === 0, 'delete provider removes encrypted key');
     await rejects(() => providers.client(member.id), 'deleting active provider prevents new calls', 400);
     failModel = false;
-    const shared = await providers.save(owner.user.id, input);
+    const shared = await providers.save(owner.user.id, {...input,inputPrice:'2.5',outputPrice:'6',currency:'USD'});
+    check(shared.inputPrice==='2.500000'&&shared.currency==='USD','模型单价与币种持久保存');
+    await rejects(()=>providers.save(owner.user.id,{...input,inputPrice:'NaN'}),'无效模型单价拒绝',400);
+    check((await providers.diagnose(owner.user.id,shared.id,shared.revision)).ok,'未激活模型可通过最小真实生成请求诊断');
     await providers.activate(owner.user.id, shared.id, shared.revision, true);
     const service = new DatabaseModelService(identity,business,providers);
     const status = await service.status(member.id);
@@ -342,6 +362,7 @@ try {
     check((await providers.list(member.id)).length===0,'shared usage does not expose administrator registry');
     let sharedReply='';for await(const e of (await service.client(member.id)).streamChat([{role:'user',content:'shared test'}],[],new AbortController().signal)){if(e.type==='delta')sharedReply+=e.text;}
     check(sharedReply.includes('Provider-backed response'),'member invokes administrator default model successfully');
+    check((await transaction(business,c=>c.query('SELECT owner_user_id,input_price::text,currency FROM workpivot.model_usage WHERE provider_id=$1',[shared.id]),member.id)).rows.every(r=>r.owner_user_id===member.id&&r.input_price==='2.500000'&&r.currency==='USD'),'共享模型请求记入调用者并保留单价快照');
     await admin.query('UPDATE identity.users SET disabled=true WHERE id=$1',[owner.user.id]);
     check(!(await service.status(member.id)).available,'disabled administrator cannot supply default model');
     await admin.query('UPDATE identity.users SET disabled=false WHERE id=$1',[owner.user.id]);
@@ -479,6 +500,7 @@ try {
   check((await http('/projects/' + httpProject.id, finalSession.token, { revision: 1 }, 'DELETE')).ok, 'HTTP project deletion persists');
   await testMemoryTools(business, member.id, owner.user.id, check);
   await testSkills(business, owner.user.id, member.id, check);
+  await testOfficeSkills(business, owner.user.id, member.id, check);
   await testSkillBuilds(business, member.id, owner.user.id, check);
   const runtimeApp = await createDatabaseApp(identity, business, init, execution, providers, mcp);
   const runtimeServer = runtimeApp.listen(0, '127.0.0.1'); await new Promise<void>(r => runtimeServer.once('listening', r));
@@ -523,6 +545,8 @@ try {
   await testMemoryReview(business, owner.user.id, check);
   await testSkillExecution(business, owner.user.id, member.id, check);
   await testParsing(business, owner.user.id, member.id, check);
+  await testUsage(business, owner.user.id, member.id, check);
+
   await testKnowledge(business, owner.user.id, member.id, check);
   await testCompaction(business, owner.user.id, member.id, check);
   await testMemoryExpertIntegration(business, owner.user.id, member.id, check);

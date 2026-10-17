@@ -8,6 +8,7 @@ import { AccountRepository } from '../packages/server/src/database/accounts.js';
 import { WorkspaceRepository } from '../packages/server/src/database/workspace.js';
 import { ProviderRepository } from '../packages/server/src/database/providers.js';
 import { Experts } from '../packages/server/src/database/experts.js';
+import { seedOfficeSkills, officeSkillNames } from '../packages/server/src/database/office-skills.js';
 import { DatabaseSkills } from '../packages/server/src/database/skills.js';
 import { createDatabaseRuntime } from '../packages/server/src/database/runtime.js';
 
@@ -42,12 +43,20 @@ try {
   await workspace.createTask(actor, '真实办公流程', project.id);
   await workspace.createTask(actor, '新任务记忆复用', project.id);
   const providers = new ProviderRepository(db, secret);
-  const provider = await providers.save(actor, { name: 'DeepSeek 真实验收', baseUrl: 'https://api.deepseek.com', modelId: process.env.DEEPSEEK_MODEL || 'deepseek-flash', protocol: 'openai', apiKey: process.env.DEEPSEEK_API_KEY });
+  // 多格式文档验收显式配置保守字节预算，不改变业务账号或通用默认容量。
+  const provider = await providers.save(actor, { name: 'DeepSeek 真实验收', baseUrl: 'https://api.deepseek.com', modelId: process.env.DEEPSEEK_MODEL || 'deepseek-flash', protocol: 'openai', apiKey: process.env.DEEPSEEK_API_KEY, ...(process.env.WORKPIVOT_OFFICE_STAGE === '1' ? { contextBudget: 262144 } : {}) });
   await providers.activate(actor, provider.id, provider.revision);
   const workerConfig: { url?: string; token?: string } = process.env.WORKPIVOT_LIVE_WORKER_FILE ? JSON.parse(await readFile(process.env.WORKPIVOT_LIVE_WORKER_FILE, 'utf8')) : {};
   const workerUrl = workerConfig.url || process.env.WORKPIVOT_WORKER_URL, workerToken = workerConfig.token || process.env.WORKPIVOT_WORKER_TOKEN;
   if (Boolean(workerUrl) !== Boolean(workerToken)) throw Error('Both worker URL and token are required');
-  if (workerUrl) {
+  if (workerUrl && process.env.WORKPIVOT_OFFICE_STAGE === '1') {
+    if (new URL(workerUrl).hostname !== '127.0.0.1') throw Error('验收执行器必须是本机服务');
+    const skills = new DatabaseSkills(db);
+    await seedOfficeSkills(skills, actor);
+    for (const name of officeSkillNames) await skills.select(actor, name, true);
+    await workspace.saveSetting(actor, 'execution.mode', 'auto', 0);
+    await workspace.createTask(actor, '文档阶段端到端验收');
+  } else if (workerUrl) {
     if (new URL(workerUrl).hostname !== '127.0.0.1') throw Error('Live fixture worker must be local');
     const skills = new DatabaseSkills(db);
     let skill = await skills.create(actor, 'office-acceptance');
@@ -64,7 +73,7 @@ try {
     if (!await accounts.resolve(token)) { res.status(401).json({ error: '未授权' }); return; }
     res.json({ ok: true }); setTimeout(() => void close(), 100).unref();
   });
-  server = app.listen(39987, '127.0.0.1', () => console.log('Live disposable fixture http://127.0.0.1:39987 ; live-test / Live-Test-2026! ; real DeepSeek requests incur usage; worker=' + Boolean(workerUrl)));
+  server = app.listen(Number(process.env.WORKPIVOT_FIXTURE_PORT ?? 39987), '127.0.0.1', () => console.log('Live disposable fixture http://127.0.0.1:' + (process.env.WORKPIVOT_FIXTURE_PORT ?? 39987) + ' ; live-test / Live-Test-2026! ; real DeepSeek requests incur usage; worker=' + Boolean(workerUrl)));
   setTimeout(() => void close(), 3600000).unref();
   process.on('SIGINT', () => void close()); process.on('SIGTERM', () => void close());
 } catch {

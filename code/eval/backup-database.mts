@@ -1,3 +1,5 @@
+import { UsageRepository } from '../packages/server/src/database/usage.js';
+import { parserFingerprint } from '../packages/server/src/database/document-parser.js';
 import {TrashRepository} from '../packages/server/src/database/trash.js';
 import {Automations} from '../packages/server/src/database/automations.js';
 import {newAutomationConfig} from '../packages/shared/src/automation.js';
@@ -37,6 +39,11 @@ try {
   await admin.query("INSERT INTO workpivot.embedding_spaces(owner_user_id,name,base_url,model_id,model_version,protocol,dimensions,state,enabled,tested) VALUES($1,'恢复验收向量','http://localhost:11434','fixture','v1','ollama',3,'active',true,true)",[owner.user.id]);
   const project = await workspace.createProject(owner.user.id, '恢复验收项目');
   const task = await workspace.createTask(owner.user.id, '恢复验收任务', project.id);
+  const usage = new UsageRepository(app);
+  const meter = usage.wrap(owner.user.id, {providerId:randomUUID(),model:'备份用量夹具',async *streamChat(){yield {type:'usage' as const,inputTokens:1000,outputTokens:200};}}, {inputPrice:'2',outputPrice:'6',currency:'CNY'}, {taskId:task.id});
+  for await (const event of meter.streamChat([],[])) void event;
+  await usage.budget(owner.user.id,'CNY','0.001',0);
+
   const memory = await workspace.createMemory(owner.user.id, '恢复后必须保留这条工作偏好', 'user');
   const forgotten = await workspace.createMemory(owner.user.id, '备份后删除且不得复活的记忆', 'user');
   await workspace.appendMessage(owner.user.id, task.id, 'user', '恢复验收消息', randomUUID());
@@ -57,7 +64,8 @@ try {
   const config={...newAutomationConfig(),name:'恢复验收计划',skill:released.name,releaseId:released.version,requirements:'输出合成恢复验收报告'};
   let keptPlan=await plans.draft(owner.user.id,config,randomUUID());keptPlan=await plans.confirm(owner.user.id,keptPlan.id,keptPlan.revision,true);await plans.manual(owner.user.id,keptPlan.id,keptPlan.revision,randomUUID());
   const deletedPlan=await plans.draft(owner.user.id,{...config,name:'备份后删除的计划'},randomUUID());
-  await createBackup({ target: backupRoot, databaseUrl: source, filesRoot, schemaVersion: 31 });
+  await admin.query("INSERT INTO workpivot.document_processing(version_id,owner_user_id,status,parts,parser_fingerprint,coverage,warnings) VALUES($1,$2,'completed',$3,$4,'partial',$5)",[v2.id,owner.user.id,JSON.stringify([{location:'page:1',text:'合成解析结果'}]),parserFingerprint,JSON.stringify(['第2页未识别'])]);
+  await createBackup({ target: backupRoot, databaseUrl: source, filesRoot, schemaVersion: 35 });
   const manifest = await verifyBackup(backupRoot);
   check(manifest.totals.files === 5, '真实 pg_dump 与在线/回收站五份版本文件打包校验');
   check(!(await readFile(join(backupRoot, 'manifest.json'), 'utf8')).includes(new URL(source).password), '清单不包含数据库密码');
@@ -67,7 +75,7 @@ try {
   await skillBuilds.lifecycle(owner.user.id,deletedSkill.id,deletedSkill.draftRevision,'delete');
   const latest = await files.upload(owner.user.id, task.id, '成果.txt', Buffer.from('备份之后的新成果'), randomUUID(), artifact.documentId, 1, 'artifact');
   await admin.query("UPDATE workpivot.tasks SET status='running' WHERE id=$1", [task.id]);
-  await assert.rejects(createBackup({ target: join(root, 'busy-backup'), databaseUrl: source, filesRoot, schemaVersion: 31 }), /活动任务/);
+  await assert.rejects(createBackup({ target: join(root, 'busy-backup'), databaseUrl: source, filesRoot, schemaVersion: 35 }), /活动任务/);
   await admin.query("UPDATE workpivot.tasks SET status='idle' WHERE id=$1", [task.id]);
   check(true, '活动任务阻止备份并释放锁');
   await app.end(); await auth.end();
@@ -80,10 +88,20 @@ try {
   try {
     await assertRestrictedRole(restoredApp, 'workpivot'); await assertRestrictedRole(restoredAuth, 'identity');
     check(true, '恢复授权及业务/身份运行角色隔离');
+    const restoredParsing=await transaction(restoredApp,c=>c.query('SELECT parser_fingerprint,coverage,warnings FROM workpivot.document_processing WHERE version_id=$1',[v2.id]),owner.user.id);
+    check(restoredParsing.rows[0]?.parser_fingerprint===parserFingerprint&&restoredParsing.rows[0].coverage==='partial'&&restoredParsing.rows[0].warnings[0]==='第2页未识别','解析指纹和部分覆盖说明完整恢复');
+
     const restoredAccounts = new AccountRepository(restoredAuth), restoredWorkspace = new WorkspaceRepository(restoredApp), restoredRepository = new FileRepository(restoredApp, restoredFiles);
     check(await restoredAccounts.resolve(owner.token) === null, '旧会话已撤销');
     const login = await restoredAccounts.login('backup-owner', 'synthetic-password');
     check(login.user.id === owner.user.id, '原密码登录恢复后的账户');
+    check((await restoredAccounts.sessions(login.token)).length===1, '恢复后的会话列表只保留新登录');
+    const restoredUsage = new UsageRepository(restoredApp);
+    const month = new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit'}).format(new Date());
+    const usageReport = await restoredUsage.overview(owner.user.id,month);
+    check(usageReport.recent.length===1 && Number(usageReport.recent[0].cost)===0.0032 && Number(usageReport.recent[0].inputPrice)===2, '请求用量及历史单价快照完整恢复');
+    check(Number(usageReport.budgets[0]?.amount)===0.001 && usageReport.alerts.length===1, '预算配置及提醒完整恢复');
+
     check((await restoredWorkspace.listTasks(owner.user.id))[0]?.id === task.id, '项目任务完整保留');
     check((await restoredWorkspace.messages(owner.user.id, task.id))[0]?.content === '恢复验收消息', '历史消息保留');
     check((await restoredWorkspace.readMemory(owner.user.id, memory.id))?.content === '恢复后必须保留这条工作偏好', '个人记忆保留');
@@ -132,7 +150,7 @@ try {
   check(!(await readdir(root)).some(name => name.includes('.partial-')), '失败恢复清理临时文件目录');
   await admin.query('CREATE ROLE wp_restore_missing; GRANT SELECT ON workpivot.projects TO wp_restore_missing');
   const lateFailure = join(root, 'late-failure');
-  await createBackup({ target: lateFailure, databaseUrl: source, filesRoot, schemaVersion: 31 });
+  await createBackup({ target: lateFailure, databaseUrl: source, filesRoot, schemaVersion: 35 });
   await admin.query('REVOKE SELECT ON workpivot.projects FROM wp_restore_missing; DROP ROLE wp_restore_missing');
   await admin.query('CREATE DATABASE late_restore_test');
   const lateFiles = join(root, 'late_restore_test');

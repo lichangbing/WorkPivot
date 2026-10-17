@@ -1,0 +1,57 @@
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { mkdtemp,readFile,writeFile,rm,access } from 'node:fs/promises';
+import { join,resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { execFileSync,spawnSync } from 'node:child_process';
+import { parserProgram,validateParsedDocument } from '../packages/server/src/database/document-parser.js';
+const require=createRequire(new URL('../packages/server/package.json',import.meta.url));
+const {Document,Packer,Paragraph,TextRun,Table,TableRow,TableCell}=require('docx'),Excel=require('exceljs'),Zip=require('adm-zip');
+const root=await mkdtemp(join(tmpdir(),'wp-editing-'));let n=0;
+const check=(ok:unknown,label:string)=>{assert.ok(ok,label);n++;console.log('通过：'+label);};
+const scripts=(kind:string)=>resolve('packages/server/skills/'+kind+'-report/scripts');
+const hash=(b:Buffer)=>createHash('sha256').update(b).digest('hex');
+const env={...process.env,NODE_PATH:resolve('packages/server/node_modules')};
+try {
+ await writeFile(join(root,'parse.py'),parserProgram.replaceAll('/workspace',root));
+ const parse=async(data:Buffer,ext:string)=>{await writeFile(join(root,'source.'+ext),data);execFileSync('python3',[join(root,'parse.py'),'.'+ext],{stdio:'pipe'});return validateParsedDocument(JSON.parse(await readFile(join(root,'parsed.json'),'utf8')));};
+ const word=await Packer.toBuffer(new Document({sections:[{children:[new Paragraph({children:[new TextRun({text:'客户张',bold:true}),new TextRun('三，原文保留')]}),new Table({rows:[new TableRow({children:[new TableCell({children:[new Paragraph('原金额')]}),new TableCell({children:[new Paragraph('不变')]} )]})]})]}]}));
+ await writeFile(join(root,'original.docx'),word);
+ const changes=[{target:'paragraph:1',expected:'客户张三，原文保留',find:'张三',replacement:'李四 & 公司'},{target:'table-cell:1',expected:'原金额',replacement:'100元'}];
+ await writeFile(join(root,'changes.json'),JSON.stringify({sourceSha256:hash(word),changes}));
+ const args=[join(scripts('docx'),'edit.py'),'--source',join(root,'original.docx'),'--changes',join(root,'changes.json'),'--output',join(root,'changed.docx')];
+ execFileSync('python3',args,{stdio:'pipe'});const updated=await readFile(join(root,'changed.docx'));const result=await parse(updated,'docx');
+ check(result.parts.some(p=>p.text==='客户李四 & 公司，原文保留')&&result.parts.some(p=>p.text==='100元')&&result.parts.some(p=>p.text==='不变'),'Word局部跨片段替换及单格修改正确');
+ check((await readFile(join(root,'original.docx'))).equals(word),'Word原件不变');
+ const originalZip=new Zip(word),updatedZip=new Zip(updated);
+ check(originalZip.getEntries().filter((e:{entryName:string})=>e.entryName!=='word/document.xml').every((e:{entryName:string})=>originalZip.readFile(e.entryName).equals(updatedZip.readFile(e.entryName))),'Word其他包成员不变');
+ check(updatedZip.readAsText('word/document.xml').includes('<w:b/>'),'Word起点样式保留');
+ for(const bad of [{sourceSha256:'0'.repeat(64),changes},{sourceSha256:hash(word),changes:[{...changes[0],expected:'错误原文'}]},{sourceSha256:hash(word),changes:[changes[0],changes[0]]}]) {
+  await writeFile(join(root,'bad.json'),JSON.stringify(bad));const output=join(root,'failed.docx');
+  check(spawnSync('python3',[...args.slice(0,3),'--changes',join(root,'bad.json'),'--output',output]).status!==0,'哈希、原文或目标冲突不产生修改成果');await assert.rejects(access(output));
+ }
+ const book=new Excel.Workbook(),sheet=book.addWorksheet('预算');sheet.getCell('A1').value=10;sheet.getCell('A1').numFmt='0.00';sheet.getCell('A2').value=20;sheet.getCell('A3').value={formula:'SUM(A1:A2)',result:30};sheet.getCell('C1').value='保留';sheet.mergeCells('C1:D1');book.addWorksheet('其他').getCell('A1').value='不变';
+ const bytes=Buffer.from(await book.xlsx.writeBuffer());await writeFile(join(root,'original.xlsx'),bytes);
+ await writeFile(join(root,'excel.json'),JSON.stringify({sourceSha256:hash(bytes),changes:[{sheet:'预算',address:'A1',expected:'10',value:15}]}));
+ execFileSync('python3',[join(scripts('xlsx'),'edit.py'),'--source',join(root,'original.xlsx'),'--changes',join(root,'excel.json'),'--output',join(root,'changed.xlsx')],{stdio:'pipe'});
+ const edited=await readFile(join(root,'changed.xlsx')),parsed=await parse(edited,'xlsx');
+ check(parsed.parts.some(p=>p.location==='sheet:预算!A1'&&p.text==='15'&&p.object?.numberFormatCode==='0.00'||p.location==='sheet:预算!A1'&&p.text==='15'&&p.object?.numberFormatId==='2'),'Excel值修改保留数字格式');
+ check(parsed.parts.some(p=>p.object?.formula==='SUM(A1:A2)'&&p.object.cached===''),'Excel修改清除过期公式缓存');
+ check((await readFile(join(root,'original.xlsx'))).equals(bytes),'Excel原件不变');
+ check(new Zip(bytes).readFile('xl/worksheets/sheet2.xml').equals(new Zip(edited).readFile('xl/worksheets/sheet2.xml')),'Excel未修改且无公式的工作表逐字节保留');
+ execFileSync('python3',[join(scripts('xlsx'),'convert.py'),'--source',join(root,'changed.xlsx'),'--mode','recalculate','--output',join(root,'calculated.xlsx')],{stdio:'pipe',timeout:85000});
+ const calculated=await parse(await readFile(join(root,'calculated.xlsx')),'xlsx');
+ check(calculated.parts.some(p=>p.object?.formula==='SUM(A1:A2)'&&p.object.cached==='35'),'真实LibreOffice重算后公式与结果核对');
+ const spec={slides:[{title:'阶段报告',bullets:['读取与修改已实现','原件保持不变']},{title:'后续工作',bullets:['部署验收']} ]};await writeFile(join(root,'ppt.json'),JSON.stringify(spec));
+ execFileSync(process.execPath,[join(scripts('pptx'),'generate.cjs'),join(root,'ppt.json'),join(root,'original.pptx')],{env,stdio:'pipe'});
+ const ppt=await readFile(join(root,'original.pptx')),pptParts=await parse(ppt,'pptx');const shape=pptParts.parts.find(p=>p.text==='阶段报告')!.object!;
+ check(shape.kind==='shape'&&shape.slideNumber===1,'PPT读取暴露页及形状定位');
+ await writeFile(join(root,'ppt-edit.json'),JSON.stringify({sourceSha256:hash(ppt),changes:[{slide:1,shapeId:shape.shapeId,expected:'阶段报告',replacement:'完成报告'}]}));
+ execFileSync('python3',[join(scripts('pptx'),'edit.py'),'--source',join(root,'original.pptx'),'--changes',join(root,'ppt-edit.json'),'--output',join(root,'changed.pptx')],{stdio:'pipe'});
+ const pptUpdated=await readFile(join(root,'changed.pptx'));check((await parse(pptUpdated,'pptx')).parts.some(p=>p.text==='完成报告'),'PPT指定形状文字修改成功');
+ check(new Zip(ppt).readFile('ppt/slides/slide2.xml').equals(new Zip(pptUpdated).readFile('ppt/slides/slide2.xml')),'PPT未修改页逐字节不变');
+ const overflow=new Zip(ppt);overflow.updateFile('ppt/slides/slide1.xml',Buffer.from(overflow.readAsText('ppt/slides/slide1.xml').replace(/(<p:sp>[\s\S]*?<a:off )x="[0-9]+"/,'$1x="999999999"')));await writeFile(join(root,'overflow.pptx'),overflow.toBuffer());
+ check(spawnSync('python3',[join(scripts('pptx'),'inspect.py'),'--source',join(root,'overflow.pptx')]).status!==0,'PPT画布溢出明确拒绝');
+ console.log(`Office修改与转换：${n}/${n}通过`);
+} finally {await rm(root,{recursive:true,force:true});}

@@ -83,3 +83,37 @@ preview.25：W33更新为两种模式32项，验证旧设置转换、默认自�
 - `pnpm eval:embeddings`：隔离 pgvector 数据库和合成 HTTP 服务，验证持久索引、项目/用户隔离、异步暂停、重试、重建切换及过期租约；不调用云端模型。schema31起数据库镜像必须提供vector扩展。
 
 - `pnpm eval:hybrid`：混合检索与引用64项隔离检查；设置`WORKPIVOT_REAL_VECTORS`为由固定语料生成的JSON映射路径可复用真实向量做质量评测，缺少条目明确失败，不回退模拟结果。
+
+- `pnpm eval:parser-metadata`：合成DOCX/PDF执行真实Python解析器，验证程序指纹、媒体/无文字页的部分覆盖和契约拒绝。
+- `pnpm eval:parsed-content`：共享分页、来源定位、Unicode及密集片段边界。schema32解析指纹、失效重建和部分覆盖另由数据库/向量/恢复专项验收。
+
+- `pnpm eval:office-resources`：生成三种Office文件并运行包内检查脚本，验证正文缺失和XML损坏拒绝；数据库回归另含完整资源安装、更新草稿保护、轮次/计划固定版本。
+
+文档B1：`pnpm run eval:parser-metadata`现在覆盖33项，包括真实docx/exceljs文件、嵌套表与合并、共享公式、区域/对象筛选、空白文档和UTF-16实体拒绝。`pnpm run eval:database`新增结构化读取的版本/权限/删除/索引兼容性检查。均使用合成资料；不代替真实模型与生产容器验收。
+
+文档B2：`pnpm run eval:office-generation`覆盖22项真实生成/模板读回与失败边界；`pnpm run eval:office-resources`现为18项，检查新增脚本完整打包且不包含解释器缓存。生成测试仅操作临时合成文档，不覆盖业务原件，不代替真实模型/生产容器验收。
+
+### 2026-10-17 文档03B/03C验证
+
+- `pnpm run eval:office-generation`：Word/Excel生成、模板字段、读回核对22项。
+- `pnpm run eval:office-editing`：真实文件局部修改、原件/样式/其他成员保留、实际LibreOffice重算及PPT结构/溢出16项；宿主需Python及LibreOffice。
+- `pnpm run eval:office-resources`：完整包、资源边界、实际格式/正文检查18项。
+- `WORKPIVOT_TEST_IMAGE=<已构建执行镜像> pnpm run eval:office-container`：真实无网络Worker，OCR扫描/混合/旋转/JPEG、空白失败、公式及错误、PPT渲染和字体缺失11项；保留临时PDF/PNG便于人工视觉检查，运行结束回收测试Worker。
+- `WORKPIVOT_TEST_IMAGE=<已构建执行镜像> pnpm run eval:worker`：执行器超时、断线回收和失败无产物16项。
+- `WORKPIVOT_LIVE_EVAL=1 WORKPIVOT_LIVE_ENV_FILE=<本地密钥配置路径> node scripts/test-office-browser.mjs`：显式启用真实DeepSeek和真实Worker的一次性PostgreSQL网页夹具，默认39989，仅合成数据；会产生模型用量。登录凭据只用于夹具，启动日志可见。浏览器结束后认证POST `/fixture/stop`，父进程清理容器。勿指向业务数据库或业务Worker。
+
+本阶段数据库674、混合检索64、向量29、自动化49、联合备份恢复37通过。真实模型、视觉人工复核与确定性自动化测试分开记录，完整证据及已知限制见统一主计划03B3/03C实施记录。
+
+
+### 2026-10-17 用量与会话验证
+
+- `pnpm eval:model-usage`：5项模型流协议夹具，验证OpenAI统计请求与空choices usage、非法统计过滤、Anthropic累计/缓存、工具循环兼容。
+- `pnpm eval:database`：702项，新增用量/预算/诊断及会话隔离、撤销；一次性Docker数据库，不连接业务库。
+- `pnpm eval:backup-database`：40项，包含真实pg_dump恢复后的用量/单价、预算提醒及新会话管理。
+- `node scripts/test-rc-browser.mjs --usage`：39990隔离页面，合成用量和短期测试账号，不调用真实模型；900秒自动退出，或使用认证POST `/fixture/stop`结束后由父进程清理一次性容器。用量/预算及登录会话入口位于设置菜单。
+
+本批不包含个人数据批量清空及完整导出，不代表SU-R3全阶段或生产部署完成。
+
+### Office正确性修复回归
+
+`pnpm eval:office-reliability`：30项，合成OOXML与真实exceljs表对象，覆盖1900/1904基准、日期边界/时间/公式缓存、未支持格式警告、Word移动与删除修订、三个Skill包的孤立字符串拒绝/坐标核对、Excel及Word行分块、表头与引用、长行续片。既有文档115项通过，数据库706、混合检索64、向量29通过。向量用受控HTTP夹具，不代表真实业务问答准确率。生产发布需重建解析和索引，并显式更新Skill发布版本。

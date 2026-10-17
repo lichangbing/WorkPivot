@@ -1,6 +1,11 @@
-# Build on the Docker host. Runtime packages are baked in; jobs cannot install from the network.
+# 在宿主构建固定执行镜像；任务运行时禁止联网安装依赖。
 ARG BASE_IMAGE=workpivot-server:0.3.0-preview.6
 FROM ${BASE_IMAGE}
 USER root
-RUN apk add --no-cache python3 poppler-utils
+RUN if command -v apk >/dev/null 2>&1; then \
+      apk add --no-cache python3 py3-pillow poppler-utils tesseract-ocr tesseract-ocr-data-eng tesseract-ocr-data-chi_sim libreoffice font-noto-cjk; \
+    else \
+      apt-get update && apt-get install -y --no-install-recommends python3 python3-pil poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim libreoffice-writer libreoffice-calc libreoffice-impress fonts-noto-cjk && rm -rf /var/lib/apt/lists/*; \
+    fi
+ENV PYTHONDONTWRITEBYTECODE=1 OMP_THREAD_LIMIT=1
 USER node

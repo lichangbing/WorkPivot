@@ -124,10 +124,13 @@ export function createAnthropicClient(options: ModelClientOptions): ModelClient 
 
     // tool_use 块按 index 累积（input_json_delta 分片拼接）
     const toolBlocks = new Map<number, { id: string; name: string; json: string }>();
+    let usage: Record<string, number> = {};
 
     for await (const data of parseSSEStream(response.body, signal)) {
       let parsed: {
         type?: string;
+        message?: { usage?: Record<string, number> };
+        usage?: Record<string, number>;
         index?: number;
         content_block?: { type?: string; id?: string; name?: string };
         delta?: { type?: string; text?: string; thinking?: string; partial_json?: string };
@@ -136,6 +139,13 @@ export function createAnthropicClient(options: ModelClientOptions): ModelClient 
         parsed = JSON.parse(data);
       } catch {
         continue; // ping/心跳等非 JSON 载荷跳过
+      }
+      // usage是累计快照；输入包含独立的缓存读写计数，不重复累加输出。
+      if (parsed.type === 'message_start' || parsed.type === 'message_delta') {
+        usage = { ...usage, ...(parsed.message?.usage ?? parsed.usage ?? {}) };
+        const input = usage.input_tokens, output = usage.output_tokens;
+        const cached = usage.cache_read_input_tokens ?? 0, created = usage.cache_creation_input_tokens ?? 0;
+        if ([input, output, cached, created].every(n => Number.isSafeInteger(n) && n! >= 0) && Number.isSafeInteger(input! + cached + created)) yield { type: 'usage', inputTokens: input! + cached + created, outputTokens: output! };
       }
       if (parsed.type === 'content_block_start' && parsed.content_block?.type === 'tool_use') {
         toolBlocks.set(parsed.index ?? 0, {

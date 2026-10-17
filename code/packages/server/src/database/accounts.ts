@@ -67,6 +67,29 @@ export class AccountRepository {
   }
   async resolve(token: string): Promise<DatabaseUser | null> { return transaction(this.db, client => resolve(client, token)); }
   async logout(token: string): Promise<void> { await this.db.query('UPDATE identity.sessions SET revoked_at=now() WHERE token_digest=$1', [digest(token)]); }
+  async sessions(token: string): Promise<Array<{ id: string; createdAt: string; expiresAt: string; current: boolean }>> {
+    return transaction(this.db, async client => {
+      const user = await resolve(client, token);
+      if (!user) throw new RepositoryError(401, '登录已失效');
+      // 仅返回独立的管理标识，不能暴露登录令牌及其摘要。
+      return (await client.query(`SELECT s.id,s.created_at AS "createdAt",s.expires_at AS "expiresAt",s.token_digest=$2 AS current
+        FROM identity.sessions s JOIN identity.credentials c ON c.user_id=s.user_id
+        WHERE s.user_id=$1 AND s.revoked_at IS NULL AND s.expires_at>now() AND s.auth_version=c.auth_version
+        ORDER BY s.created_at DESC,s.id`, [user.id, digest(token)])).rows;
+    });
+  }
+  async revokeSession(token: string, id: string): Promise<void> {
+    uuid(id);
+    await transaction(this.db, async client => {
+      const user = await resolve(client, token);
+      if (!user) throw new RepositoryError(401, '登录已失效');
+      const result = await client.query(`UPDATE identity.sessions SET revoked_at=now()
+        WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL AND expires_at>now()
+        RETURNING id`, [id, user.id]);
+      if (!result.rowCount) throw new RepositoryError(404, '会话不存在或已失效');
+      await audit(client, user.id, user.id, 'session_revoked');
+    });
+  }
   async listUsers(token: string): Promise<DatabaseUser[]> {
     return transaction(this.db, async client => { await administrator(client, token); return (await client.query<DatabaseUser>(`SELECT ${userColumns} FROM identity.users u JOIN identity.credentials c ON c.user_id=u.id ORDER BY u.created_at,u.id`)).rows; });
   }

@@ -1,3 +1,4 @@
+import { UsageRepository, priceValue, currencyValue, type UsageContext } from './usage.js';
 import { streamWithRecovery } from './model-recovery.js';
 import { safeModelError, modelFailureDetails } from './model-error.js';
 import { randomUUID } from 'node:crypto';
@@ -6,9 +7,9 @@ import { createOpenAICompatibleClient, createAnthropicClient } from '@workpivot/
 import { createAesBox, type SecretEnvelope } from '../secret.js';
 import { RepositoryError, transaction, uuid } from './connection.js';
 
-export interface ProviderInput { name: string; baseUrl: string; modelId: string; protocol: 'openai' | 'anthropic'; apiKey?: string | null; contextBudget?: number }
+export interface ProviderInput { name: string; baseUrl: string; modelId: string; protocol: 'openai' | 'anthropic'; apiKey?: string | null; contextBudget?: number; inputPrice?: string|null; outputPrice?: string|null; currency?: string }
 export interface PublicDatabaseProvider extends Omit<ProviderInput, 'apiKey'> { id: string; revision: number; active: boolean; hasApiKey: boolean }
-const publicColumns = 'id,name,base_url AS "baseUrl",model_id AS "modelId",context_budget AS "contextBudget",protocol,revision,active,secret IS NOT NULL AS "hasApiKey"';
+const publicColumns = 'id,name,base_url AS "baseUrl",model_id AS "modelId",context_budget AS "contextBudget",protocol,input_price::text AS "inputPrice",output_price::text AS "outputPrice",currency,revision,active,secret IS NOT NULL AS "hasApiKey"';
 const version = (v: number) => { if (!Number.isSafeInteger(v) || v < 1) throw new RepositoryError(400, '模型配置版本无效'); };
 export class ProviderRepository {
   private readonly box;
@@ -20,6 +21,8 @@ export class ProviderRepository {
     try { if (typeof input.baseUrl !== 'string' || input.baseUrl.length > 2000) throw Error(); url = new URL(input.baseUrl); } catch { throw new RepositoryError(400, '模型地址无效'); }
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new RepositoryError(400, '模型地址仅支持HTTP(S)，不能包含凭据或查询参数');
     if (input.apiKey !== undefined && input.apiKey !== null && (typeof input.apiKey !== 'string' || !input.apiKey.trim() || input.apiKey.length > 16000)) throw new RepositoryError(400, '模型密钥无效');
+    for(const key of ['inputPrice','outputPrice'] as const) if(input[key]!==undefined)priceValue(input[key]);
+    if(input.currency!==undefined)currencyValue(input.currency);
     return { ...input, name: input.name.trim(), modelId: input.modelId.trim(), baseUrl: url.toString().replace(/\/+$/, '') };
   }
   async list(actor: string): Promise<PublicDatabaseProvider[]> {
@@ -37,9 +40,9 @@ export class ProviderRepository {
         if (!old) throw new RepositoryError(404, '模型配置不存在');
         if (old.revision !== expected) throw new RepositoryError(409, '模型配置已更新');
         if (old.base_url !== value.baseUrl && value.apiKey === undefined) throw new RepositoryError(400, '更换模型地址时请重新填写密钥或明确清除，避免将原密钥发送给新服务');
-        return (await c.query<PublicDatabaseProvider>(`UPDATE workpivot.model_providers SET name=$2,base_url=$3,model_id=$4,protocol=$5,secret=CASE WHEN $6 THEN $7::jsonb ELSE secret END,context_budget=COALESCE($8,context_budget),revision=revision+1 WHERE id=$1 RETURNING ${publicColumns}`, [id, value.name, value.baseUrl, value.modelId, value.protocol, value.apiKey !== undefined, secret,value.contextBudget??null])).rows[0]!;
+        return (await c.query<PublicDatabaseProvider>(`UPDATE workpivot.model_providers SET name=$2,base_url=$3,model_id=$4,protocol=$5,secret=CASE WHEN $6 THEN $7::jsonb ELSE secret END,context_budget=COALESCE($8,context_budget),input_price=CASE WHEN $9 THEN $10::numeric ELSE input_price END,output_price=CASE WHEN $11 THEN $12::numeric ELSE output_price END,currency=COALESCE($13,currency),revision=revision+1 WHERE id=$1 RETURNING ${publicColumns}`, [id, value.name, value.baseUrl, value.modelId, value.protocol, value.apiKey !== undefined, secret,value.contextBudget??null,value.inputPrice!==undefined,value.inputPrice??null,value.outputPrice!==undefined,value.outputPrice??null,value.currency??null])).rows[0]!;
       }
-      return (await c.query<PublicDatabaseProvider>(`INSERT INTO workpivot.model_providers(id,owner_user_id,name,base_url,model_id,protocol,secret,context_budget) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING ${publicColumns}`, [providerId, actor, value.name, value.baseUrl, value.modelId, value.protocol, secret,value.contextBudget??65536])).rows[0]!;
+      return (await c.query<PublicDatabaseProvider>(`INSERT INTO workpivot.model_providers(id,owner_user_id,name,base_url,model_id,protocol,secret,context_budget,input_price,output_price,currency) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING ${publicColumns}`, [providerId, actor, value.name, value.baseUrl, value.modelId, value.protocol, secret,value.contextBudget??65536,value.inputPrice??null,value.outputPrice??null,value.currency??'CNY'])).rows[0]!;
     }, actor);
   }
   async activate(actor: string, id: string, expected: number, publish = false): Promise<void> {
@@ -65,8 +68,20 @@ export class ProviderRepository {
       await c.query('DELETE FROM workpivot.model_providers WHERE id=$1', [id]);
     }, actor);
   }
-  async client(actor: string) {
-    const row = await transaction(this.db, async c => (await c.query('SELECT id,base_url,model_id,protocol,secret,context_budget FROM workpivot.model_providers WHERE active')).rows[0], actor);
+  async diagnose(actor:string,id:string,expected:number) {
+    uuid(id);version(expected);
+    const row=(await this.list(actor)).find(p=>p.id===id);
+    if(!row)throw new RepositoryError(404,'模型不存在');
+    if(row.revision!==expected)throw new RepositoryError(409,'模型已变更，请刷新');
+    const started=Date.now();
+    try {
+      const client=await this.client(actor,actor,{source:'diagnostic'},id);let text='';
+      for await(const event of client.streamChat([{role:'user',content:'Reply only OK.'}],[],AbortSignal.timeout(20000))) if(event.type==='delta')text+=event.text;
+      return {ok:text.trim().length>0,detail:text.trim()?'模型生成接口可用':'连接成功但未返回正文',durationMs:Date.now()-started};
+    }catch(error){return {ok:false,detail:safeModelError(error),durationMs:Date.now()-started};}
+  }
+  async client(actor: string, usageActor = actor, context: UsageContext = {}, providerId?:string) {
+    const row = await transaction(this.db, async c => (await c.query('SELECT id,base_url,model_id,protocol,secret,context_budget,input_price::text,output_price::text,currency FROM workpivot.model_providers WHERE ($1::uuid IS NULL AND active) OR id=$1', [providerId??null])).rows[0], actor);
     if (!row) throw new RepositoryError(400, '请先配置并选择模型');
     let apiKey: string | undefined;
     if (row.secret) {
@@ -78,8 +93,9 @@ export class ProviderRepository {
     }
     const options = { providerId: row.id as string, baseUrl: row.base_url as string, model: row.model_id as string, apiKey };
     const client = row.protocol === 'anthropic' ? createAnthropicClient(options) : createOpenAICompatibleClient(options);
+    const measured = new UsageRepository(this.db).wrap(usageActor,client,{inputPrice:row.input_price,outputPrice:row.output_price,currency:row.currency},context);
     return { providerId: client.providerId, model: client.model, contextBudget:row.context_budget as number, async *streamChat(...args: Parameters<typeof client.streamChat>) {
-      try { yield* streamWithRecovery(client, args); }
+      try { yield* streamWithRecovery(measured, args); }
       catch (error) { throw new Error(safeModelError(error), { cause: modelFailureDetails(error) }); }
     } };
   }

@@ -1,57 +1,23 @@
 ---
 name: pptx-report
-description: 生成规范的企业 PowerPoint 演示文稿。Use when 用户要求生成 PPT、汇报材料、幻灯片等 .pptx 交付物时。基于内置 pptxgenjs 库（NODE_PATH 已预配置），生成后必须自检。
+description: PPT办公流程：读取现有资料，按需求生成成果，并区分局部修改的支持边界。生成使用pptxgenjs，需要已配置的隔离执行服务。
 license: Proprietary. 内置技能，随 WorkPivot 发行。
 ---
 
-# PPT 生成（内置技能）
+# PPT办公处理
 
-生成 .pptx 的标准流程：**先写大纲，再写生成脚本，运行，最后自检**。不要手工拼二进制。
+先判断读取、修改还是新建；只加载本次需要的参考文件。Skill是工作指引，不会自动执行或增加权限。只调用当前实际提供的工具。
 
-## 第一步：大纲纪律（先想清楚再写）
+| 需求 | 下一步 |
+|---|---|
+| 读取、理解、核算 | 读取references/read-edit.md；通常直接调用read_uploaded_file，无需执行脚本 |
+| 新建独立成果 | 读取references/create.md；使用pptxgenjs生成，检查后发布 |
+| 修改已有文件 | 读取references/read-edit.md；先核对支持范围，保留原件，禁止默认重建整份文件 |
 
-- 先在回复中列出每页幻灯片的标题与要点（一页一个主题），确认逻辑顺畅后再写脚本。
-- 页数克制：汇报类 5-10 页；每页要点 ≤5 条，一条一行，不写长句。
-- 中文字体统一 `fontFace: 'Microsoft YaHei'`；标题加粗；不要用 emoji。
+## 输入与执行
 
-## 第二步：写生成脚本（Node + pptxgenjs）
+使用文件版本ID，读取list_uploaded_files和用户本轮指定附件，禁止静默换成最新版本。生成脚本只能通过execute_skill运行，inputs显式列出文件版本；资源在/skills/pptx-report只读，工作目录/workspace。命令只访问获准输入和工作目录；不联网安装依赖。
 
-- 新建 `gen-pptx.cjs`（注意 .cjs 后缀，用 require），内容骨架：
+outputs声明文件名；更新已有成果时先list_artifacts，再传documentId和当前revision。上传原件不能当作成果直接覆盖，修改上传文件默认生成新的成果。版本冲突、取消或检查失败，不声称发布成功。缺执行服务时说明限制，不编造Bash、文档引擎或尚未提供的结构化编辑工具。
 
-```js
-const pptxgen = require('pptxgenjs');
-const p = new pptxgen();
-p.defineLayout({ name: 'L16x9', width: 13.33, height: 7.5 }); // 16:9
-p.layout = 'L16x9';
-p.title = '汇报标题';
-
-const cover = p.addSlide();
-cover.addText('汇报标题', { x: 0.8, y: 2.6, w: 11.7, fontSize: 36, bold: true, fontFace: 'Microsoft YaHei', align: 'center' });
-cover.addText('2026 年 9 月 · 汇报人', { x: 0.8, y: 4.0, w: 11.7, fontSize: 16, fontFace: 'Microsoft YaHei', align: 'center', color: '666666' });
-
-const s1 = p.addSlide();
-s1.addText('章节标题', { x: 0.5, y: 0.4, w: 12.3, fontSize: 28, bold: true, fontFace: 'Microsoft YaHei', color: '1F3864' });
-['要点一，一行一条', '要点二', '要点三'].forEach((t, i) => {
-  s1.addText(t, { x: 0.8, y: 1.6 + i * 0.9, w: 11.5, fontSize: 18, fontFace: 'Microsoft YaHei' });
-});
-
-p.writeFile({ fileName: process.argv[2] ?? '汇报.pptx' }).then(() => console.log('written'));
-```
-
-常用能力：`slide.addTable(rows, { x, y, w, fontSize: 12, border: true })` 表格；
-`slide.addNotes('备注')` 演讲备注；色值是 **6 位 hex 字符串**（如 `'1F3864'`，不带 #）。
-
-## 第三步：运行
-
-```
-node gen-pptx.cjs "汇报材料 v1.0 <日期>.pptx"
-```
-
-## 第四步：自检（必须）
-
-```
-node -e "const b=require('fs').readFileSync('<输出文件名>');const ok=b[0]===0x50&&b[1]===0x4b&&b.includes(Buffer.from('ppt/presentation.xml'))&&b.length>5000;if(!ok){console.error('自检失败');process.exit(1)}console.log('自检通过',b.length,'字节')"
-```
-
-- 自检失败 = 文件损坏：检查脚本（最常见：色值带 #、坐标写出画布、把 .pptx 当纯文本写）。
-- 修复后重新运行与自检（最多重试 2 次）。
+先读取对应references中的参数说明，按文档直接调用内置脚本；不要为普通生成或修改逐个读取全部脚本源码。只有文档不足或执行报错需要定位时才读取相关脚本，避免挤占对话上下文。生成后在同一执行命令中调用检查器。结果区分文件生成、内容核对、公式重算、结构及视觉检查。首次成功后可建议沉淀私人Skill，但仍须用户弹窗确认；定时执行沿用计划固定的本技能版本，不临时依赖其他未加载技能。

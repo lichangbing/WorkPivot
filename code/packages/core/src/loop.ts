@@ -148,7 +148,7 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
           await options.onEvent?.({ type: 'assistant_delta', text: event.text });
         } else if (event.type === 'reasoning_delta') {
           await options.onEvent?.({ type: 'reasoning_delta', text: event.text });
-        } else {
+        } else if (event.type === 'tool_calls') {
           toolCalls = event.tool_calls;
         }
       }

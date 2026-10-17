@@ -1,3 +1,4 @@
+import type { UsageContext } from './usage.js';
 import type { Pool } from 'pg';
 import { RepositoryError, transaction } from './connection.js';
 import { ProviderRepository } from './providers.js';
@@ -23,9 +24,9 @@ export class DatabaseModelService {
     const model = await this.resolve(actor);
     return model ? { available: true, name: model.row.name, modelId: model.row.modelId, shared: model.shared } : { available: false };
   }
-  async client(actor: string) {
+  async client(actor: string, context: UsageContext = {}) {
     const model = await this.resolve(actor);
     if (!model) throw new RepositoryError(400,'暂无可用模型，请联系管理员在模型管理中启用默认模型');
-    return this.providers.client(model.owner);
+    return this.providers.client(model.owner,actor,context);
   }
 }

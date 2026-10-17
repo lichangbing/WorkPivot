@@ -27,6 +27,7 @@ export interface ChatMessage {
 }
 
 export type StreamEvent =
+  | { type: 'usage'; inputTokens: number; outputTokens: number }
   | { type: 'delta'; text: string }
   | { type: 'reasoning_delta'; text: string }
   | { type: 'tool_calls'; tool_calls: ToolCall[] };
@@ -90,6 +91,7 @@ export function createOpenAICompatibleClient(options: ModelClientOptions): Model
           messages,
           ...(tools.length > 0 ? { tools: tools.map((t) => ({ type: 'function', function: t })) } : {}),
           stream: true,
+          stream_options: { include_usage: true },
         }),
         signal: conn.signal,
       });
@@ -107,6 +109,7 @@ export function createOpenAICompatibleClient(options: ModelClientOptions): Model
     for await (const data of parseSSEStream(response.body, signal)) {
       if (data === '[DONE]') break;
       let parsed: {
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
         choices?: Array<{
           delta?: {
             content?: string | null;
@@ -118,6 +121,10 @@ export function createOpenAICompatibleClient(options: ModelClientOptions): Model
         parsed = JSON.parse(data);
       } catch {
         continue; // 非 JSON 行（心跳/注释）跳过
+      }
+      const usage = parsed.usage;
+      if (usage && Number.isSafeInteger(usage.prompt_tokens) && usage.prompt_tokens! >= 0 && Number.isSafeInteger(usage.completion_tokens) && usage.completion_tokens! >= 0) {
+        yield { type: 'usage', inputTokens: usage.prompt_tokens!, outputTokens: usage.completion_tokens! };
       }
       const delta = parsed.choices?.[0]?.delta;
       if (!delta) continue;

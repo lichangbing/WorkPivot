@@ -35,7 +35,7 @@ export async function compactedHistory(c: PoolClient, task: string): Promise<Cha
 }
 
 export class CompactionService {
-  constructor(private readonly db: Pool, private readonly model: (actor: string) => Promise<ModelClient>, readonly budget = defaultContextBudget,private readonly modelBudget?:(actor:string)=>Promise<number>) {
+  constructor(private readonly db: Pool, private readonly model: (actor: string,taskId?:string) => Promise<ModelClient>, readonly budget = defaultContextBudget,private readonly modelBudget?:(actor:string)=>Promise<number>) {
     if (!Number.isSafeInteger(budget) || budget < 12000 || budget > 1000000) throw Error('上下文预算配置无效');
   }
   private async capacity(actor:string){const value=this.modelBudget?await this.modelBudget(actor):this.budget;if(!Number.isSafeInteger(value)||value<12000||value>1000000)throw new RepositoryError(400,'模型上下文容量无效');return value;}
@@ -86,7 +86,7 @@ export class CompactionService {
   }
   private async generate(actor: string, task: string, id: string, plan:ReturnType<typeof summaryBatches>,budget:number) {
     try {
-      const client = await this.model(actor); let content = '';
+      const client = await this.model(actor,task); let content = '';
       for(const [index,batch] of plan.batches.entries()){
         const alive=await transaction(this.db,c=>c.query("UPDATE workpivot.context_checkpoints SET lease_until=now()+interval '3 minutes' WHERE id=$1 AND status='generating' AND lease_until>now() RETURNING id",[id]),actor);
         if(!alive.rowCount)return;

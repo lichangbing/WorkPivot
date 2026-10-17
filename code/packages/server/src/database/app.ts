@@ -74,6 +74,11 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     app.post('/api/embeddings/search',async(req,res)=>res.json(await embeddings.search(actor(res).id,str(body(req).taskId),str(body(req).query))));
   }
   const trash=new TrashRepository(appPool,files);
+  const usage=new UsageRepository(appPool);
+  app.get('/api/usage/alerts',async(_req,res)=>{res.json({alerts:await usage.alerts(actor(res).id)});});
+  app.get('/api/usage',async(req,res)=>{res.json(await usage.overview(actor(res).id,str(req.query['month']),req.query['taskId']===undefined?undefined:str(req.query['taskId'])));});
+  app.put('/api/usage/budget',async(req,res)=>{const b=body(req);await usage.budget(actor(res).id,b.currency,b.amount,b.revision);res.json({ok:true});});
+  app.post('/api/usage/acknowledge',async(req,res)=>{const b=body(req);await usage.acknowledge(actor(res).id,b.currency,b.month);res.json({ok:true});});
   app.get('/api/trash',async(_req,res)=>res.json(await trash.list(actor(res).id)));
   app.post('/api/trash/:id/restore',async(req,res)=>res.json(await trash.restore(actor(res).id,str(req.params['id']),str(body(req).revision))));
   app.post('/api/trash/:id/purge',async(req,res)=>res.json(await trash.purge(actor(res).id,str(req.params['id']),str(body(req).revision),str(body(req).confirmation))));
@@ -87,6 +92,8 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   app.put('/api/skill-market/:name', async (req, res) => { if (typeof body(req).loaded !== 'boolean') throw new RepositoryError(400, '加载状态无效'); await skills.select(actor(res).id, str(req.params['name']), body(req).loaded as boolean); res.json({ ok: true }); });
   expertRoutes(app,appPool);
   app.post('/api/auth/logout', async (req, res) => { await accounts.logout(token(req)); res.json({ ok: true }); });
+  app.get('/api/auth/sessions', async (req, res) => { res.json({ sessions: await accounts.sessions(token(req)) }); });
+  app.delete('/api/auth/sessions/:id', async (req, res) => { await accounts.revokeSession(token(req), req.params.id); res.json({ ok: true }); });
   app.post('/api/auth/password', async (req, res) => { const b = body(req); await accounts.changePassword(token(req), str(b.currentPassword), str(b.newPassword)); res.json({ ok: true }); });
   app.get('/api/users', async (req, res) => { res.json({ users: await accounts.listUsers(token(req)) }); });
   app.post('/api/users', async (req, res) => {
@@ -142,10 +149,11 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     const input = (req: Request): ProviderInput => {
       const b = body(req);
       if (b.protocol !== 'openai' && b.protocol !== 'anthropic') throw new RepositoryError(400, '模型协议无效');
-      return { name: str(b.name), baseUrl: str(b.baseUrl), modelId: str(b.modelId), protocol: b.protocol, ...(b.contextBudget===undefined?{}:{contextBudget:num(b.contextBudget)}), ...(b.apiKey === undefined ? {} : { apiKey: b.apiKey === null ? null : str(b.apiKey) }) };
+      return { name: str(b.name), baseUrl: str(b.baseUrl), modelId: str(b.modelId), protocol: b.protocol, ...(b.contextBudget===undefined?{}:{contextBudget:num(b.contextBudget)}), ...(b.inputPrice===undefined?{}:{inputPrice:b.inputPrice===null?null:str(b.inputPrice)}), ...(b.outputPrice===undefined?{}:{outputPrice:b.outputPrice===null?null:str(b.outputPrice)}), ...(b.currency===undefined?{}:{currency:str(b.currency)}), ...(b.apiKey === undefined ? {} : { apiKey: b.apiKey === null ? null : str(b.apiKey) }) };
     };
     app.get('/api/providers', async (_req, res) => { res.json({ providers: await providers.list(actor(res).id) }); });
     app.post('/api/providers', async (req, res) => { res.json({ provider: await providers.save(actor(res).id, input(req)) }); });
+    app.post('/api/providers/:id/test',async(req,res)=>{res.json(await providers.diagnose(actor(res).id,str(req.params['id']),num(body(req).revision)));});
     app.put('/api/providers/:id', async (req, res) => { res.json({ provider: await providers.save(actor(res).id, input(req), str(req.params['id']), num(body(req).revision)) }); });
     app.post('/api/providers/active', async (req, res) => { await providers.activate(actor(res).id, str(body(req).id), num(body(req).revision), true); res.json({ ok: true }); });
     app.delete('/api/providers/:id', async (req, res) => { await providers.remove(actor(res).id, str(req.params['id']), num(body(req).revision)); res.json({ ok: true }); });
@@ -257,3 +265,4 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   });
   return app;
 }
+import { UsageRepository } from './usage.js';

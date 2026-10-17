@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import type { Pool } from 'pg';
+import { DatabaseSkills } from '../packages/server/src/database/skills.js';
+import { seedOfficeSkills } from '../packages/server/src/database/office-skills.js';
+import { Automations } from '../packages/server/src/database/automations.js';
+import { newAutomationConfig } from '../packages/shared/src/automation.js';
+
+export async function testOfficeSkills(db: Pool, owner: string, member: string, check: (value: unknown, label: string) => void) {
+  const skills = new DatabaseSkills(db);
+  let old = await skills.create(owner, 'docx-report');
+  old = await skills.save(owner, old.name, 'SKILL.md', Buffer.from('---\nname: docx-report\ndescription: 旧版测试技能\n---\n\n旧版固定资源。'), old.revision);
+  old = await skills.publish(owner, old.name, old.revision);
+  const pinned = old.published!;
+  await skills.select(member, old.name, true);
+  const plans = new Automations(db, true);
+  let plan = await plans.draft(member, { ...newAutomationConfig(), name: '版本兼容验收', skill: old.name, releaseId: pinned, requirements: '生成合成报告' }, randomUUID());
+  plan = await plans.confirm(member, plan.id, plan.revision, true);
+  await seedOfficeSkills(skills, owner);
+  check((await skills.open(owner, old.name)).published === pinned, '安装默认保留已有发布版本');
+  check((await skills.market(member)).some(s => s.name === 'office-routing' && !s.loaded), '新路由发布但不会自动加载');
+  const xlsx = await skills.open(owner, 'xlsx-report');
+  check(xlsx.files.some(f => f.path === 'scripts/verify.py') && xlsx.files.some(f => f.path === 'references/create.md'), '安装包含脚本与参考资源');
+  const tool = skills.tools(member, new Map([[old.name, pinned]]))[0]!;
+  await seedOfficeSkills(skills, owner, true);
+  const staged = await skills.open(owner, old.name);
+  check(staged.dirty && staged.published === pinned, '更新仅暂存草稿不发布');
+  check(JSON.parse(String(await tool.run({ name: old.name }, { taskDir: '.' }))).content.includes('旧版固定资源'), '暂存更新不改变已加载资源');
+  check((await seedOfficeSkills(skills, owner, true)).find(r => r.name === old.name)?.status === '保留已有草稿', '重复安装不覆盖未发布草稿');
+  check((await skills.open(owner, 'xlsx-report')).revision === xlsx.revision, '相同资源重复暂存不产生修订');
+  const published = await skills.publish(owner, old.name, staged.revision);
+  check(published.published !== pinned, '显式发布产生新版本');
+  check(JSON.parse(String(await tool.run({ name: old.name }, { taskDir: '.' }))).content.includes('旧版固定资源'), '新发布不改变运行轮次固定资源');
+  check((await plans.detail(member, plan.id)).config?.releaseId === pinned, '自动化计划继续使用原发布版本');
+  await plans.manual(member, plan.id, plan.revision, randomUUID());
+  check((await plans.detail(member, plan.id)).runs[0]?.config.releaseId === pinned, '新触发的原计划运行仍固定旧版本');
+  await assert.rejects(skills.tools(member)[0]!.run({ name: 'office-routing' }, { taskDir: '.' }));
+  check(true, '未选择路由不可自动加载');
+  await skills.select(member, 'xlsx-report', true);
+  const resource = JSON.parse(String(await skills.tools(member)[0]!.run({ name: 'xlsx-report', file: 'references/create.md' }, { taskDir: '.' })));
+  check(resource.content.includes('exceljs') && resource.content.includes('verify.py'), '加载专项技能可渐进读取生成流程');
+  await plans.action(member, plan.id, plan.revision, 'pause');
+}

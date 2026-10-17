@@ -1,3 +1,4 @@
+import { parserFingerprint } from './document-parser.js';
 import {randomUUID} from 'node:crypto';
 import type {Pool,PoolClient} from 'pg';
 import {createAesBox} from '../secret.js';
@@ -5,7 +6,7 @@ import {RepositoryError,transaction,uuid} from './connection.js';
 import {embed,validateEmbedding,type EmbeddingInput} from './embedding-client.js';
 const columns=`id,name,base_url AS "baseUrl",model_id AS "modelId",model_version AS "modelVersion",protocol,dimensions,state,enabled,tested,revision,secret IS NOT NULL AS "hasApiKey"`;
 // 仅当前在线资料的最新已解析版本可进入队列和查询。
-const sources=`FROM workpivot.knowledge_chunks k JOIN workpivot.document_versions v ON v.id=k.version_id JOIN workpivot.documents d ON d.id=v.document_id JOIN workpivot.tasks t ON t.id=d.task_id WHERE t.deleted_at IS NULL AND v.revision=(SELECT max(v2.revision) FROM workpivot.document_versions v2 JOIN workpivot.knowledge_versions kv ON kv.version_id=v2.id WHERE v2.document_id=d.id)`;
+const sources=`FROM workpivot.knowledge_chunks k JOIN workpivot.document_versions v ON v.id=k.version_id JOIN workpivot.documents d ON d.id=v.document_id JOIN workpivot.tasks t ON t.id=d.task_id WHERE EXISTS(SELECT 1 FROM workpivot.document_processing parsed WHERE parsed.version_id=v.id AND parsed.status='completed' AND parsed.parser_fingerprint='${parserFingerprint}') AND t.deleted_at IS NULL AND v.revision=(SELECT max(v2.revision) FROM workpivot.document_versions v2 JOIN workpivot.knowledge_versions kv ON kv.version_id=v2.id JOIN workpivot.document_processing parsed2 ON parsed2.version_id=v2.id WHERE v2.document_id=d.id AND parsed2.status='completed' AND parsed2.parser_fingerprint='${parserFingerprint}')`;
 export class Embeddings {
  private readonly box;
  constructor(private readonly db:Pool,key:string){this.box=createAesBox(key);}

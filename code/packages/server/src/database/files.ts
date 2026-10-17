@@ -67,7 +67,7 @@ export class FileRepository {
       await writeFile(join(await this.directory(actor), versionId), data, { flag: 'wx', mode: 0o600, flush: true });
       signal?.throwIfAborted();
       const published = (await c.query<Version>(`INSERT INTO workpivot.document_versions AS v(id,owner_user_id,document_id,revision,request_id,name,size,sha256) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING ${columns}`, [versionId, actor, id, revision, requestId, name, data.length, sha256])).rows[0]!;
-      if (purpose === 'upload' && /[.](docx|xlsx|pptx|pdf)$/i.test(name)) await c.query('INSERT INTO workpivot.document_processing(version_id,owner_user_id) VALUES($1,$2)', [versionId,actor]);
+      if (purpose === 'upload' && /[.](docx|xlsx|pptx|pdf|png|jpg|jpeg)$/i.test(name)) await c.query('INSERT INTO workpivot.document_processing(version_id,owner_user_id) VALUES($1,$2)', [versionId,actor]);
       signal?.throwIfAborted(); await onPublished?.(c, published); return published;
   }
   async list(actor: string, taskId: string, purpose: 'upload' | 'artifact' = 'upload'): Promise<Version[]> {

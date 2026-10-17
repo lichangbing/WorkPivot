@@ -1,3 +1,4 @@
+import { jsonFetch } from './api';
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { useTheme } from './theme';
@@ -9,6 +10,8 @@ export function WorkspaceUserMenu({ username, onLogout, onSettings }: { username
   const root = useRef<HTMLDivElement>(null);
   const userButton = useRef<HTMLButtonElement>(null), settingsButton = useRef<HTMLButtonElement>(null), themeButton = useRef<HTMLButtonElement>(null);
   const { theme, setTheme } = useTheme();
+  const [budgetAlerts,setBudgetAlerts]=useState(0);
+  useEffect(()=>{const c=new AbortController();const refresh=()=>{void jsonFetch<{alerts:unknown[]}>('/api/usage/alerts',{signal:c.signal}).then(r=>{if(!c.signal.aborted)setBudgetAlerts(r.alerts.length);}).catch(()=>{/* 提醒读取失败不影响登录和工作区，下一次轮询重试。 */});};refresh();const timer=setInterval(refresh,30000);return()=>{c.abort();clearInterval(timer);};},[]);
   useEffect(() => {
     const outside = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) { setOpen(null); setThemes(false); } };
     document.addEventListener('pointerdown', outside);
@@ -26,7 +29,8 @@ export function WorkspaceUserMenu({ username, onLogout, onSettings }: { username
       </div>
       <div className="my-1 border-t border-neutral-700" /><button type="button" className={item} onClick={() => { setOpen(null); onLogout(); }}><Icon name="arrow" /><span>退出登录</span></button>
     </div>}
+    {budgetAlerts>0&&<button type="button" className="rounded px-2 py-1 text-xs text-amber-600" aria-label="查看预算提醒" onClick={()=>onSettings('usage')}>预算提醒 {budgetAlerts}</button>}
     <button ref={settingsButton} type="button" aria-label="设置" title="设置" aria-expanded={open === 'settings'} aria-controls="workspace-settings-menu" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-300 hover:bg-neutral-800" onClick={() => { setOpen(open === 'settings' ? null : 'settings'); setThemes(false); }}><Icon name="settings" size={20} /></button>
-    {open === 'settings' && <div id="workspace-settings-menu" aria-label="设置选项" className={`${popup} right-3 w-48`}>{([['mcp', 'MCP', 'skill'], ['skills', 'Skill', 'skill'], ['experts', '专家', 'skill']] as const).map(([section, label, icon]) => <button key={section} type="button" className={item} onClick={() => { setOpen(null); onSettings(section); }}><Icon name={icon} /><span>{label}</span></button>)}</div>}
+    {open === 'settings' && <div id="workspace-settings-menu" aria-label="设置选项" className={`${popup} right-3 w-48`}>{([['mcp', 'MCP', 'skill'], ['skills', 'Skill', 'skill'], ['experts', '专家', 'skill'], ['usage', '用量与预算', 'skill'], ['sessions', '登录会话', 'skill']] as const).map(([section, label, icon]) => <button key={section} type="button" className={item} onClick={() => { setOpen(null); onSettings(section); }}><Icon name={icon} /><span>{label}</span></button>)}</div>}
   </div>;
 }

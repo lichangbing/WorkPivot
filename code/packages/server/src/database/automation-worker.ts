@@ -13,7 +13,7 @@ type Job={id:string;owner:string;planId:string;taskId:string;fence:string;config
 /** 单个数据库会话锁控制全局一个后台执行槽；租约和栅栏控制迟到写入。 */
 export class AutomationWorker {
  private processing=false;private stopped=false;private controller?:AbortController;private pending?:Promise<void>;
- constructor(private readonly auth:Pool,private readonly plans:Automations,private readonly files:FileRepository,private readonly worker:WorkerConfiguration|undefined,private readonly clientFor:(actor:string)=>Promise<ModelClient>,private readonly web?:WebTools){}
+ constructor(private readonly auth:Pool,private readonly plans:Automations,private readonly files:FileRepository,private readonly worker:WorkerConfiguration|undefined,private readonly clientFor:(actor:string,taskId?:string)=>Promise<ModelClient>,private readonly web?:WebTools){}
  stop(){this.stopped=true;this.controller?.abort();return this.pending??Promise.resolve();}
  tick(){if(this.processing||this.stopped)return Promise.resolve();this.processing=true;this.pending=this.process().finally(()=>{this.processing=false;});return this.pending;}
  private async validUser(actor:string){if(!(await this.auth.query('SELECT id FROM identity.users WHERE id=$1 AND NOT disabled',[actor])).rowCount)throw new RepositoryError(403,'账号已停用');}
@@ -61,7 +61,7 @@ export class AutomationWorker {
   const heartbeat=setInterval(()=>{if(busy)return;busy=true;void(async()=>{try{await lock.query('SELECT 1');await check();await transaction(this.plans.db,c=>c.query("UPDATE workpivot.automation_runs SET lease_until=now()+interval '30 seconds' WHERE id=$1 AND fence=$2 AND status='running' AND NOT revoked",[j.id,j.fence]),j.owner);}catch{controller.abort();}finally{busy=false;}})();},5000);heartbeat.unref();
   const add=(name:unknown,data:Buffer)=>{if(typeof name!=='string'||!name.trim()||name.length>240||/[\\/:\x00-\x1f]/.test(name)||['.','..'].includes(name)||data.length>10*1024*1024)throw new RepositoryError(400,'成果名称或大小无效');if(!stage.has(name)&&stage.size>=10)throw new RepositoryError(400,'每次最多10个成果');stage.set(name,data);if([...stage.values()].reduce((n,d)=>n+d.length,0)>16*1024*1024)throw new RepositoryError(413,'成果合计超过16MB');};
   try{
-   await check();const model=await this.clientFor(j.owner);await transaction(this.plans.db,c=>c.query('UPDATE workpivot.automation_runs SET model=$2 WHERE id=$1 AND fence=$3',[j.id,{providerId:model.providerId,model:model.model},j.fence]),j.owner);
+   await check();const model=await this.clientFor(j.owner,j.taskId);await transaction(this.plans.db,c=>c.query('UPDATE workpivot.automation_runs SET model=$2 WHERE id=$1 AND fence=$3',[j.id,{providerId:model.providerId,model:model.model},j.fence]),j.owner);
    const skills=new DatabaseSkills(this.plans.db),versions=new Map([[j.config.skill,j.config.releaseId]]);
    const readSkill=skills.tools(j.owner,versions)[0]!;
    const webTools=j.config.webOrigins?.length&&this.web?this.web.tools(async(name,data)=>{await check();add(name,data);return {staged:name};},j.config.webOrigins).map(tool=>({...tool,access:undefined,run:async(args:Record<string,unknown>,ctx:Parameters<Tool['run']>[1])=>{await check();if(!loaded)throw Error('请先读取固定技能说明');const result=await tool.run(args,ctx);await check();return result;}})):[];

@@ -1,65 +1,36 @@
 ---
 name: xlsx-report
-description: 生成规范的企业 Excel 表格/数据报表。Use when 用户要求生成 Excel、表格、清单、台账、数据汇总等 .xlsx 交付物时。基于内置 exceljs 库（NODE_PATH 已预配置），生成后必须自检。
+description: Excel办公流程：读取现有资料，按需求生成成果，并区分局部修改的支持边界。生成使用exceljs，需要已配置的隔离执行服务。
 license: Proprietary. 内置技能，随 WorkPivot 发行。
 ---
 
-# Excel 表格生成（内置技能）
+# Excel办公处理
 
-生成 .xlsx 的标准流程：**先定表头，再写生成脚本，运行，最后自检**。不要手工拼二进制。
+先判断读取、修改还是新建；只加载本次需要的参考文件。Skill是工作指引，不会自动执行或增加权限。只调用当前实际提供的工具。
 
-## 第一步：结构纪律
+| 需求 | 下一步 |
+|---|---|
+| 读取、理解、核算 | 读取references/read-edit.md；通常直接调用read_uploaded_file，无需执行脚本 |
+| 新建独立成果 | 读取references/create.md；使用exceljs生成，检查后发布；优先使用内置JSON参数脚本 |
+| 修改已有文件 | 读取references/read-edit.md；先核对支持范围，保留原件，禁止默认重建整份文件 |
 
-- 先在回复中给出表头与行数估算，确认列设计合理后再写脚本。
-- 一张工作表一个主题；列宽要设置（表头中文约 12-24）；数字列右对齐由库默认处理。
-- 单元格内容不换行填长文——长文本放 Word，不放 Excel。
+## 输入与执行
 
-## 第二步：写生成脚本（Node + exceljs）
+使用文件版本ID，读取list_uploaded_files和用户本轮指定附件，禁止静默换成最新版本。生成脚本只能通过execute_skill运行，inputs显式列出文件版本；资源在/skills/xlsx-report只读，工作目录/workspace。命令只访问获准输入和工作目录；不联网安装依赖。
 
-- 新建 `gen-xlsx.cjs`（注意 .cjs 后缀，用 require），内容骨架：
+outputs声明文件名；更新已有成果时先list_artifacts，再传documentId和当前revision。上传原件不能当作成果直接覆盖，修改上传文件默认生成新的成果。版本冲突、取消或检查失败，不声称发布成功。缺执行服务时说明限制，不编造Bash、文档引擎或尚未提供的结构化编辑工具。
 
-```js
-const ExcelJS = require('exceljs');
-(async () => {
-  const wb = new ExcelJS.Workbook();
-  wb.creator = 'WorkPivot';
-  const ws = wb.addWorksheet('汇总');
+先读取对应references中的参数说明，按文档直接调用内置脚本；不要为普通生成或修改逐个读取全部脚本源码。只有文档不足或执行报错需要定位时才读取相关脚本，避免挤占对话上下文。生成后在同一执行命令中调用检查器。结果区分文件生成、内容核对、公式重算、结构及视觉检查。首次成功后可建议沉淀私人Skill，但仍须用户弹窗确认；定时执行沿用计划固定的本技能版本，不临时依赖其他未加载技能。
 
-  ws.columns = [
-    { header: '名称', key: 'name', width: 24 },
-    { header: '数量', key: 'qty', width: 10 },
-    { header: '金额（元）', key: 'amount', width: 14 },
-    { header: '备注', key: 'note', width: 30 },
-  ];
-  ws.addRow({ name: '项目甲', qty: 3, amount: 1200.5, note: '' });
-  ws.addRow({ name: '项目乙', qty: 5, amount: 3000, note: '含加急费' });
+模板生成使用references/create.md中的template.py入口，固定模板版本和字段JSON；缺字段或不支持范围必须失败。内置generate.cjs会重新打开并核对内容，不代表视觉检查或公式重算。
 
-  // 表头样式：加粗+底色
-  const header = ws.getRow(1);
-  header.font = { bold: true };
-  header.eachCell((cell) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEEEEE' } }; });
 
-  // 数字列格式
-  ws.getColumn('amount').numFmt = '#,##0.00';
+### 正确性核对
 
-  await wb.xlsx.writeFile(process.argv[2] ?? '报表.xlsx');
-  console.log('written');
-})();
+`verify.py --expect-text`只匹配实际工作表单元格的正文，不使用未引用的共享字符串。关键数值使用坐标校验，例如：
+
+```sh
+python3 /skills/xlsx-report/scripts/verify.py /workspace/report.xlsx --expect-cell '{"sheet":"销售","cell":"B2","value":"120"}'
 ```
 
-常用能力：`ws.addTable()` 结构化表格；`cell.note` 批注；色值是 **8 位 ARGB**（如 `'FFEEEEEE'`，不带 #）。
-
-## 第三步：运行
-
-```
-node gen-xlsx.cjs "数据报表 v1.0 <日期>.xlsx"
-```
-
-## 第四步：自检（必须）
-
-```
-node -e "const b=require('fs').readFileSync('<输出文件名>');const ok=b[0]===0x50&&b[1]===0x4b&&b.includes(Buffer.from('xl/workbook.xml'))&&b.length>2000;if(!ok){console.error('自检失败');process.exit(1)}console.log('自检通过',b.length,'字节')"
-```
-
-- 自检失败 = 文件损坏：检查脚本（最常见：argb 色值位数不对、把 .xlsx 当纯文本写）。
-- 修复后重新运行与自检（最多重试 2 次）。
+此参数核对单元格原值或公式缓存，不重算、不核对视觉显示格式。日期分析需同时核对原值、日期基准与格式；不支持的格式、过期公式缓存或复杂表头必须明确说明，不自行猜测。
