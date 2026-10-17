@@ -1,0 +1,25 @@
+import {randomBytes} from 'node:crypto';
+import {resolve} from 'node:path';
+import {pool,installSchema} from '../packages/server/src/database/connection.js';
+import {AccountRepository} from '../packages/server/src/database/accounts.js';
+import {WorkspaceRepository} from '../packages/server/src/database/workspace.js';
+import {createDatabaseApp} from '../packages/server/src/database/app.js';
+if(process.env.WORKPIVOT_TEST_PG_DISPOSABLE!=='1')throw Error('仅允许一次性数据库');
+const target=process.env.WORKPIVOT_TEST_PG_URL!,secret=randomBytes(32).toString('hex');
+const schema=pool(target);await schema.query(`CREATE ROLE trash_app LOGIN PASSWORD '${secret}' NOSUPERUSER NOBYPASSRLS;CREATE ROLE trash_auth LOGIN PASSWORD '${secret}' NOSUPERUSER NOBYPASSRLS;`);await installSchema(schema,'trash_app','trash_auth');
+const url=(role:string)=>{const u=new URL(target);u.username=role;u.password=secret;return u.toString();};
+const db=pool(url('trash_app')),auth=pool(url('trash_auth')),accounts=new AccountRepository(auth);
+const actor=(await accounts.registerFirst('trash-test','Trash-Test-2026!',secret,secret)).user.id;
+const workspace=new WorkspaceRepository(db);
+const project=await workspace.createProject(actor,'季度经营分析（合成项目）');
+await workspace.createTask(actor,'华东销售汇总与报告',project.id);
+await workspace.deleteProject(actor,project.id,1);
+const old=await workspace.createTask(actor,'已过保留期的测试任务');await workspace.deleteTask(actor,old.id,1);
+await schema.query("UPDATE workpivot.trash_entries SET deleted_at=now()-interval '32 days' WHERE entity_id=$1",[old.id]);
+const memory=await workspace.createMemory(actor,'汇报文档默认使用中文标题与万元单位','user');await workspace.deleteMemory(actor,memory.id,memory.revision);
+await workspace.createTask(actor,'个人清空验收（合成任务）');
+const app=await createDatabaseApp(auth,db,secret,undefined,undefined,undefined,resolve('apps/web/dist'));
+app.post('/fixture/stop',async(req,res)=>{const token=req.headers.authorization?.slice(7)??'';if(!await accounts.resolve(token)){res.status(401).end();return;}res.json({ok:true});setTimeout(()=>void close(),100);});
+const server=app.listen(39991,'127.0.0.1',()=>console.log('回收站验收 http://127.0.0.1:39991；trash-test / Trash-Test-2026!；不连接真实模型'));
+let closing=false;async function close(){if(closing)return;closing=true;server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));await Promise.all([db.end(),auth.end(),schema.end()]);}
+setTimeout(()=>void close(),900000).unref();process.on('SIGINT',()=>void close());process.on('SIGTERM',()=>void close());

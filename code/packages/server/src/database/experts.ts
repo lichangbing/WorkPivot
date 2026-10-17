@@ -1,3 +1,4 @@
+import {recycleExpert} from './personal-recycle.js';
 import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import type {Tool} from '@workpivot/core';
@@ -37,7 +38,7 @@ export class Experts {
  async remove(actor:string,id:string,revision:number){return transaction(this.db,async c=>{const row=await own(c,id);version(row.revision,revision);if(row.public)throw new RepositoryError(400,'公共模板请停用');
   const tasks=(await c.query('SELECT status FROM workpivot.tasks WHERE expert_id=$1 AND deleted_at IS NULL FOR UPDATE',[id])).rows;
   if(tasks.some(t=>['running','waiting','queued'].includes(t.status)))throw new RepositoryError(409,'请先停止关联任务');
-  await invalidateMemoryContext(c,actor);await c.query('DELETE FROM workpivot.experts WHERE id=$1',[id]);},actor);}
+  await recycleExpert(c,id);await invalidateMemoryContext(c,actor);},actor);}
  async bind(actor:string,target:'tasks'|'projects',id:string,expertId:string|null,revision:number){uuid(id);if(expertId)uuid(expertId);
   return transaction(this.db,async c=>{const row=(await c.query(`SELECT * FROM workpivot.${target} WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`,[id])).rows[0];if(!row)throw new RepositoryError(404,'项目或任务不存在');version(row.revision,revision);
    if(['running','waiting','queued'].includes(row.status))throw new RepositoryError(409,'请等待任务完成或先停止');

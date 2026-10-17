@@ -10,7 +10,8 @@ const docker = args => {
 const workflow = process.argv.includes('--workflow');
 const live = process.argv.includes('--live');
 const usage = process.argv.includes('--usage');
-if (process.argv.slice(2).some(arg => !['--workflow', '--live', '--usage'].includes(arg)) || [workflow,live,usage].filter(Boolean).length>1) throw Error('Unsupported browser fixture option');
+const trash = process.argv.includes('--trash');
+if (process.argv.slice(2).some(arg => !['--workflow', '--live', '--usage', '--trash'].includes(arg)) || [workflow,live,usage,trash].filter(Boolean).length>1) throw Error('Unsupported browser fixture option');
 if (live && process.env.WORKPIVOT_LIVE_EVAL !== '1') throw Error('Real model calls require WORKPIVOT_LIVE_EVAL=1');
 const image = process.env.WORKPIVOT_TEST_PG_IMAGE || (workflow ? 'pgvector/pgvector:pg15' : 'pgvector/pgvector:pg16');
 const container = 'workpivot-pg-test-' + Date.now();
@@ -26,7 +27,7 @@ try {
   const info = JSON.parse(docker(['inspect', container]))[0];
   const port = info.NetworkSettings.Ports['5432/tcp'][0].HostPort;
   console.log('Disposable PostgreSQL ready; isolated tmpfs, no business volumes, no Docker socket mount');
-  const run = spawnSync(process.execPath, ['--import', 'tsx', usage ? 'eval/usage-browser.mts' : live ? 'eval/live-browser-workflow.mts' : workflow ? 'eval/browser-workflow.mts' : 'eval/rc-browser.mts'], { cwd: resolve(import.meta.dirname, '..'), env: { ...process.env, WORKPIVOT_TEST_PG_DISPOSABLE: '1', WORKPIVOT_TEST_PG_URL: `postgresql://postgres:${password}@127.0.0.1:${port}/workpivot_test` }, stdio: 'inherit', timeout: live ? 3620000 : 920000 });
+  const run = spawnSync(process.execPath, ['--import', 'tsx', trash ? 'eval/trash-browser.mts' : usage ? 'eval/usage-browser.mts' : live ? 'eval/live-browser-workflow.mts' : workflow ? 'eval/browser-workflow.mts' : 'eval/rc-browser.mts'], { cwd: resolve(import.meta.dirname, '..'), env: { ...process.env, WORKPIVOT_TEST_PG_DISPOSABLE: '1', WORKPIVOT_TEST_PG_URL: `postgresql://postgres:${password}@127.0.0.1:${port}/workpivot_test` }, stdio: 'inherit', timeout: live ? 3620000 : 920000 });
   if (run.error) throw Error('数据库测试未能完成');
   process.exitCode = run.status ?? 1;
 } finally {

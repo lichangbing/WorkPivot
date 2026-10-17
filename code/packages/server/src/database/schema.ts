@@ -445,5 +445,8 @@ FROM workpivot.document_versions v WHERE v.id=p.version_id AND p.status='failed'
 `}, {version:34,sql:usageSchema}, {version:35,sql:`
 ALTER TABLE identity.sessions ADD COLUMN id uuid NOT NULL DEFAULT gen_random_uuid();
 ALTER TABLE identity.sessions ADD CONSTRAINT sessions_public_id UNIQUE(id);
+`}, {version:36,sql:`
+ALTER TABLE workpivot.trash_entries DROP CONSTRAINT trash_entries_kind_check;
+ALTER TABLE workpivot.trash_entries ADD CONSTRAINT trash_entries_kind_check CHECK(kind IN ('project','task','document','memory','skill','expert','automation'));
 `}] as const;
 import { usageSchema } from './usage-schema.js';

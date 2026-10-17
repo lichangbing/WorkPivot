@@ -46,7 +46,8 @@ try {
     image, './node_modules/.bin/tsx', 'eval/wsl-service-recovery.mts', 'serve']); apiCreated = true;
   // 用已有依赖镜像验证当前检出源码，不操作已部署服务。
   for (const folder of ['server', 'core', 'shared']) docker(['cp', linuxPath(resolve(code, `packages/${folder}/src/.`)) + '/.', `${server}:/app/packages/${folder}/src/`]);
-  docker(['cp', linuxPath(resolve(code, 'eval/wsl-service-recovery.mts')), `${server}:/app/eval/wsl-service-recovery.mts`]);
+  // 发布镜像可能不带 eval 目录；复制当前夹具目录，避免依赖历史镜像内的测试文件。
+  docker(['cp', linuxPath(resolve(code, 'eval')), `${server}:/app/`]);
   docker(['start', server]);
   const probe = phase => docker(['exec', server, './node_modules/.bin/tsx', 'eval/wsl-service-recovery.mts', phase]);
   let live = false;

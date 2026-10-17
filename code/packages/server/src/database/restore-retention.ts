@@ -28,7 +28,8 @@ export async function applyRetention(db:Pool,filesRoot:string,state:RetentionSta
   await c.query("UPDATE workpivot.task_runs SET status='interrupted',stop_reason='offline_restore',lease_until=now(),finished_at=now() WHERE status IN ('running','stopping')");
   await invalidateMemoryContext(c,actor);
   await c.query("UPDATE workpivot.automation_runs SET status='interrupted',revoked=true,error='恢复备份后需重新确认',lease_until=NULL WHERE status IN ('queued','running')");
-  for(const a of (await c.query('SELECT id,revision FROM workpivot.automations')).rows){if(!state.automations?.some(r=>r.id===a.id&&r.revision===a.revision))await c.query('DELETE FROM workpivot.automations WHERE id=$1',[a.id]);}
+  const retainedTrash=(await c.query('SELECT id,revision,kind,entity_id FROM workpivot.trash_entries')).rows.filter(t=>state.trash?.some(r=>r.id===t.id&&r.revision===t.revision));
+  for(const a of (await c.query('SELECT id,revision,state FROM workpivot.automations')).rows){if(!state.automations?.some(r=>r.id===a.id&&r.revision===a.revision)&&!(a.state==='deleted'&&retainedTrash.some(t=>t.kind==='automation'&&t.entity_id===a.id)))await c.query('DELETE FROM workpivot.automations WHERE id=$1',[a.id]);}
   await c.query("UPDATE workpivot.automations SET state='paused',grant_id=NULL,next_at=NULL,draft=NULL,revision=revision+1,issue='恢复备份后需要重新确认启用' WHERE state<>'deleted'");
   await c.query("UPDATE workpivot.memory_suggestions SET status='stale',content='',evidence=NULL");
   await c.query('DELETE FROM workpivot.context_checkpoints');
@@ -36,8 +37,8 @@ export async function applyRetention(db:Pool,filesRoot:string,state:RetentionSta
   await c.query("UPDATE workpivot.skill_builds SET status='stale',validation=NULL,trial=NULL,dismissed=true");
   await c.query("UPDATE workpivot.skill_drafts SET disabled=true WHERE visibility='private'");
   await c.query("UPDATE workpivot.skill_catalog SET disabled=true WHERE visibility='private'");
-  for(const s of (await c.query("SELECT name,skill_id,revision FROM workpivot.skill_drafts WHERE visibility='private'")).rows){
-   if(!state.skills?.some(k=>k.id===s.skill_id&&k.revision===s.revision)){
+  for(const s of (await c.query("SELECT name,skill_id,revision,deleted_at FROM workpivot.skill_drafts WHERE visibility='private'")).rows){
+   if(!state.skills?.some(k=>k.id===s.skill_id&&k.revision===s.revision)&&!(s.deleted_at&&retainedTrash.some(t=>t.kind==='skill'&&t.entity_id===s.skill_id))){
     // 恢复旧备份不能重新暴露后续已删除或修订的脚本、样本及历史版本。
     await c.query('DELETE FROM workpivot.skill_builds WHERE name=$1',[s.name]);
     await c.query('DELETE FROM workpivot.skill_drafts WHERE name=$1',[s.name]);

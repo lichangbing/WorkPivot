@@ -117,3 +117,10 @@ preview.25：W33更新为两种模式32项，验证旧设置转换、默认自�
 ### Office正确性修复回归
 
 `pnpm eval:office-reliability`：30项，合成OOXML与真实exceljs表对象，覆盖1900/1904基准、日期边界/时间/公式缓存、未支持格式警告、Word移动与删除修订、三个Skill包的孤立字符串拒绝/坐标核对、Excel及Word行分块、表头与引用、长行续片。既有文档115项通过，数据库706、混合检索64、向量29通过。向量用受控HTTP夹具，不代表真实业务问答准确率。生产发布需重建解析和索引，并显式更新Skill发布版本。
+
+回收站界面：`node scripts/test-rc-browser.mjs --trash` 启动一次性数据库和39991页面，合成项目/子任务、记忆及到期任务，不连接业务库。用于验证统计、筛选空状态、恢复依赖、确认窗口；认证POST `/fixture/stop`结束，或15分钟自动退出。
+
+
+SU-R3个人数据及来源追溯（2026-10-17）：`pnpm eval:trash`现含个人数据专项63项，使用一次性数据库/合成原件；覆盖事务中断回滚、同用户独占/跨用户不阻塞、归档哈希、HTTP鉴权、清空恢复与保留清单回放。`pnpm eval:database`710项包含摘要事实引用与无效来源拒绝。`pnpm eval:backup-database`40项通过schema36联合恢复。`node scripts/test-rc-browser.mjs --trash`另含一个在线合成任务，可检查设置→个人数据的导出及清空预览；不连接业务数据库。
+
+当前镜像运行恢复专项：`WORKPIVOT_TEST_SERVICE_IMAGE=workpivot-server:local-browser-ui-20261017 WORKPIVOT_TEST_PG_IMAGE=pgvector/pgvector:pg16 pnpm eval:service-recovery`。脚本向临时容器复制当前源码及eval目录；13项断言、两次重启通过，不等于长稳验收。

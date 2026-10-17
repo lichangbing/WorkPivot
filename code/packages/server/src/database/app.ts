@@ -1,3 +1,4 @@
+import {PersonalData} from './personal-data.js';
 import type { BrowserWorkspace } from '../web/browser-workspace.js';
 import type {Embeddings} from './embeddings.js';
 import type {EmbeddingInput} from './embedding-client.js';
@@ -73,6 +74,10 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     app.post('/api/embeddings/:id/action',async(req,res)=>res.json(await embeddings.action(actor(res).id,str(req.params['id']),num(body(req).revision),str(body(req).action))));
     app.post('/api/embeddings/search',async(req,res)=>res.json(await embeddings.search(actor(res).id,str(body(req).taskId),str(body(req).query))));
   }
+  const personal=new PersonalData(appPool,files);
+  app.get('/api/personal-data',async(_req,res)=>res.json(await personal.preview(actor(res).id)));
+  app.post('/api/personal-data/clear',async(req,res)=>res.json(await personal.clear(actor(res).id,str(body(req).fingerprint),str(body(req).confirmation))));
+  app.get('/api/personal-data/export',async(_req,res)=>{const data=await personal.export(actor(res).id);res.type('application/zip').setHeader('Content-Disposition','attachment; filename="workpivot-personal.zip"');res.send(data);});
   const trash=new TrashRepository(appPool,files);
   const usage=new UsageRepository(appPool);
   app.get('/api/usage/alerts',async(_req,res)=>{res.json({alerts:await usage.alerts(actor(res).id)});});

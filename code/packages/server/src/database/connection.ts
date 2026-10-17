@@ -17,11 +17,13 @@ export function pool(connectionString: string, extra: PoolConfig = {}): pg.Pool 
   result.on('error', () => { console.error('PostgreSQL 空闲连接失效，将在下一次请求重新连接'); });
   return result;
 }
-export async function transaction<T>(db: pg.Pool, action: (client: PoolClient) => Promise<T>, actorId?: string): Promise<T> {
+export async function transaction<T>(db: pg.Pool, action: (client: PoolClient) => Promise<T>, actorId?: string, exclusive = false): Promise<T> {
   if (actorId !== undefined) uuid(actorId);
   const client = await db.connect(); let broken = false;
   try {
     await client.query('BEGIN');
+    // 个人数据导出/清空独占，普通业务事务共享；统一锁顺序先用户再具体资源。
+    if(actorId)await client.query(`SELECT ${exclusive?'pg_advisory_xact_lock':'pg_advisory_xact_lock_shared'}(hashtextextended($1,0))`,['personal-data:'+actorId]);
     await client.query("SELECT set_config('workpivot.user_id',$1,true)", [actorId ?? '']);
     const result = await action(client);
     await client.query('COMMIT'); return result;

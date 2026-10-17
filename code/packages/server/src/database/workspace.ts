@@ -89,6 +89,21 @@ export class WorkspaceRepository {
       await this.memoryEvent(c, actor, id, expected + 1, 'project_deleted');
     }, actor);
   }
+  /** 由个人清空事务调用；不得在持有用户独占锁时另开事务。 */
+  async recyclePersonal(c: PoolClient, actor: string): Promise<void> {
+    const tasks=(await c.query('SELECT id,status FROM workpivot.tasks WHERE deleted_at IS NULL ORDER BY id FOR UPDATE')).rows;
+    this.assertDeletable(tasks);
+    const projects=(await c.query('SELECT id,revision FROM workpivot.projects WHERE deleted_at IS NULL ORDER BY id FOR UPDATE')).rows;
+    for(const p of projects)await captureTrash(c,'project',p.id);
+    for(const t of tasks)await captureTrash(c,'task',t.id);
+    await this.eraseMemories(c,actor,[],undefined,true);
+    await this.eraseTasks(c,actor,tasks.map(t=>t.id));
+    for(const p of projects){
+      await c.query('DELETE FROM workpivot.project_members WHERE project_id=$1',[p.id]);
+      await c.query("UPDATE workpivot.projects SET name='已删除项目',deleted_at=now(),revision=revision+1,updated_at=now() WHERE id=$1",[p.id]);
+      await this.memoryEvent(c,actor,p.id,p.revision+1,'project_deleted');
+    }
+  }
   private assertDeletable(rows: { status: string }[]): void {
     // 尚未接入执行取消：原子拒绝删除，不得假称活动运行已停止。
     if (rows.some(r => ['queued', 'running', 'waiting'].includes(r.status))) throw new RepositoryError(409, '请先停止运行中的任务再删除');
@@ -103,9 +118,9 @@ export class WorkspaceRepository {
     const deleted = await c.query("UPDATE workpivot.tasks SET name='已删除任务',deleted_at=now(),revision=revision+1 WHERE id=ANY($1::uuid[]) RETURNING id,revision", [ids]);
     for (const row of deleted.rows) await this.memoryEvent(c, actor, row.id, row.revision, 'task_deleted');
   }
-  private async eraseMemories(c: PoolClient, actor: string, taskIds: string[], projectId?: string): Promise<void> {
+  private async eraseMemories(c: PoolClient, actor: string, taskIds: string[], projectId?: string, all = false): Promise<void> {
     await c.query("UPDATE workpivot.memory_suggestions SET status='stale',content='',evidence=NULL WHERE task_id=ANY($1::uuid[])", [taskIds]);
-    const memories = await c.query('SELECT id,revision FROM workpivot.memories WHERE deleted_at IS NULL AND (task_id=ANY($1::uuid[]) OR project_id=$2 OR id IN (SELECT ms.memory_id FROM workpivot.memory_sources ms JOIN workpivot.task_runs r ON r.id=ms.run_id WHERE r.task_id=ANY($1::uuid[]))) ORDER BY id FOR UPDATE', [taskIds, projectId ?? null]);
+    const memories = await c.query('SELECT id,revision FROM workpivot.memories WHERE deleted_at IS NULL AND ($3::boolean OR task_id=ANY($1::uuid[]) OR project_id=$2 OR id IN (SELECT ms.memory_id FROM workpivot.memory_sources ms JOIN workpivot.task_runs r ON r.id=ms.run_id WHERE r.task_id=ANY($1::uuid[]))) ORDER BY id FOR UPDATE', [taskIds, projectId ?? null, all]);
     for (const m of memories.rows) {
       await captureTrash(c,'memory',m.id);
       await c.query('INSERT INTO workpivot.forget_rules(memory_id,owner_user_id,deleted_revision) VALUES($1,$2,$3) ON CONFLICT(memory_id) DO UPDATE SET deleted_revision=EXCLUDED.deleted_revision', [m.id, actor, m.revision]);

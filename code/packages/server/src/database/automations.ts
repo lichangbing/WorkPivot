@@ -1,3 +1,4 @@
+import {captureAutomation} from './personal-recycle.js';
 import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import type { Tool } from '@workpivot/core';
@@ -61,6 +62,7 @@ export class Automations {
  async action(actor:string,id:string,revision:number,action:'pause'|'delete'|'discard',stopCurrent=false){return transaction(this.db,async c=>{
   const p=await this.get(c,id,true);if(p.revision!==revision)throw new RepositoryError(409,'计划已改变，请刷新');
   if(action==='discard'){await c.query('UPDATE workpivot.automations SET draft=NULL,revision=revision+1 WHERE id=$1 AND config IS NOT NULL',[id]);return this.get(c,id);}
+  if(action==='delete')await captureAutomation(c,id);
   await c.query("UPDATE workpivot.automations SET state=$2,next_at=NULL,grant_id=NULL,revision=revision+1,updated_at=now() WHERE id=$1",[id,action==='delete'?'deleted':'paused']);
   await c.query("UPDATE workpivot.automation_runs SET revoked=true,status='cancelled',error='计划已停用或删除',finished_at=now() WHERE plan_id=$1 AND status='queued'",[id]);
   if(stopCurrent||action==='delete')await c.query("UPDATE workpivot.automation_runs SET revoked=true WHERE plan_id=$1 AND status='running'",[id]);

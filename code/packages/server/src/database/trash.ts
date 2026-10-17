@@ -37,12 +37,21 @@ export class TrashRepository {
    // 创建新修订，旧遗忘记录保留，旧来源和摘要不会重新获得有效性。
    await this.insert(c,'memory_revisions',p.revisions);
    await c.query('INSERT INTO workpivot.memory_revisions(owner_user_id,memory_id,revision,content) VALUES($1,$2,$3,$4)',[actor,e.entity_id,changed.revision,content]);
+  }else if(e.kind==='expert'){
+   await this.insert(c,'experts',[{...r,disabled:true,load_enabled:false,update_enabled:false,revision:r.revision+1}]);
+   for(const original of p.experiences??[]){
+    const missing=(await c.query(`SELECT EXISTS(SELECT 1 FROM unnest($1::uuid[]) i WHERE NOT EXISTS(SELECT 1 FROM workpivot.task_runs WHERE id=i AND NOT context_revoked)) OR EXISTS(SELECT 1 FROM unnest($2::uuid[]) i WHERE NOT EXISTS(SELECT 1 FROM workpivot.document_versions WHERE id=i)) AS missing`,[original.source_runs,original.source_files])).rows[0].missing;
+    await this.insert(c,'expert_experiences',[{...original,...(missing?{state:'stale',content:'',conditions:'',history:[]}:{}),revision:original.revision+1}]);
+   }
+  }else if(e.kind==='automation'){
+   const changed=await c.query("UPDATE workpivot.automations SET config=$2,draft=$3,state=$4,next_at=NULL,grant_id=NULL,issue='从回收站恢复，请重新确认',revision=revision+1,updated_at=now() WHERE id=$1 AND state='deleted'",[e.entity_id,r.config,r.draft,r.config?'paused':'draft']);
+   if(!changed.rowCount)throw new RepositoryError(409,'自动化状态已变化');
   }else if(e.kind==='skill'){
    const changed=await c.query('UPDATE workpivot.skill_drafts SET deleted_at=NULL,disabled=true,revision=$2 WHERE skill_id=$1 AND deleted_at IS NOT NULL',[e.entity_id,randomUUID()]);if(!changed.rowCount)throw new RepositoryError(409,'技能状态已变化');
    await c.query("UPDATE workpivot.skill_builds SET status='stale',validation=NULL,trial=NULL,dismissed=true WHERE name=$1",[p.name]);
   }
   await c.query('DELETE FROM workpivot.trash_entries WHERE id=$1',[id]);await invalidateMemoryContext(c,actor);
-  return {ok:true,notice:'已恢复；关联子资料需分别恢复，技能和自动化需重新确认启用'};
+  return {ok:true,notice:'已恢复；关联子资料需分别恢复，技能、专家和自动化需重新确认启用'};
  },actor);}
  async purge(actor:string,id:string,revision:string,confirmation:string){
   if(confirmation!=='永久删除')throw new RepositoryError(400,'请输入“永久删除”确认');
@@ -50,6 +59,7 @@ export class TrashRepository {
    await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['files:'+actor]);const e=await this.entry(c,id,revision);
    if(!e.eligible)throw new RepositoryError(409,'尚未满30天保留期，可先恢复；到期后才能永久删除');
    if((await c.query('SELECT id FROM workpivot.trash_entries WHERE parent_id=$1 LIMIT 1',[e.entity_id])).rowCount)throw new RepositoryError(409,'请先恢复或永久删除所属子条目，再处理此项目或任务');
+   if(e.kind==='automation')await c.query("DELETE FROM workpivot.automations WHERE id=$1 AND state='deleted'",[e.entity_id]);
    if(e.kind==='skill'){
     // 先清理发布版本的引用，级联清理只作用于当前用户的私人技能。
     await c.query('DELETE FROM workpivot.skill_builds WHERE name=$1',[e.payload.name]);

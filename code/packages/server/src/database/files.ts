@@ -113,6 +113,16 @@ export class FileRepository {
       await c.query('DELETE FROM workpivot.documents WHERE id=$1', [documentId]);
     }, actor);
   }
+  /** 仅供服务器在同一已认证事务内导出；归属同时由行级权限复核。 */
+  async exportVersion(c:PoolClient,actor:string,id:string):Promise<Buffer>{
+    uuid(id);
+    const v=(await c.query(`SELECT id,size,sha256 FROM workpivot.document_versions WHERE id=$1
+      UNION ALL SELECT (f->>'id')::uuid,(f->>'size')::bigint,f->>'sha256' FROM workpivot.trash_entries CROSS JOIN LATERAL jsonb_array_elements(files) f WHERE f->>'id'=$1::text LIMIT 1`,[id])).rows[0];
+    if(!v)throw new RepositoryError(404,'导出原件不存在');
+    const data=await readFile(join(await this.directory(actor),id));
+    if(data.length!==Number(v.size)||createHash('sha256').update(data).digest('hex')!==v.sha256)throw new RepositoryError(409,'导出原件缺失或校验失败');
+    return data;
+  }
   async verifyRetained(actor:string,versions:{id:string;size:number;sha256:string}[]){
     const directory=await this.directory(actor);
     for(const v of versions){uuid(v.id);const bytes=await readFile(join(directory,v.id));if(bytes.length!==v.size||createHash('sha256').update(bytes).digest('hex')!==v.sha256)throw new RepositoryError(409,'回收站原件缺失或校验失败，恢复未执行');}

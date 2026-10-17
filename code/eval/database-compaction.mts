@@ -13,7 +13,7 @@ export async function testCompaction(db:Pool,actor:string,foreign:string,check:(
  async function turn(content:string){const run=await runs.start(actor,task.id,randomUUID(),content);await runs.finish(actor,run,'completed',[{role:'assistant',content:'回答'+content}]);return run;}
  for(let i=1;i<=8;i++)await turn('原文'+i);
  let release:()=>void=()=>{};let gate=new Promise<void>(r=>{release=r;});let calls=0;
- const model={providerId:'fixture',model:'fixture',async *streamChat(){calls++;await gate;yield {type:'delta' as const,text:'目标：保留早期约束；待办：检查报告。'};}};
+ const model={providerId:'fixture',model:'fixture',async *streamChat(messages:ChatMessage[]){calls++;await gate;const id=/\[来源:([0-9a-f-]+)\]/.exec(messages[1]!.content!)![1];yield {type:'delta' as const,text:'目标：保留早期约束；待办：检查报告。[来源:'+id+']'};}};
  const summaries=new CompactionService(db,async()=>model);
  const history=()=>transaction(db,c=>compactedHistory(c,task.id),actor);
  async function ready(service=summaries){for(let i=0;i<100;i++){const row=(await service.list(actor,task.id))[0];if(row.status!=='generating')return row;await new Promise(r=>setTimeout(r,10));}throw Error('generation did not finish');}
@@ -26,8 +26,12 @@ export async function testCompaction(db:Pool,actor:string,foreign:string,check:(
  await assert.rejects(summaries.list(foreign,task.id));check(true,'foreign user cannot list summary');
  await assert.rejects(summaries.decide(foreign,task.id,row.id,row.revision,true));check(true,'foreign user cannot confirm summary');
  check((await summaries.original(actor,task.id,row.id)).length===3,'source excerpts retain covered range');
+ check(row.facts[0]?.status==='linked'&&row.facts[0].sourceIds.length===1,'摘要事实保留有效轮次映射');
+ const excerpts=await summaries.original(actor,task.id,row.id);check(excerpts.some(r=>r.id===row.facts[0].sourceIds[0]&&r.messages.includes('回答原文')),'来源摘录包含对应模型回复及原始用户内容');
+ await assert.rejects(summaries.decide(actor,task.id,row.id,row.revision,true,'伪造来源[来源:'+randomUUID()+']'));check(true,'拒绝确认其他或不存在的来源标记');
  await summaries.decide(actor,task.id,row.id,row.revision,true,'用户核对后的目标与待办');
  await summaries.decide(actor,task.id,row.id,row.revision,true,'用户核对后的目标与待办');
+ check((await summaries.list(actor,task.id))[0].facts[0]?.status==='unattributed','人工新增且未引用的内容明确标为未标注来源');
  check((await history())[0]!.content!.includes('用户核对后的目标与待办'),'edited confirmation is active and duplicate decision idempotent');
  check((await history()).length===13&&(await history()).at(-2)!.content!.includes('摘要期间新消息'),'recent complete turns and concurrent messages retained');
  const restarted=new CompactionService(db,async()=>model);

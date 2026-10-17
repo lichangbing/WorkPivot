@@ -1,3 +1,4 @@
+import {DatabasePersonalData} from './DatabasePersonalData';
 import { DatabaseSessions } from './DatabaseSessions';
 import { DatabaseUsage } from './DatabaseUsage';
 import { DatabaseSkillBuilds } from './DatabaseSkillBuilds';
@@ -8,14 +9,14 @@ import { jsonFetch } from './api';
 
 
 type Section = 'projects' | 'providers' | 'mcp';
-export type SettingsSection = 'mcp' | 'skills' | 'experts' | 'usage' | 'sessions';
+export type SettingsSection = 'mcp' | 'skills' | 'experts' | 'usage' | 'sessions' | 'personal';
 interface Row { id: string; name: string; revision: number }
 interface Provider extends Row { inputPrice?:string|null; outputPrice?:string|null; currency?:string; contextBudget?: number; baseUrl: string; modelId: string; protocol: string; hasApiKey: boolean; active: boolean; shared?: boolean }
 interface Mcp extends Row { url: string; hasToken: boolean; enabled: boolean; status: string; tools: { name: string; description?: string }[]; disabledTools: string[] }
 interface Task extends Row { projectId: string | null; status: string }
 const button = 'rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800 disabled:opacity-40';
 const field = 'block w-full rounded border border-neutral-700 bg-neutral-900 p-2';
-const titles = { projects: '项目管理', providers: '模型配置', mcp: 'MCP 配置', skills: 'Skill', experts: '专家', usage: '用量与预算', sessions: '登录会话' };
+const titles = { projects: '项目管理', providers: '模型配置', mcp: 'MCP 配置', skills: 'Skill', experts: '专家', usage: '用量与预算', sessions: '登录会话', personal: '个人数据' };
 
 /** 配置草稿只保留在组件内存中，凭据不得回读或持久化到本地。 */
 export function DatabaseSettings({ onClose, onChanged, configurationEnabled, initialSection = 'mcp' }: { initialSection?: SettingsSection; onClose: () => void; onChanged: () => Promise<void>; configurationEnabled: boolean }) {
@@ -24,9 +25,9 @@ export function DatabaseSettings({ onClose, onChanged, configurationEnabled, ini
   useEffect(() => { const node = dialog.current; node?.showModal(); return () => node?.close(); }, []);
   return <dialog ref={dialog} aria-label="工作区设置" onCancel={onClose} className="m-auto w-[95vw] max-w-4xl bg-transparent p-0 backdrop:bg-black/40">
     <div className="flex h-[80vh] w-full max-w-4xl overflow-hidden rounded-xl border border-neutral-700 bg-neutral-950 text-neutral-100 shadow-xl">
-      <nav aria-label="设置菜单" className="w-40 shrink-0 space-y-2 border-r border-neutral-800 p-3">{(['mcp', 'skills', 'experts', 'usage', 'sessions'] as SettingsSection[]).map(key => <button key={key} className={`${button} w-full text-left ${section === key ? 'bg-neutral-800' : ''}`} onClick={() => setSection(key)}>{titles[key]}</button>)}</nav>
+      <nav aria-label="设置菜单" className="w-40 shrink-0 space-y-2 border-r border-neutral-800 p-3">{(['mcp', 'skills', 'experts', 'usage', 'sessions', 'personal'] as SettingsSection[]).map(key => <button key={key} className={`${button} w-full text-left ${section === key ? 'bg-neutral-800' : ''}`} onClick={() => setSection(key)}>{titles[key]}</button>)}</nav>
       <div className="min-w-0 flex-1 overflow-auto p-5"><header className="mb-4 flex items-center justify-between"><h2>{titles[section]}</h2><button className={button} onClick={onClose}>关闭</button></header>
-        {section === 'sessions' ? <DatabaseSessions /> : section === 'usage' ? <DatabaseUsage /> : section === 'experts' ? <DatabaseExperts /> : section === 'skills' ? <><DatabaseSkillBuilds /><DatabaseSkillMarket /></> : !configurationEnabled ? <p>后台尚未启用模型与 MCP 配置。</p> : <Registry key={section} section={section} onChanged={onChanged} />}
+        {section === 'personal' ? <DatabasePersonalData onChanged={onChanged} /> : section === 'sessions' ? <DatabaseSessions /> : section === 'usage' ? <DatabaseUsage /> : section === 'experts' ? <DatabaseExperts /> : section === 'skills' ? <><DatabaseSkillBuilds /><DatabaseSkillMarket /></> : !configurationEnabled ? <p>后台尚未启用模型与 MCP 配置。</p> : <Registry key={section} section={section} onChanged={onChanged} />}
       </div>
     </div>
   </dialog>;
@@ -70,7 +71,7 @@ export function Registry({ section, onChanged }: { section: Section; onChanged: 
     setSecret(''); setShowForm(false); setEditing(null);
   });
   const remove = (row: Row, path = endpoint) => {
-    const detail = section === 'projects' ? '关联对话及记忆也会清除，无法撤销。运行中的任务请先停止。' : '删除后无法撤销。';
+    const detail = section === 'projects' ? '关联对话及记忆会移入回收站。运行中的任务请先停止。' : '删除后无法撤销。';
     if (window.confirm(`删除「${row.name}」？${detail}`)) void run(() => jsonFetch(`${path}/${row.id}`, { method: 'DELETE', body: JSON.stringify({ revision: row.revision }) }));
   };
   const mutate = (path: string, body: object) => { void run(() => jsonFetch(path, { method: 'POST', body: JSON.stringify(body) }, 45000)); };
