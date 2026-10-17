@@ -1,0 +1,20 @@
+[
+  {
+    "original": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\renderer\\assets\\docx-preview--QDNXici.js",
+    "analysis_copy": "C:\\Users\\lichb\\.codex\\visualizations\\2026\\10\\14\\01a1385a-d7df-72c1-a100-bcaef9e98f1b\\office-deep-word-20261017\\docx-preview--QDNXici.js",
+    "sha256": "47be0551146b8a03f115a3b55b7f9afad98b5936ac2d182c10e477ea5972a5a5",
+    "bytes": 522
+  },
+  {
+    "original": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\renderer\\assets\\docx-preview-component-CuVqNtym.js",
+    "analysis_copy": "C:\\Users\\lichb\\.codex\\visualizations\\2026\\10\\14\\01a1385a-d7df-72c1-a100-bcaef9e98f1b\\office-deep-word-20261017\\docx-preview-component-CuVqNtym.js",
+    "sha256": "16268de5e7d0ddc94fdc89203c8b40a7d32f49a12cde7af1261d16c5097191aa",
+    "bytes": 80013
+  },
+  {
+    "original": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\renderer\\assets\\jszip.min-CzoVRnZi.js",
+    "analysis_copy": "C:\\Users\\lichb\\.codex\\visualizations\\2026\\10\\14\\01a1385a-d7df-72c1-a100-bcaef9e98f1b\\office-deep-word-20261017\\jszip.min-CzoVRnZi.js",
+    "sha256": "a44817b189cd3bffa628fd56d4833d022b85f01fa020c25b48c5717568212cde",
+    "bytes": 96664
+  }
+]

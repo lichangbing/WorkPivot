@@ -1,0 +1,181 @@
+{
+  "method": "ordinary Python static literal byte search; not REA decompilation",
+  "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\node_modules\\@tencent\\tencent-docs-ai-engine\\bin\\win32-x64\\editor_sdk.exe",
+  "bytes": 209234760,
+  "sha256": "b372679233c2ea586cc9e2ee9f491b06a702780bf72b8ef15cec1761994fd45c",
+  "results": [
+    {
+      "term": "doc_insert_html_content",
+      "matches": 6,
+      "first_offsets": [
+        184245036,
+        184253108,
+        184464616,
+        184489946,
+        185137445,
+        185221675
+      ],
+      "contexts": [
+        {
+          "offset": 184245036,
+          "text": "oc_insert_paragraph_with_text`\uff08\u66f4\u7cbe\u786e\u7684\u6837\u5f0f\u63a7\u5236\uff09\n  - \u300c\u7c98\u8d34 HTML \u5bcc\u6587\u672c\u300d\u8bf7\u7528 `doc_insert_html_content"
+        },
+        {
+          "offset": 184253108,
+          "text": "oc_insert_text`\n  - \u300c\u6279\u91cf\u63d2\u5165\u5bcc\u6587\u672c\uff08\u5305\u542b\u591a\u7ea7\u6807\u9898 / \u8868\u683c / \u6837\u5f0f\uff09\u300d\u8bf7\u4f7f\u7528 `doc_insert_html_content"
+        },
+        {
+          "offset": 184464616,
+          "text": "doc_insert_html_content"
+        }
+      ]
+    },
+    {
+      "term": "doc_find_and_replace",
+      "matches": 10,
+      "first_offsets": [
+        184428946,
+        184814438,
+        184822764,
+        185137279,
+        185137666,
+        185137806,
+        185157838,
+        185161323
+      ],
+      "contexts": [
+        {
+          "offset": 184428946,
+          "text": "doc_find_and_replace: 'old_text' must not be empty"
+        },
+        {
+          "offset": 184814438,
+          "text": "doc_find_and_replace"
+        },
+        {
+          "offset": 184822764,
+          "text": "doc_find_and_replace: scope.begin must be less than scope.end"
+        }
+      ]
+    },
+    {
+      "term": "create_doc",
+      "matches": 3,
+      "first_offsets": [
+        185141804,
+        185192707,
+        185214344
+      ],
+      "contexts": [
+        {
+          "offset": 185141804,
+          "text": "create_doc: embedded blank.docx is unavailable (built without DOCX_EMBED_STATIC_ZIPS?)"
+        },
+        {
+          "offset": 185192707,
+          "text": "create_doc: file_id already in use: "
+        },
+        {
+          "offset": 185214344,
+          "text": "create_doc: "
+        }
+      ]
+    },
+    {
+      "term": "/localapi/save",
+      "matches": 1,
+      "first_offsets": [
+        185086289
+      ],
+      "contexts": [
+        {
+          "offset": 185086289,
+          "text": " has unsaved changes. Call /localapi/save first, or set force=true to discard."
+        }
+      ]
+    },
+    {
+      "term": "word/document.xml",
+      "matches": 3,
+      "first_offsets": [
+        166913003,
+        166915203,
+        184705431
+      ],
+      "contexts": [
+        {
+          "offset": 166913003,
+          "text": "word/document.xml\\x8dQ;o\\xc3 \u0010\\xde\\xfb+,v\u0007\\xa7CUY\\xb6\\xb3D\\x99;\\xb4?\\x80"
+        },
+        {
+          "offset": 166915203,
+          "text": "word/document.xmlPK\u0001\u0002\u0014"
+        },
+        {
+          "offset": 184705431,
+          "text": "word/document.xml"
+        }
+      ]
+    },
+    {
+      "term": "DocumentImporter",
+      "matches": 0,
+      "first_offsets": [],
+      "contexts": []
+    },
+    {
+      "term": "HtmlImporter",
+      "matches": 0,
+      "first_offsets": [],
+      "contexts": []
+    },
+    {
+      "term": "slide_undo_ai_edit",
+      "matches": 5,
+      "first_offsets": [
+        184314500,
+        184314900,
+        184471243,
+        185135396,
+        185188316
+      ],
+      "contexts": [
+        {
+          "offset": 184314500,
+          "text": "\\x97\u8868\u4e2d\u6309 tool_name / tool_args \u4e0e\u7528\u6237\u63cf\u8ff0\u5339\u914d\uff0c\n\u786e\u8ba4\u5177\u4f53\u64cd\u4f5c\u53ca\u5176 version\uff0c\u518d\u8c03 slide_undo_ai_edit"
+        },
+        {
+          "offset": 184314900,
+          "text": "\\xbc\\x89\uff1b\n2. \u5728\u5217\u8868\u4e2d\u6309 tool_name / tool_args \u5339\u914d\u7528\u6237\u63cf\u8ff0\uff0c\u5b9a\u4f4d target_version\uff1b\n3. \u8c03 slide_undo_ai_edit"
+        },
+        {
+          "offset": 184471243,
+          "text": "slide_undo_ai_edit"
+        }
+      ]
+    },
+    {
+      "term": ".pdb",
+      "matches": 3,
+      "first_offsets": [
+        183071617,
+        183808289,
+        187021973
+      ],
+      "contexts": [
+        {
+          "offset": 183071617,
+          "text": " Studio\\\\2022\\\\Community\\\\VC\\\\Tools\\\\MSVC\\\\14.42.34433\\\\bin\\\\Hostx64\\\\x64\\\\cl.exe /Zi /Fdossl_static.pdb"
+        },
+        {
+          "offset": 183808289,
+          "text": " Studio\\\\2022\\\\Community\\\\VC\\\\Tools\\\\MSVC\\\\14.42.34433\\\\bin\\\\Hostx64\\\\x64\\\\cl.exe /Zi /Fdossl_static.pdb"
+        },
+        {
+          "offset": 187021973,
+          "text": "E:\\data\\landun\\workspace\\build\\x64-windows-static-RelWithDebInfo\\library\\collab\\editor\\editor_sdk.pdb"
+        }
+      ]
+    }
+  ]
+}

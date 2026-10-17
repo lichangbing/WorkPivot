@@ -1,0 +1,100 @@
+{
+  "method": "ordinary Python static embedded ZIP validation; not execution or REA function proof",
+  "target_sha256": "b372679233c2ea586cc9e2ee9f491b06a702780bf72b8ef15cec1761994fd45c",
+  "archives": [
+    {
+      "kind": "xlsx",
+      "offset": 166903661,
+      "end_exclusive": 166912100,
+      "bytes": 8439,
+      "sha256": "e99ed449c3982942c58bfe3f9bb9a26b18a8c0291e8490947e2cb675f68a68cf",
+      "members": [
+        "[Content_Types].xml",
+        "_rels/.rels",
+        "xl/workbook.xml",
+        "xl/_rels/workbook.xml.rels",
+        "xl/worksheets/sheet1.xml",
+        "xl/theme/theme1.xml",
+        "xl/styles.xml",
+        "docProps/core.xml",
+        "docProps/app.xml"
+      ],
+      "content_summary": {
+        "sheet1_cells": 0,
+        "formulas": 0
+      }
+    },
+    {
+      "kind": "docx",
+      "offset": 166912100,
+      "end_exclusive": 166915497,
+      "bytes": 3397,
+      "sha256": "ddaaafe87930d510a222c10ade6f0c40600a0a4a7736c04be8b1be05349a3a83",
+      "members": [
+        "[Content_Types].xml",
+        "_rels/.rels",
+        "word/_rels/document.xml.rels",
+        "word/document.xml",
+        "word/theme/theme1.xml",
+        "docProps/core.xml",
+        "docProps/app.xml",
+        "docProps/meta.xml"
+      ],
+      "content_summary": {
+        "paragraphs": 1,
+        "text_nodes": 0,
+        "tables": 0
+      }
+    },
+    {
+      "kind": "pptx",
+      "offset": 166915497,
+      "end_exclusive": 166947704,
+      "bytes": 32207,
+      "sha256": "abf7c8b620945754ab515fef639dac66838652d07858207cb07e9c6b967a609b",
+      "members": [
+        "[Content_Types].xml",
+        "_rels/.rels",
+        "ppt/slides/_rels/slide1.xml.rels",
+        "ppt/slides/slide1.xml",
+        "ppt/_rels/presentation.xml.rels",
+        "ppt/presentation.xml",
+        "ppt/slideLayouts/_rels/slideLayout9.xml.rels",
+        "ppt/slideLayouts/slideLayout1.xml",
+        "ppt/slideLayouts/slideLayout2.xml",
+        "ppt/slideLayouts/slideLayout3.xml",
+        "ppt/slideLayouts/slideLayout4.xml",
+        "ppt/slideLayouts/slideLayout5.xml",
+        "ppt/slideLayouts/slideLayout6.xml",
+        "ppt/slideLayouts/slideLayout7.xml",
+        "ppt/slideLayouts/slideLayout8.xml",
+        "ppt/slideLayouts/slideLayout9.xml",
+        "ppt/slideLayouts/slideLayout10.xml",
+        "ppt/slideLayouts/slideLayout11.xml",
+        "ppt/slideLayouts/_rels/slideLayout8.xml.rels",
+        "ppt/slideLayouts/_rels/slideLayout7.xml.rels",
+        "ppt/slideLayouts/_rels/slideLayout10.xml.rels",
+        "ppt/slideLayouts/_rels/slideLayout6.xml.rels",
+        "ppt/slideLayouts/_rels/slideLayout5.xml.rels",
+        "ppt/slideMasters/_rels/slideMaster1.xml.rels",
+        "ppt/slideMasters/slideMaster1.xml",
+        "ppt/slideLayouts/_rels/slideLayout1.xml.rels",
+        "ppt/slideLayouts/_rels/slideLayout2.xml.rels",
+        "ppt/slideLayouts/_rels/slideLayout3.xml.rels",
+        "ppt/slideLayouts/_rels/slideLayout4.xml.rels",
+        "ppt/slideLayouts/_rels/slideLayout11.xml.rels",
+        "ppt/theme/theme1.xml",
+        "docProps/thumbnail.jpeg",
+        "ppt/viewProps.xml",
+        "ppt/presProps.xml",
+        "ppt/tableStyles.xml",
+        "docProps/core.xml",
+        "docProps/app.xml"
+      ],
+      "content_summary": {
+        "slide1_text_nodes": 0,
+        "slide1_shapes": 0
+      }
+    }
+  ]
+}

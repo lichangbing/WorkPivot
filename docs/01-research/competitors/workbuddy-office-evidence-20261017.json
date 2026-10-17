@@ -1,0 +1,152 @@
+{
+  "date": "2026-10-17",
+  "method": "static-read-only; target code not executed",
+  "sample_version": "5.8.3",
+  "files": [
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\node_modules\\@tencent\\tencent-docs-ai-engine\\package.json",
+      "bytes": 1441,
+      "sha256": "4cb14abf877a89717cd90fa66cdeca5f51e0f545aa5ae5e0c63e4a28bd29b361"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\node_modules\\@tencent\\tencent-docs-ai-engine\\editor-sdk-version.json",
+      "bytes": 202,
+      "sha256": "6c9b0b5b367ea63e7feb8870ac8ee3e1aa79b1c5bef1c15912e1eeb5fd709f29"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\node_modules\\@tencent\\tencent-docs-ai-engine\\lib\\common\\tencent-docs-service.js",
+      "bytes": 52806,
+      "sha256": "35e49bbf215ba0789d6fce91bfb3b0fe65a83fdc5334770f1073d265df8c367d"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\node_modules\\@tencent\\tencent-docs-ai-engine\\lib\\common\\editor-sdk-process-launcher.js",
+      "bytes": 995,
+      "sha256": "140bd9f6554e8a10c2d43a628b20dcaebb3dacb531dfa91f0678f87ec6f39fec"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\skills\\workbuddy-office-routing\\SKILL.md",
+      "bytes": 22462,
+      "sha256": "6b2a79b3d6d93aa4d9604108fe18644987325153ffc15544c1ef4482029988e8"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\skills\\workbuddy-local-office-edit\\SKILL.md",
+      "bytes": 13934,
+      "sha256": "ced07d774ce758ab8e817a4bcc83e54819bc9b784e97ba1d6d9e96d4962735dd"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\skills\\workbuddy-local-office-edit\\edsdk.py",
+      "bytes": 9978,
+      "sha256": "0640ca7f59d6a50177d5ba15707bb0953060375ea54e2ad4f989e7772a5063ac"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\skills\\workbuddy-local-office-edit\\doc.md",
+      "bytes": 8977,
+      "sha256": "d371ad0d3165030a32441c5df8bb4b52312d757908db5bbfd1557b052712e3c6"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\skills\\workbuddy-local-office-edit\\sheet.md",
+      "bytes": 13080,
+      "sha256": "804656998bc3696cadff9cd3009999467c5b01574cd8b06bac5a2ec68ee8bf8a"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\workbuddy-docx\\skills\\tdoc-orchestrator\\SKILL.md",
+      "bytes": 20401,
+      "sha256": "24e1532198602c78f2e5c4272c08a5838ee3747ad62fe2cdb660771146185809"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\workbuddy-docx\\agents\\doc-converter.md",
+      "bytes": 16534,
+      "sha256": "f7299df4004e7932aaf09df4c194987eb38b1d1cd5f0d90fafd1883eaa0d78f7"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\workbuddy-docx\\skills\\html-to-doc\\scripts\\convert_doc.py",
+      "bytes": 12620,
+      "sha256": "9b326657f4ed55d203410774e61fe15caee439528a4d5295e75cbc05550679fe"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\workbuddy-docx\\skills\\html-to-doc\\scripts\\verify_output.py",
+      "bytes": 17842,
+      "sha256": "41340f1377d4892013ee2b29360d1b1b9b56f964e87dd1767044cdaa933e09f1"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\workbuddy-docx\\skills\\format-extract\\run.py",
+      "bytes": 14752,
+      "sha256": "f4372228166baed72188dba9db1858852a42f9f3feb33de65993823a2d02cb43"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\workbuddy-sheetagent\\agents\\sheet-agent.md",
+      "bytes": 86649,
+      "sha256": "ecc2ec6c936383856fc73f6872c8ccb6c486f0445ffe6ac651df3d07391ea766"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\workbuddy-sheetagent\\mcp\\server.mjs",
+      "bytes": 560288,
+      "sha256": "7c4945550273b7bebcbb171fe01edacd94ebd76f85b88c24c84cd5af19e7cfc4"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\workbuddy-sheetagent\\mcp\\worker.mjs",
+      "bytes": 89873,
+      "sha256": "d00592a6ae84d9b9d0da239792b2818a4ec4b8e4a65bb12a6e8b34ac3f8c8f3d"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\workbuddy-sheetagent\\hooks\\save-on-subagent-stop.mjs",
+      "bytes": 6428,
+      "sha256": "9ace24c19e3b0a9ce38c315813f87c8c74a53cb31d4e1a360382074f66d377f2"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\workbuddy-sheetagent\\skills\\workbuddy-sheet-generation\\SKILL.md",
+      "bytes": 17089,
+      "sha256": "b8ecfdcb972e24af867d8765811395f375e1883fbab902ac6f5f48f17fd00f54"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\workbuddy-sheetagent\\skills\\workbuddy-sheet-generation\\scripts\\extract.py",
+      "bytes": 36886,
+      "sha256": "f3261c8392a30025dc6dcd673632450d030778b67d28112353bb9ec26627cbf4"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\workbuddy-sheetagent\\skills\\workbuddy-sheet-generation\\scripts\\recalc.py",
+      "bytes": 35137,
+      "sha256": "e2638138846cbb16079cb3ea6f3d5aa9cca24c26c22875ac0d6227a453d5c424"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\workbuddy-pptx\\skills\\workbuddy-pptx\\SKILL.md",
+      "bytes": 1431,
+      "sha256": "e6f1df7aa7cf7061442a2edfc8c19fc18ea13e904e16981644230fd6b14b0a3e"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\workbuddy-pptx\\skills\\workbuddy-pptx\\references\\understand.md",
+      "bytes": 2127,
+      "sha256": "22516cb2da7203da9508e2cfb0662e8e4b974206785b26c629ba635802a8a599"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\workbuddy-pptx\\skills\\workbuddy-pptx\\references\\edit-existing.md",
+      "bytes": 4024,
+      "sha256": "9ba771d1e3ec593c762cb4bb444260bca465b3bddbe63a60bc31c60d931572ed"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\workbuddy-pptx\\skills\\workbuddy-pptx\\references\\create-from-scratch.md",
+      "bytes": 14183,
+      "sha256": "8971785182255b4d25137a6c5127ffeba2c469783a1777e0e395ae80df3b2c63"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\workbuddy-pptx\\skills\\workbuddy-pptx\\scripts\\edsdk.py",
+      "bytes": 9978,
+      "sha256": "0640ca7f59d6a50177d5ba15707bb0953060375ea54e2ad4f989e7772a5063ac"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\workbuddy-pptx\\skills\\workbuddy-pptx\\scripts\\pptx2image.py",
+      "bytes": 9707,
+      "sha256": "213e2bc94a74e21f5808fff148f11a1eedeefe64d928983bc47cdc7cf0647c03"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\workbuddy-pptx\\skills\\workbuddy-pptx\\scripts\\doc_image_extractor.py",
+      "bytes": 16788,
+      "sha256": "b43b7a17beb29a197b2cf75b1ec1f537dc9942413845d51dfc7fdaf5c4e42c38"
+    },
+    {
+      "path": "C:\\Users\\lichb\\AppData\\Local\\Programs\\WorkBuddy\\resources\\app.asar.unpacked\\resources\\plugins\\workbuddy-builtin\\builtin-plugins\\tencent-private-docs-plugin\\skills\\tencent-private-docs\\sidebar-pptx-generator\\scripts\\setup.js",
+      "bytes": 13418,
+      "sha256": "c0bc55dbba0d7c2b9e914c2297b935659033467e84d82c30aeb0ca3d629c3df1"
+    }
+  ]
+}
