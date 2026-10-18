@@ -72,3 +72,18 @@ schema37候选完成一次性Compose安装/迁移/回退13项及API强制终止�
 严格URL替代域名授权：旧联网计划重新确认，离线计划不变。临时DeepSeek文件虽不存在，应用数据库加密配置仍在；真实模型验收单独记录，不以受控模型代替。真实业务样本、第二物理设备、长稳及历史依赖许可缺口仍未关闭，本次不是无条件宣布正式发布门槛全通过。
 
 真实DeepSeek补充验收：使用应用现存加密配置，在一次性数据库和合成input.txt上完成6项检查——读取已选文件、显式许可后保存成果、实际下载核对42及随机标识、范围继承、撤销后不再返回原标识、空范围持久化。实际调用包含list_uploaded_files、read_uploaded_file、list_artifacts和save_artifact；无业务文档输入。复验入口为`WORKPIVOT_LIVE_EVAL=1 WORKPIVOT_LIVE_FIXTURE_URL=http://127.0.0.1:<隔离端口> node code/eval/live-resource-scope.mjs`，须先用test-rc-browser --live启动一次性夹具。该结果不等于复杂Office/真实业务或第二设备验收。
+
+
+## 2026-10-18 后续稳定性与许可收尾
+
+新增可配置持续恢复检查，入口及边界见code/eval/README.md。本轮只增加验收工具，不改变已部署API、浏览器或依赖。正式长稳仍需包含真实负载、浏览器/Worker/模型和业务文件，不能用恢复探针重复次数折算业务验收覆盖率。
+
+许可证复核：`abbrev@1.0.3`位于锁文件的`@electron/rebuild → node-gyp → nopt`构建链；nopt5声明abbrev主版本1，后续可在范围内更新到自带ISC声明的1.1.1，需验证桌面依赖安装。来源：[nopt5元数据](https://registry.npmjs.org/nopt/5.0.0)、[abbrev1.1.1上游许可证](https://github.com/npm/abbrev-js/blob/v1.1.1/LICENSE)。
+
+`buffers@0.1.1`由`ExcelJS4.4 → unzipper0.10.11 → binary0.3`引入；同系列0.10.14仍含binary，不能解决此依赖链。unzipper0.12.3已不含binary，但超出ExcelJS4.4声明的范围，需单独验证普通/流式Excel读取、异常ZIP、文件生成和Worker镜像，并审阅锁文件变更后再采用。来源：[ExcelJS4.4依赖](https://github.com/exceljs/exceljs/blob/v4.4.0/package.json)、[0.10.14元数据](https://registry.npmjs.org/unzipper/0.10.14)、[0.12.3元数据](https://registry.npmjs.org/unzipper/0.12.3)。本轮未用第三方fork中的许可代替原发行包证明，未添加许可豁免，严格检查缺口仍保留。
+
+
+候选兼容探针补充：在独立/tmp目录安装unzipper0.12.3和abbrev1.1.1，将ExcelJS4.4副本的解压依赖指向候选版本，实际验证普通读写、流式逐行读取、中文、公式缓存、date1904、异常ZIP拒绝和ZIP条目读取，均通过。业务node_modules、锁文件、执行器和运行镜像未改变；这只能支持后续升级方案，尚未覆盖全部Office回归、打包链及部署，不标记许可证问题已解决。当前严格扫描仍报告781个依赖中的两项缺失声明。
+
+
+本轮基线结果：持续300秒，42轮，每轮17项均通过（重复轮次不是714个独立场景）。第三轮内存基线131.3MiB，后续最高140.0MiB，结束139.2MiB；PIDs全部为22，连接数未超40。完整恢复前3项、两次重启各13项再次通过。另行中断夹具验证SIGTERM清理本轮容器；定向ESLint、脚本语法及diff检查通过。原始指标保存在本机`local-runtime/reports/soak-20261018.json`，不含凭据或业务正文。候选依赖独立目录17项包的严格许可扫描通过，但主工程扫描仍失败，二者不混淆。本轮只提交验收脚本、使用说明及记录，不重新部署业务镜像。

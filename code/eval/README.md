@@ -124,3 +124,22 @@ preview.25：W33更新为两种模式32项，验证旧设置转换、默认自�
 SU-R3个人数据及来源追溯（2026-10-17）：`pnpm eval:trash`现含个人数据专项63项，使用一次性数据库/合成原件；覆盖事务中断回滚、同用户独占/跨用户不阻塞、归档哈希、HTTP鉴权、清空恢复与保留清单回放。`pnpm eval:database`710项包含摘要事实引用与无效来源拒绝。`pnpm eval:backup-database`40项通过schema36联合恢复。`node scripts/test-rc-browser.mjs --trash`另含一个在线合成任务，可检查设置→个人数据的导出及清空预览；不连接业务数据库。
 
 当前镜像运行恢复专项：`WORKPIVOT_TEST_SERVICE_IMAGE=workpivot-server:local-browser-ui-20261017 WORKPIVOT_TEST_PG_IMAGE=pgvector/pgvector:pg16 pnpm eval:service-recovery`。脚本向临时容器复制当前源码及eval目录；13项断言、两次重启通过，不等于长稳验收。
+
+
+### 持续恢复与资源基线（2026-10-18）
+
+在code目录运行：
+
+```bash
+WORKPIVOT_TEST_SERVICE_IMAGE=workpivot-server:local-strict-url-20261018 \
+WORKPIVOT_TEST_PG_IMAGE=pgvector/pgvector:pg16 \
+WORKPIVOT_TEST_SOAK_SECONDS=300 \
+WORKPIVOT_TEST_SOAK_REPORT=/tmp/workpivot-soak-new.json \
+node scripts/test-service-recovery.mjs
+```
+
+持续时间范围0至86400秒，0保持原故障恢复专项。先执行强制终止和两次重启，再循环17项检查：恢复状态、旧审批/旧执行器拒绝、MCP副作用不重放、SSE游标续接、固定请求ID上传不重复、下载字节一致及数据库连接池上限。只使用内部网络的一次性数据库/API/MCP容器，不挂载业务卷或Docker套接字。停止信号经finally清理本轮资源；SIGKILL/主机掉电仍需人工确认残留测试资源。
+
+报告路径必须是尚不存在的文件，防止覆盖历史证据；每轮记录Docker内存及PIDs。前两轮预热后，以第三轮为基线，检查后续样本内存增长不超过128MiB、PIDs增长不超过8；连接总数不超过40。短于三轮时以最后一轮为基线，不能据此判断长期资源趋势。这是异常增长阈值，不是证明没有内存泄漏。受控夹具不调用真实模型、Office Worker或浏览器；短时通过不能关闭全天长稳和业务效果门槛。
+
+2026-10-18本机基线：300秒42轮、每轮17项通过；预热后131.3→139.2MiB、峰值140MiB，PIDs固定22。SIGTERM清理另行验证通过。结果不是全天长稳或零内存泄漏保证。

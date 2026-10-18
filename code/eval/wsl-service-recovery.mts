@@ -86,6 +86,21 @@ async function verify(mode: string) {
     }
     check(true, 'SSE reconnect replays recovery after saved cursor with no pending confirmation');
   } finally { clearTimeout(timeout); controller.abort(); }
+  if(mode==='soak'){
+    const body=Buffer.from('稳定性合成文件：'+f.run.id);
+    const upload=await fetch(`http://127.0.0.1:39800/api${taskPath}/files?name=soak.txt&requestId=${f.run.id}`,{
+      method:'POST',headers:{Authorization:`Bearer ${f.token}`,'Content-Type':'application/octet-stream'},body,signal:AbortSignal.timeout(5000),
+    });
+    check(upload.ok,'重复上传幂等请求成功');
+    const {file}=await upload.json();
+    const listed=await (await request(taskPath+'/files')).json();
+    check(listed.files.length===1&&listed.files[0].id===file.id,'重复请求没有新增文件或版本');
+    const download=await request(taskPath+'/file-versions/'+file.id);
+    check(download.ok&&Buffer.from(await download.arrayBuffer()).equals(body),'持续运行后下载内容与上传字节一致');
+    const connections=await auth.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname=current_database() AND usename IN ('wp_recovery_app','wp_recovery_auth')");
+    check(connections.rows[0].n<=40,'数据库连接数量未超过API和夹具连接池上限');
+  }
+
 }
 
 async function serve() {

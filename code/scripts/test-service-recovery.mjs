@@ -2,7 +2,11 @@ import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
+import { writeFile } from 'node:fs/promises';
+import { setTimeout as delay } from 'node:timers/promises';
 
+const soakSeconds=Number(process.env.WORKPIVOT_TEST_SOAK_SECONDS??0);
+if(!Number.isSafeInteger(soakSeconds)||soakSeconds<0||soakSeconds>86400)throw Error('稳定性持续时间须为0至86400秒');
 const windows = process.platform === 'win32';
 const prefix = `workpivot-recovery-test-${Date.now()}`;
 const database = prefix + '-db', server = prefix + '-api';
@@ -18,7 +22,11 @@ const docker = args => {
 const linuxPath = path => windows ? execFileSync('wsl', ['-d', 'Ubuntu-24.04', '--', 'wslpath', '-a', path.replaceAll('\\', '/')], { encoding: 'utf8', timeout: 30000 }).trim() : path;
 const code = resolve(import.meta.dirname, '..');
 let keeper, networkCreated = false, dbCreated = false, apiCreated = false, mcpCreated = false;
-const wait = ms => new Promise(r => setTimeout(r, ms));
+// 长时间验收收到停止信号后走finally，回收本轮容器和内部网络。
+const shutdown=new AbortController();
+const stop=()=>shutdown.abort();
+process.once('SIGINT',stop);process.once('SIGTERM',stop);
+const wait=ms=>delay(ms,undefined,{signal:shutdown.signal});
 try {
   if (windows) {
     keeper = spawn('wsl', ['-d', 'Ubuntu-24.04', '--', 'sleep', 'infinity'], { windowsHide: true, stdio: 'ignore' });
@@ -65,6 +73,29 @@ try {
   await wait(2000);
   console.log(probe('after'));
   console.log('PASS second full restart preserves single recovery event; no Docker socket mounted');
+  if(soakSeconds){
+    const samples=[],started=Date.now();
+    do{
+      shutdown.signal.throwIfAborted();
+      const output=probe('soak');
+      if(!output.includes('17 checks passed'))throw Error('稳定性探针未完成全部检查');
+      const stats=JSON.parse(docker(['stats','--no-stream','--format','{{json .}}',server]));
+      const memory=stats.MemUsage.split('/')[0].trim(),match=/^([0-9.]+)([KMGT]?i?B)$/.exec(memory);
+      const factors={B:1,KB:1000,MB:1000000,GB:1000000000,KiB:1024,MiB:1048576,GiB:1073741824};
+      if(!match||!factors[match[2]])throw Error('无法解析容器内存样本');
+      samples.push({elapsedSeconds:Math.round((Date.now()-started)/1000),memoryBytes:Number(match[1])*factors[match[2]],pids:Number(stats.PIDs)});
+      if(samples.length===1||samples.length%6===0)console.log(JSON.stringify({phase:'短时稳定性基线',...samples.at(-1),rounds:samples.length}));
+      if(Date.now()-started<soakSeconds*1000)await wait(Math.min(5000,soakSeconds*1000-(Date.now()-started)));
+    }while(Date.now()-started<soakSeconds*1000);
+    shutdown.signal.throwIfAborted();
+    const baseline=samples[Math.min(2,samples.length-1)],steady=samples.slice(Math.min(2,samples.length-1));
+    const checks={memoryBounded:steady.every(s=>Number.isFinite(s.memoryBytes)&&s.memoryBytes-baseline.memoryBytes<=128*1024*1024),pidsBounded:steady.every(s=>Number.isSafeInteger(s.pids)&&s.pids-baseline.pids<=8)};
+    const report={startedAt:new Date(started).toISOString(),durationSeconds:Math.round((Date.now()-started)/1000),requestedSeconds:soakSeconds,rounds:samples.length,checksPerRound:17,checks,samples,scope:'隔离受控运行时、文件幂等和SSE重连；不含真实模型、浏览器、Worker或全天业务负载'};
+    if(process.env.WORKPIVOT_TEST_SOAK_REPORT)await writeFile(resolve(process.env.WORKPIVOT_TEST_SOAK_REPORT),JSON.stringify(report,null,2),{flag:'wx',mode:0o600});
+    if(Object.values(checks).some(ok=>!ok))throw Error('稳定性资源增长超过基线阈值');
+    console.log(JSON.stringify({...report,samples:undefined}));
+  }
+
 } finally {
   // 只清理本次调用创建且名称唯一的资源。
   try {
@@ -76,5 +107,5 @@ try {
       }
     }
     if (networkCreated) docker(['network', 'rm', prefix]);
-  } finally { keeper?.kill(); }
+  } finally { keeper?.kill();process.removeListener('SIGINT',stop);process.removeListener('SIGTERM',stop); }
 }
