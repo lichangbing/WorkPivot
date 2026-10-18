@@ -27,7 +27,7 @@ let count = 0, requests = 0, hold: (() => void) | undefined, entered: (() => voi
 const check = (value: unknown, name: string) => { assert(value, name); count++; console.log('PASS', name); };
 class Fixture extends SafeHttp {
   override async get(url: string, policy: WebPolicy = {}) {
-    webUrl(url, policy.origins); policy.signal?.throwIfAborted(); requests++;
+    webUrl(url, policy.origins,policy.urls); policy.signal?.throwIfAborted(); requests++;
     if (entered) { entered(); await new Promise<void>(resolve => { hold = resolve; }); }
     return { url, status: 200, headers: { 'content-type': 'text/html' }, body: Buffer.from('<html><head><title>公告</title></head><body>网页合成正文42</body></html>') };
   }
@@ -64,36 +64,58 @@ try {
   skill = await skills.save(actor, skill.name, 'SKILL.md', Buffer.from('---\nname: web-collect\ndescription: 读取公开网页并保存结果\n---\n先读取网页，再将符合要求的正文保存为result.txt。'), skill.revision);
   await skills.publish(actor, skill.name, skill.revision); await skills.select(actor, skill.name, true);
   const release = (await skills.market(actor))[0]!.version, plans = new Automations(db, true);
-  let mode: 'normal' | 'foreign' = 'normal';
+  let mode: 'normal' | 'foreign' | 'path' | 'query' = 'normal';
   const automaticModel: ModelClient = { providerId: 'fixture', model: 'automatic', async *streamChat(messages) {
     const results = messages.filter(m => m.role === 'tool');
     if (!results.length) yield call('load_skill', { name: skill.name });
-    else if (results.length === 1) yield call('web_fetch', { url: mode === 'foreign' ? 'https://other.example' : 'https://fixture.example' });
+    else if (results.length === 1) yield call('web_fetch', { url: mode === 'foreign' ? 'https://other.example' : mode==='path'?'https://fixture.example/other':mode==='query'?'https://fixture.example/?export=secret':'https://fixture.example' });
     else if (results.length === 2) yield call('save_artifact', { name: 'result.txt', content: results.at(-1)!.content });
     else yield { type: 'delta', text: '已保存。' };
   } };
   scheduler = new AutomationWorker(auth, plans, files, { url: 'http://127.0.0.1:1', token: secret }, async () => automaticModel, web);
-  const config = { ...newAutomationConfig(), name: '公开网页采集', skill: skill.name, releaseId: release, projectId: project.id, requirements: '读取公开网页正文并保存', webOrigins: ['https://fixture.example'] };
+  const config = { ...newAutomationConfig(), name: '公开网页采集', skill: skill.name, releaseId: release, projectId: project.id, requirements: '读取公开网页正文并保存', webUrls: ['https://fixture.example/'] };
   const run = async (origins: string[]) => {
-    let plan = await plans.draft(actor, { ...config, webOrigins: origins }, randomUUID()); plan = await plans.confirm(actor, plan.id, plan.revision, true);
+    let plan = await plans.draft(actor, { ...config, webUrls: origins }, randomUUID()); plan = await plans.confirm(actor, plan.id, plan.revision, true);
     const job = await plans.manual(actor, plan.id, plan.revision, randomUUID());
     await scheduler!.tick(); return { plan, detail: await plans.detail(actor, plan.id), job };
   };
-  const before = requests, success = await run(config.webOrigins);
+  const before = requests, success = await run(config.webUrls);
   check(success.detail.runs[0]?.status === 'completed' && requests === before + 1, '授权来源自动化可抓取并完成');
   const artifacts = await files.list(actor, success.detail.runs[0]!.taskId!, 'artifact');
   check(artifacts.length === 1 && (await files.download(actor, success.detail.runs[0]!.taskId!, artifacts[0]!.id)).data.toString().includes('网页合成正文42'), '网页结果通过真实文件仓库发布');
   assert.equal((await plans.list(other)).length, 0); check(true, '其他账号不能查看采集计划');
   const noPermissionBefore = requests, offline = await run([]);
   check(offline.detail.runs[0]?.status === 'failed' && requests === noPermissionBefore, '旧计划无来源时不提供网页工具且不发请求');
-  mode = 'foreign'; const foreign = await run(config.webOrigins); mode = 'normal';
+  mode = 'foreign'; const foreign = await run(config.webUrls); mode = 'normal';
   check(foreign.detail.runs[0]?.status === 'failed' && requests === noPermissionBefore, '未授权来源拒绝并不伪报成功');
   check(!(await files.list(actor, foreign.detail.runs[0]!.taskId!, 'artifact')).length, '网页失败不发布暂存成果');
+  for(const variation of ['path','query'] as const){mode=variation;const denied=await run(config.webUrls);check(denied.detail.runs[0]?.status==='failed'&&requests===noPermissionBefore,'同域名未授权路径或查询参数零请求：'+variation);}mode='normal';
   let cancelPlan = await plans.draft(actor, config, randomUUID()); cancelPlan = await plans.confirm(actor, cancelPlan.id, cancelPlan.revision, true);
   const cancelJob = await plans.manual(actor, cancelPlan.id, cancelPlan.revision, randomUUID());
   const waiting = new Promise<void>(resolve => { entered = resolve; }); const running = scheduler.tick(); await waiting;
   await plans.stopRun(actor, cancelPlan.id, cancelJob.id); entered = undefined; hold!(); await running;
   const cancelled = await plans.detail(actor, cancelPlan.id);
   check(cancelled.runs[0]?.status !== 'completed' && !(await files.list(actor, cancelled.runs[0]!.taskId!, 'artifact')).length, '抓取期间停止后拒绝迟到完成和成果');
+  // 在隔离库恢复升级前的旧计划快照，验证真正的37到38迁移。
+  const legacy={...config,webUrls:undefined,webOrigins:['https://fixture.example']};
+  await assert.rejects(plans.draft(actor,legacy,randomUUID()),/旧网页来源/);check(true,'新增草稿不能提交旧域名授权');
+  const legacyPlans:string[]=[];
+  for(const status of ['queued','running'] as const){
+    const id=randomUUID();legacyPlans.push(id);
+    await admin.query("INSERT INTO workpivot.automations(id,owner_user_id,request_id,config,draft,state,grant_id,next_at) VALUES($1,$2,$3,$4,$4,'enabled',$5,now())",[id,actor,randomUUID(),legacy,randomUUID()]);
+    await admin.query("INSERT INTO workpivot.automation_runs(id,owner_user_id,plan_id,config,grant_id,plan_revision,scheduled_for,status) VALUES($1,$2,$3,$4,$5,1,now(),$6)",[randomUUID(),actor,id,legacy,randomUUID(),status]);
+  }
+  await admin.query('DELETE FROM workpivot_meta.schema_versions WHERE version=38');
+  await installSchema(admin,'web_app','web_auth');
+  for(const id of legacyPlans){
+    const p=await plans.detail(actor,id);check(p.state==='blocked'&&p.revision===2&&!!p.draft?.webOrigins?.length,'旧联网计划阻止调度并保留原草稿');
+    await assert.rejects(plans.confirm(actor,id,p.revision,true),/旧网页来源/);
+  }
+  const oldJobs=(await admin.query('SELECT status,revoked,finished_at FROM workpivot.automation_runs WHERE plan_id=ANY($1::uuid[]) ORDER BY status',[legacyPlans])).rows;
+  check(oldJobs.every(j=>j.revoked)&&oldJobs.some(j=>j.status==='cancelled'&&j.finished_at)&&oldJobs.some(j=>j.status==='running'),'旧排队取消、运行中撤销，保留运行状态供执行器收尾');
+  check((await plans.detail(actor,offline.plan.id)).state==='enabled','离线计划升级后保持启用');
+  let edited=await plans.draft(actor,config,randomUUID(),legacyPlans[0],2);edited=await plans.confirm(actor,edited.id,edited.revision,true);
+  check(edited.state==='enabled'&&!edited.config?.webOrigins?.length&&!!edited.config?.webUrls?.length,'旧计划填写完整地址并人工确认后可恢复');
+  await installSchema(admin,'web_app','web_auth');check((await plans.detail(actor,edited.id)).revision===edited.revision,'重复安装不会再次撤销新授权');
   console.log(`Web database: ${count} checks passed`);
 } finally { hold?.(); await scheduler?.stop(); await Promise.all([db.end(), auth.end(), admin.end()]); await rm(root, { recursive: true, force: true }); }

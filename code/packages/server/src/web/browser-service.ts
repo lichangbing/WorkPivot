@@ -27,12 +27,17 @@ export function browserService(token: string, engine = new BrowserEngine()) {
       const resourceUrls=body.resourceUrls??[];
       if(!Array.isArray(resourceUrls)||resourceUrls.length>20||resourceUrls.some(url=>typeof url!=='string'))throw Error('追加地址列表无效');
       const allowedUrls=resourceUrls.map(url=>webUrl(url).href);
-      const origins = body.origins;
-      if (origins !== undefined && (!Array.isArray(origins) || origins.length > 20 || origins.some(origin => typeof origin !== 'string' || webUrl(origin).origin !== origin))) throw Error('网页来源配置无效');
+      if(body.origins!==undefined)throw Error('旧来源授权已停用，请使用完整 URL 授权');
+      const urls=body.urls;
+      if(urls!==undefined&&(!Array.isArray(urls)||urls.length>20||urls.some(url=>typeof url!=='string'||webUrl(url).href!==url)))throw Error('完整地址配置无效');
       if (body.sessionId) {
-        if (typeof body.sessionId !== 'string' || origins !== undefined) throw Error('共享浏览器参数无效');
+        if (typeof body.sessionId !== 'string' || urls !== undefined) throw Error('共享浏览器参数无效');
         response.json(await sessions.browse(body.sessionId, input, body.url !== undefined, controller.signal,body.expectedRevision,allowedUrls));
-      } else response.json(await engine.browse(input, { origins, urls:origins===undefined?[input.url,...allowedUrls]:undefined,signal: controller.signal }));
+      } else {
+        // 自动化白名单来自服务端计划，模型提供的附加地址不能扩大它。
+        if(urls!==undefined){webUrl(input.url,undefined,urls);for(const url of allowedUrls)webUrl(url,undefined,urls);}
+        response.json(await engine.browse(input, { urls:urls??[input.url,...allowedUrls],signal: controller.signal }));
+      }
     } catch (error) {
       if (!controller.signal.aborted) response.status(422).json({ error: error instanceof Error ? error.message.slice(0, 300) : '浏览器操作失败' });
     } finally { response.removeListener('close', cancel); }

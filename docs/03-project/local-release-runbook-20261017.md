@@ -59,3 +59,16 @@ node code/scripts/release-local.mjs rollback local-runtime/release-local.json
 schema37候选完成一次性Compose安装/迁移/回退13项及API强制终止、两次重启恢复3+13+13项检查，原业务schema36未变。候选浏览器镜像也已准备；浏览器源码和API必须配套升级，不能仅切换API。旧自动化域名授权向严格URL的兼容规则尚待用户确认，故目前不部署。最终许可/参数绑定的后续小修复通过源码回归，最终发布前需重建候选镜像，不能使用较早构建快照冒充最终代码。
 
 本轮联合备份恢复40项、数据库770项、工具授权18项、浏览器21项、自动化49项通过。真实业务样本、第二设备、长稳及真实模型配置仍缺；历史依赖abbrev/buffers许可声明缺失未豁免，未宣称正式版全门槛通过。
+
+
+## 2026-10-18 严格地址与任务授权配套部署
+
+已通过发布入口升级本机，发布号 `r1792312118575`，schema38。API镜像 `workpivot-server:local-strict-url-20261018`（ID `sha256:428970bff4262d147f046554047aa097d5bab809e8db37906c30f7853e748539`）；浏览器镜像 `workpivot-browser:local-strict-url-20261018`。先停止API、升级浏览器，再运行带备份的API升级，避免旧API继续使用origin协议。执行器镜像未改变。
+
+当前数据库 `wp_r1792312118575`，文件卷 `workpivot-local-r1792312118575-files`；原schema36数据库和原卷保留。升级前备份在 `local-runtime/releases/r1792312118575/backup`。继续通过本文件固定入口管理服务，不使用旧基础Compose覆盖活动发布。
+
+本轮验证：最终候选schema38一次性安装/迁移/回退13项通过；数据库770项、自动化49项、网页数据库22项、真实Chromium受控网页22项、联合备份40项、全仓类型与lint通过。部署后API及浏览器容器健康，首页和健康接口200、未认证任务/自动化401；API容器调用浏览器健康200，旧origin协议返回422。实际库迁移到38，现有两项计划保持停用/结束状态。
+
+严格URL替代域名授权：旧联网计划重新确认，离线计划不变。临时DeepSeek文件虽不存在，应用数据库加密配置仍在；真实模型验收单独记录，不以受控模型代替。真实业务样本、第二物理设备、长稳及历史依赖许可缺口仍未关闭，本次不是无条件宣布正式发布门槛全通过。
+
+真实DeepSeek补充验收：使用应用现存加密配置，在一次性数据库和合成input.txt上完成6项检查——读取已选文件、显式许可后保存成果、实际下载核对42及随机标识、范围继承、撤销后不再返回原标识、空范围持久化。实际调用包含list_uploaded_files、read_uploaded_file、list_artifacts和save_artifact；无业务文档输入。复验入口为`WORKPIVOT_LIVE_EVAL=1 WORKPIVOT_LIVE_FIXTURE_URL=http://127.0.0.1:<隔离端口> node code/eval/live-resource-scope.mjs`，须先用test-rc-browser --live启动一次性夹具。该结果不等于复杂Office/真实业务或第二设备验收。

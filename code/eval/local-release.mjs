@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {randomBytes} from 'node:crypto';
 import {LocalRelease} from '../scripts/release-local.mjs';
 const image=process.env.WORKPIVOT_TEST_RELEASE_IMAGE??'workpivot-server:local-su-r4-20261017';
-const expectedSchema=Number(process.env.WORKPIVOT_TEST_RELEASE_SCHEMA??37);
+const expectedSchema=Number(process.env.WORKPIVOT_TEST_RELEASE_SCHEMA??38);
 const old=process.env.WORKPIVOT_TEST_OLD_IMAGE??'workpivot-server:local-browser-ui-20261017';
 const project='wp-release-test-'+Date.now(),root=mkdtempSync(join(tmpdir(),'wp-release-')),envFile=join(root,'runtime.env'),compose=join(root,'compose.json'),config=join(root,'config.json');
 const secret=randomBytes(32).toString('hex');let checks=0;const check=(v,n)=>{assert.ok(v,n);checks++;console.log('通过：'+n);};

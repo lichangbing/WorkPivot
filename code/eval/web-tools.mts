@@ -81,8 +81,10 @@ await check('编码、JSON、截断、HTTP错误与二进制拒绝', () => {
 });
 await check('旧自动化默认无网页权限；新来源必须明确且有效', () => {
   const config = { ...newAutomationConfig(), name: '采集', requirements: '读取公告', skill: 'sample', releaseId: randomUUID() };
-  assert.deepEqual(automationConfig(config).webOrigins, []);
-  assert.deepEqual(automationConfig({ ...config, webOrigins: ['https://example.com'] }).webOrigins, ['https://example.com']);
+  assert.deepEqual(automationConfig(config).webUrls, []);
+  assert.throws(()=>automationConfig({ ...config, webOrigins: ['https://example.com'] }),/旧网页来源/);
+  assert.deepEqual(automationConfig({...config,webUrls:['https://example.com/report?q=1#part']}).webUrls,['https://example.com/report?q=1']);
+  assert.throws(()=>automationConfig({...config,webUrls:['https://example.com','https://example.com/']}),/重复/);
   for (const origin of ['http://127.0.0.1','https://example.com/path']) assert.throws(() => automationConfig({ ...config, webOrigins: [origin] }));
 });
 await check('浏览器输入边界', () => {
@@ -179,6 +181,20 @@ if (process.argv.includes('--browser')) {
       const id='d'.repeat(64);sentUrls.length=0;
       const response=await fetch(base+'/v1/sessions/'+id,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({kind:'navigate',url:'https://fixture.example/jump'})});
       assert.equal(response.status,422);assert(!sentUrls.some(url=>url.includes('other.example/destination')));
+    });
+    await check('自动化完整URL约束覆盖子请求、额外资源及旧服务协议',async()=>{
+      const urls=['https://fixture.example/strict','https://fixture.example/pixel?value=sample'];
+      const tool=new WebTools({url:base,token}).tools(async()=>undefined,urls)[1]!;
+      sentUrls.length=0;
+      const result=JSON.parse(await tool.run({url:urls[0]},{taskDir:'.'}));
+      assert(sentUrls.includes(urls[1]!));assert(!sentUrls.some(url=>url.includes('/collect')||url.includes('/leak')));assert(result.blockedUrls.length>0);
+      sentUrls.length=0;
+      await assert.rejects(tool.run({url:urls[0],resourceUrls:['https://fixture.example/collect?value=sample']},{taskDir:'.'}),/完整网页地址/);assert.equal(sentUrls.length,0);
+      const headers={authorization:'Bearer '+token,'content-type':'application/json'};
+      const send=(body:unknown)=>fetch(base+'/v1/browse',{method:'POST',headers,body:JSON.stringify(body)});
+      assert.equal((await send({url:urls[0],origins:['https://fixture.example']})).status,422);
+      assert.equal((await send({url:urls[0],urls,resourceUrls:['https://fixture.example/collect?value=sample']})).status,422);
+      await assert.rejects(tool.run({url:'https://fixture.example/strict?extra=1'},{taskDir:'.'}),/完整网页地址/);assert.equal(sentUrls.length,0);
     });
     await check('工具通过HTTP服务保存截图，结果不含base64', async () => {
       let saved = false;

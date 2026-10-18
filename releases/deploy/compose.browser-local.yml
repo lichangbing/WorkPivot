@@ -1,7 +1,7 @@
 name: workpivot-local-browser
 services:
   browser:
-    image: workpivot-browser:local-shared-20261017
+    image: workpivot-browser:local-strict-url-20261018
     env_file:
       - ../../local-runtime/browser.env.local
     environment:

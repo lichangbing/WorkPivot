@@ -451,5 +451,15 @@ ALTER TABLE workpivot.trash_entries ADD CONSTRAINT trash_entries_kind_check CHEC
 `}, {version:37,sql:`
 ALTER TABLE workpivot.task_runs ADD COLUMN resource_scope jsonb;
 ALTER TABLE workpivot.task_runs ADD CONSTRAINT resource_scope_object CHECK(resource_scope IS NULL OR (jsonb_typeof(resource_scope)='object' AND resource_scope->>'version'='1'));
+`}, {version:38,sql:`
+UPDATE workpivot.automations SET state=CASE WHEN state='enabled' THEN 'blocked' ELSE state END,
+ grant_id=NULL,next_at=NULL,revision=revision+1,updated_at=now(),
+ issue='旧网页来源授权已失效，请编辑完整 URL 并重新确认'
+WHERE state<>'deleted' AND COALESCE(config->'webOrigins','[]'::jsonb)<>'[]'::jsonb;
+UPDATE workpivot.automation_runs SET revoked=true,
+ status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,
+ finished_at=CASE WHEN status='queued' THEN now() ELSE finished_at END,
+ error='旧网页来源授权已失效，请编辑完整 URL 并重新确认'
+WHERE status IN ('queued','running') AND COALESCE(config->'webOrigins','[]'::jsonb)<>'[]'::jsonb;
 `}] as const;
 import { usageSchema } from './usage-schema.js';

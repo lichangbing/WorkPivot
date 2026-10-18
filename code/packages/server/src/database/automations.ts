@@ -19,6 +19,7 @@ export class Automations {
   workerAvailable:this.workerAvailable,browserAvailable:this.browserAvailable,
  }),actor);}
  async dependencies(c:PoolClient,p:AutomationConfig,resolveInputs=true):Promise<AutomationInput[]> {
+  automationConfig(p);
   if(!this.workerAvailable)throw new RepositoryError(409,'隔离执行服务尚未配置');
   if(p.projectId&&!(await c.query('SELECT id FROM workpivot.projects WHERE id=$1 AND deleted_at IS NULL',[p.projectId])).rowCount)throw new RepositoryError(409,'成果项目已删除或不可访问');
   if(!(await c.query(`SELECT r.id FROM workpivot.skill_releases r JOIN workpivot.skill_catalog c ON c.name=r.name JOIN workpivot.skill_selections s ON s.name=c.name WHERE r.id=$1 AND r.name=$2 AND NOT c.disabled`,[p.releaseId,p.skill])).rowCount)throw new RepositoryError(409,'绑定技能未加载、被停用或版本不可用');
@@ -54,7 +55,8 @@ export class Automations {
  }
  async confirm(actor:string,id:string,revision:number,enable:boolean){return transaction(this.db,async c=>{
   const p=await this.get(c,id,true);if(p.revision!==revision)throw new RepositoryError(409,'计划已改变，请重新确认');if(p.state==='deleted')throw new RepositoryError(409,'计划已删除');
-  const config=p.draft??p.config;if(!config)throw new RepositoryError(409,'需要重新填写执行配置');
+  const value=p.draft??p.config;if(!value)throw new RepositoryError(409,'需要重新填写执行配置');
+  const config=automationConfig(value);
   if(p.draft&&(p.source_invalid||p.source_run_id&&!(await c.query("SELECT id FROM workpivot.task_runs WHERE id=$1 AND NOT context_revoked AND status IN ('running','completed','failed')",[p.source_run_id])).rowCount))throw new RepositoryError(409,'来源对话失效，请重新编辑确认');
   const next=nextAutomationTime(config,new Date());if(enable){await this.dependencies(c,config);if(!next)throw new RepositoryError(400,'没有未来可执行的时间');}
   await c.query(`UPDATE workpivot.automations SET config=$2,draft=NULL,state=$3,grant_id=$4,next_at=$5,issue='',revision=revision+1,updated_at=now() WHERE id=$1`,[id,config,enable?'enabled':'paused',enable?randomUUID():null,enable?next:null]);
@@ -100,7 +102,7 @@ export class Automations {
  tools(actor:string,taskId:string,bound:()=>{id:string;fence:string}|undefined,scope?:RunResourceScope):Tool[]{
   const guard=async()=>{const run=bound();if(!run)throw new RepositoryError(409,'对话运行尚未绑定');await transaction(this.db,c=>this.source(c,taskId,run),actor);return run;};
   const selected=(id:string)=>{if(scope&&!(scope.scheduleIds??[]).includes(id))throw new RepositoryError(403,'自动化未获本轮读取授权，请在读取范围中选择');};
-  const configSchema={type:'object',description:'完整计划配置；先用get_automation_options读取可用技能版本、项目和文件。使用config对象：name、skill、releaseId、projectId(null表示独立成果)、requirements、input{mode:none|fixed|latest,versionIds:[],pattern:""}、timing{kind:once|daily|weekly|interval|cron,zone:Asia/Shanghai,at:"YYYY-MM-DDTHH:mm"或空,time:"09:00",days:[1,2,3,4,5],minutes:120,cron:"0 9 * * *",end:""}、catchup:once|skip、notify:issues|all、timeoutMinutes:10、webOrigins:[]。联网采集必须显式填写用户确认的完整网页来源origin（如https://example.com），包括需要的跳转和子资源来源；空数组表示不允许联网。缺失项应询问，不猜测执行范围。'};
+  const configSchema={type:'object',description:'完整计划配置；先用get_automation_options读取可用技能版本、项目和文件。使用config对象：name、skill、releaseId、projectId(null表示独立成果)、requirements、input{mode:none|fixed|latest,versionIds:[],pattern:""}、timing{kind:once|daily|weekly|interval|cron,zone:Asia/Shanghai,at:"YYYY-MM-DDTHH:mm"或空,time:"09:00",days:[1,2,3,4,5],minutes:120,cron:"0 9 * * *",end:""}、catchup:once|skip、notify:issues|all、timeoutMinutes:10、webUrls:[]。联网采集必须显式填写用户确认的完整网页URL（如https://example.com/reports?q=1），包括需要的跳转和子资源完整地址；空数组表示不允许联网。缺失项应询问，不猜测执行范围。'};
   return [
    {name:'get_automation_options',kind:'read',description:'读取当前用户可用的已加载Skill、发布版本、项目和文件版本，供创建计划草稿。',parameters:{type:'object',properties:{},additionalProperties:false},run:async()=>{await guard();return JSON.stringify(await this.options(actor,scope,scope?taskId:undefined));}},
    {name:'list_my_schedules',kind:'read',description:'列出本人自动化计划及配置；用于准确定位要修改或暂停的计划。',parameters:{type:'object',properties:{},additionalProperties:false},run:async()=>{await guard();return JSON.stringify((await this.list(actor,scope?.scheduleIds)).map(p=>({...p,lastRun:undefined})));}},
