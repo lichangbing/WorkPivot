@@ -52,7 +52,9 @@ export class MemoryWorker {
         const item = value as Candidate;
         if (!item || !['user', 'project', 'task'].includes(item.scope) || typeof item.content !== 'string' || !item.content.trim() || item.content.length > 4000 || typeof item.evidence !== 'string' || item.evidence.length < 2 || !source.includes(item.evidence) || typeof item.query !== 'string' || item.query.length > 200) throw Error('提取证据无效');
         if(!await transaction(this.db,c=>memoryEnabled(c,item.scope,'update'),actor))continue;
-        const lookup = new DatabaseMemoryTools(this.db,'update');
+        const resourceScopes=await transaction(this.db,async c=>(await c.query('SELECT resource_scope FROM workpivot.task_runs WHERE id=$1',[job.run_id])).rows[0]?.resource_scope?.memoryScopes,actor);
+        if(resourceScopes&&!resourceScopes.includes(item.scope))continue;
+        const lookup = new DatabaseMemoryTools(this.db,'update',resourceScopes);
         const found = await lookup.search(actor, job.task_id, item.query);
         // 模型关键词可能改写已存事实，补充有界的
         // 作用域概览，避免把纠正内容直接当成新记忆。

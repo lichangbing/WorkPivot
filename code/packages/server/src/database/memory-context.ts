@@ -11,7 +11,7 @@ export async function memoryContext(c: PoolClient, taskId: string, runId: string
     JOIN workpivot.conversation_turns t ON t.task_id=current_run.task_id AND t.sequence<current_turn.sequence
     JOIN workpivot.task_runs r ON r.turn_id=t.id AND r.status='completed' AND NOT r.context_revoked
     JOIN workpivot.conversation_events e ON e.turn_id=t.id AND e.kind='user'
-    WHERE current_run.id=$1 AND current_run.task_id=$2 AND NOT current_run.context_revoked
+    WHERE (current_run.resource_scope IS NULL OR r.resource_scope->>'epoch'=current_run.resource_scope->>'epoch') AND current_run.id=$1 AND current_run.task_id=$2 AND NOT current_run.context_revoked
     ORDER BY t.sequence DESC,r.id LIMIT 5`, [runId, taskId])).rows;
   let remaining = 24000 - currentLength;
   const context: MemorySource[] = [];

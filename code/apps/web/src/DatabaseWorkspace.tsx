@@ -1,3 +1,4 @@
+import {DatabaseResourceScope,type ResourceSelection} from './DatabaseResourceScope';
 import { DatabaseBrowser } from './DatabaseBrowser';
 import { DatabaseFloating } from './DatabaseFloating';
 import type {ReactNode} from 'react';
@@ -27,7 +28,7 @@ import { mergeEvents, groupEvents, type StoredEvent, type ConversationPage, type
 
 interface Task { expertId?:string|null; id: string; name: string; status: string; revision: number; projectId: string | null }
 interface Project { id: string; name: string; revision: number }
-interface Permission { id: string; request: { tool: string; command?: string }; expiresAt: string }
+interface Permission { id: string; request: { tool: string; effects?:string[]; command?: string; binding?:Record<string,unknown>; invocation?: {arguments:Record<string,unknown>} }; expiresAt: string }
 const errorText = (e: unknown) => e instanceof Error ? e.message : '操作失败，请重试';
 const button = 'rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800 disabled:opacity-40';
 const selectionKey = (userId: string) => `wp-active-task:${userId}`;
@@ -45,6 +46,8 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   const [automationPage,setAutomationPage]=useState(location.hash.startsWith('#automations'));
   useEffect(()=>{const change=()=>setAutomationPage(location.hash.startsWith('#automations'));window.addEventListener('hashchange',change);return()=>window.removeEventListener('hashchange',change);},[]);
   const attachmentControl = useRef<AttachmentActions>(null);
+  const [resourceSelection,setResourceSelection]=useState<ResourceSelection|null>(null);
+  const resourceChange=useCallback((value:ResourceSelection|null)=>setResourceSelection(value),[]);
   const [attachmentIds, setAttachmentIds] = useState<string[]>([]), [attachmentBlocked, setAttachmentBlocked] = useState(false), [attachmentEpoch, setAttachmentEpoch] = useState(0);
   const attachmentChange = useCallback((ids: string[], blocked: boolean) => { setAttachmentIds(ids); setAttachmentBlocked(blocked); }, []);
   const [auth, setAuth] = useState<Awaited<ReturnType<typeof api.authState>> | null>(null);
@@ -96,7 +99,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   }, [active, auth]);
   useEffect(() => {
     const epoch = ++generation.current, controller = new AbortController();
-    setAttachmentIds([]); setAttachmentBlocked(false);
+    setResourceSelection(null);setAttachmentIds([]); setAttachmentBlocked(false);
     setEvents([]); setPermissions([]); setOlder(null); setDetails({}); setReady(false); setError(''); setNewMessages(false); setInput('');
     follow.current = true; anchor.current = null; loadingRef.current = false; setLoading(false);
     if (!active || !auth?.authenticated) return () => controller.abort();
@@ -193,14 +196,14 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     finally { expanding.current.delete(event.id); }
   };
   const send = async () => {
-    if (!chatEnabled || !active || (!input.trim() && !attachmentIds.length) || attachmentBlocked || sending) return;
+    if (!chatEnabled || !active || !resourceSelection || (!input.trim() && !attachmentIds.length) || attachmentBlocked || sending) return;
     const taskId = active, epoch = generation.current, content = input.trim() || '请查看附件。', controller = new AbortController();
-    const fingerprint = JSON.stringify([taskId, content, attachmentIds]);
+    const fingerprint = JSON.stringify([taskId, content, attachmentIds,resourceSelection]);
     if (pendingSend.current?.fingerprint !== fingerprint) pendingSend.current = { fingerprint, id: crypto.randomUUID() };
     const requestId = pendingSend.current.id;
     streams.current.add(controller); setSending(true); setError(''); follow.current = true;
     try {
-      const response = await fetch(`/api/tasks/${taskId}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken() ?? ''}` }, body: JSON.stringify({ content, requestId, attachments: attachmentIds }), signal: controller.signal });
+      const response = await fetch(`/api/tasks/${taskId}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken() ?? ''}` }, body: JSON.stringify({ content, requestId, attachments: attachmentIds,resourceScope:resourceSelection }), signal: controller.signal });
       if (!response.ok) throw new Error(((await response.json()) as { error: string }).error);
       if (pendingSend.current?.id === requestId) pendingSend.current = null;
       if (epoch === generation.current) { setInput(''); setAttachmentIds([]); setAttachmentBlocked(false); setAttachmentEpoch(v => v + 1); }
@@ -243,13 +246,13 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
         {active && <DatabaseParsing key={"parse-"+active} taskId={active} />}
         {active && <DatabaseExecutionStatus key={active} taskId={active} />}
         {active && <DatabaseSkillBuilds key={'skills-'+active} taskId={active} autoOpen />}
-        {permissions.map(p => <div key={p.id} className="mb-3 rounded border border-neutral-700 p-4"><strong>{p.request.tool === 'execute_skill' ? '确认隔离执行' : '确认外部工具调用'}</strong>{p.request.tool === 'execute_skill' && <p className="mt-2 text-sm text-neutral-400">在无网络隔离环境处理所选文件，仅保存指定成果。本次允许不会变成永久授权。</p>}<pre className="my-3 whitespace-pre-wrap break-words text-sm">{p.request.command ?? p.request.tool}</pre><button className={button} onClick={() => { void decide(p.id, 'deny'); }}>拒绝</button><button className={button + ' ml-2'} onClick={() => { void decide(p.id, 'allow'); }}>允许本次</button></div>)}
+        {permissions.map(p => <div key={p.id} className="mb-3 rounded border border-neutral-700 p-4"><strong>{p.request.tool === 'execute_skill' ? '确认隔离执行' : '确认本次操作'}</strong>{p.request.tool === 'execute_skill' && <p className="mt-2 text-sm text-neutral-400">在无网络隔离环境处理所选文件，仅保存指定成果。本次允许不会变成永久授权。</p>}<pre className="my-3 whitespace-pre-wrap break-words text-sm">{p.request.command ?? p.request.tool}</pre>{p.request.invocation && <details><summary>查看本次完整参数（输入、输出及目标）</summary><pre className="my-3 max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify({effects:p.request.effects,parameters:p.request.invocation.arguments,binding:p.request.binding},null,2)}</pre></details>}<button className={button} onClick={() => { void decide(p.id, 'deny'); }}>拒绝</button><button className={button + ' ml-2'} onClick={() => { void decide(p.id, 'allow'); }}>允许本次</button></div>)}
       </div>
       {newMessages && <button className={button} onClick={() => { follow.current = true; if (viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight; setNewMessages(false); }}>查看新消息</button>}
       <form className="workspace-composer mx-4 mb-4 rounded-2xl border border-neutral-700 bg-neutral-900/50 p-3" onDragOver={e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={e => { if (e.dataTransfer.files.length) { e.preventDefault(); attachmentControl.current?.addFiles(Array.from(e.dataTransfer.files)); } }} onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); attachmentControl.current?.addFiles(Array.from(e.clipboardData.files)); } }} onSubmit={e => { e.preventDefault(); void send(); }}>
         {filesEnabled && active && <DatabaseAttachments ref={attachmentControl} key={`${active}:${attachmentEpoch}`} taskId={active} disabled={busy || !ready} onChange={attachmentChange} />}
-        <textarea aria-label="消息" value={input} disabled={!chatEnabled || !active || busy || !ready} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} placeholder={chatEnabled ? active ? '输入消息，Enter 发送，Shift + Enter 换行' : '请先新建/选择任务' : '后台尚未启用对话执行'} className="message-input max-h-48 min-h-[88px] w-full resize-none bg-transparent px-1 py-1 text-sm outline-none" />
-        <div className="composer-footer"><div className="flex shrink-0 items-center gap-2">{filesEnabled && <button type="button" aria-label="添加文件" title="添加文件（最多10个，单个10MB）；也可拖拽或粘贴" disabled={!active || busy || !ready || attachmentBlocked || attachmentIds.length >= 10} className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40" onClick={() => attachmentControl.current?.open()}><Icon name="plus" size={22} /></button>}<DatabaseExecutionMode /></div><div className="composer-actions"><DatabaseModelStatus />{busy && <button type="button" className={button} onClick={() => { void jsonFetch(`/api/tasks/${active}/stop`, { method: 'POST' }).catch(e => setError(errorText(e))); }}>停止</button>}<button title="发送" aria-label="发送" className="composer-send flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-950 hover:opacity-80 disabled:opacity-40" disabled={!chatEnabled || !active || busy || !ready || attachmentBlocked || (!input.trim() && !attachmentIds.length)}><Icon name="up" size={18} /></button></div></div>
+        <textarea aria-label="消息" value={input} disabled={!chatEnabled || !active || !resourceSelection || busy || !ready} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} placeholder={chatEnabled ? active ? '输入消息，Enter 发送，Shift + Enter 换行' : '请先新建/选择任务' : '后台尚未启用对话执行'} className="message-input max-h-48 min-h-[88px] w-full resize-none bg-transparent px-1 py-1 text-sm outline-none" />
+        {active&&<DatabaseResourceScope taskId={active} disabled={busy||sending} refresh={attachmentEpoch} onChange={resourceChange}/> }<div className="composer-footer"><div className="flex shrink-0 items-center gap-2">{filesEnabled && <button type="button" aria-label="添加文件" title="添加文件（最多10个，单个10MB）；也可拖拽或粘贴" disabled={!active || busy || !ready || attachmentBlocked || attachmentIds.length >= 10} className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40" onClick={() => attachmentControl.current?.open()}><Icon name="plus" size={22} /></button>}<DatabaseExecutionMode /></div><div className="composer-actions"><DatabaseModelStatus />{busy && <button type="button" className={button} onClick={() => { void jsonFetch(`/api/tasks/${active}/stop`, { method: 'POST' }).catch(e => setError(errorText(e))); }}>停止</button>}<button title="发送" aria-label="发送" className="composer-send flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-950 hover:opacity-80 disabled:opacity-40" disabled={!chatEnabled || !active || !resourceSelection || busy || !ready || attachmentBlocked || (!input.trim() && !attachmentIds.length)}><Icon name="up" size={18} /></button></div></div>
       </form>
     </main>
     {rightOpen && <DatabaseBrowser key={active??'empty'} taskId={active} onHide={()=>{setRightOpen(false);localStorage.setItem('wp-right-panel-open','false');}} />}

@@ -7,7 +7,7 @@ import ipaddr from 'ipaddr.js';
 
 export type Resolver = (host: string) => Promise<{ address: string; family: number }[]>;
 export interface WebResponse { url: string; status: number; headers: Record<string, string>; body: Buffer }
-export interface WebPolicy { origins?: string[]; signal?: AbortSignal; maxBytes?: number; followRedirects?: boolean }
+export interface WebPolicy { urls?:string[]; origins?: string[]; signal?: AbortSignal; maxBytes?: number; followRedirects?: boolean }
 
 export function publicAddress(address: string): boolean {
   try {
@@ -22,7 +22,7 @@ export function publicAddress(address: string): boolean {
   } catch { return false; }
 }
 
-export function webUrl(value: unknown, origins?: string[]): URL {
+export function webUrl(value: unknown, origins?: string[], urls?:string[]): URL {
   if (typeof value !== 'string' || value.length > 4096) throw Error('网页地址无效');
   let url: URL;
   try { url = new URL(value); } catch { throw Error('网页地址无效'); }
@@ -32,6 +32,7 @@ export function webUrl(value: unknown, origins?: string[]): URL {
   if (isIP(host) && !publicAddress(host)) throw Error('不能访问非公网地址');
   if (origins && !origins.includes(url.origin)) throw Error('网页来源未获授权，请在计划中添加来源并重新确认');
   url.hash = '';
+  if(urls!==undefined&&!urls.includes(url.href))throw Error('完整网页地址未获授权');
   return url;
 }
 
@@ -40,7 +41,7 @@ export class SafeHttp {
   constructor(private readonly resolve: Resolver = webResolver()) {}
   async get(value: string, policy: WebPolicy = {}): Promise<WebResponse> {
     const signal = AbortSignal.any([AbortSignal.timeout(20000), ...(policy.signal ? [policy.signal] : [])]);
-    let url = webUrl(value, policy.origins);
+    let url = webUrl(value, policy.origins,policy.urls);
     for (let redirects = 0; redirects <= 5; redirects++) {
       signal.throwIfAborted();
       const host = url.hostname.replace(/^\[|\]$/g, '');
@@ -61,7 +62,7 @@ export class SafeHttp {
       const result = await this.once(url, address, signal, policy.maxBytes ?? 2 * 1024 * 1024);
       if ([301, 302, 303, 307, 308].includes(result.status)) {
         if (!result.headers.location || redirects === 5) throw Error('网页重定向无效或次数过多');
-        url = webUrl(new URL(result.headers.location, url).href, policy.origins);
+        url = webUrl(new URL(result.headers.location, url).href, policy.origins,policy.followRedirects===false?undefined:policy.urls);
         if (policy.followRedirects === false) return { ...result, headers: { ...result.headers, location: url.href } };
         continue;
       }

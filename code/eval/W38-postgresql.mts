@@ -1,3 +1,4 @@
+import {testResourceScope} from './resource-scope.mts';
 import { testUsage } from './database-usage.mts';
 import { testOfficeSkills } from './database-office-skills.mts';
 import { testSkillBuilds } from './database-skill-builds.mts';
@@ -56,11 +57,11 @@ let server: ReturnType<Awaited<ReturnType<typeof createDatabaseApp>>['listen']> 
 try {
   await installSchema(admin, 'wp_test_app', 'wp_test_auth');
   await installSchema(admin, 'wp_test_app', 'wp_test_auth');
-  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 36, 'schema installation idempotent');
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 37, 'schema installation idempotent');
   // 重建准确的空 v1 结构，独立验证增量升级。
   await admin.query('ALTER TABLE identity.sessions DROP COLUMN id; DROP TABLE workpivot.model_usage; DROP TABLE workpivot.usage_budgets; DROP TABLE workpivot.usage_alerts; DROP TABLE workpivot.embedding_jobs; DROP TABLE workpivot.embedding_spaces; DROP TABLE workpivot.trash_entries; DROP FUNCTION workpivot.automation_source_invalidated() CASCADE; DROP TABLE workpivot.automation_notices; DROP TABLE workpivot.automation_runs; DROP TABLE workpivot.automations; ALTER TABLE workpivot.tasks DROP COLUMN origin; DROP FUNCTION workpivot.invalidate_skill_builds() CASCADE; DROP FUNCTION workpivot.skill_visibility_guard() CASCADE; DROP TABLE workpivot.skill_trials; DROP TABLE workpivot.skill_builds; DROP FUNCTION workpivot.clear_memory_review_key() CASCADE; DROP FUNCTION workpivot.clear_memory_suggestion_context() CASCADE; DROP FUNCTION workpivot.expert_epoch_changed() CASCADE; DROP FUNCTION workpivot.expert_source_deleted() CASCADE; DROP TABLE workpivot.expert_suggestions; DROP TABLE workpivot.expert_jobs; DROP TABLE workpivot.expert_experiences; ALTER TABLE workpivot.tasks DROP COLUMN expert_id; ALTER TABLE workpivot.projects DROP COLUMN expert_id; DROP TABLE workpivot.experts; DROP FUNCTION workpivot.notify_task_event() CASCADE; DROP TABLE workpivot.context_checkpoints; DROP FUNCTION workpivot.invalidate_checkpoints() CASCADE; ALTER POLICY personal_memory_revisions ON workpivot.memory_revisions USING(owner_user_id=workpivot.actor_id() AND EXISTS(SELECT 1 FROM workpivot.memories m WHERE m.id=memory_id AND m.deleted_at IS NULL)); ALTER TABLE workpivot.memories DROP COLUMN merged_into; ALTER TABLE workpivot.memories DROP COLUMN locked; DROP TABLE workpivot.memory_controls; DROP TABLE workpivot.memory_templates; DROP TABLE workpivot.knowledge_chunks; DROP TABLE workpivot.knowledge_versions; DROP TABLE workpivot.document_processing; DROP TABLE workpivot.execution_artifacts; DROP TABLE workpivot.skill_executions; DROP TABLE workpivot.memory_sources; DROP TABLE workpivot.memory_jobs; DROP TABLE workpivot.memory_suggestions; DROP TABLE workpivot.skill_selections; DROP TABLE workpivot.skill_catalog; DROP TABLE workpivot.skill_releases; DROP TABLE workpivot.skill_drafts; DROP TABLE workpivot.document_versions; DROP TABLE workpivot.documents; DROP TABLE workpivot.run_permissions; DROP TABLE workpivot.mcp_connections; DROP TABLE workpivot.default_model; DROP TABLE workpivot.model_providers; DROP TABLE workpivot.task_runs; DROP TABLE workpivot.conversation_events; DROP TABLE workpivot.conversation_turns; ALTER TABLE workpivot.tasks DROP COLUMN next_turn_sequence; DELETE FROM workpivot_meta.schema_versions WHERE version>1');
   await installSchema(admin, 'wp_test_app', 'wp_test_auth');
-  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 36, 'existing v1 database upgrades to latest schema');
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 37, 'existing v1 database upgrades to latest schema');
   await assertRestrictedRole(business, 'workpivot'); await assertRestrictedRole(identity, 'identity');
   await rejects(() => assertRestrictedRole(admin, 'workpivot'), 'superuser runtime rejected');
   await rejects(() => business.query('SELECT * FROM identity.credentials'), 'business pool cannot read password hashes');
@@ -261,7 +262,7 @@ try {
     yield { type: 'reasoning_delta', text: 'Thinking separately' };
     yield { type: 'tool_calls', tool_calls: [{ id: randomUUID(), type: 'function', function: { name: 'fixture', arguments: '{}' } }] };
   } };
-  const execution = new DatabaseExecution(business, async () => ({ client, taskDir: '.', system: 'Test', tools: [{ name: 'fixture', description: 'No IO', parameters: {}, async run() {
+  const execution = new DatabaseExecution(business, async () => ({ client, taskDir: '.', system: 'Test', tools: [{ name: 'fixture', kind:'read', description: 'No IO', parameters: {}, async run() {
     invokedTools++;
     sawCommittedTool = (await admin.query("SELECT count(*)::int AS n FROM workpivot.conversation_events WHERE task_id=$1 AND kind='tool_use'", [runTask.id])).rows[0].n > 0;
     return 'Verified tool output';
@@ -425,6 +426,17 @@ try {
   const consumed = await Promise.all([runs.consumePermission(member.id, permissionRun, pending.id), runs.consumePermission(member.id, permissionRun, pending.id)]);
   check(consumed.filter(v => v === 'allow').length === 1, 'duplicate approval consumed once across concurrent executors');
   await rejects(() => runs.decidePermission(member.id, permissionTask.id, pending.id, 'deny'), 'conflicting decision rejected', 409);
+  const boundAccess = {...access,invocation:{id:randomUUID(),definition:'fixture-v1',arguments:{inputs:['A'],outputs:[{name:'report.txt',revision:1}]},digest:'fixture'}};
+  const boundPermission=await runs.requestPermission(member.id,permissionRun,boundAccess);
+  await runs.decidePermission(member.id,permissionRun.taskId,boundPermission.id,'allow');
+  await rejects(()=>runs.consumePermission(member.id,permissionRun,boundPermission.id),'bound permission requires actual call',409);
+  await rejects(()=>runs.consumePermission(member.id,permissionRun,boundPermission.id,{...boundAccess,invocation:{...boundAccess.invocation,arguments:{inputs:['B']}}}),'changed inputs cannot consume approval',409);
+  await rejects(()=>runs.consumePermission(member.id,permissionRun,boundPermission.id,{...boundAccess,invocation:{...boundAccess.invocation,id:randomUUID()}}),'new invocation cannot borrow prior approval',409);
+  await rejects(()=>runs.consumePermission(member.id,permissionRun,boundPermission.id,{...boundAccess,invocation:{...boundAccess.invocation,definition:'changed-tool'}}),'changed tool definition cannot consume approval',409);
+  check(await runs.consumePermission(member.id,permissionRun,boundPermission.id,boundAccess)==='allow','matching complete invocation consumes approval');
+  check(await runs.consumePermission(member.id,permissionRun,boundPermission.id,boundAccess)==='deny','bound invocation remains single use');
+  const permissionAudit=(await admin.query('SELECT request FROM workpivot.run_permissions WHERE id=$1',[boundPermission.id])).rows[0].request;
+  check(permissionAudit.redacted&&!permissionAudit.command&&!permissionAudit.invocation.arguments&&permissionAudit.invocation.digest==='fixture','审批消费后仅保留校验摘要，移除完整参数');
   const denied = await runs.requestPermission(member.id, permissionRun, access);
   await runs.decidePermission(member.id, permissionTask.id, denied.id, 'deny');
   check(await runs.consumePermission(member.id, permissionRun, denied.id) === 'deny', 'explicit denial prevents execution');
@@ -445,8 +457,8 @@ try {
   await workspace.deleteTask(member.id, permissionTask.id, (await workspace.listTasks(member.id)).find(t => t.id === permissionTask.id)!.revision);
   check((await admin.query('SELECT count(*)::int AS n FROM workpivot.run_permissions WHERE task_id=$1', [permissionTask.id])).rows[0].n === 0, 'deletion clears approval payloads');
   let authorizedToolCalls = 0;
-  const approvalExecution = new DatabaseExecution(business, async () => ({ client, taskDir: '.', system: 'Fixture', tools: [{ name: 'fixture', description: 'External fixture', parameters: {}, async run(_args, ctx) {
-    if (!await ctx.requestAccess?.(access)) return 'Denied'; authorizedToolCalls++; return 'Approved';
+  const approvalExecution = new DatabaseExecution(business, async () => ({ client, taskDir: '.', system: 'Fixture', tools: [{ name: 'fixture', kind:'write', description: 'External fixture', parameters: {}, access:()=>({...access,tool:'fixture'}), async run(_args, ctx) {
+    if (!await ctx.requestAccess?.({...access,tool:'fixture'})) return 'Denied'; authorizedToolCalls++; return 'Approved';
   } }] }));
   const approvalTask = await workspace.createTask(member.id, 'Approval execution integration', privateProject.id);
   let pendingId!: (id: string) => void;
@@ -547,6 +559,7 @@ try {
   await testParsing(business, owner.user.id, member.id, check);
   await testUsage(business, owner.user.id, member.id, check);
 
+  await testResourceScope(business,owner.user.id,member.id,check);
   await testKnowledge(business, owner.user.id, member.id, check);
   await testCompaction(business, owner.user.id, member.id, check);
   await testMemoryExpertIntegration(business, owner.user.id, member.id, check);

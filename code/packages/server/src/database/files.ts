@@ -1,3 +1,4 @@
+import {versionScope,requireVersion,fileTaskScope} from './resource-scope.js';
 import {captureTrash,revokeTrashAutomations} from './trash-capture.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, lstat, readFile, writeFile, readdir, unlink } from 'node:fs/promises';
@@ -6,7 +7,7 @@ import type { Pool, PoolClient } from 'pg';
 import { RepositoryError, transaction, uuid } from './connection.js';
 
 const maximum = 10 * 1024 * 1024, quota = 100 * 1024 * 1024;
-interface Version { id: string; documentId: string; revision: number; name: string; size: number; sha256: string }
+interface Version { sourceTaskId?:string; id: string; documentId: string; revision: number; name: string; size: number; sha256: string }
 const columns = 'v.id,v.document_id AS "documentId",v.revision,v.name,v.size,v.sha256';
 /** 磁盘原件不可变；归属、版本和发布在 PostgreSQL 事务中维护。 */
 export class FileRepository {
@@ -34,7 +35,7 @@ export class FileRepository {
       await this.lock(c, actor); await this.task(c, taskId); signal?.throwIfAborted(); await guard?.(c);
       const versions: Version[] = [];
       for (const entry of entries) versions.push(await this.publish(c, actor, taskId, entry.name, entry.data, randomUUID(), entry.documentId, entry.revision, 'artifact', signal));
-      signal?.throwIfAborted(); await onPublished?.(c, versions); signal?.throwIfAborted(); return versions;
+      signal?.throwIfAborted(); await guard?.(c); await onPublished?.(c, versions); signal?.throwIfAborted(); return versions;
     }, actor);
   }
   private async publish(c: PoolClient, actor: string, taskId: string, name: string, data: Buffer, requestId: string, documentId?: string, expected?: number, purpose: 'upload' | 'artifact' = 'upload', signal?: AbortSignal, guard?: (c: PoolClient) => Promise<void>, onPublished?: (c: PoolClient, version: Version) => Promise<void>): Promise<Version> {
@@ -68,20 +69,23 @@ export class FileRepository {
       signal?.throwIfAborted();
       const published = (await c.query<Version>(`INSERT INTO workpivot.document_versions AS v(id,owner_user_id,document_id,revision,request_id,name,size,sha256) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING ${columns}`, [versionId, actor, id, revision, requestId, name, data.length, sha256])).rows[0]!;
       if (purpose === 'upload' && /[.](docx|xlsx|pptx|pdf|png|jpg|jpeg)$/i.test(name)) await c.query('INSERT INTO workpivot.document_processing(version_id,owner_user_id) VALUES($1,$2)', [versionId,actor]);
-      signal?.throwIfAborted(); await onPublished?.(c, published); return published;
+      signal?.throwIfAborted(); await guard?.(c); await onPublished?.(c, published); return published;
   }
-  async list(actor: string, taskId: string, purpose: 'upload' | 'artifact' = 'upload'): Promise<Version[]> {
-    return transaction(this.db, async c => { await this.task(c, taskId); return (await c.query<Version>(`SELECT ${columns} FROM workpivot.documents d JOIN workpivot.document_versions v ON v.document_id=d.id AND v.revision=d.revision WHERE d.task_id=$1 AND d.purpose=$2 ORDER BY v.created_at,v.id LIMIT 100`, [taskId, purpose])).rows; }, actor);
+  async list(actor: string, taskId: string, purpose: 'upload' | 'artifact' = 'upload', allowedVersions?:readonly string[]): Promise<Version[]> {
+    return transaction(this.db, async c => { await this.task(c, taskId); return (await c.query<Version>(`SELECT ${columns},d.task_id AS "sourceTaskId" FROM workpivot.documents d JOIN workpivot.document_versions v ON v.document_id=d.id WHERE (d.task_id=$1 OR ($3::uuid[] IS NOT NULL AND ${fileTaskScope('$1')})) AND d.purpose=$2 AND (($3::uuid[] IS NULL AND v.revision=d.revision) OR v.id=ANY($3::uuid[])) ORDER BY v.created_at,v.id LIMIT 100`, [taskId, purpose, versionScope(allowedVersions)])).rows; }, actor);
+  }
+  async candidates(actor:string,taskId:string){
+    return transaction(this.db,async c=>{await this.task(c,taskId);return (await c.query<Version>(`SELECT ${columns},d.task_id AS "sourceTaskId" FROM workpivot.documents d JOIN workpivot.document_versions v ON v.document_id=d.id WHERE ${fileTaskScope('$1')} AND v.revision=d.revision ORDER BY v.created_at DESC LIMIT 100`,[taskId])).rows;},actor);
   }
   async versions(actor: string, taskId: string, documentId: string): Promise<Version[]> {
     uuid(documentId);
     return transaction(this.db, async c => { await this.task(c, taskId); return (await c.query<Version>(`SELECT ${columns} FROM workpivot.documents d JOIN workpivot.document_versions v ON v.document_id=d.id WHERE d.task_id=$1 AND d.id=$2 ORDER BY v.revision DESC LIMIT 100`, [taskId, documentId])).rows; }, actor);
   }
-  async download(actor: string, taskId: string, versionId: string): Promise<{ version: Version; data: Buffer }> {
-    uuid(versionId);
+  async download(actor: string, taskId: string, versionId: string, allowedVersions?:readonly string[]): Promise<{ version: Version; data: Buffer }> {
+    requireVersion(allowedVersions,versionId);
     return transaction(this.db, async c => {
       await this.task(c, taskId);
-      const version = (await c.query<Version>(`SELECT ${columns} FROM workpivot.documents d JOIN workpivot.document_versions v ON v.document_id=d.id WHERE d.task_id=$1 AND v.id=$2`, [taskId, versionId])).rows[0];
+      const version = (await c.query<Version>(`SELECT ${columns},d.task_id AS "sourceTaskId" FROM workpivot.documents d JOIN workpivot.document_versions v ON v.document_id=d.id WHERE (d.task_id=$1 OR ($3::boolean AND ${fileTaskScope('$1')})) AND v.id=$2`, [taskId, versionId,allowedVersions!==undefined])).rows[0];
       if (!version) throw new RepositoryError(404, '文件版本不存在');
       const data = await readFile(join(await this.directory(actor), version.id));
       if (data.length !== version.size || createHash('sha256').update(data).digest('hex') !== version.sha256) throw new RepositoryError(503, '文件校验失败，请联系部署管理员');

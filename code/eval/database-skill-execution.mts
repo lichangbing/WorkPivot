@@ -26,6 +26,7 @@ export async function testSkillExecution(db: Pool, actor: string, foreign: strin
     captured = JSON.parse(Buffer.concat(chunks).toString());
     if (mode === 'busy') { res.writeHead(429,{'content-type':'application/json'}); res.end(JSON.stringify({error:'busy'})); return; }
     if (mode === 'error') { res.writeHead(400,{'content-type':'application/json'}); res.end(JSON.stringify({error:'worksheet missing'})); return; }
+    if (mode === 'revoke-scope') await transaction(db,c=>c.query("UPDATE workpivot.task_runs SET resource_scope=jsonb_set(resource_scope,'{epoch}',to_jsonb($2::text)) WHERE task_id=$1 AND status='running'",[task.id,randomUUID()]),actor);
     if (mode === 'stop') await runs.stop(actor,task.id);
     if (mode === 'disable') await skills.toggle(actor,name,true);
     if (mode === 'delete') await files.remove(actor,task.id,input.documentId,1);
@@ -36,7 +37,17 @@ export async function testSkillExecution(db: Pool, actor: string, foreign: strin
   const execution = new DatabaseSkillExecution(db,files,skills,{url:`http://127.0.0.1:${address.port}`,token:'test'});
   const args = { skill:name,command:'test command',inputs:[input.id],output:'report.docx' };
   try {
-    const run = await runs.start(actor,task.id,randomUUID(),'generate');
+    const scope=await runs.resources(actor,task.id,{versionIds:[input.id],memoryScopes:[],expert:false});
+    const run = await runs.start(actor,task.id,randomUUID(),'generate',[],scope);
+    const guarded=new DatabaseSkillExecution(db,files,skills,{url:`http://127.0.0.1:${address.port}`,token:'test'},()=>run,(c,parameters)=>runs.checkResourcesInTransaction(c,run,scope,parameters));
+    const unselected=await files.upload(actor,task.id,'未授权.txt',Buffer.from('synthetic'),randomUUID());
+    await assert.rejects(guarded.run(actor,task.id,versions,{...args,inputs:[unselected.id]}));
+    check(captured===undefined,'直接执行服务拒绝未授权输入，未向Worker发送文件');
+    mode='revoke-scope';
+    await assert.rejects(guarded.run(actor,task.id,versions,args));
+    check((await files.list(actor,task.id,'artifact')).length===0,'执行途中范围变化，产物发布事务拒绝全部输出');
+    await transaction(db,c=>c.query('UPDATE workpivot.task_runs SET resource_scope=$2 WHERE id=$1',[run.id,JSON.stringify(scope)]),actor);
+    mode='ok';
     await assert.rejects(execution.run(foreign,task.id,versions,args)); check(true,'executor rejects foreign task');
     await assert.rejects(execution.run(actor,task.id,new Map(),args)); check(true,'executor rejects skill outside pinned selection');
     const stale = new DatabaseSkillExecution(db,files,skills,{url:`http://127.0.0.1:${address.port}`,token:'test'},()=>({id:randomUUID(),fence:run.fence}));
@@ -47,8 +58,13 @@ export async function testSkillExecution(db: Pool, actor: string, foreign: strin
     await runs.decidePermission(actor,task.id,manual.id,'deny'); await runs.consumePermission(actor,run,manual.id);
     await workspace.saveSetting(actor,'execution.mode','auto',0);
     const automatic = await runs.requestPermission(actor,run,request);
-    check(automatic.automatic && (await runs.pendingPermissions(actor,task.id)).length===0,'automatic skill execution has no pending prompt');
-    check(await runs.consumePermission(actor,run,automatic.id)==='allow' && await runs.consumePermission(actor,run,automatic.id)==='deny','automatic permission remains single-use');
+    check(!automatic.automatic && (await runs.pendingPermissions(actor,task.id)).length===1,'旧auto不再自动签发隔离执行许可');
+    await runs.decidePermission(actor,task.id,automatic.id,'allow');
+    check(await runs.consumePermission(actor,run,automatic.id)==='allow' && await runs.consumePermission(actor,run,automatic.id)==='deny','确认后的许可仍只能消费一次');
+    const boundRequest={...request,invocation:{id:randomUUID(),definition:'fixture-v1',arguments:{command:'fixture',inputs:[]},digest:'fixture'}};
+    const bounded=await runs.requestPermission(actor,run,boundRequest);
+    check(!bounded.automatic,'旧auto设置不能自动批准未建立运行范围的新调用');
+    await runs.decidePermission(actor,task.id,bounded.id,'deny');await runs.consumePermission(actor,run,bounded.id,boundRequest);
     const external = await runs.requestPermission(actor,run,{...request,tool:'mcp__fixture'});
     check(!external.automatic,'automatic mode does not authorize external MCP');
     await runs.decidePermission(actor,task.id,external.id,'deny'); await runs.consumePermission(actor,run,external.id);

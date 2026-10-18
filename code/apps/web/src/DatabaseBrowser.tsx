@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { jsonFetch } from './api';
 import { Icon } from './Icon';
 
-interface Frame { available: boolean; open: boolean; busy: boolean; url?: string; title?: string; image?: string; width?: number; height?: number; blockedRequests?: number }
+interface Frame { available: boolean; open: boolean; busy: boolean; url?: string; title?: string; image?: string; width?: number; height?: number; blockedRequests?: number;blockedUrls?:string[] }
 const button = 'rounded px-2 py-1 text-sm hover:bg-neutral-800 disabled:opacity-40';
 /** 显示真实远程浏览器画面；鼠标坐标按实际视口缩放，输入只发往当前任务。 */
 export function DatabaseBrowser({ taskId, onHide }: { taskId: string | null; onHide: () => void }) {
@@ -54,6 +54,7 @@ export function DatabaseBrowser({ taskId, onHide }: { taskId: string | null; onH
       <button type="button" className={button} aria-label="浏览器后退" disabled={disabled || !frame?.open} onClick={() => { flush(); command({ kind: 'back' }); }}>←</button><button type="button" className={button} aria-label="浏览器前进" disabled={disabled || !frame?.open} onClick={() => { flush(); command({ kind: 'forward' }); }}>→</button><button type="button" className={button} aria-label="刷新网页" disabled={disabled || !frame?.open} onClick={() => { flush(); command({ kind: 'reload' }); }}>↻</button>
       <input aria-label="网页地址" placeholder="输入网址" className="min-w-0 flex-1 rounded border border-neutral-700 bg-neutral-900 px-2 text-xs outline-none" value={address} onFocus={() => { editing.current = true; }} onBlur={() => { editing.current = false; }} onChange={e => setAddress(e.target.value)} disabled={!taskId || frame?.available === false} /><button className={button} disabled={disabled || !address.trim()}>打开</button>
     </form>
+    {!!frame?.blockedUrls?.length&&<details className="max-h-48 shrink-0 overflow-auto border-b border-neutral-800 p-2 text-xs"><summary>严格模式：{frame.blockedUrls.length} 个地址被阻止</summary><p className="my-2">仅允许确认过的完整地址。请核对路径与查询参数；追加许可持续到关闭当前会话，之后可刷新网页重试。</p>{frame.blockedUrls.map(url=><div key={url} className="mb-2"><p className="break-all">{url}</p><button className={button} disabled={disabled} onClick={()=>command({kind:'allow_url',url})}>允许本会话访问此地址</button></div>)}</details>}
     {error && <p role="alert" className="shrink-0 px-3 py-2 text-xs text-amber-300">{error}</p>}
     <div ref={surface} aria-label="网页画面" className="relative min-h-[240px] flex-1 overflow-hidden bg-neutral-900 outline-none" onClick={e => {
       if (!frame?.image || frame.busy) return; flush();

@@ -1,3 +1,4 @@
+import type {RunResourceScope} from './resource-scope.js';
 import {captureAutomation} from './personal-recycle.js';
 import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
@@ -9,12 +10,12 @@ const planColumns='id,revision,state,config,draft,origin,source_task_id AS "sour
 export const automationRunColumns='id,plan_id AS "planId",task_id AS "taskId",status,scheduled_for AS "scheduledFor",started_at AS "startedAt",finished_at AS "finishedAt",error,summary,config,events';
 export type AutomationInput={id:string;name:string;taskId:string;size:number};
 export class Automations {
- constructor(readonly db:Pool,readonly workerAvailable=false,readonly browserAvailable=false){}
+ constructor(readonly db:Pool,readonly workerAvailable=false,readonly browserAvailable=false,private readonly guard?:(c:PoolClient,tool:string,args:Record<string,unknown>,taskId?:string)=>Promise<void>){}
  async get(c:PoolClient,id:string,lock=false){uuid(id);const p=(await c.query<AutomationPlan & {grant_id:string|null;source_invalid:boolean;source_run_id:string|null}>(`SELECT ${planColumns},grant_id,source_invalid,source_run_id FROM workpivot.automations WHERE id=$1${lock?' FOR UPDATE':''}`,[id])).rows[0];if(!p)throw new RepositoryError(404,'自动化不存在');return p;}
- async options(actor:string){return transaction(this.db,async c=>({
+ async options(actor:string,scope?:RunResourceScope,taskId?:string){return transaction(this.db,async c=>({
   skills:(await c.query('SELECT c.name,c.display_name AS "displayName",r.id AS version,r.label,r.description FROM workpivot.skill_catalog c JOIN workpivot.skill_releases r ON r.id=c.release_id JOIN workpivot.skill_selections s ON s.name=c.name WHERE NOT c.disabled ORDER BY c.name')).rows,
-  projects:(await c.query('SELECT id,name FROM workpivot.projects WHERE deleted_at IS NULL ORDER BY created_at')).rows,
-  files:(await c.query(`SELECT v.id,v.name,v.revision,t.project_id AS "projectId",t.id AS "taskId" FROM workpivot.document_versions v JOIN workpivot.documents d ON d.id=v.document_id JOIN workpivot.tasks t ON t.id=d.task_id WHERE t.deleted_at IS NULL AND t.origin='chat' AND d.purpose='upload' ORDER BY v.created_at DESC LIMIT 1000`)).rows,
+  projects:(await c.query('SELECT id,name FROM workpivot.projects WHERE deleted_at IS NULL AND ($1::uuid IS NULL OR id=(SELECT project_id FROM workpivot.tasks WHERE id=$1)) ORDER BY created_at',[taskId??null])).rows,
+  files:(await c.query(`SELECT v.id,v.name,v.revision,t.project_id AS "projectId",t.id AS "taskId" FROM workpivot.document_versions v JOIN workpivot.documents d ON d.id=v.document_id JOIN workpivot.tasks t ON t.id=d.task_id WHERE t.deleted_at IS NULL AND t.origin='chat' AND d.purpose='upload' AND ($1::uuid[] IS NULL OR v.id=ANY($1::uuid[])) ORDER BY v.created_at DESC LIMIT 1000`,[scope?.versionIds??null])).rows,
   workerAvailable:this.workerAvailable,browserAvailable:this.browserAvailable,
  }),actor);}
  async dependencies(c:PoolClient,p:AutomationConfig,resolveInputs=true):Promise<AutomationInput[]> {
@@ -28,8 +29,8 @@ export class Automations {
   else {const pattern=new RegExp('^'+p.input.pattern.split('*').map(s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('.*')+'$','i');inputs=rows.filter(r=>pattern.test(r.name)).slice(0,1);if(!inputs.length)throw new RepositoryError(409,'未找到匹配的项目资料，请检查文件名规则');}
   if(inputs.reduce((n,r)=>n+Number(r.size),0)>16*1024*1024)throw new RepositoryError(413,'输入文件合计超过16MB');return inputs;
  }
- async list(actor:string){return transaction(this.db,async c=>{
-  const rows=(await c.query<AutomationPlan>(`SELECT ${planColumns} FROM workpivot.automations WHERE state<>'deleted' ORDER BY created_at DESC LIMIT 200`)).rows;
+ async list(actor:string,ids?:readonly string[]){return transaction(this.db,async c=>{
+  const rows=(await c.query<AutomationPlan>(`SELECT ${planColumns} FROM workpivot.automations WHERE state<>'deleted' AND ($1::uuid[] IS NULL OR id=ANY($1::uuid[])) ORDER BY created_at DESC LIMIT 200`,[ids??null])).rows;
   for(const p of rows)p.lastRun=(await c.query<AutomationRun>(`SELECT ${automationRunColumns} FROM workpivot.automation_runs WHERE plan_id=$1 ORDER BY created_at DESC LIMIT 1`,[p.id])).rows[0]??null;
   return rows;
  },actor);}
@@ -38,7 +39,8 @@ export class Automations {
  async draft(actor:string,value:unknown,requestId:string,id?:string,revision?:number,source?:{taskId:string;run:{id:string;fence:string}}){
   const config=automationConfig(value);uuid(requestId);return transaction(this.db,async c=>{
    await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['automation-draft:'+actor]);
-   if(source)await this.source(c,source.taskId,source.run);
+   if(source){await c.query('SELECT id FROM workpivot.tasks WHERE id=$1 FOR UPDATE',[source.taskId]);await this.source(c,source.taskId,source.run);}
+   await this.guard?.(c,id?'propose_schedule_change':'propose_schedule',{config:value,...(id?{id,revision}:{requestId})},source?.taskId);
    if(id){const p=await this.get(c,id,true);if(p.state==='deleted'||p.revision!==revision)throw new RepositoryError(409,'计划已改变，请刷新后编辑');
     await c.query(`UPDATE workpivot.automations SET draft=$2,revision=revision+1,source_task_id=$3,source_run_id=$4,source_invalid=false,updated_at=now() WHERE id=$1`,[id,config,source?.taskId??null,source?.run.id??null]);
    }else{
@@ -60,6 +62,8 @@ export class Automations {
   return this.get(c,id);
  },actor);}
  async action(actor:string,id:string,revision:number,action:'pause'|'delete'|'discard',stopCurrent=false){return transaction(this.db,async c=>{
+  if(this.guard&&(action!=='pause'||stopCurrent))throw new RepositoryError(403,'对话许可只允许暂停后续触发');
+  await this.guard?.(c,'pause_schedule',{id,revision});
   const p=await this.get(c,id,true);if(p.revision!==revision)throw new RepositoryError(409,'计划已改变，请刷新');
   if(action==='discard'){await c.query('UPDATE workpivot.automations SET draft=NULL,revision=revision+1 WHERE id=$1 AND config IS NOT NULL',[id]);return this.get(c,id);}
   if(action==='delete')await captureAutomation(c,id);
@@ -68,7 +72,7 @@ export class Automations {
   if(stopCurrent||action==='delete')await c.query("UPDATE workpivot.automation_runs SET revoked=true WHERE plan_id=$1 AND status='running'",[id]);
   return this.get(c,id);
  },actor);}
- async stopRun(actor:string,planId:string,id:string){return transaction(this.db,async c=>{await this.get(c,planId,true);uuid(id);await c.query("UPDATE workpivot.automation_runs SET revoked=true,status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,error='用户已请求停止',finished_at=CASE WHEN status='queued' THEN now() ELSE finished_at END WHERE id=$1 AND plan_id=$2 AND status IN ('queued','running')",[id,planId]);},actor);}
+ async stopRun(actor:string,planId:string,id:string){return transaction(this.db,async c=>{await this.guard?.(c,'cancel_schedule_run',{id:planId,runId:id});await this.get(c,planId,true);uuid(id);await c.query("UPDATE workpivot.automation_runs SET revoked=true,status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,error='用户已请求停止',finished_at=CASE WHEN status='queued' THEN now() ELSE finished_at END WHERE id=$1 AND plan_id=$2 AND status IN ('queued','running')",[id,planId]);},actor);}
  async notice(c:PoolClient,actor:string,id:string,run:string|null,key:string,message:string){await c.query('INSERT INTO workpivot.automation_notices(owner_user_id,plan_id,run_id,notice_key,message) VALUES($1,$2,$3,$4,$5) ON CONFLICT(owner_user_id,notice_key) DO NOTHING',[actor,id,run,key,message]);}
  async block(c:PoolClient,actor:string,id:string,message:string){const p=await this.get(c,id,true);if(['deleted','paused'].includes(p.state))return;
   await c.query("UPDATE workpivot.automations SET state='blocked',issue=$2,next_at=NULL,grant_id=NULL,revision=revision+1 WHERE id=$1",[id,message]);
@@ -93,17 +97,18 @@ export class Automations {
  },actor);}
  async notices(actor:string){return transaction(this.db,async c=>(await c.query('SELECT id,plan_id AS "planId",run_id AS "runId",message,read_at AS "readAt",created_at AS "createdAt" FROM workpivot.automation_notices ORDER BY created_at DESC LIMIT 100')).rows,actor);}
  async readNotice(actor:string,id:string){uuid(id);await transaction(this.db,c=>c.query('UPDATE workpivot.automation_notices SET read_at=now() WHERE id=$1',[id]),actor);}
- tools(actor:string,taskId:string,bound:()=>{id:string;fence:string}|undefined):Tool[]{
+ tools(actor:string,taskId:string,bound:()=>{id:string;fence:string}|undefined,scope?:RunResourceScope):Tool[]{
   const guard=async()=>{const run=bound();if(!run)throw new RepositoryError(409,'对话运行尚未绑定');await transaction(this.db,c=>this.source(c,taskId,run),actor);return run;};
+  const selected=(id:string)=>{if(scope&&!(scope.scheduleIds??[]).includes(id))throw new RepositoryError(403,'自动化未获本轮读取授权，请在读取范围中选择');};
   const configSchema={type:'object',description:'完整计划配置；先用get_automation_options读取可用技能版本、项目和文件。使用config对象：name、skill、releaseId、projectId(null表示独立成果)、requirements、input{mode:none|fixed|latest,versionIds:[],pattern:""}、timing{kind:once|daily|weekly|interval|cron,zone:Asia/Shanghai,at:"YYYY-MM-DDTHH:mm"或空,time:"09:00",days:[1,2,3,4,5],minutes:120,cron:"0 9 * * *",end:""}、catchup:once|skip、notify:issues|all、timeoutMinutes:10、webOrigins:[]。联网采集必须显式填写用户确认的完整网页来源origin（如https://example.com），包括需要的跳转和子资源来源；空数组表示不允许联网。缺失项应询问，不猜测执行范围。'};
   return [
-   {name:'get_automation_options',kind:'read',description:'读取当前用户可用的已加载Skill、发布版本、项目和文件版本，供创建计划草稿。',parameters:{type:'object',properties:{},additionalProperties:false},run:async()=>{await guard();return JSON.stringify(await this.options(actor));}},
-   {name:'list_my_schedules',kind:'read',description:'列出本人自动化计划及配置；用于准确定位要修改或暂停的计划。',parameters:{type:'object',properties:{},additionalProperties:false},run:async()=>{await guard();return JSON.stringify((await this.list(actor)).map(p=>({...p,lastRun:undefined})));}},
+   {name:'get_automation_options',kind:'read',description:'读取当前用户可用的已加载Skill、发布版本、项目和文件版本，供创建计划草稿。',parameters:{type:'object',properties:{},additionalProperties:false},run:async()=>{await guard();return JSON.stringify(await this.options(actor,scope,scope?taskId:undefined));}},
+   {name:'list_my_schedules',kind:'read',description:'列出本人自动化计划及配置；用于准确定位要修改或暂停的计划。',parameters:{type:'object',properties:{},additionalProperties:false},run:async()=>{await guard();return JSON.stringify((await this.list(actor,scope?.scheduleIds)).map(p=>({...p,lastRun:undefined})));}},
    {name:'propose_schedule',kind:'write',description:'保存新的自动化草稿，在独立自动化页面显示为待确认。不会启用或执行，必须用户在页面确认。',parameters:{type:'object',properties:{requestId:{type:'string'},config:configSchema},required:['requestId','config'],additionalProperties:false},run:async args=>{const run=await guard();return JSON.stringify(await this.draft(actor,args.config,String(args.requestId),undefined,undefined,{taskId,run}));}},
-   {name:'propose_schedule_change',kind:'write',description:'提出计划配置修订，保持原活动配置不变，用户需在自动化页另行确认。',parameters:{type:'object',properties:{id:{type:'string'},revision:{type:'integer'},config:configSchema},required:['id','revision','config'],additionalProperties:false},run:async args=>{const run=await guard();return JSON.stringify(await this.draft(actor,args.config,randomUUID(),String(args.id),Number(args.revision),{taskId,run}));}},
-   {name:'pause_schedule',kind:'write',description:'仅当用户明确要求暂停某个已准确定位的本人计划时调用；立即阻止后续触发，当前运行继续。不支持模型启用或恢复。',parameters:{type:'object',properties:{id:{type:'string'},revision:{type:'integer'}},required:['id','revision'],additionalProperties:false},run:async args=>{await guard();return JSON.stringify(await this.action(actor,String(args.id),Number(args.revision),'pause'));}},
-   {name:'cancel_schedule_run',kind:'write',description:'仅当用户明确要求停止已准确定位的某次运行时调用；不删除历史，不修改后续计划。',parameters:{type:'object',properties:{id:{type:'string'},runId:{type:'string'}},required:['id','runId'],additionalProperties:false},run:async args=>{await guard();await this.stopRun(actor,String(args.id),String(args.runId));return '已请求停止本次运行。';}},
-   {name:'get_schedule_run',kind:'read',description:'查看本人指定自动化的最近运行、状态、日志和结果。',parameters:{type:'object',properties:{id:{type:'string'}},required:['id'],additionalProperties:false},run:async args=>{await guard();return JSON.stringify(await this.detail(actor,String(args.id)));}},
+   {name:'propose_schedule_change',kind:'write',description:'提出计划配置修订，保持原活动配置不变，用户需在自动化页另行确认。',parameters:{type:'object',properties:{id:{type:'string'},revision:{type:'integer'},config:configSchema},required:['id','revision','config'],additionalProperties:false},run:async args=>{const run=await guard();selected(String(args.id));return JSON.stringify(await this.draft(actor,args.config,randomUUID(),String(args.id),Number(args.revision),{taskId,run}));}},
+   {name:'pause_schedule',kind:'write',description:'仅当用户明确要求暂停某个已准确定位的本人计划时调用；立即阻止后续触发，当前运行继续。不支持模型启用或恢复。',parameters:{type:'object',properties:{id:{type:'string'},revision:{type:'integer'}},required:['id','revision'],additionalProperties:false},run:async args=>{await guard();selected(String(args.id));return JSON.stringify(await this.action(actor,String(args.id),Number(args.revision),'pause'));}},
+   {name:'cancel_schedule_run',kind:'write',description:'仅当用户明确要求停止已准确定位的某次运行时调用；不删除历史，不修改后续计划。',parameters:{type:'object',properties:{id:{type:'string'},runId:{type:'string'}},required:['id','runId'],additionalProperties:false},run:async args=>{await guard();selected(String(args.id));await this.stopRun(actor,String(args.id),String(args.runId));return '已请求停止本次运行。';}},
+   {name:'get_schedule_run',kind:'read',description:'查看本人指定自动化的最近运行、状态、日志和结果。',parameters:{type:'object',properties:{id:{type:'string'}},required:['id'],additionalProperties:false},run:async args=>{await guard();selected(String(args.id));return JSON.stringify(await this.detail(actor,String(args.id)));}},
   ];
  }
 }

@@ -8,7 +8,7 @@ export class ExpertWorker {
  constructor(private db:Pool,private model:(actor:string,taskId?:string)=>Promise<ModelClient>){}
  async recover(actor:string){await transaction(this.db,c=>c.query(`INSERT INTO workpivot.expert_jobs(run_id,owner_user_id,task_id,expert_id,epoch)
  SELECT r.id,$1,r.task_id,e.id,r.memory_epoch FROM workpivot.task_runs r JOIN workpivot.experts e ON e.id=(r.expert_snapshot->>'id')::uuid
- WHERE r.status='completed' AND NOT r.context_revoked AND NOT e.public AND e.update_enabled AND NOT e.disabled ON CONFLICT DO NOTHING`,[actor]),actor);}
+ WHERE r.status='completed' AND NOT r.context_revoked AND (r.resource_scope IS NULL OR r.resource_scope->>'expert'='true') AND NOT e.public AND e.update_enabled AND NOT e.disabled ON CONFLICT DO NOTHING`,[actor]),actor);}
  async process(actor:string){
   const job=await transaction(this.db,async c=>{
    await c.query("UPDATE workpivot.expert_jobs SET status='failed',error='经验整理重试次数已耗尽' WHERE status='running' AND attempts>=3 AND lease_until<now()");
@@ -17,7 +17,7 @@ export class ExpertWorker {
   },actor);if(!job)return;
   try{
    const data=await transaction(this.db,async c=>{
-    const row=(await c.query("SELECT r.attachment_ids,e.content,x.settings FROM workpivot.task_runs r JOIN workpivot.conversation_events e ON e.turn_id=r.turn_id AND e.kind='user' JOIN workpivot.experts x ON x.id=$2 WHERE r.id=$1 AND NOT r.context_revoked AND x.update_enabled AND NOT x.disabled",[job.run_id,job.expert_id])).rows[0];
+    const row=(await c.query("SELECT r.attachment_ids,e.content,x.settings FROM workpivot.task_runs r JOIN workpivot.conversation_events e ON e.turn_id=r.turn_id AND e.kind='user' JOIN workpivot.experts x ON x.id=$2 WHERE r.id=$1 AND NOT r.context_revoked AND (r.resource_scope IS NULL OR r.resource_scope->>'expert'='true') AND x.update_enabled AND NOT x.disabled",[job.run_id,job.expert_id])).rows[0];
     if(!row||row.content.length>12000)throw Error('来源无效');
     return {...row,existing:(await c.query("SELECT id,revision,content,conditions,locked FROM workpivot.expert_experiences WHERE expert_id=$1 AND state='active' ORDER BY created_at DESC LIMIT 10",[job.expert_id])).rows};
    },actor);

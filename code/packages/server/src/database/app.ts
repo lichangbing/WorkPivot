@@ -171,6 +171,13 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     },actor(res).id) });
   });
   if (execution) {
+    app.get('/api/tasks/:id/resource-scope',async(req,res)=>{
+      const user=actor(res).id,task=str(req.params.id),scope=await execution.runs.resources(user,task);
+      const options=files?[...await files.candidates(user,task),...await files.list(user,task,'upload',scope.versionIds),...await files.list(user,task,'artifact',scope.versionIds)]:[];
+      const schedules=await transaction(appPool,async c=>(await c.query("SELECT id,COALESCE(draft->>'name',config->>'name','未命名自动化') AS name FROM workpivot.automations WHERE state<>'deleted' ORDER BY created_at DESC LIMIT 100")).rows,user);
+      res.json({scope,schedules,files:[...new Map(options.map(f=>[f.id,f])).values()]});
+    });
+
     if(execution.compaction){
       const summaries=execution.compaction;
       app.get('/api/tasks/:id/summary',async(req,res)=>res.json({checkpoints:await summaries.list(actor(res).id,str(req.params['id']))}));
@@ -188,7 +195,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
       const b = body(req);
       if (b.attachments !== undefined && (!Array.isArray(b.attachments) || b.attachments.some(id => typeof id !== 'string'))) throw new RepositoryError(400, '附件列表无效');
       if (!files && Array.isArray(b.attachments) && b.attachments.length) throw new RepositoryError(400, '后台尚未启用文件上传');
-      const started = await execution.begin(actor(res).id, str(req.params['id']), str(b.content), str(b.requestId), b.attachments as string[] | undefined);
+      const started = await execution.begin(actor(res).id, str(req.params['id']), str(b.content), str(b.requestId), b.attachments as string[] | undefined,b.resourceScope);
       if (!started.execute) { res.status(202).json({ runId: started.run.id, duplicate: true }); return; }
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' }); res.flushHeaders();
       const send = (value: unknown) => { if (!res.destroyed && !res.writableEnded) res.write(`data: ${JSON.stringify(value)}\n\n`); };

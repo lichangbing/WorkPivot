@@ -1,10 +1,11 @@
+import {createHash,randomUUID} from 'node:crypto';
 import { BrowserEngine, type BrowseInput, type BrowseResult } from './browser-engine.js';
 import { htmlContent } from './content.js';
 import { webUrl } from './safe-http.js';
 
 type Managed = Awaited<ReturnType<BrowserEngine['openPage']>>;
-export interface BrowserFrame { open: boolean; busy: boolean; url: string; title: string; image?: string; width: number; height: number; blockedRequests: number }
-interface Session { managed: Managed; controller: AbortController; touched: number; busy: boolean; frame?: BrowserFrame; capture?:Promise<BrowserFrame> }
+export interface BrowserFrame { open: boolean; busy: boolean; url: string; title: string; image?: string; width: number; height: number; blockedRequests: number;blockedUrls?:string[] }
+interface Session { generation:string; revision:number; urls:string[]; managed: Managed; controller: AbortController; touched: number; busy: boolean; frame?: BrowserFrame; capture?:Promise<BrowserFrame> }
 /** 会话键由可信后端按账号和任务派生；只保留临时上下文，不落盘登录状态。 */
 export class BrowserSessions {
   private readonly sessions = new Map<string, Session>();
@@ -23,10 +24,27 @@ export class BrowserSessions {
     if (this.sessions.size + this.creating.size >= 4) throw Error('浏览器会话已满，请关闭其他页面');
     this.creating.add(id); const controller = new AbortController();
     try {
-      const managed = await this.engine.openPage({}, controller.signal);
-      const session: Session = { managed, controller, touched: Date.now(), busy: false };
+      const urls:string[]=[];
+      const managed = await this.engine.openPage({urls}, controller.signal);
+      const session: Session = { generation:randomUUID(),revision:0,urls,managed, controller, touched: Date.now(), busy: false };
       this.sessions.set(id, session); return session;
     } finally { this.creating.delete(id); }
+  }
+  private async authorizationState(session:Session){
+    const page=session.managed.page;
+    const html=await page.content();
+    if(Buffer.byteLength(html)>4*1024*1024)throw Error('页面过大，不能建立授权快照');
+    const fields=await page.locator('input,textarea,select').evaluateAll(elements=>elements.map(element=>{const field=element as typeof element & {value?:string};return String(field.value??'');}));
+    const revision=createHash('sha256').update(JSON.stringify([session.generation,session.revision,session.urls,page.url(),html,fields])).digest('hex');
+    return {revision,url:page.url()==='about:blank'?'':page.url()};
+  }
+  async authorization(id:string){
+    return this.exclusive(id,session=>this.authorizationState(session));
+  }
+  private allow(session:Session,values:string[]){
+    const next=[...new Set([...session.urls,...values.map(value=>webUrl(value).href)])];
+    if(next.length>100)throw Error('单次会话最多授权100个地址，请关闭后重新打开');
+    session.urls.splice(0,session.urls.length,...next);
   }
   async close(id?: string) {
     if (id) this.key(id); else clearInterval(this.timer);
@@ -36,7 +54,7 @@ export class BrowserSessions {
     const page = session.managed.page, url = page.url();
     if (url !== 'about:blank') webUrl(url);
     const size = page.viewportSize() ?? { width: 1280, height: 800 };
-    const result: BrowserFrame = { open: true, busy: false, url: url === 'about:blank' ? '' : url, title: (await page.title()).slice(0, 500), image: (await page.screenshot({ type: 'jpeg', quality: 65, timeout: 5000 })).toString('base64'), ...size, blockedRequests: session.managed.blocked() };
+    const result: BrowserFrame = { open: true, busy: false, url: url === 'about:blank' ? '' : url, title: (await page.title()).slice(0, 500), image: (await page.screenshot({ type: 'jpeg', quality: 65, timeout: 5000 })).toString('base64'), ...size, blockedRequests: session.managed.blocked(),blockedUrls:session.managed.blockedUrls().filter(url=>!session.urls.includes(url)) };
     session.frame = result; return result;
   }
   async snapshot(id: string): Promise<BrowserFrame> {
@@ -60,9 +78,11 @@ export class BrowserSessions {
   async command(id: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<BrowserFrame> {
     if (input.kind === 'close') { await this.close(id); return this.snapshot(id); }
     return this.exclusive(id, async session => {
+      session.revision++;
       const page = session.managed.page;
       switch (input.kind) {
-        case 'navigate': { const response = await page.goto(webUrl(input.url).href, { waitUntil: 'domcontentloaded', timeout: 20000 }); if (!response?.ok()) throw Error('网页加载失败'); break; }
+        case 'allow_url': this.allow(session,[String(input.url)]);break;
+        case 'navigate': { this.allow(session,[String(input.url)]);const response = await page.goto(webUrl(input.url).href, { waitUntil: 'domcontentloaded', timeout: 20000 }); if (!response?.ok()) throw Error('网页加载失败'); break; }
         case 'back': await page.goBack({ waitUntil: 'domcontentloaded', timeout: 20000 }); break;
         case 'forward': await page.goForward({ waitUntil: 'domcontentloaded', timeout: 20000 }); break;
         case 'reload': await page.reload({ waitUntil: 'domcontentloaded', timeout: 20000 }); break;
@@ -84,21 +104,27 @@ export class BrowserSessions {
       return this.frame(session);
     }, signal);
   }
-  async browse(id: string, input: BrowseInput, navigate: boolean, signal?: AbortSignal): Promise<BrowseResult> {
+  async browse(id: string, input: BrowseInput, navigate: boolean, signal?: AbortSignal, expectedRevision?:string,resourceUrls:string[]=[]): Promise<BrowseResult> {
     return this.exclusive(id, async session => {
+      if(typeof expectedRevision!=='string'||expectedRevision!==(await this.authorizationState(session)).revision)throw Error('页面已变化或缺少授权快照，请重新确认浏览器操作');
+      // 一次页面许可只能使用一次；失败同样使旧许可失效。
+      session.revision++;
+      this.allow(session,[...(navigate?[input.url]:[]),...resourceUrls]);
       const page = session.managed.page;
       if (navigate && page.url() !== input.url) { const response = await page.goto(input.url, { waitUntil: 'domcontentloaded', timeout: 20000 }); if (!response?.ok()) throw Error('网页加载失败'); }
       if (page.url() === 'about:blank') throw Error('请先打开一个网页');
       for (const action of input.actions) {
         if (action.kind === 'click') await page.locator(action.selector).click();
         else if (action.kind === 'scroll') await page.mouse.wheel(0, action.pixels);
+        else if(action.kind==='reload')await page.reload({waitUntil:'domcontentloaded'});
         else if(action.kind==='wait') await page.waitForTimeout(action.milliseconds);
         else if(action.kind==='fill'){const target=page.locator(action.selector);if(await target.getAttribute('type')==='password')throw Error('密码请由用户手动输入');await target.fill(action.text);}
         else await page.keyboard.press(action.key);
         webUrl(page.url());
       }
       const html = await page.content(); if (Buffer.byteLength(html) > 4 * 1024 * 1024) throw Error('渲染内容过大');
-      const result: BrowseResult = { ...htmlContent(html, webUrl(page.url()).href), blockedRequests: session.managed.blocked() };
+      const result: BrowseResult = { ...htmlContent(html, webUrl(page.url()).href), blockedRequests: session.managed.blocked(),blockedUrls:session.managed.blockedUrls().filter(url=>!session.urls.includes(url)) };
+      if(result.blockedRequests)result.warning+=' 部分完整地址未经确认，已阻止；可核对blockedUrls后另行授权。';
       result.fields = await page.locator('input,textarea,select').evaluateAll(elements=>elements.slice(0,30).map((element,index)=>{const field=element as typeof element & {value?:string;type?:string};const sensitive=['password','hidden'].includes(field.type??'');return {selector:'input,textarea,select >> nth='+index,type:field.type||element.tagName.toLowerCase(),value:sensitive?'[隐藏]':String(field.value??'').slice(0,1000)};}));
       if (input.screenshot) result.screenshot = (await page.screenshot({ type: 'png', timeout: 5000 })).toString('base64');
       await this.frame(session); return result;

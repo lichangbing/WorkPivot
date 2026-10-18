@@ -16,6 +16,9 @@ try{
  check(!(await service.search(actor,task.id,'财务')).matches.length,'旧解析指纹在向量查询中立即失效');
  await transaction(db,c=>c.query('UPDATE workpivot.document_processing SET parser_fingerprint=$2 WHERE version_id=$1',[file.id,parserFingerprint]),actor);
  check((await service.search(actor,task.id,'财务')).matches.length===1,'有效解析身份仍可使用当前向量');
+ check((await service.search(actor,task.id,'财务',{versionIds:[]})).matches.length===0,'空读取范围在向量排序前排除所有资料');
+ check((await service.search(actor,task.id,'财务',{versionIds:[external.id]})).matches.length===0,'授权版本不能绕过项目范围');
+ check((await service.search(actor,task.id,'财务',{versionIds:[file.id]})).matches.length===1,'授权版本允许正常向量召回');
  const second=(await service.create(actor,{...input,modelVersion:'test-2'})).id;await service.test(actor,second,(await row(second)).revision);await act('start',second);check((await row()).state==='active','重建开始保留旧空间');await service.process(actor);await service.process(actor);check((await row(second)).state==='active'&&(await row()).state==='retired','重建完成原子切换');
  await files.remove(actor,task.id,file.documentId,1);check(!(await service.search(actor,task.id,'财务')).matches.length,'删除后零召回');check((await admin.query('SELECT count(*)::int AS n FROM workpivot.embedding_jobs j JOIN workpivot.knowledge_chunks k ON k.id=j.chunk_id WHERE k.version_id=$1',[file.id])).rows[0].n===0,'删除级联清除向量和作业');
  const f2=await add(task.id,'异步.txt','合成资料');let release!:()=>void;gate=new Promise<void>(r=>release=r);const started=new Promise<void>(r=>entered=r);const processing=service.process(actor);await started;await act('pause',second);release();await processing;gate=null;entered=()=>{};check((await row(second)).completed===1,'暂停后的晚到结果不发布');await reject(()=>service.search(actor,task.id,'合成'),'暂停后停止向量查询');await act('start',second);await service.process(actor);check((await row(second)).completed===2,'恢复后作业继续');

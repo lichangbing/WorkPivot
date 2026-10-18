@@ -16,6 +16,11 @@ import { FileRepository } from '../packages/server/src/database/files.js';
 import { DatabaseArtifactTools } from '../packages/server/src/database/artifact-tools.js';
 import { createDatabaseApp } from '../packages/server/src/database/app.js';
 
+import {BrowserWorkspace} from '../packages/server/src/web/browser-workspace.js';
+import {browserService} from '../packages/server/src/web/browser-service.js';
+import {BrowserEngine} from '../packages/server/src/web/browser-engine.js';
+import {SafeHttp,type WebResponse} from '../packages/server/src/web/safe-http.js';
+
 const target = process.env.WORKPIVOT_TEST_PG_URL;
 if (process.env.WORKPIVOT_TEST_PG_DISPOSABLE !== '1' || !target || new URL(target).pathname !== '/workpivot_test' || new URL(target).hostname !== '127.0.0.1') throw Error('Local disposable database required');
 const secret = randomBytes(32).toString('hex'), schema = pool(target);
@@ -25,7 +30,7 @@ const root = await mkdtemp(join(tmpdir(), 'workpivot-browser-workflow-'));
 await schema.query(`CREATE ROLE workflow_app LOGIN PASSWORD '${secret}' NOSUPERUSER NOBYPASSRLS; CREATE ROLE workflow_auth LOGIN PASSWORD '${secret}' NOSUPERUSER NOBYPASSRLS;`);
 await installSchema(schema, 'workflow_app', 'workflow_auth');
 const actor = (await new AccountRepository(auth).registerFirst('workflow-test', 'Workflow-Test-2026!', secret, secret)).user.id;
-const workspace = new WorkspaceRepository(db), memories = new DatabaseMemoryTools(db), files = new FileRepository(db, root);
+const workspace = new WorkspaceRepository(db), files = new FileRepository(db, root);
 const project = await workspace.createProject(actor, '浏览器工作流验收（可控模型）');
 await workspace.createTask(actor, '办公流程与记忆', project.id);
 await workspace.createTask(actor, '新会话复用记忆', project.id);
@@ -80,17 +85,34 @@ const worker = new MemoryWorker(db, async () => extraction);
 const approval: Tool = { name: 'approve_report', displayName: '验收报告操作', kind: 'write', description: '仅增加本次临时验收计数，不连接任何外部服务。', parameters: { type: 'object', properties: {}, additionalProperties: false },
   access: () => ({ tool: 'approve_report', external: true, kind: 'write', paths: [], command: '生成隔离验收报告（只修改临时测试数据）' }),
   run: async (_args, ctx) => { ctx.signal?.throwIfAborted(); stats.approvedOperations++; return '授权完成'; } };
-const execution = new DatabaseExecution(db, async (_actor, taskId) => ({ client: model, tools: [approval, ...memories.tools(actor, taskId), ...new DatabaseArtifactTools(files).tools(actor, taskId)], system: '隔离浏览器验收，使用可控模型响应。', taskDir: '.', maxSteps: 8 }),
+const execution = new DatabaseExecution(db, async (_actor, taskId, context) => ({ client: model, tools: [approval, ...new DatabaseMemoryTools(db,'load',context.resources!.memoryScopes).tools(actor, taskId), ...new DatabaseArtifactTools(files,context.resources!.versionIds).tools(actor, taskId)], system: '隔离浏览器验收，使用可控模型响应。', taskDir: '.', maxSteps: 8 }),
   async (_actor, taskId, runId) => { await worker.enqueue(actor, taskId, runId); await worker.process(actor); });
-const app = await createDatabaseApp(auth, db, secret, execution, providers, undefined, resolve('apps/web/dist'), files);
+// 仅隔离验收启用：所有网页资源由内存替身提供，不访问真实站点。
+class BrowserFixtureHttp extends SafeHttp {
+  override async get(url:string):Promise<WebResponse>{
+    if(new URL(url).pathname==='/pixel')return {url,status:200,headers:{'content-type':'image/png'},body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a52kAAAAASUVORK5CYII=','base64')};
+    return {url,status:200,headers:{'content-type':'text/html;charset=utf-8'},body:Buffer.from('<html><title>严格地址验收</title><body><h1>合成公开网页</h1><p>图片须追加完整地址授权</p><img src="/pixel?fixture=1"></body></html>')};
+  }
+}
+const browserFixture=process.env['WORKPIVOT_STRICT_BROWSER_FIXTURE']==='1'?browserService(secret,new BrowserEngine(new BrowserFixtureHttp(),{executablePath:'/usr/bin/google-chrome'})):undefined;
+const browserServer=browserFixture?.app.listen(0,'127.0.0.1');
+if(browserServer)await new Promise<void>(resolve=>browserServer.once('listening',resolve));
+const browserAddress=browserServer?.address();
+const browserWorkspace=browserAddress&&typeof browserAddress!=='string'?new BrowserWorkspace(db,{url:`http://127.0.0.1:${browserAddress.port}`,token:secret}):undefined;
+const app = await createDatabaseApp(auth, db, secret, execution, providers, undefined, resolve('apps/web/dist'), files,undefined,undefined,undefined,browserWorkspace);
 app.get('/fixture/status', (_req, res) => res.json(stats));
 app.post('/fixture/stop', (_req, res) => { res.json({ ok: true }); setTimeout(() => void close(), 100).unref(); });
-const server = app.listen(39987, '127.0.0.1', () => console.log('Disposable database browser workflow http://127.0.0.1:39987 ; workflow-test / Workflow-Test-2026! ; model responses are controlled fixtures'));
+const port=Number(process.env['WORKPIVOT_BROWSER_TEST_PORT']??39987);
+if(!Number.isInteger(port)||port<1024||port>65535)throw Error('浏览器验收端口无效');
+const server = app.listen(port, '127.0.0.1');
+await new Promise<void>((resolve,reject)=>{server.once('listening',resolve);server.once('error',reject);});
+console.log(`Disposable database browser workflow http://127.0.0.1:${port} ; workflow-test / Workflow-Test-2026! ; model responses are controlled fixtures`);
 let closing = false;
 async function close() {
   if (closing) return; closing = true;
   for (const task of await workspace.listTasks(actor)) await execution.stop(actor, task.id);
   server.closeAllConnections(); await new Promise<void>(r => server.close(() => r()));
+  await browserFixture?.close();if(browserServer){browserServer.closeAllConnections();await new Promise<void>(resolve=>browserServer.close(()=>resolve()));}
   await Promise.all([db.end(), auth.end(), schema.end()]);
   // 此目录由 mkdtemp 创建；清理范围不包含用户指定目录和业务目录。
   if (dirname(resolve(root)) !== resolve(tmpdir()) || !basename(root).startsWith('workpivot-browser-workflow-')) throw Error('Refusing unexpected fixture cleanup path');

@@ -99,9 +99,10 @@ export class McpRepository {
     return rows.flatMap(row => row.tools.filter(t => !row.disabled_tools.includes(t.name)).map(remote => {
       const name = 'mcp_' + fingerprint([row.id, remote.name]).slice(0, 24);
       return { name, kind: 'write' as const, displayName: `${row.name} / ${remote.name}`, description: remote.description, parameters: remote.inputSchema,
+        access: args => ({binding:{connectionId:row.id,revision:row.revision,definition:fingerprint(remote)},tool:name,kind:'write',paths:[],external:true,command:`${row.name} / ${remote.name}\n${row.url}\n${JSON.stringify(args)}`}),
         run: async (args, ctx) => {
           const text = JSON.stringify(args); if (text.length > 16000) throw new RepositoryError(400, 'MCP参数过大');
-          if (!await ctx.requestAccess?.({ tool: name, kind: 'write', paths: [], external: true, command: `${row.name} / ${remote.name}\n${row.url}\n${text}` })) throw new RepositoryError(403, 'MCP调用未获授权');
+          if (!await ctx.requestAccess?.({ binding:{connectionId:row.id,revision:row.revision,definition:fingerprint(remote)}, tool: name, kind: 'write', paths: [], external: true, command: `${row.name} / ${remote.name}\n${row.url}\n${text}` })) throw new RepositoryError(403, 'MCP调用未获授权');
           const validate = async () => { const v = await this.current(actor, row.id); if (!v.enabled || v.revision !== row.revision) throw new RepositoryError(409, 'MCP配置或工具已改变'); };
           await validate();
           return this.session(actor, row, ctx.signal, async session => {

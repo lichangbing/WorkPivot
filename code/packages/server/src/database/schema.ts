@@ -448,5 +448,8 @@ ALTER TABLE identity.sessions ADD CONSTRAINT sessions_public_id UNIQUE(id);
 `}, {version:36,sql:`
 ALTER TABLE workpivot.trash_entries DROP CONSTRAINT trash_entries_kind_check;
 ALTER TABLE workpivot.trash_entries ADD CONSTRAINT trash_entries_kind_check CHECK(kind IN ('project','task','document','memory','skill','expert','automation'));
+`}, {version:37,sql:`
+ALTER TABLE workpivot.task_runs ADD COLUMN resource_scope jsonb;
+ALTER TABLE workpivot.task_runs ADD CONSTRAINT resource_scope_object CHECK(resource_scope IS NULL OR (jsonb_typeof(resource_scope)='object' AND resource_scope->>'version'='1'));
 `}] as const;
 import { usageSchema } from './usage-schema.js';

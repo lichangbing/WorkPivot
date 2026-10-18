@@ -1,3 +1,6 @@
+import {publicToolEvent} from './tool-events.js';
+import type {RunResourceScope} from './resource-scope.js';
+import {authorizeTools} from './tool-authorization.js';
 import { runAgentLoop, type AgentEvent, type RunAgentOptions, type StopReason } from '@workpivot/core';
 import type { Pool } from 'pg';
 import { RepositoryError } from './connection.js';
@@ -5,18 +8,19 @@ import { RunRepository, type RunHandle } from './runs.js';
 import type { CompactionService } from './compaction.js';
 
 /** 由可信服务器服务配置，不接受 HTTP 提供的路径、密钥或工具。 */
-export type PrepareExecution = (actor: string, taskId: string, context: { run?: RunHandle }) => Promise<Omit<RunAgentOptions, 'messages' | 'onEvent' | 'signal'>>;
+export type PrepareExecution = (actor: string, taskId: string, context: { run?: RunHandle; resources?:RunResourceScope }) => Promise<Omit<RunAgentOptions, 'messages' | 'onEvent' | 'signal'>>;
 export type DurableEvent = Omit<AgentEvent, 'type'> & { type: AgentEvent['type'] | 'permission_request' | 'permission_resolved'; id: string; sequence: string; turnId: string; runId: string; eventId?: string };
 export class DatabaseExecution {
   readonly runs: RunRepository;
   private readonly controllers = new Map<string, { actor: string; taskId: string; controller: AbortController }>();
   constructor(db: Pool, private readonly prepare: PrepareExecution, private readonly onCompleted?: (actor: string, taskId: string, runId: string) => Promise<void>, readonly compaction?: CompactionService) { this.runs = new RunRepository(db); }
-  async begin(actor: string, taskId: string, content: string, requestId: string, attachments: string[] = []) {
+  async begin(actor: string, taskId: string, content: string, requestId: string, attachments: string[] = [], resourceSelection?:unknown) {
     await this.runs.recover(actor, taskId);
-    const context: { run?: RunHandle } = {};
+    const resources=await this.runs.resources(actor,taskId,resourceSelection,attachments,requestId);
+    const context: { run?: RunHandle; resources?:RunResourceScope } = {resources};
     const options = await this.prepare(actor, taskId, context);
-    await this.compaction?.guard(actor, taskId, content, {system:options.system,tools:options.tools.map(t=>({name:t.name,description:t.description,parameters:t.parameters}))}, requestId);
-    const run = await this.runs.start(actor, taskId, requestId, content, attachments);
+    await this.compaction?.guard(actor, taskId, content, {system:options.system,tools:options.tools.map(t=>({name:t.name,description:t.description,parameters:t.parameters}))}, requestId,resources?.epoch);
+    const run = await this.runs.start(actor, taskId, requestId, content, attachments,resources);
     context.run = run;
     if (run.duplicate) return { run, execute: undefined };
     const controller = new AbortController(); this.controllers.set(run.id, { actor, taskId, controller });
@@ -38,7 +42,7 @@ export class DatabaseExecution {
           const permission = await this.runs.requestPermission(actor, run, request);
           try { if (!permission.automatic) send(permission); } catch { /* 断线后仍可查询待处理请求。 */ }
           while (!controller.signal.aborted) {
-            const decision = await this.runs.consumePermission(actor, run, permission.id);
+            const decision = await this.runs.consumePermission(actor, run, permission.id, request);
             if (decision !== 'pending') return decision === 'allow';
             await new Promise<void>(resolve => {
               const done = () => { clearTimeout(timer); controller.signal.removeEventListener('abort', done); resolve(); };
@@ -48,8 +52,14 @@ export class DatabaseExecution {
           }
           return false;
         });
-        const result = await runAgentLoop({ ...options, requestAccess, messages, signal: controller.signal,
+        const result = await runAgentLoop({ ...options, tools: authorizeTools(options.tools,async(_tool,args)=>{if(resources)await this.runs.checkResources(actor,run,resources,args);},async(tool,result)=>{
+          if(resources&&tool.name==='propose_schedule'){await this.runs.grantSchedule(actor,run,resources,JSON.parse(result).id);return;}
+          if(!resources||!['save_artifact','execute_skill','browser_visit'].includes(tool.name))return;
+          const value=JSON.parse(result);const ids=tool.name==='save_artifact'?[value.id]:(value.artifacts??(value.artifact?[value.artifact]:[])).map((v:{id:string})=>v.id);
+          await this.runs.grantArtifacts(actor,run,resources,ids);
+        }), requestAccess, messages, signal: controller.signal,
           onEvent: async value => {
+            value=publicToolEvent(value);
             try {
               const saved = await this.runs.append(actor, run, value);
               // 事件提交成功后才能通知客户端。

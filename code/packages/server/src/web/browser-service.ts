@@ -24,15 +24,22 @@ export function browserService(token: string, engine = new BrowserEngine()) {
       const body = request.body;
       if (!body || typeof body !== 'object') throw Error('浏览器参数无效');
       const input = browseInput({ ...body, url: body.url ?? (body.sessionId ? 'https://placeholder.example' : undefined) });
+      const resourceUrls=body.resourceUrls??[];
+      if(!Array.isArray(resourceUrls)||resourceUrls.length>20||resourceUrls.some(url=>typeof url!=='string'))throw Error('追加地址列表无效');
+      const allowedUrls=resourceUrls.map(url=>webUrl(url).href);
       const origins = body.origins;
       if (origins !== undefined && (!Array.isArray(origins) || origins.length > 20 || origins.some(origin => typeof origin !== 'string' || webUrl(origin).origin !== origin))) throw Error('网页来源配置无效');
       if (body.sessionId) {
         if (typeof body.sessionId !== 'string' || origins !== undefined) throw Error('共享浏览器参数无效');
-        response.json(await sessions.browse(body.sessionId, input, body.url !== undefined, controller.signal));
-      } else response.json(await engine.browse(input, { origins, signal: controller.signal }));
+        response.json(await sessions.browse(body.sessionId, input, body.url !== undefined, controller.signal,body.expectedRevision,allowedUrls));
+      } else response.json(await engine.browse(input, { origins, urls:origins===undefined?[input.url,...allowedUrls]:undefined,signal: controller.signal }));
     } catch (error) {
       if (!controller.signal.aborted) response.status(422).json({ error: error instanceof Error ? error.message.slice(0, 300) : '浏览器操作失败' });
     } finally { response.removeListener('close', cancel); }
+  });
+  app.get('/v1/sessions/:id/authorization', async (request,response)=>{
+    try {response.json(await sessions.authorization(String(request.params.id)));}
+    catch {response.status(422).json({error:'页面正在变化或被占用，请稍后重新申请授权'});}
   });
   app.get('/v1/sessions/:id', async (request, response) => {
     try { response.json(await sessions.snapshot(String(request.params.id))); }

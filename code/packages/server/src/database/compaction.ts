@@ -16,17 +16,20 @@ async function taskLock(c: PoolClient, task: string) {
   if (!row) throw new RepositoryError(404, '任务不存在');
   return row;
 }
-async function sources(c: PoolClient, task: string): Promise<Source[]> {
-  const size = (await c.query("SELECT COALESCE(sum(octet_length(r.model_messages::text)+octet_length(e.content)),0) AS size FROM workpivot.task_runs r JOIN workpivot.conversation_events e ON e.turn_id=r.turn_id AND e.kind='user' WHERE r.task_id=$1 AND NOT r.context_revoked", [task])).rows[0].size;
+async function sources(c: PoolClient, task: string,scopeEpoch?:string): Promise<Source[]> {
+  const latest=(await c.query('SELECT resource_scope FROM workpivot.task_runs WHERE task_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1',[task])).rows[0]?.resource_scope;
+  const epoch=scopeEpoch??latest?.epoch??null;
+
+  const size = (await c.query("SELECT COALESCE(sum(octet_length(r.model_messages::text)+octet_length(e.content)),0) AS size FROM workpivot.task_runs r JOIN workpivot.conversation_events e ON e.turn_id=r.turn_id AND e.kind='user' WHERE r.task_id=$1 AND NOT r.context_revoked AND ($2::text IS NULL OR r.resource_scope->>'epoch'=$2)", [task,epoch])).rows[0].size;
   if (Number(size) > 2000000) throw new RepositoryError(413, '历史内容过大，无法一次整理；请新建任务并保留必要信息');
-  return (await c.query<Source>(`SELECT r.id,t.sequence,e.content,r.model_messages AS messages,r.attachment_ids AS attachments FROM workpivot.task_runs r JOIN workpivot.conversation_turns t ON t.id=r.turn_id JOIN workpivot.conversation_events e ON e.turn_id=r.turn_id AND e.kind='user' WHERE r.task_id=$1 AND NOT r.context_revoked ORDER BY t.sequence`, [task])).rows;
+  return (await c.query<Source>(`SELECT r.id,t.sequence,e.content,r.model_messages AS messages,r.attachment_ids AS attachments FROM workpivot.task_runs r JOIN workpivot.conversation_turns t ON t.id=r.turn_id JOIN workpivot.conversation_events e ON e.turn_id=r.turn_id AND e.kind='user' WHERE r.task_id=$1 AND NOT r.context_revoked AND ($2::text IS NULL OR r.resource_scope->>'epoch'=$2) ORDER BY t.sequence`, [task,epoch])).rows;
 }
 const prefix = (rows: Source[], through: string) => rows.filter(r => BigInt(r.sequence) <= BigInt(through));
 const fingerprint = (rows: Source[]) => createHash('sha256').update(JSON.stringify(rows)).digest('hex');
 export const sourceMessages = (rows: Source[]): ChatMessage[] => rows.flatMap(r => [{ role: 'user' as const, content: r.content + (r.attachments.length ? '\n[系统附件状态：本轮固定版本ID：' + JSON.stringify(r.attachments) + '。当前尚无可用解析内容直接附入上下文；如提供read_uploaded_file工具请按这些版本读取。工具读取成功前不要声称已读取或分析附件。]' : '') }, ...r.messages]);
 const summaryMessages=(rows:Source[])=>rows.flatMap(r=>[{role:'user' as const,content:`[来源:${r.id}] 第${r.sequence}轮\n${r.content}\n附件版本：${JSON.stringify(r.attachments)}`},...r.messages]);
-export async function compactedHistory(c: PoolClient, task: string): Promise<ChatMessage[]> {
-  const rows = await sources(c, task);
+export async function compactedHistory(c: PoolClient, task: string,scopeEpoch?:string): Promise<ChatMessage[]> {
+  const rows = await sources(c, task,scopeEpoch);
   const saved = (await c.query<Checkpoint>("SELECT * FROM workpivot.context_checkpoints WHERE task_id=$1 AND status='accepted' ORDER BY created_at DESC LIMIT 1", [task])).rows[0];
   if (!saved) return sourceMessages(rows);
   if (fingerprint(prefix(rows, saved.through_sequence)) !== saved.source_hash) {
@@ -54,9 +57,9 @@ export class CompactionService {
     uuid(task);uuid(id);
     return transaction(this.db,async c=>{await taskLock(c,task);const row=(await c.query<Checkpoint>("SELECT * FROM workpivot.context_checkpoints WHERE id=$1 AND task_id=$2 AND status IN ('pending','accepted')",[id,task])).rows[0];if(!row)throw new RepositoryError(404,'摘要来源已失效');const rows=prefix(await sources(c,task),row.through_sequence);if(fingerprint(rows)!==row.source_hash)throw new RepositoryError(409,'原文已变化，摘要来源已失效');return rows.map(r=>({id:r.id,sequence:r.sequence,excerpt:r.content.slice(0,4000),truncated:r.content.length>4000,messages:JSON.stringify(r.messages).slice(0,12000),messagesTruncated:JSON.stringify(r.messages).length>12000,attachments:r.attachments}));},actor);
   }
-  async guard(actor: string, task: string, input: string, overhead: unknown, requestId?:string) {
+  async guard(actor: string, task: string, input: string, overhead: unknown, requestId?:string,scopeEpoch?:string) {
     if(requestId){uuid(requestId);const duplicate=await transaction(this.db,async c=>(await c.query('SELECT id FROM workpivot.task_runs WHERE task_id=$1 AND request_id=$2',[task,requestId])).rowCount,actor);if(duplicate)return;}
-    const bytes = await transaction(this.db, async c => { await taskLock(c, task); return contextBytes(await compactedHistory(c, task)) + contextBytes(input) + contextBytes(overhead) + outputReserve; }, actor);
+    const bytes = await transaction(this.db, async c => { await taskLock(c, task); return contextBytes(await compactedHistory(c, task,scopeEpoch)) + contextBytes(input) + contextBytes(overhead) + outputReserve; }, actor);
     if (bytes <= await this.capacity(actor) * 0.8) return;
     const states = await this.list(actor, task);
     if (!states.length || ['accepted','stale','superseded'].includes(states[0].status)) await this.request(actor, task);

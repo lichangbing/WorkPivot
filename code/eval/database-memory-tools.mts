@@ -15,6 +15,10 @@ export async function testMemoryTools(db: Pool, owner: string, other: string, ch
   const local = await workspace.createMemory(owner, 'mt-task', 'task', task.id);
   const foreignProject = await workspace.createMemory(owner, 'mt-other-project', 'project', second.id);
   const foreignTask = await workspace.createMemory(owner, 'mt-other-task', 'task', sibling.id);
+  const restricted=new DatabaseMemoryTools(db,'load',['task']);
+  check((await restricted.search(owner,task.id,'mt-')).memories.every(m=>m.scope==='task'),'运行记忆层限制在SQL分页前生效');
+  await assert.rejects(restricted.read(owner,task.id,personal.id));check(true,'直接ID读取不能绕过记忆层授权');
+  check((await new DatabaseMemoryTools(db,'load',[]).search(owner,task.id,'')).memories.length===0,'未授权记忆层时不自动加载个人或项目记忆');
   const found = await tools.search(owner, task.id, 'mt-');
   check([personal.id, shared.id, local.id].every(id => found.memories.some(m => m.id === id)), 'task retrieval finds all three memory layers');
   check(!found.memories.some(m => [foreignProject.id, foreignTask.id].includes(m.id)), 'retrieval excludes unrelated project and sibling task');

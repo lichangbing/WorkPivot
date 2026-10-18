@@ -5,7 +5,7 @@ import { RepositoryError, transaction, uuid } from './connection.js';
 
 /** 任务只能检索个人记忆、所属项目记忆和本任务记忆。 */
 export class DatabaseMemoryTools {
-  constructor(private readonly db: Pool, private readonly purpose:'load'|'update'='load') {}
+  constructor(private readonly db: Pool, private readonly purpose:'load'|'update'='load',private readonly allowedScopes?:readonly ('user'|'project'|'task')[]) {}
   private async scope(c: PoolClient, taskId: string) {
     uuid(taskId);
     const task = (await c.query<{ project_id: string | null }>('SELECT project_id FROM workpivot.tasks WHERE id=$1 AND deleted_at IS NULL', [taskId])).rows[0];
@@ -18,8 +18,8 @@ export class DatabaseMemoryTools {
     return transaction(this.db, async c => {
       const project = await this.scope(c, taskId);
       const rows = (await c.query<{ id: string; scope: string; revision: number; preview: string }>(`SELECT m.id,m.scope,m.revision,left(r.content,300) AS preview FROM workpivot.memories m JOIN workpivot.memory_revisions r ON r.memory_id=m.id AND r.revision=m.revision
-        WHERE m.deleted_at IS NULL AND COALESCE((SELECT CASE WHEN $5='load' THEN load_enabled ELSE update_enabled END FROM workpivot.memory_controls WHERE scope=m.scope),true) AND ($5='load' OR NOT m.locked) AND (m.scope='user' OR (m.scope='project' AND m.project_id=$1) OR (m.scope='task' AND m.task_id=$2))
-        AND ($3='' OR strpos(lower(r.content),lower($3))>0) AND ($4::uuid IS NULL OR m.id>$4) ORDER BY m.id LIMIT 21`, [project, taskId, query.trim(), after ?? null,this.purpose])).rows;
+        WHERE m.deleted_at IS NULL AND ($6::text[] IS NULL OR m.scope=ANY($6::text[])) AND COALESCE((SELECT CASE WHEN $5='load' THEN load_enabled ELSE update_enabled END FROM workpivot.memory_controls WHERE scope=m.scope),true) AND ($5='load' OR NOT m.locked) AND (m.scope='user' OR (m.scope='project' AND m.project_id=$1) OR (m.scope='task' AND m.task_id=$2))
+        AND ($3='' OR strpos(lower(r.content),lower($3))>0) AND ($4::uuid IS NULL OR m.id>$4) ORDER BY m.id LIMIT 21`, [project, taskId, query.trim(), after ?? null,this.purpose,this.allowedScopes??null])).rows;
       return { memories: rows.slice(0, 20), nextCursor: rows.length > 20 ? rows[19]!.id : null };
     }, actor);
   }
@@ -28,7 +28,7 @@ export class DatabaseMemoryTools {
     return transaction(this.db, async c => {
       const project = await this.scope(c, taskId);
       const row = (await c.query<{ revision: number; scope: string; content: string }>(`SELECT m.revision,m.scope,r.content FROM workpivot.memories m JOIN workpivot.memory_revisions r ON r.memory_id=m.id AND r.revision=m.revision
-        WHERE m.id=$1 AND m.deleted_at IS NULL AND (m.scope='user' OR (m.scope='project' AND m.project_id=$2) OR (m.scope='task' AND m.task_id=$3))`, [id, project, taskId])).rows[0];
+        WHERE m.id=$1 AND ($4::text[] IS NULL OR m.scope=ANY($4::text[])) AND m.deleted_at IS NULL AND (m.scope='user' OR (m.scope='project' AND m.project_id=$2) OR (m.scope='task' AND m.task_id=$3))`, [id, project, taskId,this.allowedScopes??null])).rows[0];
       if (row && !await memoryEnabled(c,row.scope,this.purpose)) throw new RepositoryError(409, '此层记忆已关闭');
       if (!row) throw new RepositoryError(404, '记忆不存在或不属于当前任务范围');
       return { id, revision: row.revision, scope: row.scope, content: row.content.slice(offset, offset + 4000), nextOffset: row.content.length > offset + 4000 ? offset + 4000 : null };

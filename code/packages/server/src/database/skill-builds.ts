@@ -24,7 +24,7 @@ const scriptful = (files: Files) => Object.keys(files).some(p => /^(scripts|test
 
 /** 模型只能操作草稿；启用接口仅提供给已认证的用户界面。 */
 export class SkillBuilds {
-  constructor(private readonly db: Pool, private readonly files?: FileRepository, private readonly worker?: WorkerConfiguration) {}
+  constructor(private readonly db: Pool, private readonly files?: FileRepository, private readonly worker?: WorkerConfiguration, private readonly guard?:(c:PoolClient,tool:string,args:Record<string,unknown>,taskId?:string)=>Promise<void>, private readonly versionIds?:readonly string[]) {}
   private async get(c: PoolClient, id: string, lock = false): Promise<{ b: Build; d: Draft }> {
     uuid(id);
     let b = (await c.query<Build>('SELECT * FROM workpivot.skill_builds WHERE id=$1', [id])).rows[0];
@@ -78,14 +78,14 @@ export class SkillBuilds {
       files:Object.entries(d.files).map(([path,data])=>({path,content:packageText(Buffer.from(data,'base64')),size:Buffer.byteLength(data,'base64'),previous:old?.[path] ? packageText(Buffer.from(old[path]!,'base64')) : null,change:!old?.[path]?'added':old[path]===data?'same':'modified'})),
       removed:old?Object.keys(old).filter(p=>!Object.hasOwn(d.files,p)):[] };
   }
-  async list(actor: string, taskId?: string) {
+  async list(actor: string, taskId?: string,validSourceOnly=false) {
     if (taskId) uuid(taskId);
     return transaction(this.db,async c=>{
       await c.query("UPDATE workpivot.skill_trials SET status='interrupted',report=jsonb_build_object('error','试运行已中断，请检查后重试') WHERE status='running' AND lease_until<now()");
       const rows=(await c.query<Build & {display_name:string;deleted_at:string|null;disabled:boolean;published:string|null;draft_revision:string;requires_trial:boolean}>(`SELECT b.*,d.display_name,d.deleted_at,d.disabled,d.published,d.revision AS draft_revision,
         EXISTS(SELECT 1 FROM jsonb_object_keys(d.files) p WHERE p ~ '^(scripts|tests)/|[.](py|js|mjs|cjs|ts|sh|ps1)$') AS requires_trial
-        FROM (SELECT DISTINCT ON(name) * FROM workpivot.skill_builds WHERE ($1::uuid IS NULL OR task_id=$1) ORDER BY name,created_at DESC,id DESC) b
-        JOIN workpivot.skill_drafts d ON d.name=b.name ORDER BY b.created_at DESC,b.id DESC LIMIT 100`,[taskId??null])).rows;
+        FROM (SELECT DISTINCT ON(name) * FROM workpivot.skill_builds WHERE ($1::uuid IS NULL OR task_id=$1) AND (NOT $2::boolean OR (NOT source_invalid AND status NOT IN ('stale','cancelled') AND source_epoch=COALESCE((SELECT epoch FROM workpivot.knowledge_state WHERE owner_user_id=workpivot.actor_id()),0) AND (source_run_id IS NULL OR EXISTS(SELECT 1 FROM workpivot.task_runs r WHERE r.id=source_run_id AND NOT r.context_revoked AND r.status IN ('running','completed','failed'))))) ORDER BY name,created_at DESC,id DESC) b
+        JOIN workpivot.skill_drafts d ON d.name=b.name ORDER BY b.created_at DESC,b.id DESC LIMIT 100`,[taskId??null,validSourceOnly])).rows;
       return rows.map(b=>({id:b.id,name:b.name,displayName:b.display_name,taskId:b.task_id,revision:b.revision,draftRevision:b.draft_revision,hash:b.content_hash,status:b.status,sourceInvalid:b.source_invalid,purpose:b.purpose,permissions:b.permissions,validation:b.validation,trial:b.trial?{...b.trial,output:'',previews:[]}:null,trialAttempts:b.trial_attempts,dismissed:b.dismissed,releaseId:b.release_id,deleted:!!b.deleted_at,disabled:b.disabled,workerAvailable:!!this.worker,requiresTrial:b.requires_trial,published:b.published,versions:[],files:[],removed:[]}));
     },actor);
   }
@@ -95,6 +95,7 @@ export class SkillBuilds {
     const displayName=text(args.displayName,120),purpose=text(args.purpose,2000);
     return transaction(this.db,async c=>{
       await c.query('SELECT id FROM workpivot.tasks WHERE id=$1 AND deleted_at IS NULL FOR UPDATE',[taskId]).then(r=>{if(!r.rowCount)fail(404,'任务不存在');});
+      await this.guard?.(c,'propose_skill',args,taskId);
       const existing=(await c.query<Build>('SELECT * FROM workpivot.skill_builds WHERE request_id=$1',[requestId])).rows[0];
       if(existing){const {d}=await this.get(c,existing.id);if(existing.task_id!==taskId||existing.purpose!==purpose||d.display_name!==displayName||hash(this.encode(existing.name,args.files))!==existing.content_hash)fail(409,'请求标识已被不同草稿使用');return this.view(c,existing,d);}
       if((await c.query('SELECT id FROM workpivot.skill_builds WHERE task_id=$1',[taskId])).rowCount! >= 30)fail(429,'每个任务最多保留30次技能构建');
@@ -109,6 +110,7 @@ export class SkillBuilds {
   async revise(actor:string,id:string,revision:unknown,args:Record<string,unknown>,taskId?:string,run?:{id:string;fence:string}) {
     return transaction(this.db,async c=>{
       const {b,d}=await this.get(c,id,true);if(taskId&&taskId!==b.task_id)fail(404,'草稿不属于当前任务');
+      await this.guard?.(c,'revise_skill_draft',{...args,buildId:id,revision},b.task_id);
       this.current(b,d,revision);await this.source(c,b,true);
       if(run&&!(await c.query("SELECT id FROM workpivot.task_runs WHERE id=$1 AND task_id=$2 AND fence=$3 AND status='running' AND NOT context_revoked AND lease_until>now() FOR SHARE",[run.id,b.task_id,run.fence])).rowCount)fail(409,'修订轮次已停止');
       const files=this.encode(b.name,args.files),rev=randomUUID();
@@ -121,6 +123,7 @@ export class SkillBuilds {
   async validate(actor:string,id:string,revision:unknown) {
     return transaction(this.db,async c=>{
       const {b,d}=await this.get(c,id,true);this.current(b,d,revision);await this.source(c,b,true);
+      await this.guard?.(c,'validate_skill_draft',{buildId:id,revision},b.task_id);
       if(b.status==='activated')return this.view(c,b,d);
       const available=(await c.query('SELECT name FROM workpivot.skill_catalog WHERE NOT disabled')).rows.map(r=>r.name);
       const validation=validatePackageState(b.name,{draft:d.files,revision:d.revision},available);
@@ -138,6 +141,7 @@ export class SkillBuilds {
     const trialId=randomUUID();
     const snapshot=await transaction(this.db,async c=>{
       const {b,d}=await this.get(c,id,true);if(taskId&&taskId!==b.task_id)fail(404,'草稿不属于当前任务');this.current(b,d,revision);await this.source(c,b,true);
+      await this.guard?.(c,'trial_skill_draft',{...args,buildId:id,revision},b.task_id);
       if(b.status==='activated')fail(409,'请先生成修订草稿');
       if(!b.validation?.valid)fail(409,'请先完成草稿结构校验');
       const entry=/^(node|python3|python|sh)(?:\s+(--test))?\s+(?:'([^']+)'|"([^"]+)"|([^\s]+))$/.exec(command);
@@ -156,10 +160,11 @@ export class SkillBuilds {
     try {
       signal?.throwIfAborted();
       const inputs:[string,string][]=[];let bytes=Object.values(snapshot.d.files).reduce((n,v)=>n+Buffer.byteLength(v,'base64'),0);
-      for(const input of inputIds){if(!this.files)fail(503,'文件服务未配置');const f=await this.files!.download(actor,snapshot.b.task_id,input as string);bytes+=f.data.length;inputs.push([`inputs/${f.version.id}/${f.version.name}`,f.data.toString('base64')]);}
+      for(const input of inputIds){if(!this.files)fail(503,'文件服务未配置');const f=await this.files!.download(actor,snapshot.b.task_id,input as string,this.versionIds);bytes+=f.data.length;inputs.push([`inputs/${f.version.id}/${f.version.name}`,f.data.toString('base64')]);}
       if(bytes>16*1024*1024)fail(413,'技能与输入合计超过16MiB');
       const syntax=Object.keys(snapshot.d.files).filter(p=>/\.(js|mjs|cjs)$/.test(p)).map(p=>'node --check '+shellQuote('/skills/'+snapshot.b.name+'/'+p));
       const checkedCommand=[...syntax,snapshot.testCommand].join(' && ');
+      if(this.guard)await transaction(this.db,async c=>{await this.get(c,id,true);await this.guard!(c,'trial_skill_draft',{...args,buildId:id,revision},snapshot.b.task_id);},actor);
       const response=await fetch(`${this.worker.url.replace(/\/$/,'')}/v1/run`,{method:'POST',headers:{authorization:`Bearer ${this.worker.token}`,'content-type':'application/json'},body:JSON.stringify({command:checkedCommand,files:inputs,skills:Object.entries(snapshot.d.files).map(([p,v])=>[`${snapshot.b.name}/${p}`,v])}),redirect:'error',signal:AbortSignal.any([...(signal?[signal]:[]),AbortSignal.timeout(140000)])});
       if(!response.body)fail(502,'执行器没有返回测试报告');
       const reader=response.body!.getReader(),chunks:Uint8Array[]=[];let size=0;
@@ -175,6 +180,7 @@ export class SkillBuilds {
     } catch(error){report={...report,passed:false,error:signal?.aborted?'试运行已停止':error instanceof RepositoryError?error.message:'执行器不可用或测试超时，请检查后重试'};}
     await transaction(this.db,async c=>{
       const {b,d}=await this.get(c,id,true);
+      await this.guard?.(c,'trial_skill_draft',{...args,buildId:id,revision},b.task_id);
       const live=await c.query("SELECT id FROM workpivot.skill_trials WHERE id=$1 AND status='running' AND lease_until>now() FOR UPDATE",[trialId]);
       if(!live.rowCount)fail(409,'试运行租约已失效');
       await c.query('UPDATE workpivot.skill_trials SET status=$2,report=$3 WHERE id=$1',[trialId,report.passed?'passed':signal?.aborted?'interrupted':'failed',JSON.stringify(report)]);
@@ -249,12 +255,12 @@ export class SkillBuilds {
   tools(actor:string,taskId:string,run:()=>{id:string;fence:string}|undefined):Tool[] {
     const object={type:'object',properties:{path:{type:'string'},content:{type:'string'}},required:['path','content'],additionalProperties:false};
     const refs={buildId:{type:'string'},revision:{type:'string'}};
-    const wrap=(name:string,description:string,properties:Record<string,unknown>,required:string[],handler:(args:Record<string,unknown>,signal?:AbortSignal)=>Promise<unknown>,external=false):Tool=>({name,kind:'write',description,parameters:{type:'object',properties,required,additionalProperties:false},...(external?{access:(args:Record<string,unknown>)=>({external:true,tool:name,kind:'write' as const,paths:[],command:String(args.command??'')})}:{}),run:async(args,ctx)=>{ctx.signal?.throwIfAborted();const bound=run();if(!bound)fail(409,'运行身份尚未就绪');await transaction(this.db,async c=>{if(!(await c.query("SELECT id FROM workpivot.task_runs WHERE id=$1 AND task_id=$2 AND fence=$3 AND status='running' AND NOT context_revoked AND lease_until>now()",[bound!.id,taskId,bound!.fence])).rowCount)fail(409,'当前运行已停止');if(args.buildId){const {b}=await this.get(c,text(args.buildId,36));if(b.task_id!==taskId)fail(404,'草稿不属于当前任务');await this.source(c,b);}},actor);const result=await handler(args,ctx.signal);
+    const wrap=(name:string,description:string,properties:Record<string,unknown>,required:string[],handler:(args:Record<string,unknown>,signal?:AbortSignal)=>Promise<unknown>,external=false):Tool=>({name,kind:['list_my_skill_builds','get_skill_build'].includes(name)?'read':'write',description,parameters:{type:'object',properties,required,additionalProperties:false},...(external?{access:(args:Record<string,unknown>)=>({external:true,tool:name,kind:'write' as const,paths:[],command:String(args.command??'')})}:{}),run:async(args,ctx)=>{ctx.signal?.throwIfAborted();const bound=run();if(!bound)fail(409,'运行身份尚未就绪');await transaction(this.db,async c=>{if(!(await c.query("SELECT id FROM workpivot.task_runs WHERE id=$1 AND task_id=$2 AND fence=$3 AND status='running' AND NOT context_revoked AND lease_until>now()",[bound!.id,taskId,bound!.fence])).rowCount)fail(409,'当前运行已停止');if(args.buildId){const {b}=await this.get(c,text(args.buildId,36));if(b.task_id!==taskId)fail(404,'草稿不属于当前任务');await this.source(c,b);}},actor);const result=await handler(args,ctx.signal);
       // 模型已有生成内容；写工具只返回摘要，避免每步重复整包挤爆上下文。
       if(name!=='get_skill_build'&&result&&typeof result==='object'&&'files' in result){const value=result as {files:{path:string;size:number}[]};return JSON.stringify({...value,files:value.files.map(f=>({path:f.path,size:f.size}))});}
       return JSON.stringify(result);}});
     return [
-      wrap('list_my_skill_builds','生成前查询本人的技能名称、用途、状态、构建标识和修订号。只返回摘要；同主题优先建议修订而非重复生成。当前任务的草稿可直接修订，其他任务的技能应提示用户从设置打开并回到原任务处理。',{},[],async()=>({skills:(await this.list(actor)).map(b=>({id:b.id,name:b.name,displayName:b.displayName,purpose:b.purpose.slice(0,300),taskId:b.taskId,revision:b.revision,status:b.status,deleted:b.deleted})),notice:'仅返回本人最近100个技能的摘要；需要正文时读取具体技能。'})),
+      wrap('list_my_skill_builds','生成前查询本人的技能名称、用途、状态、构建标识和修订号。只返回摘要；同主题优先建议修订而非重复生成。仅查询当前任务的草稿；其他任务需用户切换后操作。',{},[],async()=>({skills:(await this.list(actor,taskId,true)).map(b=>({id:b.id,name:b.name,displayName:b.displayName,purpose:b.purpose.slice(0,300),taskId:b.taskId,revision:b.revision,status:b.status,deleted:b.deleted})),notice:'仅返回当前任务最近100个技能的摘要；需要正文时读取具体技能。'})),
       wrap('propose_skill','根据用户要求或当前任务中已验证的方法生成私人技能草稿。files包含SKILL.md和必要的scripts/、tests/、references/文本；顶端name会由服务器替换；说明及测试清单中的{{skill_root}}会替换为实际只读目录，脚本内部使用相对模块引用。有脚本必须提供tests/测试入口，可附skill-test.json的command和outputs供用户试运行。写清触发条件、输入输出、步骤、注意事项、验证方法，脚本及注释用中文。不得包含密钥或未经选择的业务数据。只保存草稿，不发布、不加载。requestId为UUID，重试复用。',{requestId:{type:'string'},displayName:{type:'string'},purpose:{type:'string'},files:{type:'array',items:object}},['requestId','displayName','purpose','files'],args=>this.propose(actor,taskId,args,run())),
       wrap('revise_skill_draft','按错误报告或用户纠正修改当前任务的私人草稿。提交完整文本文件树，保留必要资源。修改使旧校验及确认失效，不能静默替换已发布版本。',{...refs,purpose:{type:'string'},files:{type:'array',items:object}},['buildId','revision','files'],args=>this.revise(actor,text(args.buildId,36),args.revision,args,taskId,run())),
       wrap('validate_skill_draft','检查技能草稿结构、引用和依赖；此操作不执行测试。',refs,['buildId','revision'],args=>this.validate(actor,text(args.buildId,36),args.revision)),

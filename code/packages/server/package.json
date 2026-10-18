@@ -11,6 +11,7 @@
     "@workpivot/core": "workspace:*",
     "@workpivot/shared": "workspace:*",
     "adm-zip": "0.5.16",
+    "ajv": "8.17.1",
     "bcryptjs": "^3.0.3",
     "cron-parser": "5.4.0",
     "docx": "^9.7.1",
