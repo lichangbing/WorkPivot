@@ -71,7 +71,9 @@
     "eval:web-database": "node scripts/test-automations.mjs --web",
     "eval:web-quota": "node --import tsx eval/web-quota.mts",
     "eval:automation-capacity": "node scripts/test-automations.mjs --capacity",
-    "eval:automation-capacity-ui": "node eval/automation-capacity-ui.mjs"
+    "eval:automation-capacity-ui": "node eval/automation-capacity-ui.mjs",
+    "iam:lab": "node scripts/iam-lab.mjs",
+    "eval:iam-lab": "node eval/iam-oidc-lab.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

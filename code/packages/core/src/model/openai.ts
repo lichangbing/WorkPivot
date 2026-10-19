@@ -88,6 +88,7 @@ export function createOpenAICompatibleClient(options: ModelClientOptions): Model
         },
         body: JSON.stringify({
           model: options.model,
+          max_tokens: 8192,
           messages,
           ...(tools.length > 0 ? { tools: tools.map((t) => ({ type: 'function', function: t })) } : {}),
           stream: true,

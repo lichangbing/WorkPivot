@@ -1,3 +1,4 @@
+import {modelCapacitySchema} from './model-capacity-schema.js';
 import {browserProfileSchema} from './browser-profile-schema.js';
 import {networkTargetSchema} from './network-target-schema.js';
 import {requestAuditCleanupSchema} from './request-audit-cleanup-schema.js';
@@ -484,5 +485,5 @@ ALTER TABLE workpivot.capture_versions ADD COLUMN original_kind text NOT NULL DE
 `}, {version:45,sql:requestAuditSchema}, {version:46,sql:`
 ALTER TABLE workpivot.capture_versions DROP CONSTRAINT capture_versions_original_kind_check;
 ALTER TABLE workpivot.capture_versions ADD CONSTRAINT capture_versions_original_kind_check CHECK(original_kind IN ('http','dom','bundle'));
-`}, {version:47,sql:requestAuditCleanupSchema}, {version:48,sql:networkTargetSchema}, {version:49,sql:browserProfileSchema}] as const;
+`}, {version:47,sql:requestAuditCleanupSchema}, {version:48,sql:networkTargetSchema}, {version:49,sql:browserProfileSchema}, {version:50,sql:modelCapacitySchema}] as const;
 import { usageSchema } from './usage-schema.js';

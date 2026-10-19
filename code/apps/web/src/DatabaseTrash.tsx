@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {jsonFetch} from './api';
 import {Icon,type IconName} from './Icon';
-import './automations.css';
+import {ThemeSwitch} from './theme';
 import './trash.css';
 type Entry={id:string;kind:string;entityId:string;name:string;revision:string;parentId:string|null;deletedAt:string;purgeAfter:string;canPurge:boolean;fileCount:number};
 const names:Record<string,string>={project:'项目',task:'任务',document:'文件 / 成果',memory:'记忆',skill:'私人 Skill',expert:'专家',automation:'自动化'};
@@ -26,10 +26,10 @@ export function DatabaseTrash({onBack}:{onBack:()=>void}){
  const expired=entries.filter(e=>e.canPurge).length;
  const visible=entries.filter(e=>(filter==='all'||e.kind===filter)&&(status==='all'||(status==='expired'?e.canPurge:!e.canPurge))&&e.name.toLowerCase().includes(search.trim().toLowerCase()));
  const reset=()=>{setSearch('');setFilter('all');setStatus('all');};
- return <div className="automation-ui trash-ui"><div className="shell">
-  <aside className="sidebar"><div className="brand"><span className="mark">W</span>WorkPivot</div><div className="nav-label">工作空间</div><button className="nav" onClick={onBack}>项目与任务</button><button className="nav" onClick={()=>{location.hash='automations';}}>自动化</button><button className="nav active" aria-current="page"><Icon name="trash"/> 回收站</button></aside>
-  <main className="main"><header className="topbar">工作空间 / 回收站</header><div className="content">
-   <div className="page-title"><div><h1>回收站</h1><p className="sub">误删的内容，仍有机会找回来。</p></div><button className="btn" disabled={busy||loading} onClick={()=>{void refresh();}}>{loading?'正在加载…':'刷新列表'}</button></div>
+ return <div className="trash-ui"><div className="shell">
+  <aside className="sidebar" aria-label="工作空间导航"><div className="brand">WorkPivot</div><div className="nav-label">工作空间</div><button className="nav" onClick={onBack}><Icon name="folder"/>项目与任务</button><button className="nav" onClick={()=>{location.hash='automations';}}><Icon name="bolt"/>自动化</button><button className="nav active" aria-current="page"><Icon name="trash"/>回收站</button></aside>
+  <main className="main"><header className="topbar"><button className="btn" onClick={onBack}><span aria-hidden="true">←</span>返回主页</button><ThemeSwitch/></header><div className="content">
+   <div className="page-title"><div><h1>回收站</h1><p className="sub">管理已删除的内容，恢复误删条目。</p></div><button className="btn" disabled={busy||loading} onClick={()=>{void refresh();}}>{loading?'正在加载…':'刷新列表'}</button></div>
    <div className="trash-summary" aria-label="回收站统计">{[['全部条目',entries.length],['保留中',entries.length-expired],['保留期已满',expired],['保留文件版本',entries.reduce((n,e)=>n+e.fileCount,0)]].map(([label,value])=><div key={label}><span>{label}</span><strong>{loading?'—':value}</strong></div>)}</div>
    <div className="trash-policy"><Icon name="shield" size={22}/><div><strong>保留30天，到期不自动删除</strong><p>到期后仍可恢复。永久删除需你手动确认，回收站中的文件仍占用存储空间。</p><details><summary>恢复顺序与保留规则</summary><p>先恢复项目，再恢复任务及文件；永久删除父条目前，需先处理子条目。资料恢复后重建知识索引，技能、专家与自动化需重新确认启用。旧版已彻底清除的内容无法找回。时间统一显示为北京时间。</p><button className="btn" disabled={busy} onClick={()=>{setBusy(true);setError('');setNotice('');void jsonFetch('/api/files/cleanup',{method:'POST',body:'{}'}).then(()=>setNotice('磁盘清理完成，回收站保留文件不受影响。')).catch(e=>setError(e.message)).finally(()=>setBusy(false));}}>重试磁盘清理</button></details></div></div>
    <div className="trash-tabs" aria-label="回收站类型">{[['all','全部'],...Object.entries(names)].map(([key,label])=><button key={key} aria-pressed={filter===key} className={filter===key?'selected':''} onClick={()=>setFilter(key!)}>{label}<span>{key==='all'?entries.length:entries.filter(e=>e.kind===key).length}</span></button>)}</div>

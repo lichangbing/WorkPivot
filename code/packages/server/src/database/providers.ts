@@ -1,3 +1,5 @@
+import {fetchModelCapacity} from './model-capacity.js';
+import {maxContextTokens} from './context-budget.js';
 import { UsageRepository, priceValue, currencyValue, type UsageContext } from './usage.js';
 import { streamWithRecovery } from './model-recovery.js';
 import { safeModelError, modelFailureDetails } from './model-error.js';
@@ -8,14 +10,14 @@ import { createAesBox, type SecretEnvelope } from '../secret.js';
 import { RepositoryError, transaction, uuid } from './connection.js';
 
 export interface ProviderInput { name: string; baseUrl: string; modelId: string; protocol: 'openai' | 'anthropic'; apiKey?: string | null; contextBudget?: number; inputPrice?: string|null; outputPrice?: string|null; currency?: string }
-export interface PublicDatabaseProvider extends Omit<ProviderInput, 'apiKey'> { id: string; revision: number; active: boolean; hasApiKey: boolean }
-const publicColumns = 'id,name,base_url AS "baseUrl",model_id AS "modelId",context_budget AS "contextBudget",protocol,input_price::text AS "inputPrice",output_price::text AS "outputPrice",currency,revision,active,secret IS NOT NULL AS "hasApiKey"';
+export interface PublicDatabaseProvider extends Omit<ProviderInput, 'apiKey'> { id: string; revision: number; active: boolean; hasApiKey: boolean; contextSource: 'manual'|'api'; contextCheckedAt: string|null }
+const publicColumns = 'id,name,base_url AS "baseUrl",model_id AS "modelId",context_budget AS "contextBudget",context_source AS "contextSource",context_checked_at AS "contextCheckedAt",protocol,input_price::text AS "inputPrice",output_price::text AS "outputPrice",currency,revision,active,secret IS NOT NULL AS "hasApiKey"';
 const version = (v: number) => { if (!Number.isSafeInteger(v) || v < 1) throw new RepositoryError(400, '模型配置版本无效'); };
 export class ProviderRepository {
   private readonly box;
   constructor(private readonly db: Pool, key: string) { this.box = createAesBox(key); }
   private validate(input: ProviderInput): ProviderInput {
-    if(input?.contextBudget!==undefined&&(!Number.isSafeInteger(input.contextBudget)||input.contextBudget<12000||input.contextBudget>1000000))throw new RepositoryError(400,'上下文容量须为12000至1000000之间的整数');
+    if(input?.contextBudget!==undefined&&(!Number.isSafeInteger(input.contextBudget)||input.contextBudget<12000||input.contextBudget>maxContextTokens))throw new RepositoryError(400,'上下文容量须为12000至2097152之间的整数');
     if (!input || typeof input.name !== 'string' || !input.name.trim() || input.name.length > 120 || typeof input.modelId !== 'string' || !input.modelId.trim() || input.modelId.length > 200 || !['openai', 'anthropic'].includes(input.protocol)) throw new RepositoryError(400, '模型配置无效');
     let url: URL;
     try { if (typeof input.baseUrl !== 'string' || input.baseUrl.length > 2000) throw Error(); url = new URL(input.baseUrl); } catch { throw new RepositoryError(400, '模型地址无效'); }
@@ -40,7 +42,7 @@ export class ProviderRepository {
         if (!old) throw new RepositoryError(404, '模型配置不存在');
         if (old.revision !== expected) throw new RepositoryError(409, '模型配置已更新');
         if (old.base_url !== value.baseUrl && value.apiKey === undefined) throw new RepositoryError(400, '更换模型地址时请重新填写密钥或明确清除，避免将原密钥发送给新服务');
-        return (await c.query<PublicDatabaseProvider>(`UPDATE workpivot.model_providers SET name=$2,base_url=$3,model_id=$4,protocol=$5,secret=CASE WHEN $6 THEN $7::jsonb ELSE secret END,context_budget=COALESCE($8,context_budget),input_price=CASE WHEN $9 THEN $10::numeric ELSE input_price END,output_price=CASE WHEN $11 THEN $12::numeric ELSE output_price END,currency=COALESCE($13,currency),revision=revision+1 WHERE id=$1 RETURNING ${publicColumns}`, [id, value.name, value.baseUrl, value.modelId, value.protocol, value.apiKey !== undefined, secret,value.contextBudget??null,value.inputPrice!==undefined,value.inputPrice??null,value.outputPrice!==undefined,value.outputPrice??null,value.currency??null])).rows[0]!;
+        return (await c.query<PublicDatabaseProvider>(`UPDATE workpivot.model_providers SET name=$2,base_url=$3,model_id=$4,protocol=$5,secret=CASE WHEN $6 THEN $7::jsonb ELSE secret END,context_budget=COALESCE($8,context_budget),context_source=CASE WHEN ($8 IS NULL OR $8=context_budget) AND model_id=$4 AND base_url=$3 AND protocol=$5 THEN context_source ELSE 'manual' END,context_checked_at=CASE WHEN ($8 IS NULL OR $8=context_budget) AND model_id=$4 AND base_url=$3 AND protocol=$5 THEN context_checked_at ELSE NULL END,input_price=CASE WHEN $9 THEN $10::numeric ELSE input_price END,output_price=CASE WHEN $11 THEN $12::numeric ELSE output_price END,currency=COALESCE($13,currency),revision=revision+1 WHERE id=$1 RETURNING ${publicColumns}`, [id, value.name, value.baseUrl, value.modelId, value.protocol, value.apiKey !== undefined, secret,value.contextBudget??null,value.inputPrice!==undefined,value.inputPrice??null,value.outputPrice!==undefined,value.outputPrice??null,value.currency??null])).rows[0]!;
       }
       return (await c.query<PublicDatabaseProvider>(`INSERT INTO workpivot.model_providers(id,owner_user_id,name,base_url,model_id,protocol,secret,context_budget,input_price,output_price,currency) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING ${publicColumns}`, [providerId, actor, value.name, value.baseUrl, value.modelId, value.protocol, secret,value.contextBudget??65536,value.inputPrice??null,value.outputPrice??null,value.currency??'CNY'])).rows[0]!;
     }, actor);
@@ -67,6 +69,28 @@ export class ProviderRepository {
       if (row.revision !== expected) throw new RepositoryError(409, '模型配置已更新');
       await c.query('DELETE FROM workpivot.model_providers WHERE id=$1', [id]);
     }, actor);
+  }
+  async capacityAudit(actor:string,id:string) {
+    uuid(id);
+    return transaction(this.db,async c=>(await c.query('SELECT before_tokens AS "beforeTokens",after_tokens AS "afterTokens",source,created_at AS "createdAt" FROM workpivot.model_capacity_audit WHERE provider_id=$1 ORDER BY created_at DESC,id DESC LIMIT 50',[id])).rows,actor);
+  }
+  async syncCapacity(actor:string,id:string,expected:number) {
+    uuid(id);version(expected);
+    const row=await transaction(this.db,async c=>(await c.query('SELECT id,revision,base_url,model_id,protocol,secret FROM workpivot.model_providers WHERE id=$1',[id])).rows[0],actor);
+    if(!row)throw new RepositoryError(404,'模型不存在');
+    if(row.revision!==expected)throw new RepositoryError(409,'模型已变更，请刷新');
+    let key:string|undefined;
+    if(row.secret){
+      try{const value=JSON.parse(this.box.decrypt(row.secret as SecretEnvelope));if(value.actor!==actor||value.providerId!==id||typeof value.key!=='string')throw Error();key=value.key;}
+      catch{throw new RepositoryError(503,'模型密钥无法读取');}
+    }
+    const capacity=await fetchModelCapacity(row.base_url,row.model_id,row.protocol,key);
+    return transaction(this.db,async c=>{
+      await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['providers:'+actor]);
+      const updated=await c.query<PublicDatabaseProvider>(`UPDATE workpivot.model_providers SET context_budget=$3,context_source='api',context_checked_at=now(),revision=revision+1 WHERE id=$1 AND revision=$2 RETURNING ${publicColumns}`,[id,expected,capacity]);
+      if(!updated.rowCount)throw new RepositoryError(409,'读取期间模型配置已变化，请刷新重试');
+      return updated.rows[0]!;
+    },actor);
   }
   async diagnose(actor:string,id:string,expected:number) {
     uuid(id);version(expected);

@@ -82,7 +82,7 @@ try {
   await auth.query("INSERT INTO identity.request_audit_cleanups(actor_id,before_date,removed,fingerprint) VALUES($1,'2020-01-01',1,'synthetic')",[owner.user.id]);
   const networkRule=await new NetworkTargets(auth,app).approve(owner.token,owner.user.id,{url:'https://oa.internal/report',address:'10.20.30.40'});
   const rawCapture=Buffer.from('<rss>备份原始正文</rss>');await admin.query("UPDATE workpivot.capture_versions SET original_body=$2,original_type=$3,original_hash=$4,original_kind='dom' WHERE id=$1",[captureVersion,rawCapture,'application/rss+xml',createHash('sha256').update(rawCapture).digest('hex')]);
-  await createBackup({ target: backupRoot, databaseUrl: source, filesRoot, schemaVersion: 49 });
+  await createBackup({ target: backupRoot, databaseUrl: source, filesRoot, schemaVersion: 50 });
   const manifest = await verifyBackup(backupRoot);
   check(manifest.totals.files === 5, '真实 pg_dump 与在线/回收站五份版本文件打包校验');
   check(!(await readFile(join(backupRoot, 'manifest.json'), 'utf8')).includes(new URL(source).password), '清单不包含数据库密码');
@@ -92,7 +92,7 @@ try {
   await skillBuilds.lifecycle(owner.user.id,deletedSkill.id,deletedSkill.draftRevision,'delete');
   const latest = await files.upload(owner.user.id, task.id, '成果.txt', Buffer.from('备份之后的新成果'), randomUUID(), artifact.documentId, 1, 'artifact');
   await admin.query("UPDATE workpivot.tasks SET status='running' WHERE id=$1", [task.id]);
-  await assert.rejects(createBackup({ target: join(root, 'busy-backup'), databaseUrl: source, filesRoot, schemaVersion: 49 }), /活动任务/);
+  await assert.rejects(createBackup({ target: join(root, 'busy-backup'), databaseUrl: source, filesRoot, schemaVersion: 50 }), /活动任务/);
   await admin.query("UPDATE workpivot.tasks SET status='idle' WHERE id=$1", [task.id]);
   check(true, '活动任务阻止备份并释放锁');
   await app.end(); await auth.end();
@@ -182,7 +182,7 @@ try {
   check(!(await readdir(root)).some(name => name.includes('.partial-')), '失败恢复清理临时文件目录');
   await admin.query('CREATE ROLE wp_restore_missing; GRANT SELECT ON workpivot.projects TO wp_restore_missing');
   const lateFailure = join(root, 'late-failure');
-  await createBackup({ target: lateFailure, databaseUrl: source, filesRoot, schemaVersion: 49 });
+  await createBackup({ target: lateFailure, databaseUrl: source, filesRoot, schemaVersion: 50 });
   await admin.query('REVOKE SELECT ON workpivot.projects FROM wp_restore_missing; DROP ROLE wp_restore_missing');
   await admin.query('CREATE DATABASE late_restore_test');
   const lateFiles = join(root, 'late_restore_test');

@@ -273,3 +273,15 @@ schema39下网页数据库专项22项通过；旧URL迁移测试直接重放v38�
 `node eval/local-release.mjs`默认使用本轮schema49候选与schema38源镜像，16项通过。新增有效/过期网页登录租约准入、独立401保护检查；无写入回退和写入后拒绝回退均实际执行。候选构建包含web生产构建及镜像内767项严格许可扫描。`pnpm exec eslint scripts/release-local.mjs eval/local-release.mjs`及脚本语法、差异检查通过。本次未重复全库770项，不以历史回归冒充本次执行；未更新业务容器。
 
 同日最终浏览器容器补验：`eval/browser-login.mts`可通过`WORKPIVOT_BROWSER_EXECUTABLE_PATH`选择容器Chromium路径，默认宿主路径保持。候选容器使用`--network none --read-only --user 1000:1000 --cap-drop ALL`、既有seccomp、no-new-privileges、512MiB临时目录及256MiB共享内存。仅只读挂载测试文件至`/app/eval/browser-login.mts`，执行`node --import tsx eval/browser-login.mts`；最终镜像源码未覆盖。双Cookie、localStorage、一次POST、未授权跳转和307不重发通过。容器测试曾揭露3xx后不再拦截及跳转截图超时问题，修复后重新构建API/浏览器候选，不以宿主通过替代容器结果。网页数据库69项复验通过。
+
+### 2026-10-19 IAM独立协议实验
+
+`pnpm iam:lab start|status|stop`管理专用Keycloak26.8.0测试容器，`pnpm eval:iam-lab`使用真实Chromium完成21项授权码/PKCE和ID Token正反例。40190仅loopback，40191仅验收接收器临时监听；随机合成凭据位于被Git忽略的`local-runtime/iam-lab`，禁止复制至测试输出。
+
+本次21项通过，另检查重复启动返回ready、目录0700/文件0600、loopback端口、专用标记和无业务卷挂载。相同邮箱/用户名的两个realm使用不同Keycloak内部ID（其单实例主键要求唯一）；跨issuer验收以有效签名令牌不匹配预期issuer被拒绝为证据，不能宣称已验证WorkPivot外部映射数据库唯一性。实验RS256验证器仅位于eval，不被生产导入。脚本语法、定向lint、差异检查通过，未执行业务全库回归。设计与运行方法见企业身份通用设计文档。
+
+### 2026-10-19 模型上下文容量
+
+`pnpm eval:database` 包含 `model-capacity.mts`：元数据总窗口识别、失败保留、重定向凭据保护、修订冲突、私人隔离与容量审计；`database-compaction.mts` 包含少于五轮的长历史整理、长轮次来源分片、当前输入与历史超限区分。最新777项通过；`pnpm eval:backup-database` schema50联合恢复49项通过。容量计量是含余量的启发式Token估算，并非供应商分词器或百万Token实测。
+
+2026-10-19 用户取消私人网页登录页面：`browser-profiles-ui.mjs` 改为旧路由兼容、入口移除和不调用登录配置接口的检查；不再声称当前前端提供创建、人工登录与撤销页面。后台相关专项继续保留。

@@ -221,3 +221,39 @@ schema43本次验证：完整数据库770项、网页数据库52项、集中出�
 配套浏览器候选`workpivot-browser:local-schema49-20261019`已构建，镜像ID `sha256:042c59cfa67c8e2feedc27003c5d1c27deb4e77794b705f24f2bdd838b4f3540`。构建入口同上，将镜像名前缀改为workpivot-browser；使用`Dockerfile.local-browser-current`及本机已有许可整改后的Chromium基础镜像，不是任意主机的在线安装器。候选镜像在network none、非root、只读根目录、cap_drop、固定seccomp及资源限制下通过人工登录专项；只挂载测试脚本，没有覆盖镜像业务源码。没有提交、推送或更新本地业务部署。
 
 登录专项在容器中复现了宿主测试未暴露的3xx跳转失败。依据[Playwright重定向说明](https://playwright.dev/docs/network#redirects)，人工接管的顶层301/302/303（及GET的307/308）改为新的GET导航，逐URL重新校验，保留站点Cookie；未批准目标阻止。要求重发POST的307/308不支持，画面明确提示且不重发凭据；子资源/iframe跳转不借此扩大兼容范围。跳转中的截图表面不可用或超时只作有界截图重试，不重放点击和提交。宿主与最终浏览器镜像均验证双Cookie、localStorage、POST仅一次、未授权目标和307不重发。
+
+### 2026-10-19 本地实际部署：schema49
+
+按用户要求完成本地部署，发布号`r1792393184347`，访问地址`http://127.0.0.1:39986/`。API使用`workpivot-server:local-schema49-20261019`（ID `sha256:269ffd0d953b77b3f708f4cecd3ea8c4fa7ebb9284cf961f5b0995ef0627ec02`），浏览器使用同日schema49镜像（ID `sha256:042c59cfa67c8e2feedc27003c5d1c27deb4e77794b705f24f2bdd838b4f3540`）。浏览器Compose默认镜像已同步更新。
+
+发布前预检无活动任务/接管租约，先停止API、更新浏览器，再通过受保护入口备份并迁移副本。当前数据库`wp_r1792393184347`，文件卷`workpivot-local-r1792393184347-files`。升级前联合备份在`local-runtime/releases/r1792393184347/backup`；旧schema38库`wp_r1792312118575`和原文件卷保留。浏览器旧Compose配置另保留在`local-runtime/pre-schema49-20261019`。
+
+沿用现有单机内置调度和宿主Worker，没有启用额外scheduler/控制器实例。宿主`workpivot-local-worker.service`已重启加载当前脚本，执行镜像改为已验收的`workpivot-executor:license-20261018`，旧受保护Worker配置在升级备份中保留。现有Ollama及模型卷不变。IAM实验容器保持独立，尚未启用WorkPivot第三方登录。
+
+现场检查：API/浏览器容器健康；首页、管理页、健康和登录状态接口200；任务、私人登录配置、审计及内网管理接口未认证均401；API至浏览器健康200、至Worker `/v1/health` 200。经实际Worker执行隔离Python算式输出42、无业务文件输入及产物发布，成功完成。最初误用Worker `/health`得到404，改用正式`/v1/health`复核通过；重启后的短暂拒绝连接经就绪等待后恢复，未当成测试成功。
+
+原库和新库核对均为1个用户、7个任务、2个文档版本、2个自动化计划；发布入口已核对原件哈希。浏览器页面停留在正常登录页，本次没有取得用户凭据进行已登录页面的逐项现场验收；新增界面和完整工作流沿用此前隔离验收记录，不能将其写成本次现场测试。
+
+发布后鉴权探测已产生审计写入，不能直接假定仍可无写入回退。若需恢复，按既有联合备份/保留清单流程核对新写入，并配套恢复浏览器和Worker配置；不要直接运行旧基础Compose指向旧库。本轮仅本地部署，无远程服务器发布、Git提交或推送。
+
+### 2026-10-19 模型容量与上下文整理修复
+
+本地发布 `r1792395960999`，schema50，镜像 `workpivot-server:local-model-context-20261019`（`sha256:524f53ea1ba8b98bbf1dc100ebaad0c949a7ce9bab7f16ecbe8a88fb5f256875`）。受保护发布流程保留上版schema49数据库及文件备份，目录 `local-runtime/releases/r1792395960999/backup`；当前数据副本为 `wp_r1792395960999` 和 `workpivot-local-r1792395960999-files`。服务健康检查通过。没有改动浏览器、Worker及向量模型部署。
+
+发布后通过管理员接口对当前 `deepseek-flash` 同步容量，真实 `/v1/models` 返回1048576 tokens，已保存为接口来源并写入容量审计（原值65536）。真实模型诊断通过，验证登录会话已退出。此次没有发送百万Token请求。模型配置和审计已产生新写入，回退时须先保护新增数据，不能直接切回旧数据副本。
+
+使用入口：管理后台 → 模型管理 → 同步模型容量；“编辑”可手工覆盖，“容量修改记录”显示最近50条记录。不支持元数据的接口不自动猜测容量，保留现值供手工配置。参数存数据库，无需修改独立配置文件。未提交或推送。
+
+### 2026-10-19 导航与自动化界面更新
+
+发布 `r1792398314701`，schema50不变，镜像 `workpivot-server:local-navigation-style-20261019`（`sha256:ba9fb8107bb094ff98e959224ab8062c32668d7c92de07103ce818dd01e2847c`）。在上一版模型上下文修复镜像上仅更新前端。备份目录 `local-runtime/releases/r1792398314701/backup`；当前数据库 `wp_r1792398314701`、文件卷 `workpivot-local-r1792398314701-files`。健康检查通过，HTTP首页与本次构建一致。发布前保留现有模型配置、账号及业务资料；未提交、推送。
+
+### 2026-10-19 移除私人网页登录页面
+
+本地发布 `r1792398740548`，schema50；镜像 `workpivot-server:local-remove-login-20261019`（`sha256:01bfa4955dc551bb5aba1ac37c92bace8427fdfea36729d637b194458e88c2da`）。当前数据库 `wp_r1792398740548`，文件卷 `workpivot-local-r1792398740548-files`；升级备份位于 `local-runtime/releases/r1792398740548/backup`。仅替换前端；已验证HTTP首页与本次构建一致及服务健康。移除页面不清理已有登录配置及业务计划。未提交、推送。
+
+### 2026-10-19 累计改动提交与本地重建
+
+本次归档模型上下文容量/摘要、统一界面与导航、私人登录页面移除，以及IAM通用设计和隔离实验环境。提交前重新执行：全工程类型检查、lint、Web正式构建、页面移除兼容浏览器检查、数据库777项、联合备份恢复49项、OIDC实验21项及767个依赖的严格许可检查，均通过；敏感模式扫描和差异检查通过。
+
+提交后使用 `build-local-release.mjs` 从该提交构建 `workpivot-server:local-submitted-20261019`，按受保护发布流程部署。精确代码提交写入镜像 `/app/release.json`；本机当前发布编号、镜像和备份路径由 `local-runtime/releases` 发布记录保存，使用 `release-local.mjs status local-runtime/release-local.json` 查询运行状态。保留既有数据库/文件及模型容量设置。IAM仍为独立实验，未接入业务登录；Token计量仍为启发式估算，未做百万Token真实验收。

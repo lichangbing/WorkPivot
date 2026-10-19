@@ -62,11 +62,11 @@ export async function testCompaction(db:Pool,actor:string,foreign:string,check:(
  const auto=new CompactionService(db,async()=>model,24000);
  const duplicate=(await transaction(db,c=>c.query('SELECT request_id FROM workpivot.task_runs WHERE task_id=$1 LIMIT 1',[automatic.id]),actor)).rows[0];
  await auto.guard(actor,automatic.id,'x'.repeat(30000),{},duplicate.request_id);check(true,'retry of existing run bypasses compaction gate without creating another job');
- await assert.rejects(auto.guard(actor,automatic.id,'x'.repeat(6000),{}));
+ await assert.rejects(auto.guard(actor,automatic.id,'x'.repeat(21000),{}));
  check((await transaction(db,c=>c.query('SELECT id FROM workpivot.task_runs WHERE task_id=$1',[automatic.id]),actor)).rowCount===8,'automatic trigger does not create or consume the unsent user message');
  let autoRow;for(let i=0;i<100;i++){autoRow=(await auto.list(actor,automatic.id))[0];if(autoRow?.status==='pending')break;await new Promise(r=>setTimeout(r,10));}
  assert(autoRow?.status==='pending');await auto.decide(actor,automatic.id,autoRow.id,autoRow.revision,true);
- await auto.guard(actor,automatic.id,'x'.repeat(6000),{});check(true,'confirmed compaction brings next turn within conservative budget');
+ await auto.guard(actor,automatic.id,'x'.repeat(21000),{});check(true,'confirmed compaction brings next turn within conservative budget');
  await workspace.deleteTask(actor,automatic.id,(await workspace.listTasks(actor)).find(t=>t.id===automatic.id)!.revision);
  const large=await workspace.createTask(actor,'batch summary');
  for(let i=0;i<15;i++){const r=await runs.start(actor,large.id,randomUUID(),'turn-'+i+'a'.repeat(650));await runs.finish(actor,r,'completed',[{role:'assistant',content:'b'.repeat(650)}]);}
@@ -82,6 +82,19 @@ export async function testCompaction(db:Pool,actor:string,foreign:string,check:(
  capacity=100000;await batchService.guard(actor,large.id,'extra'.repeat(1000),{});check(true,'changed model capacity applies on next guard');
  const paired:ChatMessage[]=[{role:'user',content:'tool turn'},{role:'assistant',content:null,tool_calls:[{id:'call',type:'function',function:{name:'read',arguments:'{}'}}]},{role:'tool',tool_call_id:'call',content:'result'}];
  const pairedPlan=summaryBatches([...paired,...paired],12000);check(pairedPlan.batches.every(b=>b.filter(m=>m.role==='tool').length===b.filter(m=>m.tool_calls).length),'batch boundaries preserve tool call/result pairs');
- assert.throws(()=>summaryBatches([{role:'user',content:'x'.repeat(12000)}],12000));check(true,'single oversized turn is rejected without silently splitting protocol');
+ const fragments=summaryBatches([{role:'user',content:'[来源:'+randomUUID()+']'+ 'x'.repeat(12000)}],12000);check(fragments.batches.length>1&&fragments.batches.flat().every(m=>m.role==='user'&&m.content?.includes('历史资料片段')),'oversized summary input is split as source-labelled data without changing replay protocol');
+ const shortTask=await workspace.createTask(actor,'single long turn');
+ const shortRun=await runs.start(actor,shortTask.id,randomUUID(),'长文资料');
+ await runs.finish(actor,shortRun,'completed',[{role:'assistant',content:'x'.repeat(40000)}]);
+ const adaptive=new CompactionService(db,async()=>model,24000);
+ await assert.rejects(adaptive.guard(actor,shortTask.id,'继续',{}));
+ let shortRow;for(let i=0;i<200;i++){shortRow=(await adaptive.list(actor,shortTask.id))[0];if(shortRow?.status!=='generating')break;await new Promise(r=>setTimeout(r,10));}
+ assert.equal(shortRow.status,'pending');assert.equal(shortRow.turns,1);
+ await adaptive.decide(actor,shortTask.id,shortRow.id,shortRow.revision,true);
+ await adaptive.guard(actor,shortTask.id,'继续',{});
+ check(true,'只有一轮长历史也能分批整理并确认后继续，不要求新建任务');
+ const blocked=await workspace.createTask(actor,'fixed input budget');
+ await assert.rejects(adaptive.guard(actor,blocked.id,'x'.repeat(100000),{}),/当前输入、系统提示和工具定义/);
+ check((await adaptive.list(actor,blocked.id)).length===0,'当前输入自身超限准确提示且不生成无效摘要');
  await workspace.deleteTask(actor,large.id,(await workspace.listTasks(actor)).find(t=>t.id===large.id)!.revision);
 }

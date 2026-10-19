@@ -1,3 +1,4 @@
+import {contextBytes,estimateContextTokens,maxContextBytes,maxContextTokens,outputReserveTokens} from './context-budget.js';
 import {BrowserProfiles} from './browser-profiles.js';
 import {registerDatabaseTools} from './tool-policy.js';
 import { BrowserWorkspace } from '../web/browser-workspace.js';
@@ -10,7 +11,7 @@ import { SkillBuilds } from './skill-builds.js';
 import { KnowledgeRepository } from './knowledge.js';
 import {Experts} from './experts.js';
 import {ExpertWorker} from './expert-worker.js';
-import { CompactionService, contextBytes, defaultContextBudget } from './compaction.js';
+import { CompactionService, defaultContextBudget } from './compaction.js';
 import { DocumentProcessing } from './document-processing.js';
 import { DatabaseModelService } from './model-service.js';
 import { recoverExecutions } from './execution-recovery.js';
@@ -50,8 +51,8 @@ export async function createDatabaseRuntime(auth: Pool, db: Pool, options: { ini
   const suggestions = new MemorySuggestions(db);
   const worker = new MemoryWorker(db, (actor,taskId) => models.client(actor,{source:'memory',taskId}));
   const experts=new Experts(db),expertWorker=new ExpertWorker(db,(actor,taskId)=>models.client(actor,{source:'expert',taskId}));
-  const contextCeiling=Number(process.env['WORKPIVOT_CONTEXT_BUDGET']??1000000);
-  if(!Number.isSafeInteger(contextCeiling)||contextCeiling<12000||contextCeiling>1000000)throw Error('上下文全局上限配置无效');
+  const contextCeiling=Number(process.env['WORKPIVOT_CONTEXT_BUDGET']??maxContextTokens);
+  if(!Number.isSafeInteger(contextCeiling)||contextCeiling<12000||contextCeiling>maxContextTokens)throw Error('上下文全局上限配置无效');
   const budgetFor=async(actor:string)=>Math.min(contextCeiling,(await models.client(actor)).contextBudget);
   const execution = new DatabaseExecution(db, async (actor, taskId, context) => {
     const available = (await skills.market(actor)).filter(s => s.loaded);
@@ -79,7 +80,8 @@ export async function createDatabaseRuntime(auth: Pool, db: Pool, options: { ini
       if(context.run)await execution.runs.checkResources(actor,context.run,scope);
       const currentExpert=scope.expert?await experts.context(actor,taskId):null;
       if(currentExpert?.id!==expert?.id||currentExpert?.revision!==expert?.revision)throw Error('专家已变化，请重新发送');
-      if(contextBytes(args[0])+contextBytes(args[1])+8192>contextBudget)throw Error('本轮工具结果或上下文超过保守预算，请缩小任务后继续');
+      if(contextBytes(args[0])+contextBytes(args[1])>maxContextBytes)throw Error('本轮上下文超过本地16MiB请求限制，请缩小读取范围');
+      if(estimateContextTokens(args[0])+estimateContextTokens(args[1])+outputReserveTokens>contextBudget)throw Error('本轮工具结果或上下文超过模型Token估算预算，请缩小读取范围或整理历史');
       if (await suggestions.epoch(actor) !== epoch) throw Error('记忆已变更，请重新发送以读取最新内容');
       for await (const event of client.streamChat(...args)) { if (await suggestions.epoch(actor) !== epoch) throw Error('记忆已变更，本轮已停止'); yield event; }
     } }, tools: registerDatabaseTools([...web.tools((name,data,signal)=>files.upload(actor,taskId,name,data,randomUUID(),undefined,undefined,'artifact',signal,c=>publicationGuard('browser_visit')(c,{})),undefined,browserWorkspace.key(actor,taskId)), ...chatAutomations.tools(actor,taskId,()=>context.run,scope), ...chatBuilds.tools(actor,taskId,()=>context.run), ...(scope.expert?experts.tools(actor,taskId):[]), ...knowledge.tools(actor,taskId,scope.versionIds), ...(options.worker ? [new DatabaseSkillExecution(db, files, skills, options.worker, () => context.run,publicationGuard('execute_skill')).tool(actor, taskId, new Map(available.map(s => [s.name,s.version])))] : []), ...new DatabaseArtifactTools(files,scope.versionIds,publicationGuard('save_artifact')).tools(actor, taskId), ...new DatabaseFileTools(files,documentProcessing,scope.versionIds).tools(actor, taskId), ...externalTools, ...new DatabaseMemoryTools(db,'load',scope.memoryScopes).tools(actor, taskId), ...skills.tools(actor, new Map(available.map(s => [s.name, s.version])))],new Set(externalTools.map(t=>t.name))), taskDir: '.', filePolicy: () => false,

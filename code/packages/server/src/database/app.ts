@@ -193,6 +193,8 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     };
     app.get('/api/providers', async (_req, res) => { res.json({ providers: await providers.list(actor(res).id) }); });
     app.post('/api/providers', async (req, res) => { res.json({ provider: await providers.save(actor(res).id, input(req)) }); });
+    app.post('/api/providers/:id/capacity/sync',async(req,res)=>{res.json({provider:await providers.syncCapacity(actor(res).id,str(req.params['id']),num(body(req).revision))});});
+    app.get('/api/providers/:id/capacity/audit',async(req,res)=>{res.json({entries:await providers.capacityAudit(actor(res).id,str(req.params['id']))});});
     app.post('/api/providers/:id/test',async(req,res)=>{res.json(await providers.diagnose(actor(res).id,str(req.params['id']),num(body(req).revision)));});
     app.put('/api/providers/:id', async (req, res) => { res.json({ provider: await providers.save(actor(res).id, input(req), str(req.params['id']), num(body(req).revision)) }); });
     app.post('/api/providers/active', async (req, res) => { await providers.activate(actor(res).id, str(body(req).id), num(body(req).revision), true); res.json({ ok: true }); });
