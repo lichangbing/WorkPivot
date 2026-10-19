@@ -52,6 +52,9 @@
     "dev:database": "tsx scripts/postgres-preview.mts",
     "eval:automations": "node scripts/test-automations.mjs",
     "eval:model-usage": "node --import tsx eval/model-usage.mts",
+    "eval:controller": "node eval/container-controller.mjs",
+    "eval:admin-monitor-ui": "node eval/admin-monitor-ui.mjs",
+    "eval:ppt-content": "node --import tsx eval/ppt-content.mts",
     "eval:office-container": "node --import tsx eval/office-container.mts",
     "eval:office-editing": "node --import tsx eval/office-editing.mts",
     "eval:office-generation": "node --import tsx eval/office-generation.mts",
@@ -65,7 +68,10 @@
     "eval:trash": "node scripts/test-trash.mjs",
     "eval:web": "node --import tsx eval/web-tools.mts",
     "eval:web-browser": "node --import tsx eval/web-tools.mts --browser",
-    "eval:web-database": "node scripts/test-automations.mjs --web"
+    "eval:web-database": "node scripts/test-automations.mjs --web",
+    "eval:web-quota": "node --import tsx eval/web-quota.mts",
+    "eval:automation-capacity": "node scripts/test-automations.mjs --capacity",
+    "eval:automation-capacity-ui": "node eval/automation-capacity-ui.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

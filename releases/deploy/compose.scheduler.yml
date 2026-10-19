@@ -1,0 +1,38 @@
+# 将此配置与当前活动发布配置叠加，避免重新指向旧数据库/文件卷。
+services:
+  server:
+    environment:
+      WORKPIVOT_AUTOMATION_MODE: external
+  scheduler:
+    image: "${WORKPIVOT_SCHEDULER_IMAGE:?请使用与API相同版本的镜像}"
+    command: ["./node_modules/.bin/tsx", "scripts/automation-service.mts"]
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1
+    tmpfs:
+      - "/tmp:rw,nosuid,nodev,size=32m,uid=1000,gid=1000"
+    env_file:
+      - "${WORKPIVOT_SCHEDULER_ENV:?请提供调度专用受保护配置文件}"
+    volumes:
+      - type: volume
+        source: scheduler_files
+        target: /data/files
+        volume:
+          nocopy: true
+    networks: [default, control, browser]
+volumes:
+  scheduler_files:
+    external: true
+    name: "${WORKPIVOT_ACTIVE_FILES_VOLUME:?必须指向当前活动文件卷}"
+networks:
+  browser:
+    external: true
+    name: "${WORKPIVOT_BROWSER_NETWORK:?请配置与API共用的单实例采集服务网络}"
+  control:
+    external: true
+    name: "${WORKPIVOT_CONTROL_NETWORK:?请配置与控制器相同的专用网络}"

@@ -8,19 +8,22 @@ import {captureAutomation,recycleExpert} from './personal-recycle.js';
 import {invalidateMemoryContext} from './memory-controls.js';
 
 // 固定白名单不包含身份、模型、MCP、授权令牌或系统配置表。
-const tables=['projects','tasks','messages','conversation_turns','conversation_events','documents','document_versions','memories','memory_revisions','memory_sources','experts','expert_experiences','skill_drafts','skill_releases','skill_builds','automations','automation_runs','trash_entries'] as const;
+const tables=['projects','tasks','messages','conversation_turns','conversation_events','documents','document_versions','memories','memory_revisions','memory_sources','experts','expert_experiences','skill_drafts','skill_releases','skill_builds','automations','automation_runs','capture_sources','capture_versions','capture_observations','trash_entries'] as const;
 const labels={projects:'项目',tasks:'对话与执行任务',documents:'文件',memories:'记忆',skill_drafts:'私人技能',experts:'私人专家',automations:'自动化任务'};
-const kept=['账号和登录会话','模型与MCP配置及凭据','系统和个人偏好设置','用量审计及已有回收站'];
+const kept=['账号和登录会话','模型、MCP与私人网页登录配置及凭据','系统和个人偏好设置','用量、管理和采集审计及已有回收站'];
 type Snapshot=Record<string,QueryResultRow[]>;
 const limit=100*1024*1024;
 /** 导出为可读归档；恢复业务数据使用回收站，不将归档宣称为数据库备份。 */
 export class PersonalData {
  constructor(private readonly db:Pool,private readonly files?:FileRepository){}
- private async snapshot(c:PoolClient):Promise<Snapshot>{
+ private async snapshot(c:PoolClient,includeOriginal=true):Promise<Snapshot>{
   const result:Snapshot={};let size=0;
   for(const table of tables){
    const where=table==='experts'?"AND NOT public":table==='expert_experiences'?"AND expert_id IN (SELECT id FROM workpivot.experts WHERE NOT public AND owner_user_id=workpivot.actor_id())":['skill_drafts','skill_releases'].includes(table)?"AND visibility='private'":'';
-   const rows=(await c.query(`SELECT * FROM workpivot.${table} WHERE owner_user_id=workpivot.actor_id() ${where} ORDER BY to_jsonb(${table})::text LIMIT 10001`)).rows;
+   // 清空预览使用原始存档哈希和大小，不把大字节数组复制进确认指纹。
+   const columns=table==='capture_versions'&&!includeOriginal?'id,owner_user_id,source_id,revision,content_hash,content,created_at,original_type,original_hash,original_kind,octet_length(original_body) AS original_bytes':'*';
+   const order=table==='capture_versions'?'id':`to_jsonb(${table})::text`;
+   const rows=(await c.query(`SELECT ${columns} FROM workpivot.${table} WHERE owner_user_id=workpivot.actor_id() ${where} ORDER BY ${order} LIMIT 10001`)).rows;
    size+=Buffer.byteLength(JSON.stringify(rows));
    if(rows.length>10000||size>limit)throw new RepositoryError(413,'数据超过单次个人归档上限，请使用管理员备份流程');
    result[table]=rows;
@@ -28,9 +31,9 @@ export class PersonalData {
   return result;
  }
  private async previewIn(c:PoolClient){
-  const snapshot=await this.snapshot(c);
+  const snapshot=await this.snapshot(c,false);
   const counts=Object.entries(labels).map(([table,label])=>({kind:table,label,count:snapshot[table]!.filter(r=>!r.deleted_at&&r.state!=='deleted').length}));
-  const active=(await c.query(`SELECT (SELECT count(*) FROM workpivot.tasks WHERE deleted_at IS NULL AND status IN ('queued','running','waiting'))+(SELECT count(*) FROM workpivot.task_runs WHERE status IN ('running','stopping'))+(SELECT count(*) FROM workpivot.automation_runs WHERE status IN ('queued','running'))+(SELECT count(*) FROM workpivot.skill_trials WHERE status='running') AS count`)).rows[0].count;
+  const active=(await c.query(`SELECT (SELECT count(*) FROM workpivot.tasks WHERE deleted_at IS NULL AND status IN ('queued','running','waiting'))+(SELECT count(*) FROM workpivot.task_runs WHERE status IN ('running','stopping'))+(SELECT count(*) FROM workpivot.automation_runs WHERE status IN ('queued','waiting_login','running'))+(SELECT count(*) FROM workpivot.skill_trials WHERE status='running') AS count`)).rows[0].count;
   return {fingerprint:createHash('sha256').update(JSON.stringify(snapshot)).digest('hex'),counts,active:Number(active),kept,retentionDays:30};
  }
  async preview(actor:string){return transaction(this.db,c=>this.previewIn(c),actor,true);}

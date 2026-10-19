@@ -85,7 +85,9 @@ export async function sanitizeRestoredDatabase(url: string) {
       UPDATE workpivot.embedding_spaces SET enabled=false,tested=false,revision=revision+1;
       UPDATE workpivot.embedding_jobs SET status='pending',fence=NULL,lease_until=NULL,attempts=0 WHERE status='running';
       UPDATE identity.sessions SET revoked_at=now() WHERE revoked_at IS NULL;
-      UPDATE workpivot.automation_runs SET status='interrupted',revoked=true,error='恢复备份后需重新确认',lease_until=NULL WHERE status IN ('queued','running');
+      UPDATE workpivot.automation_runs SET status='interrupted',revoked=true,error='恢复备份后需重新确认',lease_until=NULL WHERE status IN ('queued','waiting_login','running');
+      UPDATE workpivot.browser_profiles SET state_cipher=NULL,revoked_at=now(),lease_id=NULL,lease_kind=NULL,lease_until=NULL,revision=revision+1;
+      UPDATE workpivot.network_targets SET revoked_at=now() WHERE revoked_at IS NULL;
       UPDATE workpivot.automations SET state='paused',grant_id=NULL,next_at=NULL,draft=NULL,issue='恢复备份后需要重新确认启用' WHERE state<>'deleted';
       UPDATE workpivot.tasks SET status='interrupted' WHERE status IN ('running','waiting','queued');
       UPDATE workpivot.task_runs SET status='interrupted',stop_reason='offline_restore',lease_until=now(),finished_at=now() WHERE status IN ('running','stopping');

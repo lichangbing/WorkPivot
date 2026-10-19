@@ -56,7 +56,7 @@ export function parsingLimitations(extension: string): string[] {
     case '.xlsx': return [...common, '公式及缓存来自原文件，未重新计算；缓存可能缺失或过期，未解析图表及完整格式。'];
     case '.png': case '.jpg': case '.jpeg': case '.pdf': return [...common, '图片或扫描页（无文字PDF页）按资源上限尝试OCR；文字PDF页中的嵌入图片不额外识别。OCR可能漏识或误识，置信度不是准确率，不能依据完成状态判断每页均已识别。'];
     case '.docx': return [...common, '当前解析主要覆盖正文段落（包括表格内文字），不提供真实分页、完整表格样式、页眉页脚或图片识别。'];
-    case '.pptx': return [...common, '当前解析主要覆盖幻灯片文字，不包含完整图表数据、备注、动画及图片识别。'];
+    case '.pptx': return [...common, '当前解析覆盖幻灯片文字、备注及传统图表的系列缓存；缓存可能缺失或过期，未读取关联工作簿或刷新外部数据，多级分类、新式图表、动画及图片理解仍不完整。'];
     default: return common;
   }
 }

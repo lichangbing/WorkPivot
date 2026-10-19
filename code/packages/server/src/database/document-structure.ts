@@ -3,7 +3,10 @@ import { validateParsedParts } from './parsed-content.js';
 
 /** 对象编号只在同一不可变文件版本内有效，不作为跨版本编辑标识。 */
 export interface DocumentObject {
-  kind: 'paragraph' | 'table' | 'table-cell' | 'sheet' | 'cell' | 'merge' | 'slide' | 'shape';
+  kind: 'paragraph' | 'table' | 'table-cell' | 'sheet' | 'cell' | 'merge' | 'slide' | 'shape' | 'chart' | 'chart-point' | 'notes';
+  sourcePart?: string;
+  dataSource?: string;
+  seriesName?: string;
   slideNumber?: number;
   shapeId?: string;
   shapeType?: string;
@@ -41,11 +44,11 @@ export interface DocumentObject {
 export function validateDocumentObject(value: unknown): asserts value is DocumentObject {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('文档对象无效');
   const v = value as Record<string, unknown>;
-  if (!['paragraph', 'table', 'table-cell', 'sheet', 'cell', 'merge', 'slide', 'shape'].includes(String(v['kind']))) throw Error('文档对象类型无效');
+  if (!['paragraph', 'table', 'table-cell', 'sheet', 'cell', 'merge', 'slide', 'shape', 'chart', 'chart-point', 'notes'].includes(String(v['kind']))) throw Error('文档对象类型无效');
   for (const [key, item] of Object.entries(v)) {
     if (['row', 'column', 'columnSpan', 'slideNumber'].includes(key)) {
       if (!Number.isSafeInteger(item) || (item as number) < 1 || (item as number) > 1048576) throw Error('文档对象坐标无效');
-    } else if (!['kind', 'parent', 'sheet', 'verticalMerge', 'address', 'range', 'state', 'valueType', 'formula', 'formulaType', 'sharedIndex', 'formulaRange', 'cached', 'styleId', 'numberFormatId', 'numberFormatCode', 'tableName', 'tableRange', 'headerRow', 'dateSystem', 'rawValue', 'normalizedValue', 'conversionWarning', 'shapeId', 'shapeType', 'x', 'y', 'width', 'height'].includes(key) || typeof item !== 'string' || item.length > 32768) throw Error('文档对象属性无效');
+    } else if (!['kind', 'parent', 'sheet', 'verticalMerge', 'address', 'range', 'state', 'valueType', 'formula', 'formulaType', 'sharedIndex', 'formulaRange', 'cached', 'styleId', 'numberFormatId', 'numberFormatCode', 'tableName', 'tableRange', 'headerRow', 'dateSystem', 'rawValue', 'normalizedValue', 'conversionWarning', 'sourcePart', 'dataSource', 'seriesName', 'shapeId', 'shapeType', 'x', 'y', 'width', 'height'].includes(key) || typeof item !== 'string' || item.length > 32768) throw Error('文档对象属性无效');
   }
   if (v['parent'] !== undefined && (!(v['parent'] as string).length || (v['parent'] as string).length > 500)) throw Error('父对象编号无效');
   if (['sheet', 'cell', 'merge'].includes(String(v['kind'])) && (typeof v['sheet'] !== 'string' || !v['sheet'] || v['sheet'].length > 100)) throw Error('工作表名称无效');

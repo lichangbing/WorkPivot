@@ -1,3 +1,6 @@
+import {NetworkTargets} from '../packages/server/src/database/network-targets.js';
+import {Captures} from '../packages/server/src/database/captures.js';
+import {AdminOperations} from '../packages/server/src/database/admin-operations.js';
 import { UsageRepository } from '../packages/server/src/database/usage.js';
 import { parserFingerprint } from '../packages/server/src/database/document-parser.js';
 import {TrashRepository} from '../packages/server/src/database/trash.js';
@@ -65,7 +68,21 @@ try {
   let keptPlan=await plans.draft(owner.user.id,config,randomUUID());keptPlan=await plans.confirm(owner.user.id,keptPlan.id,keptPlan.revision,true);await plans.manual(owner.user.id,keptPlan.id,keptPlan.revision,randomUUID());
   const deletedPlan=await plans.draft(owner.user.id,{...config,name:'备份后删除的计划'},randomUUID());
   await admin.query("INSERT INTO workpivot.document_processing(version_id,owner_user_id,status,parts,parser_fingerprint,coverage,warnings) VALUES($1,$2,'completed',$3,$4,'partial',$5)",[v2.id,owner.user.id,JSON.stringify([{location:'page:1',text:'合成解析结果'}]),parserFingerprint,JSON.stringify(['第2页未识别'])]);
-  await createBackup({ target: backupRoot, databaseUrl: source, filesRoot, schemaVersion: 38 });
+  await new AdminOperations(auth,app).setCapacity(owner.token,owner.user.id,{enabledLimit:12,queuedLimit:6,revision:0,requestId:randomUUID(),reason:'合成备份额度审计'});
+  await assert.rejects(new AdminOperations(auth,app).setCapacity(owner.token,owner.user.id,{}));
+  const captureSource=randomUUID(),captureVersion=randomUUID(),captureRun=randomUUID();
+  await admin.query("INSERT INTO workpivot.capture_sources(id,owner_user_id,plan_id,source_key,revision,current_version,content_hash) VALUES($1,$2,$3,'synthetic',1,$4,'synthetic')",[captureSource,owner.user.id,keptPlan.id,captureVersion]);
+  await admin.query("INSERT INTO workpivot.capture_versions(id,owner_user_id,source_id,revision,content_hash,content) VALUES($1,$2,$3,1,'synthetic',$4)",[captureVersion,owner.user.id,captureSource,{url:'https://fixture.example/',title:'备份合成快照',text:'恢复后仍可读取合成正文',feed:{format:'rss',totalEntries:1,entries:[{id:'retained-entry',title:'合成订阅条目',url:'https://fixture.example/article',published:'2026-10-18',summary:'合成条目摘要'}]}}]);
+  await admin.query("INSERT INTO workpivot.automation_runs(id,owner_user_id,plan_id,config,grant_id,plan_revision,scheduled_for,status) VALUES($1,$2,$3,$4,$5,1,now(),'completed')",[captureRun,owner.user.id,keptPlan.id,config,randomUUID()]);
+  await admin.query("INSERT INTO workpivot.capture_observations(owner_user_id,run_id,version_id,request_key,changed,retry_count) VALUES($1,$2,$3,'synthetic',true,2)",[owner.user.id,captureRun,captureVersion]);
+  await admin.query("INSERT INTO workpivot.capture_audit(owner_user_id,actor_id,plan_id,version_id,run_id,action,retry_count) VALUES($1,$1,$2,$3,$4,'new_version',2)",[owner.user.id,keptPlan.id,captureVersion,captureRun]);
+  const loginProfile=randomUUID();await admin.query("INSERT INTO workpivot.browser_profiles(id,owner_user_id,name,login_url,urls,state_cipher,lease_id,lease_kind,lease_until) VALUES($1,$2,'备份登录配置','https://fixture.example/login','[\"https://fixture.example/login\"]',$3,$4,'manual',now()+interval '20 minutes')",[loginProfile,owner.user.id,{enc:'aes-256-gcm',data:'synthetic-encrypted-state'},randomUUID()]);
+  const auditRequest=randomUUID();await auth.query("INSERT INTO identity.request_audit(id,actor_id,method,area) VALUES($1,$2,'POST','tasks')",[auditRequest,owner.user.id]);
+  await auth.query("INSERT INTO identity.request_audit_results(request_id,status,outcome) VALUES($1,403,'responded')",[auditRequest]);
+  await auth.query("INSERT INTO identity.request_audit_cleanups(actor_id,before_date,removed,fingerprint) VALUES($1,'2020-01-01',1,'synthetic')",[owner.user.id]);
+  const networkRule=await new NetworkTargets(auth,app).approve(owner.token,owner.user.id,{url:'https://oa.internal/report',address:'10.20.30.40'});
+  const rawCapture=Buffer.from('<rss>备份原始正文</rss>');await admin.query("UPDATE workpivot.capture_versions SET original_body=$2,original_type=$3,original_hash=$4,original_kind='dom' WHERE id=$1",[captureVersion,rawCapture,'application/rss+xml',createHash('sha256').update(rawCapture).digest('hex')]);
+  await createBackup({ target: backupRoot, databaseUrl: source, filesRoot, schemaVersion: 49 });
   const manifest = await verifyBackup(backupRoot);
   check(manifest.totals.files === 5, '真实 pg_dump 与在线/回收站五份版本文件打包校验');
   check(!(await readFile(join(backupRoot, 'manifest.json'), 'utf8')).includes(new URL(source).password), '清单不包含数据库密码');
@@ -75,7 +92,7 @@ try {
   await skillBuilds.lifecycle(owner.user.id,deletedSkill.id,deletedSkill.draftRevision,'delete');
   const latest = await files.upload(owner.user.id, task.id, '成果.txt', Buffer.from('备份之后的新成果'), randomUUID(), artifact.documentId, 1, 'artifact');
   await admin.query("UPDATE workpivot.tasks SET status='running' WHERE id=$1", [task.id]);
-  await assert.rejects(createBackup({ target: join(root, 'busy-backup'), databaseUrl: source, filesRoot, schemaVersion: 38 }), /活动任务/);
+  await assert.rejects(createBackup({ target: join(root, 'busy-backup'), databaseUrl: source, filesRoot, schemaVersion: 49 }), /活动任务/);
   await admin.query("UPDATE workpivot.tasks SET status='idle' WHERE id=$1", [task.id]);
   check(true, '活动任务阻止备份并释放锁');
   await app.end(); await auth.end();
@@ -88,12 +105,22 @@ try {
   try {
     await assertRestrictedRole(restoredApp, 'workpivot'); await assertRestrictedRole(restoredAuth, 'identity');
     check(true, '恢复授权及业务/身份运行角色隔离');
+    const restoredLogin=(await transaction(restoredApp,c=>c.query('SELECT state_cipher,revoked_at,lease_id FROM workpivot.browser_profiles WHERE id=$1',[loginProfile]),owner.user.id)).rows[0];check(restoredLogin.state_cipher===null&&restoredLogin.revoked_at&&restoredLogin.lease_id===null,'恢复备份清除登录态并撤销配置及人工接管租约');
+
+    check((await restoredAuth.query('SELECT r.status FROM identity.request_audit a JOIN identity.request_audit_results r ON r.request_id=a.id WHERE a.id=$1',[auditRequest])).rows[0]?.status===403,'联合恢复保留请求开始和响应关联');
+    check((await restoredAuth.query('SELECT removed FROM identity.request_audit_cleanups')).rows[0]?.removed===1,'联合恢复保留永久清理审计');
+    check(!!(await transaction(restoredApp,c=>c.query('SELECT revoked_at FROM workpivot.network_targets WHERE id=$1',[networkRule.id]),owner.user.id)).rows[0]?.revoked_at,'恢复后撤销内网授权，需要管理员重新批准');
+
     const restoredParsing=await transaction(restoredApp,c=>c.query('SELECT parser_fingerprint,coverage,warnings FROM workpivot.document_processing WHERE version_id=$1',[v2.id]),owner.user.id);
     check(restoredParsing.rows[0]?.parser_fingerprint===parserFingerprint&&restoredParsing.rows[0].coverage==='partial'&&restoredParsing.rows[0].warnings[0]==='第2页未识别','解析指纹和部分覆盖说明完整恢复');
 
     const restoredAccounts = new AccountRepository(restoredAuth), restoredWorkspace = new WorkspaceRepository(restoredApp), restoredRepository = new FileRepository(restoredApp, restoredFiles);
     check(await restoredAccounts.resolve(owner.token) === null, '旧会话已撤销');
     const login = await restoredAccounts.login('backup-owner', 'synthetic-password');
+    const restoredCapacity=await new AdminOperations(restoredAuth,restoredApp).capacity(login.token,owner.user.id);
+    const restoredAttempts=await new AdminOperations(restoredAuth,restoredApp).attempts(login.token,owner.user.id);
+    check(restoredAttempts.attempts.length===1&&restoredAttempts.attempts[0].category==='invalid_input','备份恢复保留失败审计且没有请求原文');
+    check(restoredCapacity.capacity.enabledLimit===12&&restoredCapacity.capacity.queuedLimit===6&&restoredCapacity.audit[0]?.reason==='合成备份额度审计','备份恢复保留管理员额度和成功变更审计');
     check(login.user.id === owner.user.id, '原密码登录恢复后的账户');
     check((await restoredAccounts.sessions(login.token)).length===1, '恢复后的会话列表只保留新登录');
     const restoredUsage = new UsageRepository(restoredApp);
@@ -112,9 +139,14 @@ try {
     check(!(await restoredTrash.list(owner.user.id)).entries.some(e=>e.id===purgedEntry.id),'旧备份不能复活后续永久删除的回收站原件');
     check((await restoredTrash.list(owner.user.id)).entries.some(e=>e.id===recycled.id),'真实备份恢复保留回收站条目');
     await restoredTrash.restore(owner.user.id,recycled.id,recycled.revision);check((await restoredRepository.download(owner.user.id,task.id,recycle.id)).data.toString()==='回收站原件正文','恢复备份后仍可还原回收站原件');
+    const captureRows=await transaction(restoredApp,c=>c.query('SELECT content,original_kind FROM workpivot.capture_versions WHERE id=$1',[captureVersion]),owner.user.id);
+    check(captureRows.rows[0]?.content.text==='恢复后仍可读取合成正文'&&captureRows.rows[0]?.content.feed.entries[0]?.id==='retained-entry'&&captureRows.rows[0]?.original_kind==='dom','采集正文版本完整恢复');
+    const captureAudit=await new AdminOperations(restoredAuth,restoredApp).captures(login.token,owner.user.id);
+    check(captureAudit.counts.observations===1&&captureAudit.audit[0]?.versionId===captureVersion&&captureAudit.audit[0]?.retryCount===2,'采集记录与无正文审计关联完整恢复');
+    check((await new Captures(restoredApp).download(owner.user.id,keptPlan.id,captureVersion)).equals(rawCapture),'备份恢复后原始存档字节及完整性一致');
     const restoredPlans=new Automations(restoredApp,true), restoredPlan=await restoredPlans.detail(owner.user.id,keptPlan.id);
     check(restoredPlan.state==='paused'&&!restoredPlan.nextAt&&!restoredPlan.draft,'真实备份恢复保留自动化且撤销定时授权');
-    check(restoredPlan.runs[0]?.status==='interrupted','恢复后的排队运行不会继续执行');
+    check(restoredPlan.runs.find(run=>run.id!==captureRun)?.status==='interrupted'&&restoredPlan.runs.find(run=>run.id===captureRun)?.status==='completed','恢复后的排队运行不会继续执行');
     await assert.rejects(()=>restoredPlans.detail(owner.user.id,deletedPlan.id));check(true,'备份后删除的自动化不会复活');
     check(!(await restoredPlans.list(other.id)).length,'恢复后自动化仍按创建者隔离');
     const restoredBuilds=new SkillBuilds(restoredApp,restoredRepository);
@@ -150,7 +182,7 @@ try {
   check(!(await readdir(root)).some(name => name.includes('.partial-')), '失败恢复清理临时文件目录');
   await admin.query('CREATE ROLE wp_restore_missing; GRANT SELECT ON workpivot.projects TO wp_restore_missing');
   const lateFailure = join(root, 'late-failure');
-  await createBackup({ target: lateFailure, databaseUrl: source, filesRoot, schemaVersion: 38 });
+  await createBackup({ target: lateFailure, databaseUrl: source, filesRoot, schemaVersion: 49 });
   await admin.query('REVOKE SELECT ON workpivot.projects FROM wp_restore_missing; DROP ROLE wp_restore_missing');
   await admin.query('CREATE DATABASE late_restore_test');
   const lateFiles = join(root, 'late_restore_test');

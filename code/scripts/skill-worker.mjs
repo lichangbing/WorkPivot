@@ -1,11 +1,11 @@
-// 作为专用服务在 Docker 宿主运行，禁止向任何容器挂载套接字。
+// 作为专用宿主服务或容器控制器运行；只有控制器可持有 Docker socket，任务沙箱绝不挂载。
 import { createServer } from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdirSync, writeFileSync, rmSync, readdirSync, lstatSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, isAbsolute } from 'node:path';
 import { pathToFileURL } from 'node:url';
 const execute = promisify(execFile);
 const LIMIT = 16 * 1024 * 1024;
@@ -43,6 +43,7 @@ function exportFiles() {
 }
 export async function startWorker({ host = '127.0.0.1', port = 39990, token, image, timeoutMs = 120000, owner = OWNER, stateDir = join(tmpdir(), owner) }) {
   if (!token || token.length < 32 || !image) throw Error('Worker token and fixed image are required');
+  if (!isAbsolute(stateDir) || /[\x00-\x1f,]/.test(stateDir) || stateDir.split('/').some(part => part === '..' || part === '.')) throw Error('Worker state requires a clean absolute path');
   if (!/^[a-z0-9-]{1,64}$/.test(owner)) throw Error('Invalid worker instance');
   const docker = (args, signal, maxBuffer = 1024 * 1024) => execute('docker', args, { signal, timeout: timeoutMs + 10000, maxBuffer });
   await docker(['image', 'inspect', image]);
@@ -91,8 +92,18 @@ export async function startWorker({ host = '127.0.0.1', port = 39990, token, ima
       reply(400, { error: controller.signal.aborted ? '执行已停止或超时，未回写文件' : `执行失败，未回写文件${detail ? `：${detail}` : ''}` });
     } finally {
       clearTimeout(timer); res.removeListener('close', abort);
-      try { if (created) await docker(['rm', '-f', name]); if (directory) rmSync(directory, { recursive: true, force: true }); }
-      catch { console.error('Worker cleanup failed; TTL recovery will remove the sandbox'); }
+      try {
+        if (created) {
+          try { await docker(['rm', '-f', name]); }
+          catch (error) {
+            // --rm 容器可能已被 Docker 自动删除；确认不存在后仍需清理宿主暂存文件。
+            // 查询失败或容器仍存在时保留暂存，交由同实例重启恢复，不能假报清理成功。
+            const remaining = await docker(['ps', '-a', '--filter', `label=workpivot.worker=${owner}`, '--format', '{{.Names}}']);
+            if (remaining.stdout.trim().split('\n').includes(name)) throw error;
+          }
+        }
+        if (directory) rmSync(directory, { recursive: true, force: true });
+      } catch { console.error('Worker cleanup failed; restart this worker instance to recover its resources'); }
       active.delete(controller);
     }
   });
@@ -101,7 +112,7 @@ export async function startWorker({ host = '127.0.0.1', port = 39990, token, ima
   return { server, close: async () => { for (const controller of active) controller.abort(); await new Promise((resolve) => server.close(resolve)); } };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const worker = await startWorker({ owner: process.env.WORKPIVOT_WORKER_OWNER ?? OWNER, host: process.env.WORKPIVOT_WORKER_BIND ?? '127.0.0.1', port: Number(process.env.WORKPIVOT_WORKER_PORT ?? 39990), token: process.env.WORKPIVOT_WORKER_TOKEN, image: process.env.WORKPIVOT_WORKER_IMAGE });
+  const worker = await startWorker({ stateDir: process.env.WORKPIVOT_WORKER_STATE_DIR, owner: process.env.WORKPIVOT_WORKER_OWNER ?? OWNER, host: process.env.WORKPIVOT_WORKER_BIND ?? '127.0.0.1', port: Number(process.env.WORKPIVOT_WORKER_PORT ?? 39990), token: process.env.WORKPIVOT_WORKER_TOKEN, image: process.env.WORKPIVOT_WORKER_IMAGE });
   console.log('Skill worker ready');
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { void worker.close().then(() => process.exit(0)); });
 }

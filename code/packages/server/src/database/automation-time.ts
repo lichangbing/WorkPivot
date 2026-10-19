@@ -1,3 +1,5 @@
+import {isIP} from 'node:net';
+import {networkTarget} from '../web/network-target.js';
 import { webUrl } from '../web/safe-http.js';
 import { CronDate, CronExpressionParser } from 'cron-parser';
 import type { AutomationConfig } from '@workpivot/shared';
@@ -15,10 +17,14 @@ export function automationConfig(value:unknown):AutomationConfig {
  if(p.input.mode==='latest'&&(!p.projectId||!p.input.pattern.trim()||/[\\/\x00-\x1f]/.test(p.input.pattern)))return invalid('最新资料须限定项目和文件名匹配规则');
  if(!['once','skip'].includes(p.catchup)||!['issues','all'].includes(p.notify)||!Number.isInteger(p.timeoutMinutes)||p.timeoutMinutes<1||p.timeoutMinutes>30)return invalid('运行策略无效，超时范围为1至30分钟');
  if(p.webOrigins!==undefined&&(!Array.isArray(p.webOrigins)||p.webOrigins.length))return invalid('旧网页来源授权已失效，请填写完整 URL 并重新确认；离线执行请清空旧来源');
+ if(p.browserProfileId!==undefined)uuid(p.browserProfileId);
+ const networkGrantIds=p.networkGrantIds??[];
+ if(!Array.isArray(networkGrantIds)||networkGrantIds.length>20||new Set(networkGrantIds).size!==networkGrantIds.length)return invalid('内网授权最多20项且不能重复');
+ networkGrantIds.forEach(uuid);
  const rawUrls=p.webUrls??[];
  if(!Array.isArray(rawUrls)||rawUrls.length>20||rawUrls.some(v=>typeof v!=='string'))return invalid('完整网页地址最多20项');
  let webUrls:string[];
- try{webUrls=rawUrls.map(v=>v.trim()).filter(Boolean).map(v=>webUrl(v).href);}catch{return invalid('请填写有效的公网 HTTP/HTTPS 完整地址，包含路径和查询参数');}
+ try{webUrls=rawUrls.map(v=>v.trim()).filter(Boolean).map(v=>{try{return webUrl(v).href;}catch(error){if(!networkGrantIds.length)throw error;const parsed=new URL(v),host=parsed.hostname.replace(/^\[|\]$/g,'');return networkTarget({url:v,address:isIP(host)?host:'10.0.0.1'}).url;}});}catch{return invalid('请填写有效的公网 HTTP/HTTPS 完整地址，包含路径和查询参数');}
  if(new Set(webUrls).size!==webUrls.length)return invalid('完整网页地址不能重复');
  if(JSON.stringify(webUrls).length>12000)return invalid('网页地址列表过长');
  const t=p.timing;if(!t||!['once','daily','weekly','interval','cron'].includes(t.kind)||!text(t.zone,80)||!text(t.at,40,true)||!text(t.end,10,true)||!text(t.cron,100,true)||!Array.isArray(t.days))return invalid('时间规则无效');
@@ -36,7 +42,7 @@ export function automationConfig(value:unknown):AutomationConfig {
    for(let i=0;i<minutes.length;i++)if(minutes.length>1&&((minutes[(i+1)%minutes.length]!+60-minutes[i]!)%60)<5)return invalid('Cron 的分钟间隔不得小于5分钟');
   }
  }catch(e){if(e instanceof RepositoryError)throw e;return invalid('日期或周期表达式无效');}
- return {webUrls,name:p.name.trim(),skill:p.skill,releaseId:p.releaseId,projectId:p.projectId,requirements:p.requirements.trim(),input:{mode:p.input.mode,versionIds:p.input.mode==='fixed'?p.input.versionIds:[],pattern:p.input.mode==='latest'?p.input.pattern.trim():''},timing:t,catchup:p.catchup,notify:p.notify,timeoutMinutes:p.timeoutMinutes};
+ return {...(p.browserProfileId?{browserProfileId:p.browserProfileId}:{}),...(networkGrantIds.length?{networkGrantIds}:{}),webUrls,name:p.name.trim(),skill:p.skill,releaseId:p.releaseId,projectId:p.projectId,requirements:p.requirements.trim(),input:{mode:p.input.mode,versionIds:p.input.mode==='fixed'?p.input.versionIds:[],pattern:p.input.mode==='latest'?p.input.pattern.trim():''},timing:t,catchup:p.catchup,notify:p.notify,timeoutMinutes:p.timeoutMinutes};
 }
 export function nextAutomationTime(p:AutomationConfig,after:Date,anchor?:Date):Date|null {
  const t=p.timing;let result:Date;

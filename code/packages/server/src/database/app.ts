@@ -1,3 +1,7 @@
+import type {BrowserProfiles} from './browser-profiles.js';
+import {NetworkTargets} from './network-targets.js';
+import {requestAudit,RequestAudits} from './request-audit.js';
+import {AdminOperations} from './admin-operations.js';
 import {PersonalData} from './personal-data.js';
 import type { BrowserWorkspace } from '../web/browser-workspace.js';
 import type {Embeddings} from './embeddings.js';
@@ -34,12 +38,12 @@ import { API_PROTOCOL } from '@workpivot/shared';
 import type { FileRepository } from './files.js';
 
 /** K01 联调接口；各服务适配完成后接入生产界面。 */
-export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken: string, execution?: DatabaseExecution, providers?: ProviderRepository, mcp?: McpRepository, webDist?: string, files?: FileRepository, skillBuilds?: SkillBuilds, automations?: Automations, embeddings?: Embeddings, browserWorkspace?: BrowserWorkspace): Promise<Express> {
+export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken: string, execution?: DatabaseExecution, providers?: ProviderRepository, mcp?: McpRepository, webDist?: string, files?: FileRepository, skillBuilds?: SkillBuilds, automations?: Automations, embeddings?: Embeddings, browserWorkspace?: BrowserWorkspace,browserProfiles?:BrowserProfiles): Promise<Express> {
   await assertRestrictedRole(authPool, 'identity'); await assertRestrictedRole(appPool, 'workpivot');
   const accounts = new AccountRepository(authPool), workspace = new WorkspaceRepository(appPool);
   const conversation = new ConversationRepository(appPool);
   const notifications = new TaskNotifications(appPool);
-  const app = express(); app.disable('x-powered-by'); app.use(express.json({ limit: '1mb' }));
+  const app = express(); app.disable('x-powered-by'); app.use(requestAudit(authPool)); app.use(express.json({ limit: '1mb' }));
   app.get(['/admin', '/admin.html'], (_req, res) => { if (webDist) res.sendFile('admin.html', { root: webDist }); else res.status(503).send('管理页面尚未构建'); });
   app.use((_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
   const token = (req: Request): string => req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : '';
@@ -61,6 +65,16 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     if (user.mustChangePassword && !['/auth/password', '/auth/logout'].includes(req.path)) throw new RepositoryError(403, '请先修改临时密码');
     res.locals['user'] = user; next();
   });
+  if(browserProfiles){
+    app.get('/api/browser-profiles',async(_req,res)=>res.json(await browserProfiles.list(actor(res).id)));
+    app.post('/api/browser-profiles',async(req,res)=>res.json(await browserProfiles.create(actor(res).id,body(req))));
+    app.post('/api/browser-profiles/:id/open',async(req,res)=>res.json(await browserProfiles.open(actor(res).id,str(req.params['id']),num(body(req).revision))));
+    app.post('/api/browser-profiles/:id/frame',async(req,res)=>res.json(await browserProfiles.frame(actor(res).id,str(req.params['id']),str(body(req).leaseId))));
+    app.post('/api/browser-profiles/:id/command',async(req,res)=>res.json(await browserProfiles.command(actor(res).id,str(req.params['id']),str(body(req).leaseId),body(req))));
+    app.post('/api/browser-profiles/:id/save',async(req,res)=>res.json(await browserProfiles.save(actor(res).id,str(req.params['id']),str(body(req).leaseId))));
+    app.post('/api/browser-profiles/:id/cancel',async(req,res)=>res.json(await browserProfiles.cancel(actor(res).id,str(req.params['id']),str(body(req).leaseId))));
+    app.post('/api/browser-profiles/:id/revoke',async(req,res)=>res.json(await browserProfiles.revoke(actor(res).id,str(req.params['id']),num(body(req).revision))));
+  }
   if(browserWorkspace){
     app.get('/api/tasks/:id/browser',async(req,res)=>{res.json(await browserWorkspace.request(actor(res).id,str(req.params['id'])));});
     app.post('/api/tasks/:id/browser',async(req,res)=>{const controller=new AbortController();const cancel=()=>{if(!res.writableEnded)controller.abort();};res.on('close',cancel);try{res.json(await browserWorkspace.request(actor(res).id,str(req.params['id']),body(req),controller.signal));}finally{res.removeListener('close',cancel);}});
@@ -79,6 +93,27 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   app.post('/api/personal-data/clear',async(req,res)=>res.json(await personal.clear(actor(res).id,str(body(req).fingerprint),str(body(req).confirmation))));
   app.get('/api/personal-data/export',async(_req,res)=>{const data=await personal.export(actor(res).id);res.type('application/zip').setHeader('Content-Disposition','attachment; filename="workpivot-personal.zip"');res.send(data);});
   const trash=new TrashRepository(appPool,files);
+  const adminOperations=new AdminOperations(authPool,appPool);
+  const requestAudits=new RequestAudits(authPool);
+  const networkTargets=new NetworkTargets(authPool,appPool);
+  app.get('/api/admin/network-targets',async(req,res)=>res.json(await networkTargets.list(token(req),str(req.query['userId']))));
+  app.post('/api/admin/network-targets',async(req,res)=>res.json(await networkTargets.approve(token(req),str(body(req).userId),body(req))));
+  app.post('/api/admin/network-targets/:id/revoke',async(req,res)=>{const owner=str(body(req).userId);const result=await networkTargets.revoke(token(req),owner,str(req.params['id']));await browserProfiles?.reap(owner);res.json(result);});
+
+  app.get('/api/admin/request-audits/cleanup-preview',async(req,res)=>res.json(await requestAudits.cleanupPreview(token(req),req.query['before'])));
+  app.get('/api/admin/request-audits/cleanups',async(req,res)=>res.json({rows:await requestAudits.cleanups(token(req))}));
+  app.post('/api/admin/request-audits/cleanup',async(req,res)=>res.json(await requestAudits.cleanup(token(req),body(req))));
+  app.get('/api/admin/request-audits',async(req,res)=>res.json(await requestAudits.list(token(req),req.query)));
+  app.get('/api/admin/request-audits/export',async(req,res)=>{
+    const data=await requestAudits.list(token(req),req.query,true);
+    res.set({'Content-Type':'application/x-ndjson; charset=utf-8','Content-Disposition':'attachment; filename="workpivot-request-audit.jsonl"','X-Content-Type-Options':'nosniff'});
+    res.send(data.rows.map(row=>JSON.stringify(row)).join('\n')+'\n');
+  });
+  app.get('/api/admin/automation-capacity',async(req,res)=>res.json(await adminOperations.capacity(token(req),str(req.query['userId']),req.query['before']===undefined?undefined:Number(req.query['before']))));
+  app.get('/api/admin/captures',async(req,res)=>res.json(await adminOperations.captures(token(req),str(req.query['userId']),req.query['before']===undefined?undefined:str(req.query['before']))));
+  app.get('/api/admin/automation-attempts',async(req,res)=>res.json(await adminOperations.attempts(token(req),str(req.query['userId']),req.query['category']===undefined?undefined:str(req.query['category']),req.query['at']===undefined?undefined:str(req.query['at']),req.query['id']===undefined?undefined:str(req.query['id']))));
+  app.put('/api/admin/automation-capacity',async(req,res)=>{const value=body(req);res.json(await adminOperations.setCapacity(token(req),value.userId,value));});
+  app.get('/api/admin/operations',async(req,res)=>{res.json(await adminOperations.overview(token(req),str(req.query['userId']),str(req.query['month'])));});
   const usage=new UsageRepository(appPool);
   app.get('/api/usage/alerts',async(_req,res)=>{res.json({alerts:await usage.alerts(actor(res).id)});});
   app.get('/api/usage',async(req,res)=>{res.json(await usage.overview(actor(res).id,str(req.query['month']),req.query['taskId']===undefined?undefined:str(req.query['taskId'])));});

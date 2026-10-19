@@ -113,12 +113,67 @@ else:
      elif kind not in ('tcPr','tblPr','tblGrid','sectPr','del','moveFrom','pPr','rPr'): blocks(e,parent)
    blocks(root)
   elif ext=='.pptx':
-   root=xml(z,'ppt/presentation.xml'); rels={e.attrib['Id']:e.attrib['Target'] for e in xml(z,'ppt/_rels/presentation.xml.rels')}
+   def relationships(source):
+    relpath=posixpath.join(posixpath.dirname(source),'_rels',posixpath.basename(source)+'.rels')
+    result={}
+    if relpath not in z.namelist(): return result
+    for rel in xml(z,relpath):
+     key=rel.get('Id')
+     if not key or key in result: raise ValueError('invalid relationship identity')
+     result[key]=rel
+    return result
+   def resolve_part(source,rel):
+    target=rel.get('Target','')
+    if rel.get('TargetMode')=='External': raise ValueError('external relationship forbidden')
+    if not target or any(c in target for c in ('\\',':','?','#','%')): raise ValueError('invalid relationship target')
+    name=posixpath.normpath(target.lstrip('/') if target.startswith('/') else posixpath.join(posixpath.dirname(source),target))
+    if not name.startswith('ppt/') or name not in z.namelist(): raise ValueError('missing or unsafe relationship part')
+    return name
+   def direct(e,key): return next((c for c in e if local(c)==key),None) if e is not None else None
+   def rich_text(e): return '\n'.join(''.join(t.text or '' for t in p.iter() if local(t)=='t') for p in e.iter() if local(p)=='p') if e is not None else ''
+   def points(e):
+    if e is None: return {}
+    multi=next((c for c in e.iter() if local(c)=='multiLvlStrCache'),None)
+    if multi is not None:
+     levels=[c for c in multi if local(c)=='lvl']
+     if len(levels)!=1: warnings.append('多级图表分类尚未展开，请核对原图。');return {}
+     cache=levels[0]
+    else: cache=next((c for c in e.iter() if local(c) in ('strCache','numCache','strLit','numLit')),None)
+    if cache is None: return {}
+    result={}
+    for point in cache:
+     if local(point)!='pt': continue
+     index=point.get('idx','')
+     if not index.isdigit() or int(index)>20000 or int(index) in result: raise ValueError('invalid chart point index')
+     value=direct(point,'v');result[int(index)]=value.text or '' if value is not None else ''
+    return result
+   def chart_objects(source,rel,parent,number):
+    chart_id=parent+'/chart:'+str(number)
+    if rel is None or rel.get('TargetMode')=='External':
+     warnings.append(chart_id+'图表关系缺失或指向外部，未读取。');return
+    chart_name=resolve_part(source,rel); chart=xml(z,chart_name)
+    title=rich_text(next((e for e in chart.iter() if local(e)=='title'),None))
+    add(chart_id,'图表 '+title,{'kind':'chart','parent':parent,'slideNumber':i+1,'sourcePart':chart_name,'dataSource':'stored-chart-cache'})
+    warnings.append(chart_id+'数值来自文件内图表缓存，未重算或核对嵌入工作簿，可能缺失或过期；不代表完整视觉理解。')
+    if any(local(e)=='externalData' for e in chart.iter()): warnings.append(chart_id+'关联工作簿或外部数据未打开、未联网刷新。')
+    found=False
+    for series_number,series in enumerate((e for e in chart.iter() if local(e)=='ser'),1):
+     tx=direct(series,'tx'); names=points(tx); literal=direct(tx,'v')
+     series_name=names.get(0,(literal.text or '') if literal is not None else '系列'+str(series_number))
+     channels={key:points(direct(series,key)) for key in ('cat','val','xVal','yVal','bubbleSize')}
+     indices=sorted(set().union(*(set(values) for values in channels.values())))
+     if not indices: warnings.append(chart_id+'系列'+str(series_number)+'没有可用缓存，未推断数值。')
+     for index in indices:
+      found=True
+      fields={'分类':channels['cat'].get(index,'缺失'),'数值':channels['val'].get(index,'缺失')} if direct(series,'val') is not None else {'X':channels['xVal'].get(index,'缺失'),'Y':channels['yVal'].get(index,'缺失')}
+      if direct(series,'bubbleSize') is not None: fields['气泡大小']=channels['bubbleSize'].get(index,'缺失')
+      text='幻灯片 '+str(i+1)+'；图表 '+(title or str(number))+'；系列 '+series_name+'；数据点 '+str(index+1)+'；'+'；'.join(k+'：'+v for k,v in fields.items())+'（文件缓存，未重算）'
+      add(chart_id+'/series:'+str(series_number)+'/point:'+str(index+1),text,{'kind':'chart-point','parent':chart_id,'slideNumber':i+1,'seriesName':series_name,'row':index+1,'sourcePart':chart_name,'dataSource':'stored-chart-cache'})
+    if not found: warnings.append(chart_id+'无可读取系列缓存或图表类型不受支持。')
+   root=xml(z,'ppt/presentation.xml'); rels=relationships('ppt/presentation.xml')
    for i,s in enumerate(e for e in root.iter() if local(e)=='sldId'):
-    rid=next(v for k,v in s.attrib.items() if k.endswith('}id')); target=rels[rid]
-    name=target.lstrip('/') if target.startswith('/') else 'ppt/'+target
-    if '..' in name.split('/'): raise ValueError('invalid relationship')
-    slide_id='slide:'+str(i+1); tree=xml(z,name)
+    rid=next(v for k,v in s.attrib.items() if k.endswith('}id')); name=resolve_part('ppt/presentation.xml',rels[rid])
+    slide_id='slide:'+str(i+1); tree=xml(z,name); slide_rels=relationships(name)
     add(slide_id,'',{'kind':'slide','slideNumber':i+1})
     shapes=next(e for e in tree.iter() if local(e)=='spTree')
     def shape_objects(container,parent):
@@ -134,8 +189,21 @@ else:
         if local(coordinate)=='ext': meta.update({'width':coordinate.get('cx','0'),'height':coordinate.get('cy','0')})
       paragraphs=[''.join(e.text or '' for e in p.iter() if local(e)=='t') for p in shape.iter() if local(p)=='p'] if local(shape)!='grpSp' else []
       add(shape_id,'\n'.join(paragraphs),meta)
+      for chart_number,chart_ref in enumerate((e for e in shape.iter() if local(e)=='chart'),1):
+       if local(shape)=='grpSp': break
+       chart_rid=next((v for k,v in chart_ref.attrib.items() if k.endswith('}id')),None)
+       chart_objects(name,slide_rels.get(chart_rid),shape_id,chart_number)
       if local(shape)=='grpSp': shape_objects(shape,shape_id)
     shape_objects(shapes,slide_id)
+    for rel in slide_rels.values():
+     if not rel.get('Type','').endswith('/notesSlide'): continue
+     if rel.get('TargetMode')=='External': warnings.append(slide_id+'备注关系指向外部，未读取。');continue
+     notes_name=resolve_part(name,rel);notes=xml(z,notes_name)
+     for ni,shape in enumerate((e for e in notes.iter() if local(e)=='sp'),1):
+      placeholder=next((e for e in shape.iter() if local(e)=='ph'),None)
+      if placeholder is not None and placeholder.get('type') in ('sldImg','sldNum','dt','hdr','ftr'): continue
+      text=rich_text(shape)
+      if text.strip(): add(slide_id+'/notes:'+str(ni),'幻灯片 '+str(i+1)+' 备注：\n'+text,{'kind':'notes','parent':slide_id,'slideNumber':i+1,'sourcePart':notes_name})
   elif ext=='.xlsx':
    shared=[''.join(t.text or '' for t in e.iter() if local(t)=='t') for e in xml(z,'xl/sharedStrings.xml')] if 'xl/sharedStrings.xml' in z.namelist() else []
    styles=xml(z,'xl/styles.xml') if 'xl/styles.xml' in z.namelist() else None
@@ -221,6 +289,8 @@ else:
      add(sheet_id+'!'+cell.attrib['r'],value,meta)
   else: raise ValueError('unsupported format')
 if not parts: raise ValueError('no extractable text after bounded OCR')
+# 多图表文档仍可返回有界警告；明确提示省略数量，不将省略伪装为完整解析。
+if len(warnings)>100: warnings=warnings[:99]+['另有'+str(len(warnings)-99)+'条解析警告未逐项展示，请按原件核对；不代表完整识别。']
 path.unlink()
 pathlib.Path('/workspace/parsed.json').write_text(json.dumps({'parts':parts,'coverage':'partial' if warnings else 'text-only','warnings':warnings},ensure_ascii=False))
 `;

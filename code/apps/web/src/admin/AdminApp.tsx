@@ -15,7 +15,7 @@ import { McpPanel } from './McpPanel';
 import { DatabaseAdminContent } from './DatabaseAdminContent';
 import { MemoryTemplatesPanel } from './MemoryTemplatesPanel';
 
-type Menu = 'experts' | 'users' | 'models' | 'skills' | 'mcp' | 'memory' | 'templates' | 'schedules' | 'ops' | 'permissions' | 'projects';
+type Menu = 'network-targets' | 'request-audit' | 'experts' | 'users' | 'models' | 'skills' | 'mcp' | 'memory' | 'templates' | 'schedules' | 'ops' | 'permissions' | 'projects';
 type Role = PublicUser['role'];
 
 type UserDialogState =
@@ -112,7 +112,8 @@ export default function AdminApp({ database = false }: { database?: boolean }): 
     ['memory', '默认记忆'],
     ['templates', '我的模板'],
     ['schedules', '定时任务'],
-    ['ops', '审计与回收站'],
+    ...(database ? [['request-audit', '请求安全审计'] as [Menu,string],['network-targets','内网地址授权'] as [Menu,string]] : []),
+    ['ops', database ? '运行监控与用量' : '审计与回收站'],
     ['permissions', '路径授权'],
     ['projects', '我的项目'],
   ];
@@ -123,7 +124,7 @@ export default function AdminApp({ database = false }: { database?: boolean }): 
       {/* 顶部通栏 */}
       <header className="relative z-40 flex h-14 shrink-0 items-center justify-between border-b border-neutral-800 bg-neutral-900 px-5">
         <div className="flex items-center gap-8">
-          <div className="text-sm font-semibold tracking-wide text-neutral-100">管理后台</div>
+          <div className="whitespace-nowrap text-sm font-semibold tracking-wide text-neutral-100">管理后台</div>
 
         </div>
         <ThemeSwitch />
@@ -136,13 +137,13 @@ export default function AdminApp({ database = false }: { database?: boolean }): 
         )}
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        <aside className="w-48 shrink-0 overflow-y-auto border-r border-neutral-800 bg-neutral-900 p-3" aria-label="后台菜单">
-          <nav className="flex flex-col gap-1 text-sm">
+      <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+        <aside className="w-full shrink-0 overflow-x-auto border-b border-neutral-800 bg-neutral-900 p-2 sm:w-48 sm:overflow-y-auto sm:border-b-0 sm:border-r sm:p-3" aria-label="后台菜单">
+          <nav className="flex gap-1 text-sm sm:flex-col">
             {menus.map(([key, label]) => (
               <button
                 key={key}
-                className={`rounded px-3 py-2.5 text-left ${menu === key ? 'bg-neutral-800 font-medium text-neutral-100' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}
+                className={`shrink-0 whitespace-nowrap rounded px-3 py-2.5 text-left ${menu === key ? 'bg-neutral-800 font-medium text-neutral-100' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'}`}
                 aria-current={menu === key ? "page" : undefined}
                 onClick={() => { if (key === menu || !skillDirty || window.confirm('离开将放弃当前未保存的编辑，已保存草稿会保留。继续？')) setMenu(key); }}
               >

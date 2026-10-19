@@ -23,10 +23,10 @@ export async function revokeTrashAutomations(c:PoolClient,kind:'document'|'proje
  // 运行快照可能仍引用修改前的输入，独立检查全部快照，防止删除后快速恢复绕过撤权。
  const runClause=kind==='document'?`(config->'input'->'versionIds' ?| ARRAY(SELECT id::text FROM workpivot.document_versions WHERE document_id=$1::uuid) OR EXISTS(SELECT 1 FROM jsonb_array_elements(inputs) i JOIN workpivot.document_versions v ON v.id::text=i->>'id' WHERE v.document_id=$1::uuid))`:kind==='skill'?`config->>'skill'=$1`:kind==='project'?`config->>'projectId'=$1`:`EXISTS(SELECT 1 FROM jsonb_array_elements(inputs) i WHERE i->>'taskId'=$1)`;
  const rows=(await c.query(`SELECT id,revision FROM workpivot.automations WHERE state<>'deleted' AND (${clause}) ORDER BY id FOR UPDATE`,[id])).rows;
- await c.query(`UPDATE workpivot.automation_runs SET revoked=true,events='[]',summary='',error='关联资料或技能已删除',status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END WHERE ${runClause}`,[id]);
+ await c.query(`UPDATE workpivot.automation_runs SET revoked=true,events='[]',summary='',error='关联资料或技能已删除',status=CASE WHEN status IN ('queued','waiting_login') THEN 'cancelled' ELSE status END WHERE ${runClause}`,[id]);
  for(const p of rows){
   await c.query("UPDATE workpivot.automations SET state='blocked',grant_id=NULL,next_at=NULL,revision=revision+1,issue='关联资料或技能已删除；恢复后请重新确认' WHERE id=$1",[p.id]);
-  await c.query("UPDATE workpivot.automation_runs SET revoked=true,status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,error='关联资料或技能已删除' WHERE plan_id=$1 AND status IN ('queued','running')",[p.id]);
+  await c.query("UPDATE workpivot.automation_runs SET revoked=true,status=CASE WHEN status IN ('queued','waiting_login') THEN 'cancelled' ELSE status END,error='关联资料或技能已删除' WHERE plan_id=$1 AND status IN ('queued','waiting_login','running')",[p.id]);
   await c.query("INSERT INTO workpivot.automation_notices(owner_user_id,plan_id,notice_key,message) VALUES(workpivot.actor_id(),$1,$2,'关联资料或技能已删除，计划需要重新确认') ON CONFLICT DO NOTHING",[p.id,'trash:'+p.id+':'+p.revision]);
  }
 }

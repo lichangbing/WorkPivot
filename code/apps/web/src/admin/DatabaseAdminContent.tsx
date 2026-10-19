@@ -1,3 +1,6 @@
+import {NetworkTargets} from './NetworkTargets';
+import {RequestAudits} from './RequestAudits';
+import {DatabaseOperations} from './DatabaseOperations';
 import {DatabaseEmbeddings} from '../DatabaseEmbeddings';
 import {DatabaseExperts} from '../DatabaseExperts';
 import { DatabaseMemoryTemplates } from '../DatabaseMemoryControls';
@@ -14,6 +17,9 @@ export function DatabaseAdminContent({ menu, onDirty }: { menu: string; onDirty:
   if (menu === 'experts') return <DatabaseExperts admin/>;
   if (menu === 'memory') return <DatabaseMemoryTemplates />;
   if (menu === 'skills') return <SkillPackagesPanel onDirty={onDirty} />;
+  if (menu === 'network-targets') return <NetworkTargets />;
+  if (menu === 'request-audit') return <RequestAudits />;
+  if (menu === 'ops') return <DatabaseOperations />;
   if (menu === 'users') return <DatabaseUsers />;
   if (error) return <p role="alert">{error}</p>;
   if (!capabilities) return <p>正在读取服务状态…</p>;

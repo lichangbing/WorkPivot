@@ -6,3 +6,7 @@ allowBuilds:
   electron: true
 verifyDepsBeforeRun: false
 confirmModulesPurge: false
+# 旧版缺少许可声明；限定依赖链并由 Office 回归验证兼容性。
+overrides:
+  'nopt@5>abbrev': 1.1.1
+  'exceljs@4.4.0>unzipper': 0.12.3

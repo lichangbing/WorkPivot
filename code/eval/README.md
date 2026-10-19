@@ -143,3 +143,133 @@ node scripts/test-service-recovery.mjs
 报告路径必须是尚不存在的文件，防止覆盖历史证据；每轮记录Docker内存及PIDs。前两轮预热后，以第三轮为基线，检查后续样本内存增长不超过128MiB、PIDs增长不超过8；连接总数不超过40。短于三轮时以最后一轮为基线，不能据此判断长期资源趋势。这是异常增长阈值，不是证明没有内存泄漏。受控夹具不调用真实模型、Office Worker或浏览器；短时通过不能关闭全天长稳和业务效果门槛。
 
 2026-10-18本机基线：300秒42轮、每轮17项通过；预热后131.3→139.2MiB、峰值140MiB，PIDs固定22。SIGTERM清理另行验证通过。结果不是全天长稳或零内存泄漏保证。
+
+
+### 合成 Office 业务样本验收（2026-10-18）
+
+用户暂未提供真实资料，允许生成样本。在code目录运行 `node scripts/test-postgres.mjs --synthetic-office`。需要Docker、已构建的Office执行器镜像（默认workpivot-executor:office-stage-20261017-v2，可用WORKPIVOT_TEST_IMAGE覆盖）、主机LibreOffice、pdftoppm、pdfunite和Python Pillow。使用一次性PostgreSQL与独立Worker，不访问业务数据库或原件。
+
+每次在local-runtime/acceptance/synthetic-office-随机目录保留7份原件：跨页Word、1900/1904两种日期基准Excel、带原生图表和备注的PPT、原生PDF、扫描PDF和混合PDF；manifest.json记录标准答案和SHA256，outputs保存解析及修改结果，report.json记录断言与能力边界。失败也保留报告，数据库和隔离上传存储在结束时清理。
+
+本轮37项通过：真实容器解析/入库、日期基准、公式缓存、带表头单位的行检索、版本引用、撤销范围与跨项目隔离、跨页末行、OCR金额、混合页定位、正文读取、受限编辑/真实重算和7份原件哈希保护。PDF空格允许排版差异，同时核对末行地区、金额、日期。PPT图表内部数值与备注未提取，明确记录为缺口，不纳入通过的理解能力。未调用真实模型或向量服务，仅验证PostgreSQL关键词检索；不能替代真实业务问答、第二物理设备或全面视觉验收。
+
+
+### 依赖许可整改回归（2026-10-18）
+
+工作区定向覆盖nopt5→abbrev1.1.1、ExcelJS4.4.0→unzipper0.12.3，锁文件不再含buffers/binary旧链。`node eval/excel-dependency.mjs`验证实际ExcelJS依赖版本、普通/流式读取、1904日期、公式缓存、中文和损坏ZIP拒绝，共9项。干净的冻结锁文件安装后运行`pnpm check:licenses:strict`，本轮767包通过；旧node_modules可能残留未引用包，须按锁文件重新安装，不能通过许可豁免掩盖。
+
+本轮源码Office六套回归共145项、许可检查器8项、全仓类型检查、桌面代码构建通过。使用替换全部Node依赖的独立候选执行器workpivot-executor:license-20261018，容器Office11项及合成业务37项通过。未执行桌面安装包验收，也未切换生产API或Worker。
+
+Worker恢复测试发现Docker自动删除容器与finally删除竞争，导致暂存目录遗留；修复为删除报错后确认本实例容器已不存在，再清理目录。Docker查询失败或容器仍在时保留现场，不伪造成功。`WORKPIVOT_TEST_IMAGE=workpivot-executor:license-20261018 pnpm eval:worker-recovery`修复后9项通过，涵盖取消、沙箱崩溃、Worker被杀、重启回收和显式重试。不代表长期负载验收。
+
+候选执行器补充：W21隔离执行16项通过，覆盖只读资源、无网络、链接拒绝、超时与断线回收，结束无本轮残留沙箱。
+
+
+### 发布候选文件系统门禁（2026-10-18）
+
+`node code/scripts/build-local-release.mjs workpivot-server:<版本> <新目录>`从工作区准备完整运行目录，保存锁文件和工作区配置。Dockerfile在COPY前删除旧运行目录，并在最终文件系统执行严格许可扫描。候选检查应确认旧buffers/abbrev目录确实消失，再运行`WORKPIVOT_TEST_RELEASE_IMAGE=<候选> node code/eval/local-release.mjs`。本轮候选local-license-gated-20261018通过13项安装/升级/失败恢复/回退演练；不触碰当前业务库。该门禁不扫描基础镜像历史层与系统包，不能替代完整镜像合规审计。
+
+
+### PPT图表备注与容器调度（2026-10-18）
+
+`pnpm eval:ppt-content`11项异常与结构检索检查通过；合成Office数据库专项更新为41项，包含实际图表分类/数值、备注检索。`pnpm eval:automations`更新为53项，含跨用户持久轮转、API关闭后的独立调度及正常停止。`node eval/container-controller.mjs`使用随机实例与一次性目录，需先构建Dockerfile.controller；本轮8项通过，检查真实沙箱限制、socket不下传以及控制器崩溃回收。不会连接业务数据库或操作业务Worker。容器控制器镜像默认workpivot-controller:cn-20261018，执行镜像默认workpivot-executor:license-20261018，可分别用WORKPIVOT_TEST_CONTROLLER_IMAGE、WORKPIVOT_TEST_IMAGE指定。
+
+
+管理监控补充：自动化联合专项现为59项（增加实际监控API鉴权、跨用户和隐私6项）；`pnpm eval:admin-monitor-ui`须先构建web，使用受控API及真实Chromium检查展示、切换清空、失败重试、窄屏和无JS异常。截图保存到local-runtime/acceptance/admin-monitor-时间戳；不替代真实管理账号端到端验收。
+
+### 集中网页采集配额（2026-10-18）
+
+运行 `pnpm eval:web-quota`，默认使用 `/usr/bin/google-chrome`，可设置 `WORKPIVOT_TEST_CHROME`。通过本机真实 HTTP 服务与 Chromium、合成上游传输验证：两个调用方和浏览器共享配额、总并发/主机串行、默认 2 秒间隔、队列容量、取消、异常释放、完整 URL 和重定向检查、页面关闭、服务关闭、禁止出口失败回退。合成上游没有访问真实站点；不是生产网络负载测试。
+
+本轮结果：新增配额检查 10 项通过（含真实 Chromium）；既有网页/共享浏览器回归 22 项通过；全工程 TypeScript 检查、相关文件 ESLint、调度器 Compose 合成配置校验与 `git diff --check` 通过。没有执行生产负载、多副本或登录网站验收。
+
+### 自动化用户容量（2026-10-18）
+
+- `pnpm eval:automation-capacity`：创建并清理独立 PostgreSQL 容器，以受限角色和 RLS 验证并发启用、手动与定时共用额度、满额幂等、草稿保留、跨用户隔离、额度恢复、补跑/跳过策略、历史超额兼容和停用提示清理。
+- `pnpm --filter @workpivot/web build && pnpm eval:automation-capacity-ui`：真实 Chromium、合成 API 验证额度和等待原因、确认启用被拒、额度刷新、390px 窄屏与无 JS 错误；不冒充后端端到端测试。
+- 完整自动化回归仍运行 `pnpm eval:automations`，覆盖原有授权、固定版本、执行、取消、成果隔离、恢复与独立调度器。
+
+本轮结果：新增容量专项 17 项、既有自动化回归 59 项通过；页面交互专项、全工程类型检查、相关文件 ESLint、前端构建与差异检查通过。页面截图存于 `local-runtime/acceptance/automation-capacity-1792319422859/mobile.png`。尚未进行生产升级与真实多用户负载验收。
+
+### 管理员自动化额度与审计（schema39，2026-10-18）
+
+容量专项现覆盖管理员授权、目标用户隔离、前后值、并发版本冲突、请求重试、审计不可修改删除、审计失败时事务回滚及分页；`eval:admin-monitor-ui` 同步覆盖额度编辑确认、成功审计展示和切换用户清除旧额度/记录。新增表不含私人正文，原因由管理员输入且提示勿填秘密。
+
+本轮 schema 安装/历史升级数据库专项 770 项、容量专项27项、真实联合备份恢复41项通过；恢复新增断言验证额度和成功审计仍在。前端构建和 Chromium 管理页面检查通过。管理审计尚不覆盖失败/拒绝操作或保留清理，当前测试不能代表通用审计模块已完成。
+
+管理员额度API联动回归现为64项，通过未登录拒绝、成员写入拒绝、管理员实际HTTP更新和读取审计、超范围游标拒绝；全工程类型检查和定向lint通过。
+
+schema39下网页数据库专项22项通过；旧URL迁移测试直接重放v38的数据变换，避免人为删除中间版本破坏后续迁移链；仍验证离线计划不受影响、旧联网计划需重新确认与重复安装幂等。
+
+### 额度修改失败审计（schema40，2026-10-18）
+
+新增成功/失败两条独立记录链；失败审计只存已认证操作人、目标、固定动作/分类和时间。容量专项35项通过，覆盖拒绝/错误分类、原始输入不落库、无效目标归属、审计不可改删、同微秒稳定分页、非法日期游标和审计存储失败明确报错。自动化/API联合68项通过，新增实际HTTP拒绝后的审计查询及普通用户不可读。
+
+数据库安装/历史升级770项、真实备份恢复42项通过；恢复新增断言检查失败事件。管理页面真实Chromium（受控API）覆盖分类、分页、查询失败清空/重试、用户切换隔离、390px窄屏及无JS异常。修复重复React key导致的旧额度组件残留；前端构建、类型检查、定向lint与差异检查通过。
+
+此验收不覆盖公共认证层提前拒绝、无效JSON、全站其他操作、审计导出和保留清理。没有生产部署或真实负载验收。
+
+### 采集正文快照与管理（schema41，2026-10-18）
+
+- `node scripts/test-automations.mjs --web`：隔离PostgreSQL与真实自动化执行器、受控网页和模型，40项通过。覆盖初次/不变/变化/内容回退、同次HTTP复用、模型失败保留快照、撤销阻止迟到写入、用户隔离、管理元数据不含正文、同微秒分页、回收/恢复/30天手动永久删除及相应审计。
+- `node scripts/test-postgres.mjs`：安装与历史升级770项通过；`node scripts/test-backup-database.mjs`：44项通过，新增恢复正文版本、观察记录及审计关联断言，已完成历史不会被排队中断检查误判。
+- 构建web后 `node eval/capture-history-ui.mjs`：真实Chromium+受控接口验证版本查看、文本转义、截断提示、版本对照、窄屏和回收站确认。`node eval/admin-monitor-ui.mjs`：管理统计/审计渲染及切换用户清除旧记录。截图位于本机 `local-runtime/acceptance/capture-history-1792321591867` 和 `admin-monitor-1792321593678`，不入库。
+
+类型检查、全量lint、前端构建和差异检查通过；无生产部署。本批不覆盖真实登录网站、RSS、完整HTML存档、真实负载或逐字差异算法。
+
+### HTTP有限重试（schema42，2026-10-18）
+
+- `node --import tsx eval/web-retry.mts`：9项通过，覆盖Retry-After秒数/日期/错误值、最多2次额外重试、非临时状态不重试、超长等待不提前发出、取消、DNS重绑定拒绝、共享冷却与跳转预算。
+- `node --import tsx eval/web-quota.mts`：11项通过，新增真实集中服务协议下自动化重试及计数传回、普通调用不重试。
+- `node scripts/test-automations.mjs --web`：42项通过，新增观察记录与管理员审计重试计数持久化、次数不改变正文版本。
+- 完整数据库安装/历史升级770项、联合备份恢复44项通过，恢复核对审计重试计数；类型检查、全量lint、web构建、用户采集历史和管理员页面受控Chromium检查通过。
+
+截图目录为本机 `local-runtime/acceptance/capture-history-1792321984434`、`admin-monitor-1792321986209`。本次为合成上游与隔离数据库验收，未进行生产部署或真实业务站点验收。无逐次请求审计、持久冷却或多出口协调。
+
+### RSS/Atom订阅快照（schema42，2026-10-18）
+
+- `node --import tsx eval/feed-content.mts`：9项通过。覆盖RSS字段关联、CDATA/HTML清理、Atom命名空间和xml:base、日期原文、DTD/错误XML/超深结构拒绝、截断总量、危险链接、外部正文不读取、内容扩展及声明编码。测试重复ID保留，避免伪造逐条增量语义。
+- `node --import tsx eval/web-quota.mts`：12项通过，新增集中服务结构化订阅传递且不请求条目链接。
+- `node scripts/test-automations.mjs --web`：45项通过，新增真实执行器采集订阅后结构化字段持久化、未授权链接零请求、跨运行复用快照。
+- `node scripts/test-backup-database.mjs`：44项通过，恢复断言核对非空订阅条目ID。`node --import tsx eval/web-tools.mts`：12项通过。
+- 类型检查、全量lint、web构建、采集历史受控Chromium交互和390px截图检查通过；严格许可扫描767个依赖未命中黑名单。saxes 5.0.1从既有传递依赖显式声明为直接依赖，没有增加解析库版本。
+
+用户页截图：本机 `local-runtime/acceptance/capture-history-1792322683447/mobile.png`（不入库）。无新增schema迁移，未重复执行与此改动无关的全库安装测试。未使用真实业务订阅，未部署；RSS 1.0/RDF、全文存档、自动分页和逐条增量均不在本批验收范围。
+
+### HTTP原始正文存档（schema43，2026-10-18）
+
+- `node --import tsx eval/capture-original.mts`：原始二进制往返、无响应头、空正文、错误base64/媒体类型及2MiB边界通过。
+- `node --import tsx eval/web-quota.mts`：13项通过，新增集中协议显式返回原始正文、普通调用不返回原始字段。
+- `node scripts/test-automations.mjs --web`：52项通过，新增原始变化触发版本、创建者下载、其他用户拒绝、真实HTTP附件响应、哈希破坏拒绝、原始字节不进入模型、管理计数/下载审计及回收后不可下载。
+- `node scripts/test-postgres.mjs`：770项通过；`node scripts/test-backup-database.mjs`：45项通过，新增恢复后原始bytea及哈希一致。
+- 类型、全量lint、web构建、用户历史下载和管理员份数/大小受控Chromium交互通过；390px截图人工检查通过。截图在本机 `local-runtime/acceptance/capture-history-1792323536692` 与 `admin-monitor-1792323538348`，不入库。
+
+测试使用合成响应与隔离数据库，未部署。存档是解压后的完整HTTP正文，不是子资源整站包；浏览器DOM和失败解析原文未覆盖。
+
+### 浏览器DOM存档（schema44，2026-10-18）
+
+- `node --import tsx eval/web-tools.mts --browser`：24项通过，新增真实Chromium点击后的DOM、独立/共享会话边界、2MiB超限拒绝，保留截图和完整URL策略回归。
+- `node scripts/test-automations.mjs --web`：55项通过。测试现通过真实集中浏览器服务协议运行HTTP和browser_visit；新增DOM下载/类型、同次重复浏览实际执行两次并去重版本、原始字节不进入模型及管理员DOM计数。
+- `node scripts/test-postgres.mjs`：770项；`node scripts/test-backup-database.mjs`：45项，检查存档类型随恢复保留。
+- 类型、全量lint、web构建、用户DOM说明/下载与管理员存档统计受控Chromium交互通过。截图位于本机 `local-runtime/acceptance/capture-history-1792324091417`、`admin-monitor-1792324093359`，不入库。
+
+上游为合成页面，未部署、未验收真实登录/内网系统。DOM不是可复现整站包，不含子资源、iframe子文档和完整运行状态。
+
+### 连续收尾最终回归（schema49，2026-10-18，未部署）
+
+- `node scripts/test-postgres.mjs`：770项；`node scripts/test-backup-database.mjs`：49项，含请求审计/清理历史恢复、内网规则撤销、登录密文与租约清除。
+- `node scripts/test-automations.mjs`：68项；`--web`：69项，真实集中浏览器、内网授权及撤销、跨用户隔离、无状态等待、等待释放槽、人工POST登录、加密保存、同运行恢复、登录失效、停止、20分钟超时。
+- `node scripts/test-automations.mjs --capacity`：65项。请求审计涵盖匿名拒绝、畸形JSON、不记录正文/查询串、缺失结束、同微秒分页、导出上限、40并发关联、不可变记录、30天清理和撤权清除关联登录凭据。
+- `node --import tsx eval/browser-login.mts`：真实Chromium坐标登录、POST只提交一次、两个HttpOnly Cookie、localStorage保存、私密画面、只读复用、不允许模型提交、拒绝storageState文件路径；修复跳转瞬间截图表面不可用时有界重取，不重放提交。
+- `node --import tsx eval/web-tools.mts --browser`：26项；`eval/web-quota.mts`：13项；`eval/web-retry.mts`：9项；`eval/feed-content.mts`：9项。
+- `node --import tsx eval/network-target.mts`、`eval/capture-original.mts`：精确地址/固定私网IP、内部系统DNS、不混用公网DoH、资源包字节和边界通过。
+- `node eval/browser-profiles-ui.mjs`、`node eval/admin-monitor-ui.mjs`、`node eval/capture-history-ui.mjs`：用户/管理员真实Chromium受控接口交互，确认/撤销/保存、审计清理、内网规则、390px布局通过。截图仅在本机acceptance目录，不入库。
+- `pnpm typecheck`、`pnpm lint`、`pnpm --filter @workpivot/web build`、`pnpm check:licenses:strict`及`git diff --check`通过。
+
+工程测试使用合成网站、凭据及模型，没有发送真实网站密码。未做生产容量测试、真实业务站点/第二设备验收或本轮发布。无通用SSO、任意工作流崩溃后自动重放、完整离线整站复刻承诺。后续运行以上命令会使用可丢弃数据库，不能对业务库执行测试清理。
+
+### 2026-10-19 候选发布回归
+
+`node eval/local-release.mjs`默认使用本轮schema49候选与schema38源镜像，16项通过。新增有效/过期网页登录租约准入、独立401保护检查；无写入回退和写入后拒绝回退均实际执行。候选构建包含web生产构建及镜像内767项严格许可扫描。`pnpm exec eslint scripts/release-local.mjs eval/local-release.mjs`及脚本语法、差异检查通过。本次未重复全库770项，不以历史回归冒充本次执行；未更新业务容器。
+
+同日最终浏览器容器补验：`eval/browser-login.mts`可通过`WORKPIVOT_BROWSER_EXECUTABLE_PATH`选择容器Chromium路径，默认宿主路径保持。候选容器使用`--network none --read-only --user 1000:1000 --cap-drop ALL`、既有seccomp、no-new-privileges、512MiB临时目录及256MiB共享内存。仅只读挂载测试文件至`/app/eval/browser-login.mts`，执行`node --import tsx eval/browser-login.mts`；最终镜像源码未覆盖。双Cookie、localStorage、一次POST、未授权跳转和307不重发通过。容器测试曾揭露3xx后不再拦截及跳转截图超时问题，修复后重新构建API/浏览器候选，不以宿主通过替代容器结果。网页数据库69项复验通过。

@@ -1,0 +1,35 @@
+# 独立控制器；与 API 使用同一受限内部网络，不发布控制器端口。
+services:
+  controller:
+    image: "${WORKPIVOT_CONTROLLER_IMAGE:?请配置控制器镜像}"
+    restart: unless-stopped
+    user: "1000:1000"
+    group_add:
+      - "${WORKPIVOT_DOCKER_GID:?请配置宿主Docker socket组ID}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 256m
+    cpus: 0.5
+    tmpfs:
+      - "/tmp:rw,nosuid,nodev,size=16m,uid=1000,gid=1000"
+    environment:
+      WORKPIVOT_WORKER_BIND: 0.0.0.0
+      WORKPIVOT_WORKER_TOKEN: "${WORKPIVOT_WORKER_TOKEN:?请配置专用密钥}"
+      WORKPIVOT_WORKER_IMAGE: "${WORKPIVOT_WORKER_IMAGE:?请配置已验收执行镜像}"
+      WORKPIVOT_WORKER_OWNER: "${WORKPIVOT_WORKER_OWNER:?请配置唯一控制器实例名}"
+      WORKPIVOT_WORKER_STATE_DIR: "${WORKPIVOT_WORKER_STATE_DIR:?请配置宿主绝对状态目录}"
+    volumes:
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+      # Docker在宿主解析任务挂载路径，控制器内外必须使用相同绝对路径。
+      - type: bind
+        source: "${WORKPIVOT_WORKER_STATE_DIR}"
+        target: "${WORKPIVOT_WORKER_STATE_DIR}"
+    networks: [control]
+networks:
+  control:
+    external: true
+    name: "${WORKPIVOT_CONTROL_NETWORK:?请配置API与控制器专用网络}"

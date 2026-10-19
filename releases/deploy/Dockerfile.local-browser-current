@@ -1,0 +1,13 @@
+# 本机已验收的Chromium沙箱基础镜像；不修改当前运行的浏览器容器。
+FROM workpivot-browser:license-20261018
+USER root
+WORKDIR /app
+# 完整替换运行依赖，避免基础镜像遗留旧模块。
+RUN rm -rf /app/node_modules /app/packages /app/scripts /app/release.json
+COPY --chown=node:node node_modules/ /app/node_modules/
+COPY --chown=node:node packages/ /app/packages/
+COPY --chown=node:node scripts/ /app/scripts/
+COPY --chown=node:node package.json pnpm-lock.yaml pnpm-workspace.yaml /app/
+RUN node scripts/check-licenses.mjs --strict
+USER node
+CMD ["node", "--import", "tsx", "scripts/browser-worker.mts"]

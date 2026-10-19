@@ -27,9 +27,11 @@ export async function applyRetention(db:Pool,filesRoot:string,state:RetentionSta
   await c.query("UPDATE workpivot.tasks SET status='idle' WHERE status IN ('running','waiting','queued')");
   await c.query("UPDATE workpivot.task_runs SET status='interrupted',stop_reason='offline_restore',lease_until=now(),finished_at=now() WHERE status IN ('running','stopping')");
   await invalidateMemoryContext(c,actor);
-  await c.query("UPDATE workpivot.automation_runs SET status='interrupted',revoked=true,error='恢复备份后需重新确认',lease_until=NULL WHERE status IN ('queued','running')");
+  await c.query("UPDATE workpivot.automation_runs SET status='interrupted',revoked=true,error='恢复备份后需重新确认',lease_until=NULL WHERE status IN ('queued','waiting_login','running')");
   const retainedTrash=(await c.query('SELECT id,revision,kind,entity_id FROM workpivot.trash_entries')).rows.filter(t=>state.trash?.some(r=>r.id===t.id&&r.revision===t.revision));
   for(const a of (await c.query('SELECT id,revision,state FROM workpivot.automations')).rows){if(!state.automations?.some(r=>r.id===a.id&&r.revision===a.revision)&&!(a.state==='deleted'&&retainedTrash.some(t=>t.kind==='automation'&&t.entity_id===a.id)))await c.query('DELETE FROM workpivot.automations WHERE id=$1',[a.id]);}
+  await c.query('UPDATE workpivot.browser_profiles SET state_cipher=NULL,revoked_at=now(),lease_id=NULL,lease_kind=NULL,lease_until=NULL,revision=revision+1');
+  await c.query('UPDATE workpivot.network_targets SET revoked_at=now() WHERE revoked_at IS NULL');
   await c.query("UPDATE workpivot.automations SET state='paused',grant_id=NULL,next_at=NULL,draft=NULL,revision=revision+1,issue='恢复备份后需要重新确认启用' WHERE state<>'deleted'");
   await c.query("UPDATE workpivot.memory_suggestions SET status='stale',content='',evidence=NULL");
   await c.query('DELETE FROM workpivot.context_checkpoints');

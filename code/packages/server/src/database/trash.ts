@@ -1,3 +1,4 @@
+import {auditCaptureLifecycle} from './captures.js';
 import {randomUUID} from 'node:crypto';
 import type {Pool,PoolClient} from 'pg';
 import {RepositoryError,transaction,uuid} from './connection.js';
@@ -46,6 +47,7 @@ export class TrashRepository {
   }else if(e.kind==='automation'){
    const changed=await c.query("UPDATE workpivot.automations SET config=$2,draft=$3,state=$4,next_at=NULL,grant_id=NULL,issue='从回收站恢复，请重新确认',revision=revision+1,updated_at=now() WHERE id=$1 AND state='deleted'",[e.entity_id,r.config,r.draft,r.config?'paused':'draft']);
    if(!changed.rowCount)throw new RepositoryError(409,'自动化状态已变化');
+   await auditCaptureLifecycle(c,e.entity_id,'restore');
   }else if(e.kind==='skill'){
    const changed=await c.query('UPDATE workpivot.skill_drafts SET deleted_at=NULL,disabled=true,revision=$2 WHERE skill_id=$1 AND deleted_at IS NOT NULL',[e.entity_id,randomUUID()]);if(!changed.rowCount)throw new RepositoryError(409,'技能状态已变化');
    await c.query("UPDATE workpivot.skill_builds SET status='stale',validation=NULL,trial=NULL,dismissed=true WHERE name=$1",[p.name]);
@@ -59,7 +61,7 @@ export class TrashRepository {
    await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['files:'+actor]);const e=await this.entry(c,id,revision);
    if(!e.eligible)throw new RepositoryError(409,'尚未满30天保留期，可先恢复；到期后才能永久删除');
    if((await c.query('SELECT id FROM workpivot.trash_entries WHERE parent_id=$1 LIMIT 1',[e.entity_id])).rowCount)throw new RepositoryError(409,'请先恢复或永久删除所属子条目，再处理此项目或任务');
-   if(e.kind==='automation')await c.query("DELETE FROM workpivot.automations WHERE id=$1 AND state='deleted'",[e.entity_id]);
+   if(e.kind==='automation'){await auditCaptureLifecycle(c,e.entity_id,'purge');await c.query("DELETE FROM workpivot.automations WHERE id=$1 AND state='deleted'",[e.entity_id]);}
    if(e.kind==='skill'){
     // 先清理发布版本的引用，级联清理只作用于当前用户的私人技能。
     await c.query('DELETE FROM workpivot.skill_builds WHERE name=$1',[e.payload.name]);

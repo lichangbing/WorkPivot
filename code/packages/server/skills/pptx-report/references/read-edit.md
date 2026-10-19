@@ -1,6 +1,6 @@
 # PPT读取与限定修改
 
-先read_document_structure按原versionId读取slide/shape对象；shapeId只绑定当前页与当前版本。可通过parent筛选页的直接对象。坐标单位EMU，分组内坐标为局部坐标，不能当作最终画布坐标；文字、图形与组合类型单独标记。next非空须续读，未覆盖备注、动画、完整图表和图片识别。
+先read_document_structure按原versionId读取slide/shape对象；shapeId只绑定当前页与当前版本。可通过parent筛选页的直接对象。坐标单位EMU，分组内坐标为局部坐标，不能当作最终画布坐标；文字、图形与组合类型单独标记。next非空须续读，支持notes备注、chart及chart-point系列缓存对象，按parent继续读取可获得图表数据点。每个数据点保留系列、分类、数值和页码；缺失缓存明确标记，不读取关联工作簿、不访问外部数据链接。缓存可能过期，多级分类、新式图表、动画、完整视觉和图片理解仍不完整。
 
 ## 定位与修改
 

@@ -70,7 +70,8 @@ export async function installSchema(db: pg.Pool, appRole: string, authRole: stri
         if (installed.version !== upgrade.version || installed.checksum !== digest) throw new Error('数据库升级校验不匹配');
       } else {
         await client.query(upgrade.sql);
-        await client.query(`GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA workpivot TO ${app}`);
+        await client.query(`GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA workpivot TO ${app}; GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA identity TO ${auth}; GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA identity TO ${auth}`);
+        if(upgrade.version===47)await client.query(`GRANT EXECUTE ON FUNCTION identity.cleanup_request_audit(uuid,date,text) TO ${auth}`);
         await client.query('INSERT INTO workpivot_meta.schema_versions(version,checksum,app_role,auth_role) VALUES($1,$2,$3,$4)', [upgrade.version, digest, appRole, authRole]);
       }
     }

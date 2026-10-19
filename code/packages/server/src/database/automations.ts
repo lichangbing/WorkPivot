@@ -1,3 +1,5 @@
+import {approvedTargets} from './network-targets.js';
+import {automationCapacity,lockAutomationCapacity} from './automation-capacity.js';
 import type {RunResourceScope} from './resource-scope.js';
 import {captureAutomation} from './personal-recycle.js';
 import { randomUUID } from 'node:crypto';
@@ -6,20 +8,28 @@ import type { Tool } from '@workpivot/core';
 import type { AutomationConfig, AutomationPlan, AutomationRun } from '@workpivot/shared';
 import { RepositoryError, transaction, uuid } from './connection.js';
 import { automationConfig, automationPreview, nextAutomationTime } from './automation-time.js';
+const queueFullIssue='等待排队额度：额度释放后按补跑设置继续调度';
 const planColumns='id,revision,state,config,draft,origin,source_task_id AS "sourceTaskId",next_at AS "nextAt",issue,created_at AS "createdAt"';
 export const automationRunColumns='id,plan_id AS "planId",task_id AS "taskId",status,scheduled_for AS "scheduledFor",started_at AS "startedAt",finished_at AS "finishedAt",error,summary,config,events';
 export type AutomationInput={id:string;name:string;taskId:string;size:number};
 export class Automations {
  constructor(readonly db:Pool,readonly workerAvailable=false,readonly browserAvailable=false,private readonly guard?:(c:PoolClient,tool:string,args:Record<string,unknown>,taskId?:string)=>Promise<void>){}
+ // 确认与两种入队入口先锁用户，再锁计划，跨 API/调度器原子核对容量。
+ private async queuedCount(c:PoolClient){return (await c.query("SELECT count(*)::int AS n FROM workpivot.automation_runs WHERE status IN ('queued','waiting_login')")).rows[0].n as number;}
  async get(c:PoolClient,id:string,lock=false){uuid(id);const p=(await c.query<AutomationPlan & {grant_id:string|null;source_invalid:boolean;source_run_id:string|null}>(`SELECT ${planColumns},grant_id,source_invalid,source_run_id FROM workpivot.automations WHERE id=$1${lock?' FOR UPDATE':''}`,[id])).rows[0];if(!p)throw new RepositoryError(404,'自动化不存在');return p;}
  async options(actor:string,scope?:RunResourceScope,taskId?:string){return transaction(this.db,async c=>({
   skills:(await c.query('SELECT c.name,c.display_name AS "displayName",r.id AS version,r.label,r.description FROM workpivot.skill_catalog c JOIN workpivot.skill_releases r ON r.id=c.release_id JOIN workpivot.skill_selections s ON s.name=c.name WHERE NOT c.disabled ORDER BY c.name')).rows,
   projects:(await c.query('SELECT id,name FROM workpivot.projects WHERE deleted_at IS NULL AND ($1::uuid IS NULL OR id=(SELECT project_id FROM workpivot.tasks WHERE id=$1)) ORDER BY created_at',[taskId??null])).rows,
   files:(await c.query(`SELECT v.id,v.name,v.revision,t.project_id AS "projectId",t.id AS "taskId" FROM workpivot.document_versions v JOIN workpivot.documents d ON d.id=v.document_id JOIN workpivot.tasks t ON t.id=d.task_id WHERE t.deleted_at IS NULL AND t.origin='chat' AND d.purpose='upload' AND ($1::uuid[] IS NULL OR v.id=ANY($1::uuid[])) ORDER BY v.created_at DESC LIMIT 1000`,[scope?.versionIds??null])).rows,
   workerAvailable:this.workerAvailable,browserAvailable:this.browserAvailable,
+  capacity:await automationCapacity(c),
+  browserProfiles:(await c.query('SELECT id,name,(state_cipher IS NOT NULL) AS ready FROM workpivot.browser_profiles WHERE revoked_at IS NULL ORDER BY created_at DESC LIMIT 20')).rows,
+  networkTargets:(await c.query('SELECT id,url,address FROM workpivot.network_targets WHERE revoked_at IS NULL ORDER BY created_at DESC LIMIT 100')).rows,
  }),actor);}
  async dependencies(c:PoolClient,p:AutomationConfig,resolveInputs=true):Promise<AutomationInput[]> {
   automationConfig(p);
+  await approvedTargets(c,p);
+  if(p.browserProfileId){if(!this.browserAvailable)throw new RepositoryError(409,'登录采集需要浏览器服务');if(!(await c.query('SELECT id FROM workpivot.browser_profiles WHERE id=$1 AND revoked_at IS NULL',[p.browserProfileId])).rowCount)throw new RepositoryError(409,'私人登录配置已撤销或不可访问');}
   if(!this.workerAvailable)throw new RepositoryError(409,'隔离执行服务尚未配置');
   if(p.projectId&&!(await c.query('SELECT id FROM workpivot.projects WHERE id=$1 AND deleted_at IS NULL',[p.projectId])).rowCount)throw new RepositoryError(409,'成果项目已删除或不可访问');
   if(!(await c.query(`SELECT r.id FROM workpivot.skill_releases r JOIN workpivot.skill_catalog c ON c.name=r.name JOIN workpivot.skill_selections s ON s.name=c.name WHERE r.id=$1 AND r.name=$2 AND NOT c.disabled`,[p.releaseId,p.skill])).rowCount)throw new RepositoryError(409,'绑定技能未加载、被停用或版本不可用');
@@ -54,13 +64,16 @@ export class Automations {
   },actor);
  }
  async confirm(actor:string,id:string,revision:number,enable:boolean){return transaction(this.db,async c=>{
+  await lockAutomationCapacity(c,actor);
   const p=await this.get(c,id,true);if(p.revision!==revision)throw new RepositoryError(409,'计划已改变，请重新确认');if(p.state==='deleted')throw new RepositoryError(409,'计划已删除');
   const value=p.draft??p.config;if(!value)throw new RepositoryError(409,'需要重新填写执行配置');
   const config=automationConfig(value);
   if(p.draft&&(p.source_invalid||p.source_run_id&&!(await c.query("SELECT id FROM workpivot.task_runs WHERE id=$1 AND NOT context_revoked AND status IN ('running','completed','failed')",[p.source_run_id])).rowCount))throw new RepositoryError(409,'来源对话失效，请重新编辑确认');
+  const {enabledLimit}=await automationCapacity(c);
+  if(enable&&p.state!=='enabled'&&(await c.query("SELECT count(*)::int AS n FROM workpivot.automations WHERE state='enabled'")).rows[0].n>=enabledLimit)throw new RepositoryError(409,`最多启用${enabledLimit}个自动化计划，请先停用其他计划；计划设置已保留`);
   const next=nextAutomationTime(config,new Date());if(enable){await this.dependencies(c,config);if(!next)throw new RepositoryError(400,'没有未来可执行的时间');}
   await c.query(`UPDATE workpivot.automations SET config=$2,draft=NULL,state=$3,grant_id=$4,next_at=$5,issue='',revision=revision+1,updated_at=now() WHERE id=$1`,[id,config,enable?'enabled':'paused',enable?randomUUID():null,enable?next:null]);
-  await c.query("UPDATE workpivot.automation_runs SET status='cancelled',revoked=true,error='计划设置已变化，旧排队已取消',finished_at=now() WHERE plan_id=$1 AND status='queued'",[id]);
+  await c.query("UPDATE workpivot.automation_runs SET status='cancelled',revoked=true,error='计划设置已变化，旧排队已取消',finished_at=now() WHERE plan_id=$1 AND status IN ('queued','waiting_login')",[id]);
   return this.get(c,id);
  },actor);}
  async action(actor:string,id:string,revision:number,action:'pause'|'delete'|'discard',stopCurrent=false){return transaction(this.db,async c=>{
@@ -69,32 +82,46 @@ export class Automations {
   const p=await this.get(c,id,true);if(p.revision!==revision)throw new RepositoryError(409,'计划已改变，请刷新');
   if(action==='discard'){await c.query('UPDATE workpivot.automations SET draft=NULL,revision=revision+1 WHERE id=$1 AND config IS NOT NULL',[id]);return this.get(c,id);}
   if(action==='delete')await captureAutomation(c,id);
-  await c.query("UPDATE workpivot.automations SET state=$2,next_at=NULL,grant_id=NULL,revision=revision+1,updated_at=now() WHERE id=$1",[id,action==='delete'?'deleted':'paused']);
-  await c.query("UPDATE workpivot.automation_runs SET revoked=true,status='cancelled',error='计划已停用或删除',finished_at=now() WHERE plan_id=$1 AND status='queued'",[id]);
+  await c.query("UPDATE workpivot.automations SET state=$2,next_at=NULL,grant_id=NULL,issue=CASE WHEN issue=$3 THEN '' ELSE issue END,revision=revision+1,updated_at=now() WHERE id=$1",[id,action==='delete'?'deleted':'paused',queueFullIssue]);
+  await c.query("UPDATE workpivot.automation_runs SET revoked=true,status='cancelled',error='计划已停用或删除',finished_at=now() WHERE plan_id=$1 AND status IN ('queued','waiting_login')",[id]);
   if(stopCurrent||action==='delete')await c.query("UPDATE workpivot.automation_runs SET revoked=true WHERE plan_id=$1 AND status='running'",[id]);
   return this.get(c,id);
  },actor);}
- async stopRun(actor:string,planId:string,id:string){return transaction(this.db,async c=>{await this.guard?.(c,'cancel_schedule_run',{id:planId,runId:id});await this.get(c,planId,true);uuid(id);await c.query("UPDATE workpivot.automation_runs SET revoked=true,status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,error='用户已请求停止',finished_at=CASE WHEN status='queued' THEN now() ELSE finished_at END WHERE id=$1 AND plan_id=$2 AND status IN ('queued','running')",[id,planId]);},actor);}
+ async stopRun(actor:string,planId:string,id:string){return transaction(this.db,async c=>{await this.guard?.(c,'cancel_schedule_run',{id:planId,runId:id});await this.get(c,planId,true);uuid(id);await c.query("UPDATE workpivot.automation_runs SET revoked=true,status=CASE WHEN status IN ('queued','waiting_login') THEN 'cancelled' ELSE status END,error='用户已请求停止',finished_at=CASE WHEN status IN ('queued','waiting_login') THEN now() ELSE finished_at END WHERE id=$1 AND plan_id=$2 AND status IN ('queued','waiting_login','running')",[id,planId]);},actor);}
  async notice(c:PoolClient,actor:string,id:string,run:string|null,key:string,message:string){await c.query('INSERT INTO workpivot.automation_notices(owner_user_id,plan_id,run_id,notice_key,message) VALUES($1,$2,$3,$4,$5) ON CONFLICT(owner_user_id,notice_key) DO NOTHING',[actor,id,run,key,message]);}
  async block(c:PoolClient,actor:string,id:string,message:string){const p=await this.get(c,id,true);if(['deleted','paused'].includes(p.state))return;
   await c.query("UPDATE workpivot.automations SET state='blocked',issue=$2,next_at=NULL,grant_id=NULL,revision=revision+1 WHERE id=$1",[id,message]);
-  await c.query("UPDATE workpivot.automation_runs SET revoked=true,status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,error=$2 WHERE plan_id=$1 AND status IN ('queued','running')",[id,message]);
+  await c.query("UPDATE workpivot.automation_runs SET revoked=true,status=CASE WHEN status IN ('queued','waiting_login') THEN 'cancelled' ELSE status END,error=$2 WHERE plan_id=$1 AND status IN ('queued','waiting_login','running')",[id,message]);
   await this.notice(c,actor,id,null,`blocked:${id}:${p.revision}`,message);
  }
  async enqueue(actor:string,now=new Date()){return transaction(this.db,async c=>{
-  const plans=(await c.query(`SELECT ${planColumns},grant_id FROM workpivot.automations WHERE state='enabled' ORDER BY next_at FOR UPDATE SKIP LOCKED`)).rows;
+  await lockAutomationCapacity(c,actor);
+  const capacity=await automationCapacity(c),queuedLimit=capacity.queuedLimit;
+  let queued=capacity.queued;
+  const plans=(await c.query(`SELECT ${planColumns},grant_id FROM workpivot.automations WHERE state='enabled' ORDER BY next_at,id FOR UPDATE SKIP LOCKED`)).rows;
   for(const p of plans){try{await this.dependencies(c,p.config);}catch(e){await this.block(c,actor,p.id,e instanceof RepositoryError?e.message:'计划依赖暂不可用');continue;}
    if(!p.nextAt||new Date(p.nextAt)>now)continue;
    const at=new Date(p.nextAt),next=nextAutomationTime(p.config,now,at);
    const late=now.getTime()-at.getTime()>60000;
-   if(!late||p.config.catchup==='once')await c.query(`INSERT INTO workpivot.automation_runs(id,owner_user_id,plan_id,config,grant_id,plan_revision,scheduled_for) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,[randomUUID(),actor,p.id,p.config,p.grant_id,p.revision,at]);
+   if(!late||p.config.catchup==='once'){
+    const existing=(await c.query("SELECT 1 FROM workpivot.automation_runs WHERE plan_id=$1 AND (status IN ('queued','waiting_login') OR scheduled_for=$2)",[p.id,at])).rowCount;
+    if(!existing){
+     if(queued>=queuedLimit){await c.query('UPDATE workpivot.automations SET issue=$2 WHERE id=$1',[p.id,queueFullIssue]);continue;}
+     const added=await c.query(`INSERT INTO workpivot.automation_runs(id,owner_user_id,plan_id,config,grant_id,plan_revision,scheduled_for) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,[randomUUID(),actor,p.id,p.config,p.grant_id,p.revision,at]);
+     queued+=added.rowCount??0;
+    }
+   }
+   await c.query("UPDATE workpivot.automations SET issue='' WHERE id=$1 AND issue=$2",[p.id,queueFullIssue]);
    await c.query("UPDATE workpivot.automations SET next_at=$2,state=CASE WHEN $2::timestamptz IS NULL THEN 'ended' ELSE state END WHERE id=$1",[p.id,next]);
   }
  },actor);}
  async manual(actor:string,id:string,revision:number,requestId:string){uuid(requestId);return transaction(this.db,async c=>{
+  await lockAutomationCapacity(c,actor);
   const p=await this.get(c,id,true);const old=(await c.query('SELECT id FROM workpivot.automation_runs WHERE request_id=$1 AND plan_id=$2',[requestId,id])).rows[0];if(old)return old;
   if(p.revision!==revision||p.state!=='enabled'||!p.config||!p.grant_id)throw new RepositoryError(409,'仅可试运行已确认启用的当前计划');await this.dependencies(c,p.config);
-  if((await c.query("SELECT 1 FROM workpivot.automation_runs WHERE plan_id=$1 AND status IN ('queued','running')",[id])).rowCount)throw new RepositoryError(409,'此计划已有待执行或运行中的任务');
+  if((await c.query("SELECT 1 FROM workpivot.automation_runs WHERE plan_id=$1 AND status IN ('queued','waiting_login','running')",[id])).rowCount)throw new RepositoryError(409,'此计划已有待执行或运行中的任务');
+  const {queuedLimit}=await automationCapacity(c);
+  if(await this.queuedCount(c)>=queuedLimit)throw new RepositoryError(409,`最多排队${queuedLimit}次，请等待已有任务执行或取消排队后重试`);
   const runId=randomUUID();await c.query('INSERT INTO workpivot.automation_runs(id,owner_user_id,plan_id,config,grant_id,plan_revision,scheduled_for,request_id) VALUES($1,$2,$3,$4,$5,$6,clock_timestamp(),$7)',[runId,actor,id,p.config,p.grant_id,p.revision,requestId]);return {id:runId};
  },actor);}
  async notices(actor:string){return transaction(this.db,async c=>(await c.query('SELECT id,plan_id AS "planId",run_id AS "runId",message,read_at AS "readAt",created_at AS "createdAt" FROM workpivot.automation_notices ORDER BY created_at DESC LIMIT 100')).rows,actor);}

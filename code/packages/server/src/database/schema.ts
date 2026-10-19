@@ -1,3 +1,10 @@
+import {browserProfileSchema} from './browser-profile-schema.js';
+import {networkTargetSchema} from './network-target-schema.js';
+import {requestAuditCleanupSchema} from './request-audit-cleanup-schema.js';
+import {requestAuditSchema} from './request-audit-schema.js';
+import {captureSchema} from './capture-schema.js';
+import {managementAttemptSchema} from './management-attempt-schema.js';
+import {automationCapacitySchema} from './automation-capacity-schema.js';
 import {embeddingSchema} from './embedding-schema.js';
 import {trashSchema} from './trash-schema.js';
 import { automationSchema } from './automation-schema.js';
@@ -461,5 +468,21 @@ UPDATE workpivot.automation_runs SET revoked=true,
  finished_at=CASE WHEN status='queued' THEN now() ELSE finished_at END,
  error='旧网页来源授权已失效，请编辑完整 URL 并重新确认'
 WHERE status IN ('queued','running') AND COALESCE(config->'webOrigins','[]'::jsonb)<>'[]'::jsonb;
-`}] as const;
+`}, {version:39,sql:automationCapacitySchema}, {version:40,sql:managementAttemptSchema}, {version:41,sql:captureSchema}, {version:42,sql:`
+ALTER TABLE workpivot.capture_observations ADD COLUMN retry_count integer NOT NULL DEFAULT 0 CHECK(retry_count BETWEEN 0 AND 2);
+ALTER TABLE workpivot.capture_audit ADD COLUMN retry_count integer NOT NULL DEFAULT 0 CHECK(retry_count BETWEEN 0 AND 2);
+`}, {version:43,sql:`
+ALTER TABLE workpivot.capture_versions ADD COLUMN original_body bytea, ADD COLUMN original_type text, ADD COLUMN original_hash text;
+ALTER TABLE workpivot.capture_versions ADD CONSTRAINT capture_original_valid CHECK (
+ (original_body IS NULL AND original_type IS NULL AND original_hash IS NULL) OR
+ (original_body IS NOT NULL AND original_type IS NOT NULL AND original_hash IS NOT NULL AND octet_length(original_body)<=2097152 AND length(original_type) BETWEEN 1 AND 200 AND original_hash ~ '^[a-f0-9]{64}$')
+);
+ALTER TABLE workpivot.capture_audit DROP CONSTRAINT capture_audit_action_check;
+ALTER TABLE workpivot.capture_audit ADD CONSTRAINT capture_audit_action_check CHECK(action IN ('new_version','unchanged','view','recycle','restore','purge','download'));
+`}, {version:44,sql:`
+ALTER TABLE workpivot.capture_versions ADD COLUMN original_kind text NOT NULL DEFAULT 'http' CHECK(original_kind IN ('http','dom'));
+`}, {version:45,sql:requestAuditSchema}, {version:46,sql:`
+ALTER TABLE workpivot.capture_versions DROP CONSTRAINT capture_versions_original_kind_check;
+ALTER TABLE workpivot.capture_versions ADD CONSTRAINT capture_versions_original_kind_check CHECK(original_kind IN ('http','dom','bundle'));
+`}, {version:47,sql:requestAuditCleanupSchema}, {version:48,sql:networkTargetSchema}, {version:49,sql:browserProfileSchema}] as const;
 import { usageSchema } from './usage-schema.js';

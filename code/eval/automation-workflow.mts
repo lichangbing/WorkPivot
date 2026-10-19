@@ -1,5 +1,8 @@
 /** 只使用隔离数据库、合成文件和可控模型，验证调度与权限边界。 */
 import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {once as onceEvent} from 'node:events';
+import {setTimeout as delay} from 'node:timers/promises';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';import {join} from 'node:path';
@@ -64,6 +67,62 @@ try{
  const none={...config,name:'不含输入计划',input:{mode:'none' as const,versionIds:[],pattern:''}};let unloaded=await plans.draft(actor,none,randomUUID());unloaded=await plans.confirm(actor,unloaded.id,unloaded.revision,true);await skills.select(actor,skill.name,false);await plans.enqueue(actor);check((await plans.detail(actor,unloaded.id)).state==='blocked','技能卸载后计划停止生效');await skills.select(actor,skill.name,true);
  const runs=new RunRepository(db),live=await runs.start(actor,task.id,randomUUID(),'创建计划');const tools=plans.tools(actor,task.id,()=>live);check(!tools.some(t=>/activate|confirm|enable/.test(t.name)),'模型没有启用授权工具');const proposed=JSON.parse(await tools.find(t=>t.name==='propose_schedule')!.run({config:none,requestId:randomUUID()},{taskDir:'.'}));check(proposed.origin==='conversation'&&proposed.state==='draft','对话草稿进入统一列表并保持未启用');await runs.stop(actor,task.id);await rejects(()=>tools.find(t=>t.name==='propose_schedule')!.run({config:none,requestId:randomUUID()},{taskDir:'.'}),'停止对话后旧工具不可再写计划');await rejects(()=>plans.confirm(actor,proposed.id,proposed.revision,true),'停止来源对话的草稿不能旧确认启用');
  const app=await createDatabaseApp(auth,db,secret,undefined,undefined,undefined,undefined,files,undefined,plans);server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server!.once('listening',r));const apiAddress=server.address();if(!apiAddress||typeof apiAddress==='string')throw Error('HTTP not ready');const baseUrl=`http://127.0.0.1:${apiAddress.port}`;check((await fetch(baseUrl+'/api/automations')).status===401,'API 未登录拒绝');const http=await fetch(baseUrl+'/api/automations',{headers:{authorization:'Bearer '+user.token}});check(http.ok&&(await http.json()).plans.length>0,'API 读取真实计划');
+ // 管理员只能读取计数和用量元数据，不能借监控接口获得私人正文。
+ const monitorPath='/api/admin/operations?userId='+other+'&month=2026-10';
+ check((await fetch(baseUrl+monitorPath)).status===401,'管理监控未登录拒绝');
+ const firstLogin=await accounts.login('other','synthetic-password');await accounts.changePassword(firstLogin.token,'synthetic-password','synthetic-password-new');
+ const memberLogin=await accounts.login('other','synthetic-password-new');
+ check((await fetch(baseUrl+monitorPath,{headers:{authorization:'Bearer '+memberLogin.token}})).status===403,'普通成员不能访问管理监控');
+ await transaction(db,c=>c.query("INSERT INTO workpivot.model_usage(id,owner_user_id,provider_id,model,source,started_at,status,input_tokens,output_tokens,measurement,currency,failure) VALUES($1,$2,$3,'synthetic-monitor','chat','2026-10-18T00:00:00Z','failed',17,25,'estimated','CNY','PRIVATE_FAILURE_MARKER')",[randomUUID(),other,randomUUID()]),other);
+ const monitoring=await fetch(baseUrl+monitorPath,{headers:{authorization:'Bearer '+user.token}}),metadata=await monitoring.json();
+ check(monitoring.ok&&metadata.user.id===other&&metadata.usage[0]?.inputTokens==='17'&&metadata.usage[0]?.outputTokens==='25','管理员按指定用户月份查看准确用量');
+ check(metadata.groups.task_runs.length===0,'监控切换用户不混入其他用户的对话运行');
+ check(!JSON.stringify(metadata).includes('PRIVATE_FAILURE_MARKER')&&!JSON.stringify(metadata).includes('foreign.json'),'管理监控不泄露原始错误及私人文件名');
+ check((await fetch(baseUrl+'/api/admin/operations?userId='+other+'&month=2026-13',{headers:{authorization:'Bearer '+user.token}})).status===400,'监控拒绝非法月份');
+ const capacityPath='/api/admin/automation-capacity';
+ check((await fetch(baseUrl+capacityPath+'?userId='+other)).status===401,'额度管理未登录拒绝');
+ const capacityBody={userId:other,enabledLimit:25,queuedLimit:12,revision:0,requestId:randomUUID(),reason:'合成API额度验收'};
+ const capacityWrite=(token:string)=>fetch(baseUrl+capacityPath,{method:'PUT',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(capacityBody)});
+ check((await capacityWrite(memberLogin.token)).status===403,'普通成员不能修改额度');
+ check((await capacityWrite(user.token)).status===200,'管理员通过实际API调整目标用户额度');
+ const capacityView=await (await fetch(baseUrl+capacityPath+'?userId='+other,{headers:{authorization:'Bearer '+user.token}})).json();
+ check(capacityView.capacity.enabledLimit===25&&capacityView.audit[0]?.reason===capacityBody.reason&&!JSON.stringify(capacityView).includes(capacityBody.requestId),'管理API返回生效额度和成功审计，不暴露请求标识');
+ check((await fetch(baseUrl+capacityPath+'?userId='+other+'&before=999999999999',{headers:{authorization:'Bearer '+user.token}})).status===400,'审计API拒绝超范围游标');
+ const attemptPath='/api/admin/automation-attempts?userId='+other;
+ check((await fetch(baseUrl+attemptPath)).status===401,'失败审计接口拒绝未登录');
+ check((await fetch(baseUrl+attemptPath,{headers:{authorization:'Bearer '+memberLogin.token}})).status===403,'失败审计接口拒绝普通成员');
+ const attemptView=await (await fetch(baseUrl+attemptPath,{headers:{authorization:'Bearer '+user.token}})).json();
+ check(attemptView.attempts.some((row:{actorId:string;category:string})=>row.actorId===other&&row.category==='permission_denied'),'实际API权限拒绝后管理端能查询失败审计');
+ const invalidAttempt=await fetch(baseUrl+capacityPath,{method:'PUT',headers:{authorization:'Bearer '+user.token,'content-type':'application/json'},body:JSON.stringify({userId:'PRIVATE_INPUT_MARKER',reason:'PRIVATE_REASON_MARKER'})});
+ const ownAttempt=await (await fetch(baseUrl+'/api/admin/automation-attempts?userId='+actor+'&category=invalid_input',{headers:{authorization:'Bearer '+user.token}})).json();
+ check(invalidAttempt.status===400&&ownAttempt.attempts.length>0&&!JSON.stringify(ownAttempt).includes('PRIVATE_'),'API非法输入拒绝并记录固定分类，不保存原始输入');
+ // 使用实际持久队列验证跨用户轮转，不依赖模型输出或进程内计数器。
+ let otherSkill=await skills.create(other,'fairness-test');otherSkill=await skills.save(other,otherSkill.name,'SKILL.md',Buffer.from('---\nname: fairness-test\ndescription: 调度公平合成验收\n---\n仅供测试。'),otherSkill.revision);await skills.publish(other,otherSkill.name,otherSkill.revision);await skills.select(other,otherSkill.name,true);
+ const otherRelease=(await skills.market(other)).find(s=>s.name===otherSkill.name)!.version;
+ const queued:string[]=[];
+ for(const [owner,total] of [[actor,3],[other,2]] as const)for(let i=0;i<total;i++){
+  let plan=await plans.draft(owner,{...none,projectId:null,name:'公平队列'+i,skill:owner===actor?skill.name:otherSkill.name,releaseId:owner===actor?release:otherRelease},randomUUID());
+  plan=await plans.confirm(owner,plan.id,plan.revision,true);const run=await plans.manual(owner,plan.id,plan.revision,randomUUID());queued.push(run.id);
+  if(owner===actor)await transaction(db,c=>c.query("UPDATE workpivot.automation_runs SET created_at=now()-interval '1 hour' WHERE id=$1",[run.id]),owner);
+ }
+ const order:string[]=[];
+ for(let i=0;i<5;i++){
+  const instance=new AutomationWorker(auth,plans,files,undefined,async owner=>{order.push(owner);throw Error('合成模型失败，仅观察领取顺序');});
+  await instance.tick();await instance.stop();
+ }
+ check(order.join(',')===[other,actor,other,actor,actor].join(','),'多用户轮转不被更早入队的大队列独占，重建调度器仍保持公平');
+ check((await transaction(db,c=>c.query("SELECT id FROM workpivot.automation_runs WHERE id=ANY($1::uuid[]) AND status='queued'",[queued]),actor)).rowCount===0,'公平调度后本用户合成排队项全部消费');
+ // API停止后由独立进程消费持久队列；无模型配置应明确失败，不假造成功。
+ if(server){await new Promise<void>(r=>server!.close(()=>r()));server=undefined;}
+ let externalPlan=await plans.draft(actor,{...none,projectId:null,name:'独立调度验收'},randomUUID());externalPlan=await plans.confirm(actor,externalPlan.id,externalPlan.revision,true);
+ const externalRun=await plans.manual(actor,externalPlan.id,externalPlan.revision,randomUUID());
+ const service=spawn(process.execPath,['--import','tsx','scripts/automation-service.mts'],{env:{...process.env,WORKPIVOT_DATABASE_URL:role('automation_app'),WORKPIVOT_AUTH_DATABASE_URL:role('automation_auth'),WORKPIVOT_SECRET_KEY:secret,WORKPIVOT_DATABASE_FILES_ROOT:root,WORKPIVOT_WORKER_URL:workerConfig.url,WORKPIVOT_WORKER_TOKEN:secret},stdio:'ignore'});
+ try{
+  let finished=false;
+  for(let i=0;i<100;i++){const current=(await plans.detail(actor,externalPlan.id)).runs.find(r=>r.id===externalRun.id);if(current?.status==='failed'){finished=true;break;}if(service.exitCode!==null)break;await delay(100);}
+  check(finished,'API停止后独立调度服务继续领取；缺少模型配置明确失败');
+  const ended=onceEvent(service,'exit');service.kill('SIGTERM');const [exit]=await ended;check(exit===0,'独立调度服务收到SIGTERM正常停止并关闭连接');
+ }finally{if(service.exitCode===null&&service.signalCode===null){const ended=onceEvent(service,'exit');service.kill('SIGKILL');await ended;}}
  let restore=await plans.draft(actor,none,randomUUID());restore=await plans.confirm(actor,restore.id,restore.revision,true);await plans.manual(actor,restore.id,restore.revision,randomUUID());await sanitizeRestoredDatabase(url);const restored=await plans.detail(actor,restore.id);check(restored.state==='paused'&&!restored.nextAt&&!restored.grant_id,'备份恢复撤销授权并停用计划');check(restored.runs[0]?.status==='interrupted','恢复后排队运行中断而不自动补跑');
  console.log(`自动化验收：${checks}项通过`);
 }finally{await scheduler?.stop();server?.closeAllConnections();if(server)await new Promise<void>(r=>server!.close(()=>r()));await worker?.close();await Promise.all([db.end(),auth.end(),admin.end()]);await rm(root,{recursive:true,force:true});}
