@@ -1,3 +1,7 @@
+import { DatabaseMemoryManagement } from './DatabaseMemoryManagement';
+import { Icon, type IconName } from './Icon';
+import './settings.css';
+import { ServerConnection } from './AccountAccess';
 import {DatabasePersonalData} from './DatabasePersonalData';
 import { DatabaseSessions } from './DatabaseSessions';
 import { DatabaseUsage } from './DatabaseUsage';
@@ -9,26 +13,45 @@ import { jsonFetch } from './api';
 
 
 type Section = 'projects' | 'providers' | 'mcp';
-export type SettingsSection = 'mcp' | 'skills' | 'experts' | 'usage' | 'sessions' | 'personal';
+export type SettingsSection = 'memory' | 'server' | 'mcp' | 'skills' | 'experts' | 'usage' | 'sessions' | 'personal';
 interface Row { id: string; name: string; revision: number }
 interface Provider extends Row { inputPrice?:string|null; outputPrice?:string|null; currency?:string; contextBudget?: number; contextSource?: 'manual'|'api'; contextCheckedAt?: string|null; baseUrl: string; modelId: string; protocol: string; hasApiKey: boolean; active: boolean; shared?: boolean }
 interface Mcp extends Row { url: string; hasToken: boolean; enabled: boolean; status: string; tools: { name: string; description?: string }[]; disabledTools: string[] }
 interface Task extends Row { projectId: string | null; status: string }
 const button = 'rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800 disabled:opacity-40';
 const field = 'block w-full rounded border border-neutral-700 bg-neutral-900 p-2';
-const titles = { projects: '项目管理', providers: '模型配置', mcp: 'MCP 配置', skills: 'Skill', experts: '专家', usage: '用量与预算', sessions: '登录会话', personal: '个人数据' };
+const titles = { memory: '记忆管理', server: '服务器连接', projects: '项目管理', providers: '模型配置', mcp: 'MCP 配置', skills: 'Skill', experts: '专家', usage: '用量统计', sessions: '登录会话', personal: '个人数据' };
+
+const settingsItems: Record<SettingsSection, { icon: IconName; description: string }> = {
+  memory: { icon: 'memory', description: '查看已保存内容、确认建议与管理周期分析。' },
+  mcp: { icon: 'plug', description: '连接外部工具，管理智能体可使用的服务。' },
+  skills: { icon: 'skill', description: '管理技能构建、发布与加载。' },
+  experts: { icon: 'bot', description: '配置专家角色与工作方式。' },
+  usage: { icon: 'chart', description: '按天查看请求次数与 Token 用量。' },
+  sessions: { icon: 'monitor', description: '查看有效登录，管理账号访问。' },
+  personal: { icon: 'shield', description: '导出个人资料，管理数据保留与清理。' },
+  server: { icon: 'server', description: '查看当前连接，切换工作服务器。' },
+};
 
 /** 配置草稿只保留在组件内存中，凭据不得回读或持久化到本地。 */
 export function DatabaseSettings({ onClose, onChanged, configurationEnabled, initialSection = 'mcp' }: { initialSection?: SettingsSection; onClose: () => void; onChanged: () => Promise<void>; configurationEnabled: boolean }) {
   const [section, setSection] = useState<SettingsSection>(initialSection);
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => { const node = dialog.current; node?.showModal(); return () => node?.close(); }, []);
-  return <dialog ref={dialog} aria-label="工作区设置" onCancel={onClose} className="m-auto w-[95vw] max-w-4xl bg-transparent p-0 backdrop:bg-black/40">
-    <div className="flex h-[80vh] w-full max-w-4xl overflow-hidden rounded-xl border border-neutral-700 bg-neutral-950 text-neutral-100 shadow-xl">
-      <nav aria-label="设置菜单" className="w-40 shrink-0 space-y-2 border-r border-neutral-800 p-3">{(['mcp', 'skills', 'experts', 'usage', 'sessions', 'personal'] as SettingsSection[]).map(key => <button key={key} className={`${button} w-full text-left ${section === key ? 'bg-neutral-800' : ''}`} onClick={() => setSection(key)}>{titles[key]}</button>)}</nav>
-      <div className="min-w-0 flex-1 overflow-auto p-5"><header className="mb-4 flex items-center justify-between"><h2>{titles[section]}</h2><button className={button} onClick={onClose}>关闭</button></header>
-        {section === 'personal' ? <DatabasePersonalData onChanged={onChanged} /> : section === 'sessions' ? <DatabaseSessions /> : section === 'usage' ? <DatabaseUsage /> : section === 'experts' ? <DatabaseExperts /> : section === 'skills' ? <><DatabaseSkillBuilds /><DatabaseSkillMarket /></> : !configurationEnabled ? <p>后台尚未启用模型与 MCP 配置。</p> : <Registry key={section} section={section} onChanged={onChanged} />}
-      </div>
+  return <dialog ref={dialog} aria-label="工作区设置" onCancel={onClose} className="workspace-settings">
+    <div className="settings-layout">
+      <aside className="settings-sidebar">
+        <div className="settings-brand"><Icon name="settings" size={21}/><h1>设置</h1></div>
+        <p className="settings-nav-label">工作空间</p>
+        <nav aria-label="设置菜单">{(['mcp', 'skills', 'experts', 'memory', 'usage', 'sessions', 'personal', ...(window.workpivotDesktop?.changeServer ? ['server'] : [])] as SettingsSection[]).map(key => <button type="button" key={key} aria-current={section === key ? 'page' : undefined} className="settings-nav-item" onClick={() => setSection(key)}><Icon name={settingsItems[key].icon} size={18}/><span>{titles[key]}</span></button>)}</nav>
+        <span className="settings-sidebar-footer">WorkPivot</span>
+      </aside>
+      <section className="settings-main" aria-label={titles[section]}>
+        <header className="settings-header"><div className="settings-heading"><span className="settings-heading-icon"><Icon name={settingsItems[section].icon} size={22}/></span><div><h2>{titles[section]}</h2><p>{settingsItems[section].description}</p></div></div><button type="button" className="settings-close" aria-label="关闭设置" title="关闭设置" onClick={onClose}><Icon name="close" size={20}/></button></header>
+        <div className="settings-content" key={section}>
+        {section === 'memory' ? <DatabaseMemoryManagement/> : section === 'server' ? <><p className="mb-4 text-sm text-neutral-400">更换服务器后进入对应服务器的登录页面。会话副本按服务器与账号隔离，生成文件仍保留在原服务器。</p><ServerConnection /></> : section === 'personal' ? <DatabasePersonalData onChanged={onChanged} /> : section === 'sessions' ? <DatabaseSessions /> : section === 'usage' ? <DatabaseUsage /> : section === 'experts' ? <DatabaseExperts /> : section === 'skills' ? <><DatabaseSkillBuilds /><DatabaseSkillMarket /></> : !configurationEnabled ? <p>后台尚未启用模型与 MCP 配置。</p> : <Registry key={section} section={section} onChanged={onChanged} />}
+        </div>
+      </section>
     </div>
   </dialog>;
 }

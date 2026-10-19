@@ -7,18 +7,13 @@
   font: inherit;
   font-size: 14px;
   line-height: 1.6;
-  min-height: 100dvh;
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
 }
 .trash-ui * { box-sizing: border-box; }
 .trash-ui button, .trash-ui input, .trash-ui select { font: inherit; }
 .trash-ui button:disabled { opacity: .4; cursor: not-allowed; }
-.trash-ui .shell { display: grid; grid-template-columns: 256px minmax(0,1fr); min-height: 100dvh; }
-.trash-ui .sidebar { padding: 16px 12px; border-right: 1px solid var(--line); }
-.trash-ui .brand { padding: 4px 12px 24px; font-size: 16px; font-weight: 600; }
-.trash-ui .nav-label { padding: 8px 12px; color: var(--color-neutral-500); font-size: 13px; }
-.trash-ui .nav { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 12px; border-radius: 6px; text-align: left; color: var(--color-neutral-300); }
-.trash-ui .nav:hover, .trash-ui .nav.active { background: var(--color-neutral-900); }
-.trash-ui .nav.active { color: var(--color-neutral-100); font-weight: 600; }
 .trash-ui .main { min-width: 0; }
 .trash-ui .topbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; min-height: 64px; padding: 12px 24px; border-bottom: 1px solid var(--line); }
 .trash-ui .content { max-width: 1440px; margin: auto; padding: 24px; }
@@ -72,8 +67,6 @@
 .trash-ui dialog input { display: block; width: 100%; margin-top: 8px; }
 .trash-ui .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
 @media(max-width:800px) {
-  .trash-ui .shell { display: block; }
-  .trash-ui .sidebar { display: none; }
   .trash-ui .topbar { padding: 12px 16px; }
   .trash-ui .content { padding: 20px 16px; }
   .trash-ui .trash-summary { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }

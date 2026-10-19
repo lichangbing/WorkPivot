@@ -95,3 +95,18 @@ button.bg-blue-600, button.bg-blue-500, button.bg-emerald-600 { color: white; }
 .composer-model { max-width: 260px; font-size: 13px; }
 .composer-send:focus-visible { outline-offset: 3px; }
 @media (max-width: 900px) { .composer-footer { gap: 8px; } .composer-actions { gap: 8px; } .composer-model { max-width: 140px; } }
+
+/* 用户消息按内容收缩并靠右，连续长文本与代码仍限制在气泡内。 */
+.workspace-user-message { overflow-wrap: anywhere; }
+.workspace-user-message pre, .workspace-user-message table { max-width: 100%; overflow-x: auto; }
+.workspace-user-message table { display: block; }
+
+/* 保留可见滚动轨道，提示过程区可单独滚动。 */
+.conversation-process-scroll { scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: var(--color-neutral-500) var(--color-neutral-900); }
+.conversation-process-scroll::-webkit-scrollbar { width: 8px; }
+.conversation-process-scroll::-webkit-scrollbar-track { background: var(--color-neutral-900); }
+.conversation-process-scroll::-webkit-scrollbar-thumb { background: var(--color-neutral-500); border-radius: 4px; }
+
+/* 桌面标题栏由预加载脚本提供，浏览器保留完整视口。 */
+html.workpivot-desktop .h-screen { height: calc(100vh - var(--desktop-titlebar-height)); }
+html.workpivot-desktop .min-h-screen { min-height: calc(100vh - var(--desktop-titlebar-height)); }

@@ -166,14 +166,14 @@ export class WorkspaceRepository {
   async listMemories(actor: string, scope: 'user' | 'project' | 'task', scopeId?: string, after?: string): Promise<{ memories: { id: string; content: string; revision: number }[]; nextCursor: string | null }> {
     if (!['user', 'project', 'task'].includes(scope)) throw new RepositoryError(400, '记忆层级无效');
     if (scope !== 'user') { if (!scopeId) throw new RepositoryError(400, '缺少记忆归属'); uuid(scopeId); }
-    else if (scopeId) throw new RepositoryError(400, '个人记忆不指定项目或任务');
+    else if (scopeId) uuid(scopeId);
     if (after) uuid(after);
     return transaction(this.db, async c => {
       if (scope === 'task') await task(c, scopeId!);
-      if (scope === 'project' && !(await c.query('SELECT id FROM workpivot.projects WHERE id=$1 AND deleted_at IS NULL', [scopeId])).rowCount) throw new RepositoryError(404, '项目不存在');
+      if ((scope === 'project') && !(await c.query('SELECT id FROM workpivot.projects WHERE id=$1 AND deleted_at IS NULL', [scopeId])).rowCount) throw new RepositoryError(404, '项目不存在');
       const rows = (await c.query<{ id: string; content: string; revision: number }>(`SELECT m.id,r.content,m.revision,m.locked FROM workpivot.memories m
         JOIN workpivot.memory_revisions r ON r.memory_id=m.id AND r.revision=m.revision
-        WHERE m.deleted_at IS NULL AND m.scope=$1 AND ($2::uuid IS NULL OR m.project_id=$2 OR m.task_id=$2)
+        WHERE m.deleted_at IS NULL AND m.scope=$1 AND ((m.scope='user' AND NOT m.legacy_personal AND m.project_id IS NOT DISTINCT FROM $2::uuid) OR (m.scope<>'user' AND (m.project_id=$2 OR m.task_id=$2)))
         AND ($3::uuid IS NULL OR m.id>$3) ORDER BY m.id LIMIT 51`, [scope, scopeId ?? null, after ?? null])).rows;
       return { memories: rows.slice(0, 50), nextCursor: rows.length > 50 ? rows[49]!.id : null };
     }, actor);
@@ -181,12 +181,12 @@ export class WorkspaceRepository {
   async createMemory(actor: string, content: string, scope: 'user' | 'project' | 'task', scopeId?: string): Promise<{ id: string; revision: number }> {
     if (typeof content !== 'string' || content.length > 20000 || !['user', 'project', 'task'].includes(scope)) throw new RepositoryError(400, '记忆无效');
     if (scope !== 'user') { if (!scopeId) throw new RepositoryError(400, '缺少记忆归属'); uuid(scopeId); }
-    else if (scopeId) throw new RepositoryError(400, '个人记忆不指定项目或任务');
+    else if (scopeId) uuid(scopeId);
     return transaction(this.db, async c => {
       if (scope === 'task') await task(c, scopeId!);
-      if (scope === 'project' && !(await c.query('SELECT id FROM workpivot.projects WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [scopeId])).rowCount) throw new RepositoryError(404, '项目不存在');
+      if ((scope === 'project') && !(await c.query('SELECT id FROM workpivot.projects WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [scopeId])).rowCount) throw new RepositoryError(404, '项目不存在');
       const id = randomUUID();
-      await c.query('INSERT INTO workpivot.memories(id,owner_user_id,scope,project_id,task_id) VALUES($1,$2,$3,$4,$5)', [id, actor, scope, scope === 'project' ? scopeId : null, scope === 'task' ? scopeId : null]);
+      await c.query('INSERT INTO workpivot.memories(id,owner_user_id,scope,project_id,task_id) VALUES($1,$2,$3,$4,$5)', [id, actor, scope, scope !== 'task' ? scopeId ?? null : null, scope === 'task' ? scopeId : null]);
       await c.query('INSERT INTO workpivot.memory_revisions(owner_user_id,memory_id,revision,content) VALUES($1,$2,1,$3)', [actor, id, content]);
       await this.memoryEvent(c, actor, id, 1, 'memory_updated');
       return { id, revision: 1 };
@@ -195,24 +195,24 @@ export class WorkspaceRepository {
   /** 用户核对过的一批条目原子提交；拆分保留来源依据。 */
   async saveMemoryEntries(actor: string, entries: unknown, scope: 'user' | 'project' | 'task', scopeId?: string, replace?: { id: string; revision: number }) {
     if (!Array.isArray(entries) || entries.length < 1 || entries.length > 100 || entries.some(v => typeof v !== 'string' || !v.trim() || v.length > 20000) || entries.join('').length > 100000) throw new RepositoryError(400, '请提供1至100条非空记忆，总长度不超过10万字');
-    if (!['user','project','task'].includes(scope) || (scope === 'user' && scopeId) || (scope !== 'user' && !scopeId)) throw new RepositoryError(400, '记忆归属无效');
+    if (!['user','project','task'].includes(scope) || (scope !== 'user' && !scopeId)) throw new RepositoryError(400, '记忆归属无效');
     if (scopeId) uuid(scopeId);
     if (replace) { uuid(replace.id); revision(replace.revision); }
     return transaction(this.db, async c => {
       if (scope === 'task') await task(c, scopeId!);
-      if (scope === 'project' && !(await c.query('SELECT id FROM workpivot.projects WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [scopeId])).rowCount) throw new RepositoryError(404, '项目不存在');
+      if ((scope === 'project') && !(await c.query('SELECT id FROM workpivot.projects WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [scopeId])).rowCount) throw new RepositoryError(404, '项目不存在');
       let locked = false;
       if (replace) {
-        const old = (await c.query('SELECT revision,scope,project_id,task_id,locked FROM workpivot.memories WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [replace.id])).rows[0];
+        const old = (await c.query('SELECT revision,scope,project_id,task_id,locked,legacy_personal FROM workpivot.memories WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [replace.id])).rows[0];
         if (!old) throw new RepositoryError(404, '记忆不存在');
         if (old.revision !== replace.revision) throw new RepositoryError(409, '记忆已更新，请重新打开');
-        if (old.scope !== scope || (scope !== 'user' && (old.project_id ?? old.task_id) !== scopeId)) throw new RepositoryError(400, '不能通过拆分改变记忆归属');
+        if (old.scope !== scope || old.legacy_personal || (old.project_id ?? old.task_id ?? null) !== (scopeId ?? null)) throw new RepositoryError(400, '不能通过拆分改变记忆归属');
         locked = old.locked;
       }
       const saved = [];
       for (const content of entries as string[]) {
         const id = randomUUID();
-        await c.query('INSERT INTO workpivot.memories(id,owner_user_id,scope,project_id,task_id,locked) VALUES($1,$2,$3,$4,$5,$6)', [id,actor,scope,scope === 'project' ? scopeId : null,scope === 'task' ? scopeId : null,locked]);
+        await c.query('INSERT INTO workpivot.memories(id,owner_user_id,scope,project_id,task_id,locked) VALUES($1,$2,$3,$4,$5,$6)', [id,actor,scope,scope !== 'task' ? scopeId ?? null : null,scope === 'task' ? scopeId : null,locked]);
         await c.query('INSERT INTO workpivot.memory_revisions(owner_user_id,memory_id,revision,content) VALUES($1,$2,1,$3)', [actor,id,content.trim()]);
         if (replace) await c.query('INSERT INTO workpivot.memory_sources(owner_user_id,memory_id,run_id) SELECT owner_user_id,$2,run_id FROM workpivot.memory_sources WHERE memory_id=$1 ON CONFLICT DO NOTHING', [replace.id,id]);
         await this.memoryEvent(c,actor,id,1,'memory_updated');
@@ -226,6 +226,20 @@ export class WorkspaceRepository {
       }
       return saved;
     }, actor);
+  }
+  /** 旧个人记忆只允许用户显式确认归属，不自动复制到其他项目。 */
+  async assignPersonalMemory(actor:string,id:string,expected:number,projectId:string|null){
+    uuid(id);revision(expected);if(projectId!==null)uuid(projectId);
+    return transaction(this.db,async c=>{
+      if(projectId&&!(await c.query('SELECT id FROM workpivot.projects WHERE id=$1 AND deleted_at IS NULL FOR UPDATE',[projectId])).rowCount)throw new RepositoryError(404,'项目不存在');
+      const row=(await c.query("SELECT revision FROM workpivot.memories WHERE id=$1 AND scope='user' AND legacy_personal AND deleted_at IS NULL FOR UPDATE",[id])).rows[0];
+      if(!row)throw new RepositoryError(404,'待指定归属的个人记忆不存在');
+      if(row.revision!==expected)throw new RepositoryError(409,'记忆已更新');
+      await c.query('INSERT INTO workpivot.memory_revisions(owner_user_id,memory_id,revision,content) SELECT owner_user_id,memory_id,$2,content FROM workpivot.memory_revisions WHERE memory_id=$1 AND revision=$3',[id,expected+1,expected]);
+      await c.query('UPDATE workpivot.memories SET project_id=$2,legacy_personal=false,revision=revision+1 WHERE id=$1',[id,projectId]);
+      await this.memoryEvent(c,actor,id,expected+1,'memory_updated');
+      return {revision:expected+1};
+    },actor);
   }
   async readMemory(actor: string, id: string): Promise<{ content: string; revision: number } | null> {
     uuid(id);

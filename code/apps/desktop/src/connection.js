@@ -11,8 +11,8 @@ document.getElementById('connection-form').addEventListener('submit', async (eve
   button.textContent = '正在连接…';
   status.textContent = '';
   try {
-    const result = await window.workpivotConnection.connect(input.value);
+    const result = await window.workpivotDesktop.loginServer(input.value, document.getElementById('username').value, document.getElementById('password').value);
     if (!result.ok) status.textContent = result.error;
   } catch { status.textContent = '无法连接服务器，请检查地址和网络后重试。'; }
-  finally { button.disabled = false; button.textContent = '连接服务器'; }
+  finally { button.disabled = false; button.textContent = '登录'; }
 });

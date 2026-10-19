@@ -1,17 +1,16 @@
-import { jsonFetch } from './api';
+import { DesktopConversationStorage } from './DesktopConversationStorage';
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { useTheme } from './theme';
 import type { SettingsSection } from './DatabaseSettings';
 
 export function WorkspaceUserMenu({ username, onLogout, onSettings }: { username?: string; onLogout: () => void; onSettings: (section: SettingsSection) => void }) {
+  const [localStorageOpen,setLocalStorageOpen]=useState(false);
   const [open, setOpen] = useState<'user' | 'settings' | null>(null);
   const [themes, setThemes] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const userButton = useRef<HTMLButtonElement>(null), settingsButton = useRef<HTMLButtonElement>(null), themeButton = useRef<HTMLButtonElement>(null);
   const { theme, setTheme } = useTheme();
-  const [budgetAlerts,setBudgetAlerts]=useState(0);
-  useEffect(()=>{const c=new AbortController();const refresh=()=>{void jsonFetch<{alerts:unknown[]}>('/api/usage/alerts',{signal:c.signal}).then(r=>{if(!c.signal.aborted)setBudgetAlerts(r.alerts.length);}).catch(()=>{/* 提醒读取失败不影响登录和工作区，下一次轮询重试。 */});};refresh();const timer=setInterval(refresh,30000);return()=>{c.abort();clearInterval(timer);};},[]);
   useEffect(() => {
     const outside = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) { setOpen(null); setThemes(false); } };
     document.addEventListener('pointerdown', outside);
@@ -27,10 +26,11 @@ export function WorkspaceUserMenu({ username, onLogout, onSettings }: { username
       <div className="relative"><button ref={themeButton} type="button" className={item} aria-expanded={themes} aria-controls="workspace-theme-menu" onClick={() => setThemes(v => !v)} onKeyDown={e => { if (e.key === 'ArrowRight') { e.preventDefault(); setThemes(true); } }}><Icon name="sun" /><span className="flex-1">界面主题</span><Icon name="right" size={14} /></button>
         {themes && <div id="workspace-theme-menu" aria-label="界面主题" className="absolute left-full top-0 z-50 ml-1 w-32 rounded-xl border border-neutral-700 bg-neutral-900 p-1.5 shadow-xl" onKeyDown={e => { if (e.key === 'ArrowLeft') { e.preventDefault(); setThemes(false); themeButton.current?.focus(); } }}>{(['dark', 'light'] as const).map(value => <button key={value} type="button" aria-pressed={theme === value} className={item} onClick={() => { setTheme(value); setThemes(false); themeButton.current?.focus(); }}><Icon name={value === 'dark' ? 'moon' : 'sun'} /><span className="flex-1">{value === 'dark' ? '黑色' : '白色'}</span>{theme === value && <Icon name="check" size={14} />}</button>)}</div>}
       </div>
+      {window.workpivotDesktop?.conversationCache&&<button type="button" className={item} onClick={()=>{setOpen(null);setLocalStorageOpen(true);}}><Icon name="archive"/><span>本地会话记录</span></button>}
       <div className="my-1 border-t border-neutral-700" /><button type="button" className={item} onClick={() => { setOpen(null); onLogout(); }}><Icon name="arrow" /><span>退出登录</span></button>
     </div>}
-    {budgetAlerts>0&&<button type="button" className="rounded px-2 py-1 text-xs text-amber-600" aria-label="查看预算提醒" onClick={()=>onSettings('usage')}>预算提醒 {budgetAlerts}</button>}
     <button ref={settingsButton} type="button" aria-label="设置" title="设置" aria-expanded={open === 'settings'} aria-controls="workspace-settings-menu" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-300 hover:bg-neutral-800" onClick={() => { setOpen(open === 'settings' ? null : 'settings'); setThemes(false); }}><Icon name="settings" size={20} /></button>
-    {open === 'settings' && <div id="workspace-settings-menu" aria-label="设置选项" className={`${popup} right-3 w-48`}>{([['mcp', 'MCP', 'skill'], ['skills', 'Skill', 'skill'], ['experts', '专家', 'skill'], ['usage', '用量与预算', 'skill'], ['sessions', '登录会话', 'skill'], ['personal', '个人数据', 'skill']] as const).map(([section, label, icon]) => <button key={section} type="button" className={item} onClick={() => { setOpen(null); onSettings(section); }}><Icon name={icon} /><span>{label}</span></button>)}</div>}
+    {open === 'settings' && <div id="workspace-settings-menu" aria-label="设置选项" className={`${popup} right-3 w-48`}>{([['mcp', 'MCP', 'plug'], ['skills', 'Skill', 'skill'], ['experts', '专家', 'bot'], ['memory', '记忆管理', 'memory'], ['usage', '用量统计', 'chart'], ['sessions', '登录会话', 'monitor'], ['personal', '个人数据', 'shield']] as const).map(([section, label, icon]) => <button key={section} type="button" className={item} onClick={() => { setOpen(null); onSettings(section); }}><Icon name={icon} /><span>{label}</span></button>)}{window.workpivotDesktop?.changeServer && <button type="button" className={item} onClick={() => { setOpen(null); onSettings('server'); }}><Icon name="server"/><span>服务器连接</span></button>}</div>}
+    {localStorageOpen&&<DesktopConversationStorage onClose={()=>setLocalStorageOpen(false)}/>}
   </div>;
 }

@@ -93,6 +93,7 @@ export function setToken(token: string): void {
 }
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
+  void window.workpivotDesktop?.conversationCache?.lock().catch(() => {});
 }
 
 function authHeaders(): Record<string, string> {

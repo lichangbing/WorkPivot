@@ -22,7 +22,7 @@ CREATE TRIGGER memory_review_source AFTER UPDATE OF context_revoked ON workpivot
 `;
 
 
-export interface ProposalReview { dedupeKey?: string; replaces?: string[] }
+export interface ProposalReview { analysisId?: string; analysisFence?: string; reason?: string; dedupeKey?: string; replaces?: string[] }
 export function rejectionHash(actor: string, taskId: string, scope: string, key?: string) {
   if (key === undefined) return null;
   if (typeof key !== 'string' || !key.trim() || key.length > 300) throw new RepositoryError(400, '记忆去重标识无效');

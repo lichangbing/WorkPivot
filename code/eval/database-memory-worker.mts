@@ -14,7 +14,7 @@ export async function testMemoryWorker(db: Pool, actor: string, check: (value: u
   await runs.finish(actor, run, 'completed', [{ role: 'assistant', content: '好的。' }]);
   let calls = 0;
   const worker = new MemoryWorker(db, async () => ({ providerId: 'test', model: 'test', async *streamChat() {
-    calls++; yield { type: 'delta', text: JSON.stringify(calls % 2 ? [{ scope: 'user', content: '报告使用中文', evidence: '报告需要使用中文', query: '报告语言' }] : { action: 'add', content: '报告使用中文' }) };
+    calls++; yield { type: 'delta', text: JSON.stringify(calls % 2 ? [{ scope: 'task', content: '报告使用中文', evidence: '报告需要使用中文', query: '报告语言' }] : { action: 'add', content: '报告使用中文' }) };
   } }));
   await worker.enqueue(actor, task.id, run.id);
   await worker.enqueue(actor, task.id, run.id);
@@ -22,9 +22,9 @@ export async function testMemoryWorker(db: Pool, actor: string, check: (value: u
   check(calls === 2, 'extraction and semantic consolidation are distinct model calls');
   const candidate = (await suggestions.list(actor)).find(s => s.evidence === '报告需要使用中文');
   check(candidate, 'automatic extraction retains exact source evidence');
-  check(!(await workspace.listMemories(actor, 'user')).memories.some(m => m.content === '报告使用中文'), 'automatic extraction cannot bypass user confirmation');
+  check(!(await workspace.listMemories(actor, 'task',task.id)).memories.some(m => m.content === '报告使用中文'), 'automatic extraction cannot bypass user confirmation');
   await suggestions.decide(actor, candidate!.id, true);
-  const memory = (await workspace.listMemories(actor, 'user')).memories.find(m => m.content === '报告使用中文')!;
+  const memory = (await workspace.listMemories(actor, 'task',task.id)).memories.find(m => m.content === '报告使用中文')!;
   check(memory, 'confirm publishes extracted memory');
   check(!await worker.process(actor), 'completed extraction job not replayed');
   const updateRun = await runs.start(actor, task.id, randomUUID(), '现在报告需要使用英文。');
@@ -33,7 +33,7 @@ export async function testMemoryWorker(db: Pool, actor: string, check: (value: u
   const updater = new MemoryWorker(db, async () => ({ providerId: 'test', model: 'test', async *streamChat(messages) {
     updateCalls++;
     if (updateCalls === 2) check(JSON.parse(messages[1]!.content!).existing.some((m: { id: string }) => m.id === memory.id), 'paraphrased keyword still supplies existing memory for semantic correction');
-    yield { type: 'delta', text: JSON.stringify(updateCalls % 2 ? [{ scope: 'user', content: '报告使用英文', evidence: '报告需要使用英文', query: '报告语言偏好' }] : { action: 'update', content: '报告使用英文', targetId: memory.id, targetRevision: memory.revision }) };
+    yield { type: 'delta', text: JSON.stringify(updateCalls % 2 ? [{ scope: 'task', content: '报告使用英文', evidence: '报告需要使用英文', query: '报告语言偏好' }] : { action: 'update', content: '报告使用英文', targetId: memory.id, targetRevision: memory.revision }) };
   } }));
   await updater.recover(actor);
   check(await updater.process(actor), 'worker restart recovers completed run missing job');
@@ -58,7 +58,7 @@ export async function testMemoryWorker(db: Pool, actor: string, check: (value: u
   await runs.finish(actor, next, 'completed', []);
   const invalidRun = await runs.start(actor, task.id, randomUUID(), '这不是长期事实');
   await runs.finish(actor, invalidRun, 'completed', []);
-  const invalid = new MemoryWorker(db, async () => ({ providerId: 'test', model: 'test', async *streamChat() { yield { type: 'delta', text: JSON.stringify([{ scope: 'user', content: '伪造内容', evidence: '不在原文内的证据', query: '' }]) }; } }));
+  const invalid = new MemoryWorker(db, async () => ({ providerId: 'test', model: 'test', async *streamChat() { yield { type: 'delta', text: JSON.stringify([{ scope: 'task', content: '伪造内容', evidence: '不在原文内的证据', query: '' }]) }; } }));
   await invalid.enqueue(actor, task.id, invalidRun.id);
   await workspace.saveSetting(actor, 'memory.auto-extraction', false, 0);
   check(!await invalid.process(actor), 'automatic extraction can be disabled');
@@ -72,44 +72,44 @@ export async function testMemoryWorker(db: Pool, actor: string, check: (value: u
   await workspace.deleteProject(actor, project.id, project.revision);
   check(await workspace.readMemory(actor, confirmed.memoryId!) === null, 'deleting source project invalidates derived personal memory');
   const mergeTask = await workspace.createTask(actor, 'merge memories');
-  const a = await workspace.createMemory(actor, '研究新能源', 'user');
-  const b = await workspace.createMemory(actor, '报告标注来源', 'user');
+  const a = await workspace.createMemory(actor, '研究新能源', 'task',mergeTask.id);
+  const b = await workspace.createMemory(actor, '报告标注来源', 'task',mergeTask.id);
   const targets = [a, b];
-  const propose = (text: string, items = targets) => suggestions.propose(actor, mergeTask.id, '', 'user', text, undefined, undefined, undefined, items);
+  const propose = (text: string, items = targets) => suggestions.propose(actor, mergeTask.id, '', 'task', text, undefined, undefined, undefined, items);
   let duplicateBlocked = false;
   try { await propose('重复', [a, a]); } catch { duplicateBlocked = true; }
   check(duplicateBlocked, 'merge rejects duplicate memory ids');
-  const rejectable = await suggestions.propose(actor, mergeTask.id, await suggestions.epoch(actor), 'user', '拒绝合并测试', undefined, undefined, undefined, targets);
+  const rejectable = await suggestions.propose(actor, mergeTask.id, await suggestions.epoch(actor), 'task', '拒绝合并测试', undefined, undefined, undefined, targets);
   await suggestions.decide(actor, rejectable.id, false);
   check(await workspace.readMemory(actor, a.id) && await workspace.readMemory(actor, b.id), 'rejecting merge leaves originals unchanged');
   const foreignProject = await workspace.createProject(actor, 'different scope');
   const foreignMemory = await workspace.createMemory(actor, '不应跨范围合并', 'project', foreignProject.id);
   let scopeBlocked = false;
-  try { await suggestions.propose(actor, mergeTask.id, await suggestions.epoch(actor), 'user', '错误范围', undefined, undefined, undefined, [a,foreignMemory]); } catch { scopeBlocked = true; }
+  try { await suggestions.propose(actor, mergeTask.id, await suggestions.epoch(actor), 'task', '错误范围', undefined, undefined, undefined, [a,foreignMemory]); } catch { scopeBlocked = true; }
   check(scopeBlocked, 'merge rejects mixed memory scopes');
   let staleBlocked = false;
-  try { await suggestions.propose(actor, mergeTask.id, await suggestions.epoch(actor), 'user', '过期合并', undefined, undefined, undefined, [a,{ ...b, revision: 9 }]); } catch { staleBlocked = true; }
+  try { await suggestions.propose(actor, mergeTask.id, await suggestions.epoch(actor), 'task', '过期合并', undefined, undefined, undefined, [a,{ ...b, revision: 9 }]); } catch { staleBlocked = true; }
   check(staleBlocked, 'merge rejects stale source revision');
   const mergeRun = await runs.start(actor, mergeTask.id, randomUUID(), '请整理我的研究偏好');
   await runs.finish(actor, mergeRun, 'completed', []);
   let mergeCalls = 0;
   const merger = new MemoryWorker(db, async () => ({ providerId: 'test', model: 'test', async *streamChat() {
-    mergeCalls++; yield { type: 'delta', text: JSON.stringify(mergeCalls % 2 ? [{ scope: 'user', content: '整理研究偏好', evidence: '整理我的研究偏好', query: '' }] : { action: 'merge', content: '研究新能源，报告标注来源', targets }) };
+    mergeCalls++; yield { type: 'delta', text: JSON.stringify(mergeCalls % 2 ? [{ scope: 'task', content: '整理研究偏好', evidence: '整理我的研究偏好', query: '' }] : { action: 'merge', content: '研究新能源，报告标注来源', targets }) };
   } }));
   await merger.enqueue(actor, mergeTask.id, mergeRun.id);
   await merger.process(actor);
   const merge = (await suggestions.list(actor)).find(s => s.mergeTargets.length === 2);
   check(merge?.mergeOriginals.length === 2, 'merge proposal displays every original memory');
   check(await workspace.readMemory(actor, a.id) && await workspace.readMemory(actor, b.id), 'unconfirmed merge preserves both active originals');
-  const competitor = await suggestions.propose(actor, mergeTask.id, await suggestions.epoch(actor), 'user', '竞争合并', undefined, undefined, undefined, targets);
+  const competitor = await suggestions.propose(actor, mergeTask.id, await suggestions.epoch(actor), 'task', '竞争合并', undefined, undefined, undefined, targets);
   const merged = await suggestions.decide(actor, merge!.id, true, '研究新能源；报告必须注明来源');
   check((await workspace.readMemory(actor, merged.memoryId!))?.content === '研究新能源；报告必须注明来源', 'user edited merge publishes final text');
   check(await workspace.readMemory(actor, a.id) === null && await workspace.readMemory(actor, b.id) === null, 'accepted merge removes originals from active retrieval');
   check(!(await suggestions.list(actor)).some(s => s.id === competitor.id), 'competing merge is invalidated');
   const retained = await transaction(db, async c => (await c.query('SELECT count(*)::int n FROM workpivot.memory_revisions WHERE memory_id=ANY($1::uuid[])', [[a.id,b.id]])).rows[0].n, actor);
   check(retained === 2, 'merge retains original revisions');
-  const extra = await workspace.createMemory(actor, '使用中文', 'user');
-  const nested = await suggestions.propose(actor, mergeTask.id, await suggestions.epoch(actor), 'user', '新能源中文研究报告注明来源', undefined, undefined, undefined, [{ id: merged.memoryId!, revision: 1 }, extra]);
+  const extra = await workspace.createMemory(actor, '使用中文', 'task',mergeTask.id);
+  const nested = await suggestions.propose(actor, mergeTask.id, await suggestions.epoch(actor), 'task', '新能源中文研究报告注明来源', undefined, undefined, undefined, [{ id: merged.memoryId!, revision: 1 }, extra]);
   const final = await suggestions.decide(actor, nested.id, true);
   await workspace.deleteMemory(actor, final.memoryId!, 1);
   const erased = await transaction(db, async c => (await c.query('SELECT count(*)::int n FROM workpivot.memory_revisions WHERE memory_id=ANY($1::uuid[])', [[a.id,b.id,merged.memoryId,extra.id,final.memoryId]])).rows[0].n, actor);

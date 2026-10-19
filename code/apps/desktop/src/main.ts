@@ -1,6 +1,7 @@
-/** 仅提供桌面外壳；账号、模型调用和任务执行均位于远端服务器。 */
+/** 桌面客户端保存会话副本；账号、模型调用、任务执行及生成文件仍由服务器管理。 */
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Tray, shell } from 'electron';
 import { downloadArtifact, artifactRequest } from './artifact.js';
+import { ConversationCache, type CachedConversation } from './conversation-cache.js';
 import { ArtifactSync, fetchManifest } from './artifact-sync.js';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -60,6 +61,36 @@ async function connect(value: unknown): Promise<{ ok: boolean; error?: string }>
     return { ok: false, error: message };
   } finally { connecting = false; }
 }
+/** 在用户填写的目标服务器登录，凭据不落盘，也不交还原服务器页面。 */
+async function loginServer(value: unknown, username: unknown, password: unknown): Promise<{ok:boolean;error?:string}> {
+  if (connecting) return {ok:false,error:'正在连接，请稍候'};
+  let serverUrl: string;
+  try { serverUrl = normalizeServerUrl(value); } catch (error) { return {ok:false,error:(error as Error).message}; }
+  if (typeof username !== 'string' || !username.trim() || username.length > 200 || typeof password !== 'string' || !password || password.length > 4096) return {ok:false,error:'请填写有效的用户名和密码'};
+  connecting = true;
+  const window = mainWindow;
+  try {
+    const health = await fetch(serverUrl+'/api/health',{redirect:'error',signal:AbortSignal.timeout(8000)});
+    if (!health.ok) return {ok:false,error:'服务器健康检查未通过'};
+    const service = checkServiceHealth(await health.json());
+    const response = await fetch(serverUrl+'/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username:username.trim(),password}),redirect:'error',signal:AbortSignal.timeout(15000)});
+    if (!response.ok) return {ok:false,error:response.status===429?'登录过于频繁，请稍后重试':'登录失败，请检查用户名、密码及目标服务器是否已初始化'};
+    const result = await response.json() as {token?:unknown};
+    if (typeof result.token !== 'string' || !result.token || result.token.length > 8192) return {ok:false,error:'服务器返回了无效的登录信息'};
+    if (!window || window.isDestroyed()) return {ok:false,error:'窗口已关闭'};
+    connectedOrigin = serverUrl;
+    await window.loadURL(serverUrl);
+    // 只在已校验的目标主框架写入登录令牌，密码始终只用于上述登录请求。
+    if (window.isDestroyed() || new URL(window.webContents.getURL()).origin !== serverUrl) throw Error('连接目标发生变化');
+    await window.webContents.executeJavaScript(`localStorage.setItem('wp_token',${JSON.stringify(result.token)});location.reload();`);
+    saveServer(serverUrl); lastError='';
+    window.setTitle(`WorkPivot · 已连接 ${new URL(serverUrl).host} · ${service.version}`);
+    window.show();
+    return {ok:true};
+  } catch (error) {
+    return {ok:false,error:error instanceof CompatibilityError?error.message:'无法连接服务器，请检查地址和网络后重试'};
+  } finally { connecting=false; }
+}
 function isConnectionPage(event: Electron.IpcMainInvokeEvent): boolean {
   return event.sender === mainWindow?.webContents && event.senderFrame === mainWindow.webContents.mainFrame && event.senderFrame.url === connectionPageUrl;
 }
@@ -76,7 +107,7 @@ function createTray(): void {
 }
 async function boot(): Promise<void> {
   log('CLIENT START; no local server, model keys or task runtime');
-  mainWindow = new BrowserWindow({ width: 1440, height: 900, title: 'WorkPivot', show: false,
+  mainWindow = new BrowserWindow({ width: 1440, height: 900, title: 'WorkPivot', show: false, frame: false, minWidth: 800, minHeight: 560,
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, preload: join(__dirname, 'preload.js') },
   });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -96,6 +127,19 @@ async function boot(): Promise<void> {
     { label: '编辑', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
     { label: '视图', submenu: [{ role: 'reload' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }] },
   ]));
+  // 保留原生编辑快捷键，但隐藏传统菜单栏。
+  mainWindow.setMenuBarVisibility(false);
+  ipcMain.handle('window:control', (event, action: unknown) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame || (!isConnectionPage(event) && !permitted(event.senderFrame.url))) throw new Error('不允许此页面控制窗口');
+    if (action === 'minimize') mainWindow.minimize();
+    else if (action === 'maximize') { if (mainWindow.isMaximized()) mainWindow.unmaximize(); else mainWindow.maximize(); }
+    else if (action === 'close') mainWindow.close();
+    else if (action !== 'state') throw new Error('无效的窗口操作');
+    return mainWindow.isMaximized();
+  });
+  const updateWindowState = () => mainWindow?.webContents.send('window:state', mainWindow.isMaximized());
+  mainWindow.on('maximize', updateWindowState);
+  mainWindow.on('unmaximize', updateWindowState);
   ipcMain.handle('connection:show', async (event) => {
     if (event.sender !== mainWindow?.webContents || event.senderFrame !== mainWindow.webContents.mainFrame || !permitted(event.senderFrame.url)) throw new Error('不允许此页面切换服务器');
     await showConnection();
@@ -107,6 +151,40 @@ async function boot(): Promise<void> {
   let selectingDirectory = false;
   let openingArtifact = false;
   const syncStore = new ArtifactSync(join(app.getPath('userData'), 'artifact-sync'));
+  const conversations = new ConversationCache(join(app.getPath('userData'), 'conversations'));
+  let conversationGeneration = 0;
+  mainWindow.webContents.on('did-start-navigation', (_event, _url, inPlace, mainFrame) => { if (mainFrame && !inPlace) { conversationGeneration++; conversations.lock(); } });
+  for (const action of ['open','read','write','reconcile','status','clear','lock','discard'] as const) ipcMain.handle(`conversation:${action}`, async (event, args: {token?:string;handle?:string;task?:string;epoch?:number;snapshot?:CachedConversation} = {}) => {
+    const window = mainWindow, origin = connectedOrigin;
+    if (!window || !origin || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || !permitted(event.senderFrame.url)) throw Error('不允许此页面访问本地会话');
+    if (action === 'lock') { conversationGeneration++; conversations.lock(); return; }
+    const cacheGeneration = conversationGeneration;
+    const valid = () => cacheGeneration === conversationGeneration && !window.isDestroyed() && origin === connectedOrigin && permitted(window.webContents.getURL());
+    const request = async (path:string) => {
+      if(typeof args.token!=='string'||!args.token||args.token.length>8192)throw Error('登录凭据无效');
+      const response=await fetch(origin+path,{headers:{authorization:'Bearer '+args.token},redirect:'error',signal:AbortSignal.timeout(15000)});
+      if(!valid())throw Error('服务器连接已切换');
+      if(!response.ok){if(response.status===401||response.status===403)conversations.lock();throw Error('无法确认本地会话权限，请检查登录和网络');}
+      const text=await response.text();if(text.length>8*1024*1024)throw Error('会话授权响应过大');return JSON.parse(text);
+    };
+    if(action==='open'){
+      if(typeof args.token!=='string')throw Error('登录凭据无效');
+      const existing=conversations.find(origin,args.token);if(existing)return existing;
+      const state=await request('/api/auth/state');if(!state.authenticated||!state.user?.id||state.user.mustChangePassword)throw Error('请先完成登录');
+      const result=await request('/api/tasks');if(!valid()||!Array.isArray(result.tasks))throw Error('任务清单无效');
+      return conversations.find(origin,args.token)??conversations.bind(origin,args.token,state.user.id,result.tasks.map((task:{id:string})=>task.id));
+    }
+    if(typeof args.handle!=='string')throw Error('本地会话授权无效');
+    conversations.check(args.handle,origin,action==='reconcile'?args.token:undefined);
+    if(action==='reconcile'){const result=await request('/api/tasks');if(!valid()||!Array.isArray(result.tasks))throw Error('任务清单无效');const ids=result.tasks.map((task:{id:string})=>task.id);conversations.reconcile(args.handle,ids);return ids;}
+    if(action==='status')return conversations.status(args.handle);
+    if(action==='clear'){conversations.clear(args.handle);return;}
+    if(typeof args.task!=='string')throw Error('任务无效');
+    if(action==='discard')return conversations.discard(args.handle,args.task);
+    if(action==='read')return conversations.read(args.handle,args.task);
+    if(action==='write')return conversations.write(args.handle,args.task,args.epoch!,args.snapshot!);
+  });
+
   let syncBusy = false;
   let syncGeneration = 0;
   mainWindow.webContents.on('did-start-navigation', () => { syncGeneration++; });
@@ -167,6 +245,10 @@ async function boot(): Promise<void> {
       if (window.isDestroyed() || connectedOrigin !== origin || !permitted(window.webContents.getURL())) return null;
       return result.canceled ? null : result.filePaths[0] ?? null;
     } finally { selectingDirectory = false; }
+  });
+  ipcMain.handle('connection:login', (event, value: unknown, username: unknown, password: unknown) => {
+    if (event.sender !== mainWindow?.webContents || event.senderFrame !== mainWindow.webContents.mainFrame || (!isConnectionPage(event) && !permitted(event.senderFrame.url))) throw Error('不允许此页面连接服务器');
+    return loginServer(value,username,password);
   });
   ipcMain.handle('connection:connect', (event, value: unknown) => {
     if (!isConnectionPage(event)) throw new Error('不允许远程页面修改服务器地址');

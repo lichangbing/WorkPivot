@@ -1,3 +1,5 @@
+import {personalProjectSchema} from './personal-project-schema.js';
+import { memoryAnalysisSchema } from './memory-analysis-schema.js';
 import {modelCapacitySchema} from './model-capacity-schema.js';
 import {browserProfileSchema} from './browser-profile-schema.js';
 import {networkTargetSchema} from './network-target-schema.js';
@@ -485,5 +487,5 @@ ALTER TABLE workpivot.capture_versions ADD COLUMN original_kind text NOT NULL DE
 `}, {version:45,sql:requestAuditSchema}, {version:46,sql:`
 ALTER TABLE workpivot.capture_versions DROP CONSTRAINT capture_versions_original_kind_check;
 ALTER TABLE workpivot.capture_versions ADD CONSTRAINT capture_versions_original_kind_check CHECK(original_kind IN ('http','dom','bundle'));
-`}, {version:47,sql:requestAuditCleanupSchema}, {version:48,sql:networkTargetSchema}, {version:49,sql:browserProfileSchema}, {version:50,sql:modelCapacitySchema}] as const;
+`}, {version:47,sql:requestAuditCleanupSchema}, {version:48,sql:networkTargetSchema}, {version:49,sql:browserProfileSchema}, {version:50,sql:modelCapacitySchema}, {version:51,sql:memoryAnalysisSchema}, {version:52,sql:personalProjectSchema}] as const;
 import { usageSchema } from './usage-schema.js';

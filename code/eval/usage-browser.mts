@@ -17,7 +17,6 @@ for(const currency of ['CNY','USD']){
  const client=usage.wrap(actor,{providerId:randomUUID(),model:'用量夹具',async *streamChat(){yield {type:'delta',text:'合成回复'};yield {type:'usage',inputTokens:1000,outputTokens:200};}},{inputPrice:'2',outputPrice:'6',currency},{taskId:task.id});
  for await(const event of client.streamChat([],[])){void event;}
 }
-await usage.budget(actor,'CNY','0.001',0);
 const providers=new ProviderRepository(db,secret);await providers.save(actor,{name:'配置验收模型',baseUrl:'http://127.0.0.1:1',modelId:'fixture',protocol:'openai',inputPrice:'2',outputPrice:'6',currency:'CNY'});
 const app=await createDatabaseApp(auth,db,secret,undefined,providers,undefined,resolve('apps/web/dist'));
 app.post('/fixture/stop',async(req,res)=>{const token=req.headers.authorization?.slice(7)??'';if(!await accounts.resolve(token)){res.status(401).end();return;}res.json({ok:true});setTimeout(()=>void close(),100);});

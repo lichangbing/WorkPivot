@@ -1,4 +1,3 @@
-import { ServerConnection } from './AccountAccess';
 import { ThemeSwitch } from './theme';
 /** T2-01 登录门：无用户时展示注册（首用户=管理员），否则登录。 */
 import { useState } from 'react';
@@ -12,7 +11,9 @@ interface Props {
 
 /** T2-01 登录门：无用户时展示注册（首用户=管理员），否则登录。 */
 export function LoginView({ needsSetup, setupTokenRequired, onAuthed }: Props): React.JSX.Element {
-  const mode: 'login' | 'register' = needsSetup ? 'register' : 'login';
+  const [serverUrl, setServerUrl] = useState(location.origin);
+  const changingServer = Boolean(window.workpivotDesktop && serverUrl.trim().replace(/\/$/, '') !== location.origin);
+  const mode: 'login' | 'register' = needsSetup && !changingServer ? 'register' : 'login';
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [initToken, setInitToken] = useState('');
@@ -24,6 +25,12 @@ export function LoginView({ needsSetup, setupTokenRequired, onAuthed }: Props): 
     setBusy(true);
     setError(null);
     try {
+      if (window.workpivotDesktop && changingServer) {
+        if (!window.workpivotDesktop.loginServer) throw Error('请更新桌面客户端以在此处连接服务器');
+        const connection = await window.workpivotDesktop.loginServer(serverUrl,username,password);
+        if (!connection.ok) throw Error(connection.error || '连接失败');
+        return;
+      }
       const result =
         mode === 'register' ? await api.register(username.trim(), password, initToken.trim()) : await api.login(username.trim(), password);
       setToken(result.token);
@@ -44,8 +51,8 @@ export function LoginView({ needsSetup, setupTokenRequired, onAuthed }: Props): 
           {mode === 'register' ? '首次使用：注册的第一个账户自动成为管理员' : '登录以继续'}
         </p>
 
-        <ServerConnection />
         <div className="space-y-3 text-sm">
+          {window.workpivotDesktop && <input aria-label="服务器地址" type="url" placeholder="服务器地址，例如 http://127.0.0.1:39800" value={serverUrl} disabled={busy} onChange={e=>setServerUrl(e.target.value)} className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2 outline-none focus:border-neutral-500" /> }
           <input
             autoFocus
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2 outline-none focus:border-neutral-500"
@@ -70,7 +77,7 @@ export function LoginView({ needsSetup, setupTokenRequired, onAuthed }: Props): 
             disabled={busy || username.trim() === '' || password === '' || (mode === 'register' && setupTokenRequired === true && initToken.trim() === '')}
             onClick={() => void submit()}
           >
-            {mode === 'register' ? '注册管理员' : '登录'}
+            {busy ? '正在连接…' : mode === 'register' ? '注册管理员' : '登录'}
           </button>
         </div>
       </div>

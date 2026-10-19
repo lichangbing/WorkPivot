@@ -1,3 +1,4 @@
+import { MemoryAnalysis } from './memory-analysis.js';
 import {contextBytes,estimateContextTokens,maxContextBytes,maxContextTokens,outputReserveTokens} from './context-budget.js';
 import {BrowserProfiles} from './browser-profiles.js';
 import {registerDatabaseTools} from './tool-policy.js';
@@ -93,11 +94,12 @@ export async function createDatabaseRuntime(auth: Pool, db: Pool, options: { ini
   // 外置模式仅保留API管理能力，由独立调度服务领取持久队列。
   const automationTimer=automationMode==='embedded'?setInterval(()=>{void automationWorker.tick().catch(()=>{/* 持久计划留待下轮重试；不打印凭据。 */});},2000):undefined;automationTimer?.unref();
   app.locals['stopAutomationWorker']=()=>{clearInterval(automationTimer);return automationWorker.stop();};
+  const memoryAnalysis=new MemoryAnalysis(db,(actor,taskId)=>models.client(actor,{source:'memory',taskId}));
   let processing = false, stopped = false;
   const tick = async () => {
     if (processing || stopped) return; processing = true;
     try { const actors = (await auth.query('SELECT id FROM identity.users WHERE NOT disabled')).rows;
-      for (const actor of actors) { if (stopped) break; await worker.recover(actor.id); await worker.process(actor.id); }
+      for (const actor of actors) { if (stopped) break; await memoryAnalysis.collect(actor.id); await memoryAnalysis.process(actor.id); await worker.recover(actor.id); await worker.process(actor.id); }
     } catch { /* 队列状态已持久化；数据库或模型失败后在后续定时触发时重试。 */ }
     finally { processing = false; }
   };

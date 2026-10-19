@@ -19,12 +19,10 @@ export async function testUsage(db:Pool,actor:string,foreign:string,check:(ok:un
  check(!JSON.stringify(view).includes('私密正文'),'用量流水不保存提示词');
  check((await repository.overview(foreign,month,task.id)).recent.length===0,'用量按实际用户隔离');
  await assert.rejects(consume(repository.wrap(foreign,actual,price,{taskId:task.id})));check(true,'不能将调用挂到其他用户任务');
- await repository.budget(actor,'CNY','0.0003',0);
- check((await repository.overview(actor,month)).alerts.filter(a=>a.currency==='CNY'&&a.month===month).length===1,'设置预算时检查已发生费用并生成提醒');
+ await transaction(db,c=>c.query("INSERT INTO workpivot.usage_budgets(owner_user_id,currency,amount) VALUES($1,'CNY',0.000001)",[actor]),actor);
  await consume(repository.wrap(actor,actual,price,{taskId:task.id}));
- check((await repository.overview(actor,month)).alerts.filter(a=>a.currency==='CNY'&&a.month===month).length===1,'重复超预算不重复提醒');
- await repository.acknowledge(actor,'CNY',month);check(!!(await repository.overview(actor,month)).alerts[0]?.readAt,'预算提醒可标记已读');
- await assert.rejects(repository.budget(actor,'CNY','10',0));check(true,'旧预算版本拒绝覆盖');
+ check((await transaction(db,c=>c.query('SELECT * FROM workpivot.usage_alerts'),actor)).rowCount===0,'旧预算不再产生新提醒');
+ check((await repository.overview(actor,month)).budgets.length===0,'统计不返回旧预算');
  const fallback:ModelClient={...actual,async *streamChat(){yield {type:'delta',text:'没有usage'};}};
  await consume(repository.wrap(actor,fallback,{inputPrice:null,outputPrice:null,currency:'USD'},{taskId:task.id,source:'memory'}));
  view=await repository.overview(actor,month,task.id);
@@ -40,14 +38,16 @@ export async function testUsage(db:Pool,actor:string,foreign:string,check:(ok:un
  check((await repository.overview(actor,month,task.id)).recent.length===before+2,'网络自动重试保留两条真实请求流水');
  await transaction(db,c=>c.query("INSERT INTO workpivot.model_usage(id,owner_user_id,provider_id,model,source,currency) VALUES($1,$2,$3,'interrupted','chat','CNY')",[randomUUID(),actor,actual.providerId]),actor);
  check((await repository.overview(actor,month)).totals.some(t=>t.unfinished>0&&t.unknownCost>0),'崩溃未结算流水显式保留未知');
- await assert.rejects(repository.overview(actor,'2026-99'));await assert.rejects(repository.budget(actor,'EUR','1',0));check(true,'非法月份和币种拒绝');
- await repository.budget(actor,'CNY',null,1);
- check((await repository.overview(actor,month)).budgets[0]?.amount===null,'预算可关闭且不删除已有账目');
+ await assert.rejects(repository.overview(actor,'2026-99'));check(true,'非法月份拒绝');
  const controller=new AbortController();
  const cancel:ModelClient={...actual,async *streamChat(){yield {type:'delta',text:'部分'};controller.abort();controller.signal.throwIfAborted();}};
  await assert.rejects(async()=>{for await(const e of repository.wrap(actor,cancel,price,{taskId:task.id}).streamChat([],[],controller.signal)){void e;}});
  check((await repository.overview(actor,month,task.id)).recent[0]?.status==='cancelled','取消请求保存估算用量和取消状态');
- await repository.budget(actor,'USD','0.0005',0);
  await Promise.all([consume(repository.wrap(actor,actual,{...price,currency:'USD'},{taskId:task.id})),consume(repository.wrap(actor,actual,{...price,currency:'USD'},{taskId:task.id}))]);
- check((await repository.overview(actor,month)).alerts.filter(a=>a.currency==='USD'&&a.month===month).length===1,'并发小额请求合计越过预算不漏报不重复');
+ check((await repository.overview(actor,month,task.id)).totals.some(row=>row.currency==='USD'&&row.requests===3),'并发请求独立记录，不丢用量');
+ // 上海午夜对应前一天 UTC 16:00；固定样本验证跨日、跨月边界。
+ const boundaryTask=await workspace.createTask(actor,'日期边界合成任务');
+ await transaction(db,async c=>{for(const at of ['2026-01-31T15:59:59Z','2026-01-31T16:00:00Z','2026-02-01T16:00:00Z'])await c.query("INSERT INTO workpivot.model_usage(id,owner_user_id,provider_id,model,task_id,source,currency,started_at) VALUES($1,$2,$3,'boundary',$4,'chat','CNY',$5)",[randomUUID(),actor,actual.providerId,boundaryTask.id,at]);},actor);
+ const boundary=await repository.overview(actor,'2026-02',boundaryTask.id);
+ check(boundary.days.length===2&&boundary.days[0]?.day==='2026-02-02'&&boundary.days[1]?.day==='2026-02-01'&&boundary.totals[0]?.requests===2,'北京时间跨日、跨月边界正确且按日期倒序');
 }

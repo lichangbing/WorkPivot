@@ -1,6 +1,11 @@
 import type { CSSProperties } from 'react';
 
 const paths = {
+  refresh: 'M20 7V3m0 4h-4M4 17v4m0-4h4M20 7a8 8 0 0 0-14-2M4 17a8 8 0 0 0 14 2',
+  plug: 'M8 2v5m8-5v5M5 7h14v3a7 7 0 0 1-14 0V7Zm7 10v5',
+  chart: 'M4 3v18h17M8 16v-4m5 4V8m5 8V5',
+  monitor: 'M3 3h18v13H3V3Zm9 13v5m-5 0h10',
+  server: 'M3 3h18v7H3V3Zm0 11h18v7H3v-7ZM7 6.5h.01M7 17.5h.01M12 6.5h5m-5 11h5',
   pin: 'M8 3h8l-1 6 4 4v2h-6v7l-2-3v-4H5v-2l4-4-1-6Z',
   fileExcel: 'M14 2H4v20h16V8l-6-6Zm0 0v6h6M7 11h10v8H7v-8Zm5 0v8m-5-4h10',
   fileWord: 'M14 2H4v20h16V8l-6-6Zm0 0v6h6M7 12l2 7 3-5 3 5 2-7',

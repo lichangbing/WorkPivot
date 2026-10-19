@@ -6,9 +6,10 @@ export function ServerConnection(): React.JSX.Element | null {
   const desktop = window.workpivotDesktop;
   if (!desktop) return null;
   return <div className="mb-4 rounded border border-neutral-800 p-3 text-xs text-neutral-400">
+    <p className="break-all">当前服务器：{location.origin}</p>
     {desktop && <button className="mt-2 text-blue-400 hover:underline" onClick={() => {
-      if (!desktop.changeServer) { setError('请通过顶部“服务器 → 更换服务器”切换；更新客户端后可在此直接切换。'); return; }
-      void desktop.changeServer().catch(() => setError('无法打开服务器设置，请使用顶部“服务器”菜单。'));
+      if (!desktop.changeServer) { setError('请更新客户端后更换服务器，或使用托盘中的服务器设置。'); return; }
+      void desktop.changeServer().catch(() => setError('无法打开服务器设置，请重试或使用托盘中的服务器设置。'));
     }}>更换服务器</button>}
     {error && <p className="mt-2" role="alert">{error}</p>}
   </div>;

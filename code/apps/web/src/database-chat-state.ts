@@ -6,7 +6,7 @@ export function mergeEvents(old: StoredEvent[], added: StoredEvent[]): StoredEve
   const rows = new Map(old.map(e => [e.id, e]));
   for (const e of added) {
     const previous = rows.get(e.id);
-    rows.set(e.id, previous && !previous.truncated && e.truncated ? previous : e);
+    rows.set(e.id, previous && !previous.truncated && e.truncated ? {...e,content:previous.content,truncated:false} : e);
   }
   return [...rows.values()].sort((a, b) => BigInt(a.sequence) < BigInt(b.sequence) ? -1 : BigInt(a.sequence) > BigInt(b.sequence) ? 1 : 0);
 }

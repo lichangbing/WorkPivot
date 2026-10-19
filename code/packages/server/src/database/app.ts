@@ -1,3 +1,4 @@
+import { MemoryAnalysis } from './memory-analysis.js';
 import type {BrowserProfiles} from './browser-profiles.js';
 import {NetworkTargets} from './network-targets.js';
 import {requestAudit,RequestAudits} from './request-audit.js';
@@ -28,7 +29,7 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import type { Pool } from 'pg';
 import { AccountRepository, type DatabaseUser } from './accounts.js';
 import { WorkspaceRepository } from './workspace.js';
-import { RepositoryError, assertRestrictedRole } from './connection.js';
+import { RepositoryError, assertRestrictedRole, uuid } from './connection.js';
 import { authThrottle } from '../auth-throttle.js';
 import { ConversationRepository } from './conversation.js';
 import type { DatabaseExecution } from './execution.js';
@@ -115,10 +116,11 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   app.put('/api/admin/automation-capacity',async(req,res)=>{const value=body(req);res.json(await adminOperations.setCapacity(token(req),value.userId,value));});
   app.get('/api/admin/operations',async(req,res)=>{res.json(await adminOperations.overview(token(req),str(req.query['userId']),str(req.query['month'])));});
   const usage=new UsageRepository(appPool);
-  app.get('/api/usage/alerts',async(_req,res)=>{res.json({alerts:await usage.alerts(actor(res).id)});});
+  // 旧客户端仍可读取空提醒，预算写入明确停用；历史数据留存用于备份兼容。
+  app.get('/api/usage/alerts',async(_req,res)=>{res.json({alerts:[]});});
   app.get('/api/usage',async(req,res)=>{res.json(await usage.overview(actor(res).id,str(req.query['month']),req.query['taskId']===undefined?undefined:str(req.query['taskId'])));});
-  app.put('/api/usage/budget',async(req,res)=>{const b=body(req);await usage.budget(actor(res).id,b.currency,b.amount,b.revision);res.json({ok:true});});
-  app.post('/api/usage/acknowledge',async(req,res)=>{const b=body(req);await usage.acknowledge(actor(res).id,b.currency,b.month);res.json({ok:true});});
+  app.put('/api/usage/budget',(_req,res)=>{res.status(410).json({error:'预算功能已停用，请使用按日用量统计'});});
+  app.post('/api/usage/acknowledge',(_req,res)=>{res.status(410).json({error:'预算提醒已停用'});});
   app.get('/api/trash',async(_req,res)=>res.json(await trash.list(actor(res).id)));
   app.post('/api/trash/:id/restore',async(req,res)=>res.json(await trash.restore(actor(res).id,str(req.params['id']),str(body(req).revision))));
   app.post('/api/trash/:id/purge',async(req,res)=>res.json(await trash.purge(actor(res).id,str(req.params['id']),str(body(req).revision),str(body(req).confirmation))));
@@ -285,6 +287,22 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     const result = await c.query(`UPDATE workpivot.memory_jobs j SET status='pending',attempts=0,error=NULL,lease_until=NULL FROM workpivot.task_runs r JOIN workpivot.tasks t ON t.id=r.task_id WHERE j.run_id=r.id AND j.run_id::text=$1 AND j.status='failed' AND NOT r.context_revoked AND t.deleted_at IS NULL AND j.epoch=COALESCE((SELECT epoch FROM workpivot.knowledge_state WHERE owner_user_id=$2),0)`, [str(req.params['id']), actor(res).id]);
     if (!result.rowCount) throw new RepositoryError(409, '作业不可重试或来源已失效');
   }, actor(res).id); res.json({ ok: true }); });
+  const memoryAnalysis=new MemoryAnalysis(appPool);
+  app.get('/api/memory-analysis',async(_req,res)=>res.json(await memoryAnalysis.status(actor(res).id)));
+  app.post('/api/memory-analysis/:id/retry',async(req,res)=>{await memoryAnalysis.retry(actor(res).id,str(req.params['id']));res.json({ok:true});});
+  app.post('/api/memories/:id/assign-project',async(req,res)=>{const b=body(req);if(b.projectId!==null&&typeof b.projectId!=='string')throw new RepositoryError(400,'请选择项目或临时任务范围');res.json(await workspace.assignPersonalMemory(actor(res).id,str(req.params['id']),num(b.revision),b.projectId as string|null));});
+  app.get('/api/memory-management',async(req,res)=>{
+    const scope=str(req.query['scope']);if(!['user','project','task'].includes(scope))throw new RepositoryError(400,'记忆层级无效');
+    const after=req.query['after']===undefined?null:str(req.query['after']);if(after)uuid(after);
+    const project=req.query['project']===undefined?'all':str(req.query['project']);if(!['all','temporary','legacy'].includes(project))uuid(project);
+    res.json(await transaction(appPool,async c=>{
+      const rows=(await c.query(`SELECT m.id,m.scope,m.revision,m.locked,m.legacy_personal AS "legacyPersonal",m.project_id AS "projectId",m.task_id AS "taskId",r.content,p.name AS "projectName",t.name AS "taskName"
+        FROM workpivot.memories m JOIN workpivot.memory_revisions r ON r.memory_id=m.id AND r.revision=m.revision
+        LEFT JOIN workpivot.projects p ON p.id=m.project_id AND p.deleted_at IS NULL LEFT JOIN workpivot.tasks t ON t.id=m.task_id AND t.deleted_at IS NULL
+        WHERE m.deleted_at IS NULL AND m.scope=$1 AND ($2::uuid IS NULL OR m.id>$2) AND (m.scope='user' AND (m.project_id IS NULL OR p.id IS NOT NULL) OR(m.scope='project' AND p.id IS NOT NULL) OR(m.scope='task' AND t.id IS NOT NULL)) AND ($3='all' OR ($3='legacy' AND m.legacy_personal) OR ($3='temporary' AND m.project_id IS NULL AND NOT m.legacy_personal) OR m.project_id::text=$3) ORDER BY m.id LIMIT 51`,[scope,after,project])).rows;
+      return {memories:rows.slice(0,50),nextCursor:rows.length>50?rows[49].id:null};
+    },actor(res).id));
+  });
   app.get('/api/memory-suggestions', async (_req, res) => { res.json({ suggestions: await suggestions.list(actor(res).id) }); });
   app.post('/api/memory-suggestions/:id/decision', async (req, res) => { const b = body(req); if (typeof b.accept !== 'boolean') throw new RepositoryError(400, '需要明确确认或拒绝'); res.json(await suggestions.decide(actor(res).id, str(req.params['id']), b.accept, b.content === undefined ? undefined : str(b.content))); });
   app.get('/api/memories', async (req, res) => {

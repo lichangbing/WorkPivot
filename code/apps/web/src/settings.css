@@ -1,0 +1,25 @@
+/* 设置沿用工作区主题变量，导航与标题固定，内容独立滚动。 */
+.workspace-settings{margin:auto;padding:0;width:min(1000px,calc(100vw - 40px));max-width:none;max-height:calc(100dvh - 64px);border:1px solid var(--color-neutral-800);border-radius:18px;background:var(--color-neutral-950);color:var(--color-neutral-100);box-shadow:0 24px 80px #0003;overflow:hidden}
+.workspace-settings::backdrop{background:#0006;backdrop-filter:blur(3px)}
+.settings-layout{display:flex;height:min(720px,calc(100dvh - 66px));min-height:0}
+.settings-sidebar{display:flex;flex-direction:column;width:220px;flex-shrink:0;padding:28px 14px 18px;background:var(--color-neutral-900);border-right:1px solid var(--color-neutral-800);overflow:auto}
+.settings-brand{display:flex;align-items:center;gap:10px;padding:0 14px;color:var(--color-neutral-200)}
+.settings-brand h1{font-size:18px;font-weight:600;margin:0}
+.settings-nav-label{font-size:11px;letter-spacing:.06em;color:var(--color-neutral-500);padding:0 14px;margin:32px 0 10px}
+.settings-sidebar nav{display:flex;flex-direction:column;gap:5px}
+.settings-nav-item{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border-radius:9px;text-align:left;font-size:13px;color:var(--color-neutral-400);transition:background .15s,color .15s}
+.settings-nav-item:hover{background:var(--color-neutral-800);color:var(--color-neutral-100)}
+.settings-nav-item[aria-current=page]{background:var(--color-neutral-800);color:var(--color-neutral-100);font-weight:600}
+.settings-nav-item[aria-current=page]::after{content:'';width:5px;height:5px;border-radius:50%;margin-left:auto;background:currentColor}
+.settings-sidebar-footer{margin-top:auto;padding:32px 14px 0;font-size:11px;color:var(--color-neutral-500)}
+.settings-main{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
+.settings-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:28px 28px 24px;border-bottom:1px solid var(--color-neutral-800);flex-shrink:0}
+.settings-heading{display:flex;gap:14px;align-items:center;min-width:0}
+.settings-heading-icon{display:grid;place-items:center;width:44px;height:44px;flex-shrink:0;border:1px solid var(--color-neutral-800);background:var(--color-neutral-900);border-radius:12px;color:var(--color-neutral-300)}
+.settings-heading h2{margin:0 0 6px;font-size:19px;font-weight:600;line-height:1.4}
+.settings-heading p{margin:0;font-size:12px;color:var(--color-neutral-400);line-height:1.6}
+.settings-close{display:grid;place-items:center;width:32px;height:32px;flex-shrink:0;border-radius:8px;color:var(--color-neutral-400)}
+.settings-close:hover{background:var(--color-neutral-800);color:var(--color-neutral-100)}
+.settings-nav-item:focus-visible,.settings-close:focus-visible{outline:2px solid #3b82f6;outline-offset:2px}
+.settings-content{flex:1;min-height:0;padding:26px 28px;overflow:auto;overscroll-behavior:contain}
+@media(max-width:640px){.workspace-settings{width:calc(100vw - 16px);border-radius:12px}.settings-sidebar{width:148px;padding:22px 8px 14px}.settings-brand{padding:0 8px}.settings-nav-item{padding:11px 8px;gap:8px;font-size:12px}.settings-nav-item[aria-current=page]::after{display:none}.settings-header{padding:20px 14px;gap:8px}.settings-heading-icon{display:none}.settings-heading h2{font-size:17px}.settings-content{padding:18px 14px}.settings-nav-label{padding:0 8px}}

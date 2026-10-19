@@ -1,0 +1,71 @@
+// 使用合成分页记录验证过程区的滚动加载，不访问真实对话。
+import {createServer} from 'node:http';
+import {readFile} from 'node:fs/promises';
+import {resolve,extname} from 'node:path';
+import {createRequire} from 'node:module';
+import assert from 'node:assert/strict';
+const require=createRequire(new URL('../packages/server/package.json',import.meta.url)),{chromium}=require('playwright');
+const root=resolve('apps/web/dist');
+const server=createServer(async(req,res)=>{try{const path=new URL(req.url,'http://localhost').pathname,file=resolve(root,path==='/'?'index.html':'.'+path);if(!file.startsWith(root+'/'))throw Error();res.setHeader('content-type',({'.html':'text/html','.js':'text/javascript','.css':'text/css'})[extname(file)]??'application/octet-stream');res.end(await readFile(file));}catch{res.writeHead(404);res.end();}});
+await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser;
+try{
+ browser=await chromium.launch({headless:true,executablePath:'/usr/bin/google-chrome'});
+ const page=await browser.newPage({viewport:{width:1440,height:900}}),errors=[];page.on('pageerror',error=>{errors.push(error.message);console.error(error.stack);});
+ await page.addInitScript(()=>{localStorage.setItem('wp_token','synthetic-ui-token');localStorage.setItem('wp-right-panel-open','false');});
+ const tasks=[{id:'task-a',projectId:'project-a',name:'合成任务',status:'completed',revision:1}];
+ let restored=false, pageRequests=0, contentRequests=0;
+ const event=(id,sequence,kind,content,truncated=false)=>({id,sequence:String(sequence),turnId:'turn-a',runId:'run-a',kind,content,truncated});
+ await page.route('**/api/**',async route=>{const path=new URL(route.request().url()).pathname;let data={experts:[],suggestions:[],plans:[],checkpoints:[],files:[],executions:[],builds:[]};
+  if(path==='/api/health')data={ok:true,name:'workpivot',apiProtocol:1,storage:'postgresql',chatEnabled:true};
+  else if(path==='/api/auth/state')data={authenticated:true,user:{id:'owner',username:'合成用户',role:'member'}};
+  else if(path==='/api/tasks')data={tasks};
+  else if(path==='/api/projects')data={projects:[{id:'project-a',name:'合成项目',revision:1},...(restored?[{id:'project-b',name:'恢复的项目',revision:1}]:[])]};
+  else if(path==='/api/trash')data={entries:restored?[]:[{id:'entry',kind:'project',entityId:'project-b',name:'恢复的项目',revision:'1',parentId:null,deletedAt:new Date().toISOString(),purgeAfter:new Date(Date.now()+30*86400000).toISOString(),canPurge:false,fileCount:0}]};
+  else if(path==='/api/trash/entry/restore'){restored=true;data={};}
+  else if(path.endsWith('/conversation'))data={turns:[{id:'turn-a',events:[event('user',1,'user','分析测试'),event('thought',2,'thinking','初始思考\n'.repeat(500),true)],hasMoreEvents:true,nextEventSequence:'20'}],nextCursor:null,snapshotSequence:'60'};
+  else if(path.endsWith('/thought/content')){contentRequests++;const offset=new URL(route.request().url()).searchParams.get('offset');data=offset==='0'?{content:'完整思考\n'.repeat(3000),nextOffset:16000}:{content:'完整思考末尾',nextOffset:null};}
+  else if(path.endsWith('/turn-a/events')){pageRequests++;if(pageRequests===1){await route.fulfill({status:503,json:{error:'合成网络中断'}});return;}const after=new URL(route.request().url()).searchParams.get('after');data=after==='20'?{events:[event('tool',21,'tool_use','工具调用\n'.repeat(80)),event('result',22,'tool_result','工具结果\n'.repeat(80))],hasMoreEvents:true,nextEventSequence:'40'}:{events:[event('last-thought',41,'thinking','最后一段思考'),event('answer',42,'assistant','最终答复已加载')],hasMoreEvents:false,nextEventSequence:null};}
+  else if(path.endsWith('/conversation-changes'))data={events:[],nextSequence:'0',snapshotSequence:'0',hasMore:false};
+  else if(path.endsWith('/permissions'))data={pending:[]};
+  else if(path.endsWith('/resource-scope'))data={scope:{versionIds:[],memoryScopes:[],expert:false},files:[],schedules:[]};
+  await route.fulfill({json:data});
+ });
+ const base=`http://127.0.0.1:${server.address().port}/`;
+ await page.goto(base);
+ const nav=page.getByRole('complementary',{name:'项目与任务',exact:true});
+ await nav.getByRole('button',{name:'合成任务',exact:true}).click();
+ await page.getByRole('textbox',{name:'消息',exact:true}).waitFor();
+ const toggle=page.getByRole('button',{name:/^思考与执行过程/});
+ const process=page.getByRole('region',{name:'思考与执行过程',exact:true});
+ await toggle.waitFor();
+ assert.equal(await toggle.getAttribute('aria-expanded'),'false');
+ assert.equal(await process.isVisible(),false);
+ await page.getByText('（加载失败，展开重试）',{exact:true}).waitFor();
+ assert.equal(contentRequests,0);
+ await toggle.click();
+ await process.waitFor();
+ assert.equal(await toggle.getAttribute('aria-expanded'),'true');
+ assert.equal(await page.getByRole('button',{name:'查看本次对话的更多过程',exact:true}).count(),0);
+ await process.getByRole('button',{name:'重试加载过程'}).click();
+ await page.getByText('最终答复已加载',{exact:true}).waitFor();
+ await process.evaluate(el=>{el.scrollTop=el.scrollHeight;});
+ await page.waitForFunction(()=>document.querySelector('[aria-label="思考与执行过程"]')?.textContent.includes('完整思考末尾'));
+ assert.equal(contentRequests,2);
+ assert.ok((await process.textContent()).includes('最后一段思考'));
+ assert.equal(await process.getByRole('button',{name:'展开完整内容'}).count(),0);
+ assert.equal(pageRequests,3);
+ assert.equal(await process.evaluate(el=>el.clientHeight),256);
+ assert.equal(await process.evaluate(el=>el.scrollHeight>el.clientHeight),true);
+ await toggle.click();
+ assert.equal(await process.isVisible(),false);
+ assert.equal(await toggle.getAttribute('aria-expanded'),'false');
+ await toggle.click();
+ assert.ok((await process.textContent()).includes('完整思考末尾'));
+ await page.reload();
+ await page.getByText('最终答复已加载',{exact:true}).waitFor();
+ assert.equal(await toggle.getAttribute('aria-expanded'),'false');
+ assert.equal(contentRequests,2);
+ await page.screenshot({path:'/tmp/wp-process-collapsed.png'});
+ assert.deepEqual(errors,[]);
+ console.log('过程折叠与滚动检查通过：默认折叠、反复展开、固定高度、长记录、重试、折叠时最终答复仍可见');
+}finally{await browser?.close();await new Promise(r=>server.close(r));}

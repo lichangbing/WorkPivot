@@ -1,9 +1,9 @@
-import {DatabaseResourceScope,type ResourceSelection} from './DatabaseResourceScope';
+import {AutomaticResourceScope,type ResourceSelection} from './DatabaseResourceScope';
 import { DatabaseBrowser } from './DatabaseBrowser';
 import { DatabaseFloating } from './DatabaseFloating';
 import type {ReactNode} from 'react';
 import {DatabaseCitation} from './DatabaseCitation';
-import {retrievalStatus} from './chat-content';
+import {DatabaseTurnProcess,isProcessEvent} from './DatabaseTurnProcess';
 import {DatabaseTrash} from './DatabaseTrash';
 import {DatabaseAutomations,AutomationDraftNotice} from './DatabaseAutomations';
 import { DatabaseSkillBuilds } from './DatabaseSkillBuilds';
@@ -70,6 +70,25 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   const anchor = useRef<{ id: string; offset: number } | null>(null);
   const streams = useRef(new Set<AbortController>());
   const watermark = useRef('0');
+  const [cacheNotice,setCacheNotice]=useState('');
+  const cacheLease=useRef<{handle:string;epoch:number;task:string}|null>(null);
+  useEffect(()=>{const clear=()=>{cacheLease.current=null;setCacheNotice('本地副本已清空，重新打开任务后恢复本地保存');};window.addEventListener('wp:conversation-cache-cleared',clear);return()=>window.removeEventListener('wp:conversation-cache-cleared',clear);},[]);
+  useEffect(()=>{
+    const bridge=window.workpivotDesktop?.conversationCache;
+    if(!bridge||!auth?.authenticated)return;
+    let cancelled=false;
+    const reconcile=async()=>{try{const token=getToken();if(!token)return;const handle=await bridge.open(token);const allowed=await bridge.reconcile(handle,token);if(!cancelled)setTasks(rows=>rows.filter(task=>allowed.includes(task.id)));}catch{if(!cancelled)setCacheNotice('本地记录暂未完成权限与删除同步');}};
+    void reconcile();const timer=setInterval(()=>{void reconcile();},30000);
+    return()=>{cancelled=true;clearInterval(timer);};
+  },[auth, tasks.map(task=>task.id).sort().join(',')]);
+  useEffect(()=>{
+    const bridge=window.workpivotDesktop?.conversationCache,lease=cacheLease.current;
+    if(!bridge||!lease||lease.task!==active||!ready)return;
+    const snapshot:LocalConversationSnapshot={events,details,older,sequence:watermark.current,savedAt:new Date().toISOString()};
+    void bridge.write(lease.handle,lease.task,lease.epoch,snapshot).catch(reason=>{if(cacheLease.current===lease)setCacheNotice(reason instanceof Error?reason.message:'本地会话保存失败');});
+
+  },[events,details,older,ready,active]);
+
   const previousTop = useRef(0);
   const reloadAuth = () => { void api.authState().then(setAuth).catch(e => setError(errorText(e))); };
   useEffect(() => { reloadAuth(); const reset = () => { clearToken(); setAuth(null); reloadAuth(); }; window.addEventListener('wp:unauthorized', reset); return () => { window.removeEventListener('wp:unauthorized', reset); for (const c of streams.current) c.abort(); }; }, []);
@@ -92,6 +111,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     } }).catch(e => { if (!cancelled) setError(errorText(e)); });
     return () => { cancelled = true; };
   }, [auth]);
+  useEffect(()=>{if(active&&selectionOwner.current===auth?.user?.id&&!tasks.some(task=>task.id===active))setActive(null);},[tasks,active,auth]);
   useEffect(() => {
     const owner = auth?.user?.id;
     // 取得已认证任务列表后，再持久化或恢复当前选择。
@@ -99,6 +119,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   }, [active, auth]);
   useEffect(() => {
     const epoch = ++generation.current, controller = new AbortController();
+    cacheLease.current=null;setCacheNotice('');
     setResourceSelection(null);setAttachmentIds([]); setAttachmentBlocked(false);
     setEvents([]); setPermissions([]); setOlder(null); setDetails({}); setReady(false); setError(''); setNewMessages(false); setInput('');
     follow.current = true; anchor.current = null; loadingRef.current = false; setLoading(false);
@@ -106,6 +127,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     const current = () => generation.current === epoch && !controller.signal.aborted;
     const options = { signal: controller.signal };
     let timer: ReturnType<typeof setTimeout>;
+    let initialRetry: ReturnType<typeof setTimeout>;
     type Changes = { events: StoredEvent[]; nextSequence: string; snapshotSequence: string; hasMore: boolean };
     type State = { pending: Permission[]; tasks: Task[]; expertSuggestions?:unknown[] };
     const apply = (changes: Changes) => {
@@ -142,13 +164,38 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
       } catch { if(current()) await catchup(); }
       finally { if(current()){timer=setTimeout(()=>{void subscribe();},retry);retry=Math.min(retry*2,10000);} }
     };
-    void jsonFetch<ConversationPage>(`/api/tasks/${active}/conversation`, options).then(page => {
-      if (!current()) return;
-      setEvents(page.turns.flatMap(t => t.events)); setOlder(page.nextCursor); watermark.current = page.snapshotSequence;
-      setDetails(Object.fromEntries(page.turns.filter(t => t.hasMoreEvents).map(t => [t.id, { after: t.nextEventSequence!, snapshot: page.snapshotSequence }])));
-      setReady(true); void subscribe();
-    }).catch(e => { if (current()) setError(errorText(e)); });
-    return () => { controller.abort(); clearTimeout(timer); };
+    const initialize = async () => {
+      let cached:LocalConversationSnapshot|null=null;
+      const bridge=window.workpivotDesktop?.conversationCache;
+      if(bridge){
+        try{const token=getToken();if(token){const handle=await bridge.open(token);const local=await bridge.read(handle,active);if(!current())return;cacheLease.current={handle,epoch:local.epoch,task:active};cached=local.snapshot;
+          if(cached){setEvents(cached.events);setDetails(cached.details);setOlder(cached.older);setCacheNotice('已读取本地会话，正在与服务端同步…');}
+        }}catch(reason){if(current())setCacheNotice(reason instanceof Error?reason.message:'本地记录不可用，改从服务端读取');}
+      }
+      try{
+        const page=await jsonFetch<ConversationPage>(`/api/tasks/${active}/conversation`,options);
+        if(!current())return;
+        const retain=cached&&BigInt(cached.sequence)<=BigInt(page.snapshotSequence)?cached:null;
+        if(cached&&!retain&&bridge&&cacheLease.current){const lease=cacheLease.current;await bridge.discard(lease.handle,active);const local=await bridge.read(lease.handle,active);if(!current())return;cacheLease.current={...lease,epoch:local.epoch};}
+
+        setEvents(mergeEvents(retain?.events??[],page.turns.flatMap(t=>t.events)));
+        setOlder(retain?retain.older:page.nextCursor);
+        setDetails({...retain?.details,...Object.fromEntries(page.turns.filter(t=>t.hasMoreEvents).map(t=>[t.id,{after:t.nextEventSequence!,snapshot:page.snapshotSequence}]))});
+        watermark.current=retain?.sequence??page.snapshotSequence;
+        // 从本地水位补齐离开期间的全部事件，不能只拼接最新五轮。
+        if(retain){let more=true;while(more&&current()){
+          const changes=await jsonFetch<Changes>(`/api/tasks/${active}/conversation-changes?after=${watermark.current}&through=${page.snapshotSequence}`,options);
+          if(!current())return;
+          if(changes.hasMore&&BigInt(changes.nextSequence)<=BigInt(watermark.current))throw Error('会话同步未前进，请重试');
+          apply(changes);more=changes.hasMore;
+        }}
+        if(!current())return;
+        setReady(true);setError('');if(cacheLease.current)setCacheNotice('会话已与服务端同步，自动保存到本机');void subscribe();
+      }catch(reason){if(current()){setError(errorText(reason));if(cached)setCacheNotice('正在显示本地会话，服务端尚未确认；恢复连接后自动同步');initialRetry=setTimeout(()=>{void initialize();},5000);}}
+    };
+    void initialize();
+    return () => { controller.abort(); clearTimeout(timer); clearTimeout(initialRetry); };
+
   }, [active, auth, chatEnabled]);
   useLayoutEffect(() => {
     const el = viewport.current; if (!el) return;
@@ -178,8 +225,9 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     try {
       const result = await jsonFetch<Pick<StoredTurn, 'events' | 'hasMoreEvents' | 'nextEventSequence'>>(`/api/tasks/${active}/conversation/${id}/events?after=${detail.after}&snapshot=${detail.snapshot}`);
       if (epoch !== generation.current) return;
+      if (result.hasMoreEvents && (!result.nextEventSequence || BigInt(result.nextEventSequence) <= BigInt(detail.after))) throw Error('过程分页未前进，请重试');
       setEvents(rows => mergeEvents(rows, result.events)); setDetails(old => { const next = { ...old }; if (result.hasMoreEvents) next[id] = { ...detail, after: result.nextEventSequence! }; else delete next[id]; return next; });
-    } catch (e) { if (epoch === generation.current) setError(errorText(e)); }
+    } catch (e) { if (epoch === generation.current) throw e; }
   };
   const expandContent = async (event: StoredEvent) => {
     if (!active || expanding.current.has(event.id)) return;
@@ -192,7 +240,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
         content += part.content; offset = part.nextOffset;
       }
       if (epoch === generation.current) setEvents(rows => mergeEvents(rows, [{ ...event, content, truncated: false }]));
-    } catch (e) { if (epoch === generation.current) setError(errorText(e)); }
+    } catch (e) { if (epoch === generation.current) throw e; }
     finally { expanding.current.delete(event.id); }
   };
   const send = async () => {
@@ -220,27 +268,36 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   if (!auth.authenticated) return <LoginView needsSetup={auth.needsSetup} setupTokenRequired={auth.setupTokenRequired} onAuthed={reloadAuth} />;
   if (auth.user?.mustChangePassword) return <RequiredPasswordChange onDone={reloadAuth} />;
   const task = tasks.find(t => t.id === active), busy = sending || ['running', 'queued', 'waiting'].includes(task?.status ?? '');
-  if(trashPage)return <DatabaseTrash onBack={()=>{location.hash='';void refreshWorkspace();}}/>;
+  const leaveTrash = () => { setTrashPage(false); if (location.hash === '#trash') location.hash = ''; };
+  const selectTask = (id: string) => { leaveTrash(); setActive(id); };
   if(automationPage)return <DatabaseAutomations username={auth.user?.username} onBack={()=>{location.hash='';}} onLogout={()=>{void api.logout().finally(()=>{clearToken();reloadAuth();});}}/>;
   return <div className="workspace-shell flex h-screen bg-neutral-950 text-neutral-100">
-    <DatabaseWorkspaceNavigation onAutomations={()=>{location.hash='automations';}} projects={projects} tasks={tasks} active={active} username={auth.user?.username} onSelect={setActive} onRefresh={refreshWorkspace} onSettings={section => setSettings(section)} onError={setError} onLogout={() => { void api.logout().finally(() => { for (const c of streams.current) c.abort(); clearToken(); setActive(null); setTasks([]); reloadAuth(); }); }} />
-    <main className="flex min-w-0 flex-1 flex-col">
+    <DatabaseWorkspaceNavigation onAutomations={()=>{location.hash='automations';}} trashActive={trashPage} onProjectSelect={id => { if (trashPage) { leaveTrash(); setActive(current => tasks.some(t => t.id === current && t.projectId === id) ? current : tasks.find(t => t.projectId === id)?.id ?? null); } }} projects={projects} tasks={tasks} active={trashPage ? null : active} username={auth.user?.username} onSelect={selectTask} onRefresh={refreshWorkspace} onSettings={section => setSettings(section)} onError={setError} onLogout={() => { void api.logout().finally(() => { for (const c of streams.current) c.abort(); clearToken(); setActive(null); setTasks([]); reloadAuth(); }); }} />
+    {trashPage && <DatabaseTrash onBack={leaveTrash} onChanged={refreshWorkspace} />}
+    <main style={trashPage ? { display: 'none' } : undefined} className="flex min-w-0 flex-1 flex-col">
       <header className="flex items-center justify-between gap-3 border-b border-neutral-800 px-4 py-2 text-xs"><h1 className="min-w-0 flex-1 truncate text-left text-sm font-medium">{projects.find(p => p.id === task?.projectId)?.name ?? '临时任务'} / {task?.name ?? '选择任务'}</h1><DatabaseFloating key={auth.user?.id} user={auth.user?.id??'user'} active={active} tasks={tasks} onSelect={setActive} onSettings={()=>setSettings('mcp')} /><button className="rounded-lg p-2 text-neutral-400 hover:bg-neutral-800" aria-label={rightOpen?'隐藏右侧浏览器':'显示右侧浏览器'} onClick={()=>{setRightOpen(!rightOpen);localStorage.setItem('wp-right-panel-open',String(!rightOpen));}}><Icon name={rightOpen?'panelClose':'panelOpen'} size={19}/></button></header>
       {task && <ExpertSelector task={task} project={projects.find(p=>p.id===task.projectId)} onChanged={refreshWorkspace}/>}
       {error && <div role="alert" className="px-6 py-2 text-sm text-red-400">{error}<button className="ml-3 underline" onClick={() => { setError(''); if (!ready) { setAuth({ ...auth }); } else void loadOlder(); }}>重试</button></div>}
       <div ref={viewport} aria-label="聊天记录" className="min-h-0 flex-1 overflow-y-auto px-6 py-4" onWheel={e => { if (e.deltaY < 0 && e.currentTarget.scrollTop < 32) { follow.current = false; void loadOlder(); } }} onScroll={e => { const el = e.currentTarget; const upward = el.scrollTop < previousTop.current; previousTop.current = el.scrollTop; follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; if (upward && el.scrollTop < 32) void loadOlder(); }}>
+        {active && cacheNotice && <p role="status" className="mb-2 text-center text-xs text-neutral-500">{cacheNotice}</p>}
         {!active && <p className="mt-10 text-center text-sm text-neutral-500">选择或新建一个任务，发送第一条消息开始工作</p>}
         {active && <AutomationDraftNotice taskId={active}/>}
         {active && <p className="mb-3 text-center text-xs text-neutral-500">{loading ? '正在加载…' : !ready ? '正在读取对话…' : older ? '向上滚动查看更早对话' : '已到最早消息'}</p>}
         {active && <ExpertSuggestions key={"expert-"+active} task={active}/>} 
         {groupEvents(events).map(group => <section key={group.id} data-turn={group.id} className="mb-6">
-          {group.events.map(e => e.kind === 'meta' ? null : <div key={e.id} className={`mb-3 ${e.kind === 'user' ? 'workspace-message ml-auto max-w-[75%] rounded-lg bg-neutral-800 px-3 py-2 text-sm' : 'message-body workspace-message max-w-none text-sm'}`}>
-            {e.kind === 'thinking' || e.kind.startsWith('tool_') ? <details><summary className="cursor-pointer whitespace-nowrap text-sm text-neutral-400">{e.kind === 'thinking' ? '思考' : '工具调用'}</summary><pre className="whitespace-pre-wrap break-words text-xs">{e.content}</pre></details> : <ReactMarkdown remarkPlugins={[remarkGfm]} components={e.kind==='assistant'?citationComponents:undefined}>{e.content}</ReactMarkdown>}
-            {e.kind==='tool_result'&&retrievalStatus(e.content)&&<p role="status" className="my-2 text-xs text-neutral-400">{retrievalStatus(e.content)}</p>}
-            {e.truncated && <button className={button} onClick={() => { void expandContent(e); }}>展开完整内容</button>}
-            {!!e.attachments?.length && <div className="mt-2 flex flex-wrap gap-2">{e.attachments.map(a => <AttachmentLabel key={a.id} attachment={a} />)}</div>}
-          </div>)}
-          {details[group.id] && <button className={button} onClick={() => { void expandTurn(group.id); }}>查看本次对话的更多过程</button>}
+          {group.events.map((e, index) => {
+            const firstProcess = group.events.findIndex(isProcessEvent);
+            const process = index === firstProcess ? <DatabaseTurnProcess key={'process-'+group.id} events={group.events.filter(isProcessEvent)} cursor={details[group.id]?.after} onMore={() => expandTurn(group.id)} onContent={expandContent} onInteract={() => { follow.current = false; }} /> : null;
+            if (isProcessEvent(e)) return process;
+            if (e.kind === 'meta') return null;
+            return <div key={e.id} className={`mb-3 ${e.kind === 'user' ? 'workspace-message workspace-user-message ml-auto w-fit max-w-[75%] rounded-lg bg-neutral-800 px-3 py-2 text-sm' : 'message-body workspace-message max-w-none text-sm'}`}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={e.kind==='assistant'?citationComponents:undefined}>{e.content}</ReactMarkdown>
+              {e.truncated && <button className={button} onClick={() => { void expandContent(e).catch(reason => setError(errorText(reason))); }}>展开完整内容</button>}
+              {!!e.attachments?.length && <div className="mt-2 flex flex-wrap gap-2">{e.attachments.map(a => <AttachmentLabel key={a.id} attachment={a} />)}</div>}
+            </div>;
+          })}
+          {details[group.id] && !group.events.some(isProcessEvent) && <DatabaseTurnProcess key={'process-'+group.id} events={[]} cursor={details[group.id]?.after} onMore={() => expandTurn(group.id)} onContent={expandContent} onInteract={() => { follow.current = false; }} />}
+
         </section>)}
         {active && <DatabaseSummary key={'summary-'+active} taskId={active} busy={busy} />}
         {active && <DatabaseParsing key={"parse-"+active} taskId={active} />}
@@ -252,10 +309,10 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
       <form className="workspace-composer mx-4 mb-4 rounded-2xl border border-neutral-700 bg-neutral-900/50 p-3" onDragOver={e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={e => { if (e.dataTransfer.files.length) { e.preventDefault(); attachmentControl.current?.addFiles(Array.from(e.dataTransfer.files)); } }} onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); attachmentControl.current?.addFiles(Array.from(e.clipboardData.files)); } }} onSubmit={e => { e.preventDefault(); void send(); }}>
         {filesEnabled && active && <DatabaseAttachments ref={attachmentControl} key={`${active}:${attachmentEpoch}`} taskId={active} disabled={busy || !ready} onChange={attachmentChange} />}
         <textarea aria-label="消息" value={input} disabled={!chatEnabled || !active || !resourceSelection || busy || !ready} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} placeholder={chatEnabled ? active ? '输入消息，Enter 发送，Shift + Enter 换行' : '请先新建/选择任务' : '后台尚未启用对话执行'} className="message-input max-h-48 min-h-[88px] w-full resize-none bg-transparent px-1 py-1 text-sm outline-none" />
-        {active&&<DatabaseResourceScope taskId={active} disabled={busy||sending} refresh={attachmentEpoch} onChange={resourceChange}/> }<div className="composer-footer"><div className="flex shrink-0 items-center gap-2">{filesEnabled && <button type="button" aria-label="添加文件" title="添加文件（最多10个，单个10MB）；也可拖拽或粘贴" disabled={!active || busy || !ready || attachmentBlocked || attachmentIds.length >= 10} className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40" onClick={() => attachmentControl.current?.open()}><Icon name="plus" size={22} /></button>}<DatabaseExecutionMode /></div><div className="composer-actions"><DatabaseModelStatus />{busy && <button type="button" className={button} onClick={() => { void jsonFetch(`/api/tasks/${active}/stop`, { method: 'POST' }).catch(e => setError(errorText(e))); }}>停止</button>}<button title="发送" aria-label="发送" className="composer-send flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-950 hover:opacity-80 disabled:opacity-40" disabled={!chatEnabled || !active || !resourceSelection || busy || !ready || attachmentBlocked || (!input.trim() && !attachmentIds.length)}><Icon name="up" size={18} /></button></div></div>
+        {active&&<AutomaticResourceScope taskId={active} refresh={attachmentEpoch} onChange={resourceChange}/> }<div className="composer-footer"><div className="flex shrink-0 items-center gap-2">{filesEnabled && <button type="button" aria-label="添加文件" title="添加文件（最多10个，单个10MB）；也可拖拽或粘贴" disabled={!active || busy || !ready || attachmentBlocked || attachmentIds.length >= 10} className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40" onClick={() => attachmentControl.current?.open()}><Icon name="plus" size={22} /></button>}<DatabaseExecutionMode /></div><div className="composer-actions"><DatabaseModelStatus />{busy && <button type="button" className={button} onClick={() => { void jsonFetch(`/api/tasks/${active}/stop`, { method: 'POST' }).catch(e => setError(errorText(e))); }}>停止</button>}<button title="发送" aria-label="发送" className="composer-send flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-950 hover:opacity-80 disabled:opacity-40" disabled={!chatEnabled || !active || !resourceSelection || busy || !ready || attachmentBlocked || (!input.trim() && !attachmentIds.length)}><Icon name="up" size={18} /></button></div></div>
       </form>
     </main>
-    {rightOpen && <DatabaseBrowser key={active??'empty'} taskId={active} onHide={()=>{setRightOpen(false);localStorage.setItem('wp-right-panel-open','false');}} />}
+    {rightOpen && !trashPage && <DatabaseBrowser key={active??'empty'} taskId={active} onHide={()=>{setRightOpen(false);localStorage.setItem('wp-right-panel-open','false');}} />}
     {settings && <DatabaseSettings initialSection={settings} configurationEnabled={chatEnabled} onClose={() => setSettings(null)} onChanged={refreshWorkspace} />}
   </div>;
 }

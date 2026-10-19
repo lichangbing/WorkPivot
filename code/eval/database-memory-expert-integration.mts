@@ -21,7 +21,7 @@ export async function testMemoryExpertIntegration(db: Pool, actor: string, forei
   const project = await w.createProject(actor, '联合记忆项目');
   const task = await w.createTask(actor, '联合记忆任务', project.id);
   await experts.bind(actor, 'tasks', task.id, a.id, task.revision);
-  const user = await w.createMemory(actor, '联合个人：中文报告', 'user');
+  const user = await w.createMemory(actor, '联合个人：中文报告', 'user', project.id);
   const projectMemory = await w.createMemory(actor, '联合项目：只研究机械行业', 'project', project.id);
   const taskMemory = await w.createMemory(actor, '联合任务：本周交付', 'task', task.id);
   const revision = async () => (await w.listTasks(actor)).find(t => t.id === task.id)!.revision;
@@ -32,7 +32,7 @@ export async function testMemoryExpertIntegration(db: Pool, actor: string, forei
   const run = await complete('以后报告使用英文。记住方法：先核对数据日期。');
   let calls = 0;
   const memoryWorker = new MemoryWorker(db, async () => ({ providerId: 'test', model: 'test', async *streamChat() {
-    calls++; yield { type: 'delta', text: JSON.stringify(calls === 1 ? [{ scope: 'user', content: '以后报告使用英文', evidence: '以后报告使用英文', query: '联合个人' }] : { action: 'update', content: '联合个人：英文报告', targetId: user.id, targetRevision: user.revision }) };
+    calls++; yield { type: 'delta', text: JSON.stringify(calls === 1 ? [{ scope: 'task', content: '本次报告使用英文', evidence: '以后报告使用英文', query: '联合任务' }] : { action: 'update', content: '联合任务：本周交付英文报告', targetId: taskMemory.id, targetRevision: taskMemory.revision }) };
   } }));
   const expertWorker = new ExpertWorker(db, async () => ({ providerId: 'test', model: 'test', async *streamChat() {
     yield { type: 'delta', text: JSON.stringify([{ content: '先核对数据日期', conditions: '研究', evidence: '先核对数据日期', targets: [] }]) };

@@ -1,4 +1,5 @@
 import { MemorySuggestions } from '../packages/server/src/database/memory-suggestions.js';
+import {transaction} from '../packages/server/src/database/connection.js';
 import assert from 'node:assert/strict';
 import type { Pool } from 'pg';
 import { DatabaseMemoryTools } from '../packages/server/src/database/memory-tools.js';
@@ -10,7 +11,7 @@ export async function testMemoryTools(db: Pool, owner: string, other: string, ch
   const second = await workspace.createProject(owner, 'unrelated project');
   const task = await workspace.createTask(owner, 'memory tools task', project.id);
   const sibling = await workspace.createTask(owner, 'sibling task', project.id);
-  const personal = await workspace.createMemory(owner, 'mt-personal', 'user');
+  const personal = await workspace.createMemory(owner, 'mt-personal', 'user', project.id);
   const shared = await workspace.createMemory(owner, 'mt-project', 'project', project.id);
   const local = await workspace.createMemory(owner, 'mt-task', 'task', task.id);
   const foreignProject = await workspace.createMemory(owner, 'mt-other-project', 'project', second.id);
@@ -58,9 +59,28 @@ export async function testMemoryTools(db: Pool, owner: string, other: string, ch
   await assert.rejects(() => suggestions.decide(owner, stale.id, true)); check(true, 'manual edit invalidates earlier suggestions');
   const queryTool = tools.tools(owner, task.id)[0]!;
   check(String(await queryTool.run({ query: 'updated project fact' }, { taskDir: '.' })).includes(shared.id), 'model-facing search tool reads database');
+  const otherTask=await workspace.createTask(owner,'另一项目任务',second.id);
+  const temporaryTask=await workspace.createTask(owner,'临时隔离任务');
+  const temporary=await workspace.createMemory(owner,'临时个人偏好','user');
+  await assert.rejects(tools.read(owner,otherTask.id,personal.id));
+  await assert.rejects(tools.read(owner,temporaryTask.id,personal.id));
+  await assert.rejects(tools.read(owner,task.id,temporary.id));
+  check((await tools.read(owner,temporaryTask.id,temporary.id)).content==='临时个人偏好','临时个人记忆与各项目相互隔离');
+  await assert.rejects(suggestions.propose(owner,otherTask.id,await suggestions.epoch(owner),'user','跨项目修改',personal.id,1));
+  check(true,'不能在其他项目提交个人记忆修改建议');
+  const legacy=await workspace.createMemory(owner,'待迁移个人记忆','user');
+  await transaction(db,c=>c.query('UPDATE workpivot.memories SET legacy_personal=true WHERE id=$1',[legacy.id]),owner);
+  await assert.rejects(tools.read(owner,temporaryTask.id,legacy.id));
+  await assert.rejects(workspace.assignPersonalMemory(other,legacy.id,1,second.id));
+  await workspace.assignPersonalMemory(owner,legacy.id,1,second.id);
+  check((await tools.read(owner,otherTask.id,legacy.id)).content==='待迁移个人记忆','旧全局个人记忆确认归属后仅在目标项目启用');
+  await assert.rejects(tools.read(owner,task.id,legacy.id));
+  await assert.rejects(workspace.assignPersonalMemory(owner,legacy.id,1,project.id));
+  check(true,'归属确认防止跨项目读取和重复指定');
   await workspace.deleteTask(owner, task.id, task.revision);
   await assert.rejects(() => queryTool.run({ query: '' }, { taskDir: '.' })); check(true, 'deleted task revokes existing memory tools');
   await workspace.deleteProject(owner, project.id, project.revision);
   await workspace.deleteProject(owner, second.id, second.revision);
-  await workspace.deleteMemory(owner, personal.id, 2);
+  check(!await workspace.readMemory(owner,personal.id),'个人项目记忆随项目进入回收站');
+
 }

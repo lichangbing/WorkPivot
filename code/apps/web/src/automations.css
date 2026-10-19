@@ -9,7 +9,7 @@
 .automation-ui button:focus-visible,.automation-ui a:focus-visible{outline:3px solid #90c8b2;outline-offset:3px}
 .automation-ui button{border:0;background:none;color:inherit}
 .automation-ui a{color:inherit;text-decoration:none}
-.automation-ui .shell{display:grid;grid-template-columns:256px minmax(0,1fr);min-height:100vh}
+.automation-ui .shell{display:grid;grid-template-columns:256px minmax(0,1fr);min-height:calc(100vh - var(--desktop-titlebar-height, 0px))}
 .automation-ui .sidebar{background:var(--color-neutral-900);border-right:1px solid var(--color-neutral-800);padding:16px 12px;position:fixed;inset:0 auto 0 0;width:256px;display:flex;flex-direction:column}
 .automation-ui .brand{display:flex;gap:10px;align-items:center;font-size:16px;font-weight:600;letter-spacing:-.6px;padding:0 9px}
 .automation-ui .mark{background:var(--color-neutral-900);color:white;border-radius:10px;padding:6px 9px;font-size:16px}
@@ -129,7 +129,7 @@
 .automation-ui .hidden{display:none!important}
 .automation-ui .page-enter{animation:enter .2s ease-out}@keyframes enter{from{opacity:.3;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
 
-.automation-ui{min-height:100vh;overflow:auto}
+.automation-ui{min-height:calc(100vh - var(--desktop-titlebar-height, 0px));overflow:auto}
 .automation-ui .field label input,.automation-ui .field label select,.automation-ui .field label textarea{display:block;margin-top:8px}
 .automation-ui .nav{width:100%;text-align:left}
 .automation-ui .side-bottom{overflow-wrap:anywhere}

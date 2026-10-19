@@ -1,4 +1,4 @@
-# 轻量桌面客户端：只包含远程界面、本地连接设置及托盘。
+# 轻量桌面客户端：包含远程界面、本地连接设置、会话副本与托盘。
 # 后端、模型凭据、技能和文档库均部署在服务器。
 appId: com.workpivot.desktop
 productName: WorkPivot
