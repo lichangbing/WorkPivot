@@ -107,7 +107,7 @@ function createTray(): void {
 }
 async function boot(): Promise<void> {
   log('CLIENT START; no local server, model keys or task runtime');
-  mainWindow = new BrowserWindow({ width: 1440, height: 900, title: 'WorkPivot', show: false, frame: false, minWidth: 800, minHeight: 560,
+  mainWindow = new BrowserWindow({ width: 1440, height: 900, title: 'WorkPivot', icon: join(app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'build'), 'icon.png'), show: false, frame: false, minWidth: 800, minHeight: 560,
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, preload: join(__dirname, 'preload.js') },
   });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

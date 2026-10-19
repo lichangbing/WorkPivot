@@ -77,3 +77,10 @@ temp/
 *.tmp
 ~$*
 releases/**/*.zip
+
+# 桌面打包图标属于品牌源资源，需要随代码保存。
+!code/apps/desktop/build/
+code/apps/desktop/build/*
+!code/apps/desktop/build/icon.png
+!code/apps/desktop/build/icon.ico
+!code/apps/desktop/build/icon.icns
