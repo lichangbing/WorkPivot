@@ -6,6 +6,7 @@
  * 仍然限制响应大小、超时、重定向和结果长度，搜索内容一律当作不可信数据。
  */
 import type { Tool } from '@workpivot/core';
+import { requestQuota } from './request-quota.js';
 
 export type SearchProvider = 'brave' | 'searxng';
 export interface SearchConfiguration { provider: SearchProvider; url: string; key?: string }
@@ -16,6 +17,22 @@ const MAX_BYTES = 1024 * 1024;
 const MAX_QUERY = 200;
 const DEFAULT_COUNT = 5;
 const MAX_COUNT = 10;
+/** O-11：同查询短时缓存与全局配额，避免重复请求与高频调用打爆搜索服务。 */
+const CACHE_TTL_MS = 5 * 60_000;
+const CACHE_LIMIT = 64;
+const cache = new Map<string, { at: number; value: string }>();
+
+/** 测试与运维用：清空搜索缓存。 */
+export function resetSearchCache(): void {
+  cache.clear();
+}
+
+function remember(key: string, value: string): void {
+  cache.set(key, { at: Date.now(), value });
+  if (cache.size <= CACHE_LIMIT) return;
+  const oldest = [...cache.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, cache.size - CACHE_LIMIT);
+  for (const [name] of oldest) cache.delete(name);
+}
 
 export function searchConfiguration(): SearchConfiguration | undefined {
   const provider = process.env['WORKPIVOT_SEARCH_PROVIDER']?.trim();
@@ -109,17 +126,26 @@ export function createSearchTool(config: SearchConfiguration, fetchImpl: FetchLi
       if (!query) throw new Error('查询词不能为空');
       const requested = Number(args['count']);
       const count = Number.isFinite(requested) ? Math.min(MAX_COUNT, Math.max(1, Math.trunc(requested))) : DEFAULT_COUNT;
+      // O-11：同 provider/查询词/条数在 5 分钟内复用结果，避免重复消耗服务配额。
+      const cacheKey = `${config.provider}\u0000${count}\u0000${query}`;
+      const cached = cache.get(cacheKey);
+      if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.value;
       const endpoint = config.provider === 'brave'
         ? `${config.url}/res/v1/web/search?${new URLSearchParams({ q: query, count: String(count) })}`
         : `${config.url}/search?${new URLSearchParams({ q: query, format: 'json', count: String(count) })}`;
       const headers: Record<string, string> = { accept: 'application/json' };
       if (config.provider === 'brave' && config.key) headers['x-subscription-token'] = config.key;
+      // 与网页采集共享出口配额：搜索也走同一个服务时不应绕过限流。
+      const signal = AbortSignal.any([AbortSignal.timeout(12000), ...(ctx.signal ? [ctx.signal] : [])]);
+      const release = await requestQuota.acquire(new URL(config.url).host, signal);
       let response;
       try {
-        response = await fetchImpl(endpoint, { headers, signal: AbortSignal.any([AbortSignal.timeout(12000), ...(ctx.signal ? [ctx.signal] : [])]) });
+        response = await fetchImpl(endpoint, { headers, signal });
       } catch (error) {
         if (ctx.signal?.aborted) throw new Error('任务已停止，搜索未完成');
         throw new Error(`搜索服务请求失败：${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        release();
       }
       if (!response.ok) throw new Error(`搜索服务返回 ${response.status}，请稍后重试或改用 web_fetch 直接读取已知地址`);
       const text = await response.text();
@@ -127,8 +153,11 @@ export function createSearchTool(config: SearchConfiguration, fetchImpl: FetchLi
       let payload: unknown;
       try { payload = JSON.parse(text); } catch { throw new Error('搜索服务返回的不是有效 JSON'); }
       const results = normalizeHits(config.provider, payload, count);
-      if (!results.length) return JSON.stringify({ query, results: [], note: '没有找到结果，可以换个说法或换用更具体的查询词' });
-      return JSON.stringify({ query, results });
+      const value = results.length
+        ? JSON.stringify({ query, results })
+        : JSON.stringify({ query, results: [], note: '没有找到结果，可以换个说法或换用更具体的查询词' });
+      remember(cacheKey, value);
+      return value;
     },
   };
 }

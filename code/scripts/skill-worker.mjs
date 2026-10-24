@@ -95,12 +95,21 @@ export async function startWorker({ host = '127.0.0.1', port = 39990, token, ima
       await docker(['create', '--rm', '--name', name, '--label', `workpivot.worker=${owner}`, '--network', 'none', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true', '--pids-limit', '128', '--memory', '512m', '--cpus', '1', '--user', '1000:1000', '--mount', `type=bind,src=${directory}/input,dst=/input,readonly`, '--mount', `type=bind,src=${directory}/skills,dst=/skills,readonly`, ...workspaceArgs, '--tmpfs', '/tmp:rw,nosuid,nodev,size=64m', '--tmpfs', '/data/workpivot:ro,size=1m', '--tmpfs', '/data/workspace:ro,size=1m', '--workdir', '/workspace', '--env', 'HOME=/tmp', '--env', 'NODE_PATH=/app/packages/server/node_modules', '--entrypoint', '/bin/sh', image, '-c', 'exec sleep 150']);
       controller.signal.throwIfAborted(); await docker(['start', name], controller.signal);
       if (!mountSubpath) await docker(['exec', name, 'cp', '-R', '/input/.', '/workspace/'], controller.signal);
+      // O-10：挂载模式直接写真实工作区，执行前后各量一次大小，异常增长要在结果里点名。
+      const sizeOf = async () => mountSubpath ? Number((await docker(['exec', name, 'du', '-sk', '/workspace'])).stdout.trim().split(/\s+/)[0] || 0) : 0;
+      const beforeKB = await sizeOf();
       const result = await docker(['exec', name, '/bin/sh', '-c', body.command], controller.signal);
+      const afterKB = await sizeOf();
       const output = mountSubpath ? null : await docker(['exec', name, 'node', '-e', `(${exportFiles.toString()})()`], controller.signal, 24 * 1024 * 1024);
       await docker(['rm', '-f', name]); created = false;
       controller.signal.throwIfAborted();
       const files = mountSubpath ? [] : JSON.parse(output.stdout); validateFiles(files);
-      reply(200, { files, output: (result.stdout + result.stderr).slice(0, 65536) });
+      const growthMB = Math.round((afterKB - beforeKB) / 1024);
+      const limitMB = Number(process.env.WORKPIVOT_MOUNT_WRITE_LIMIT_MB ?? 512);
+      const growthNote = mountSubpath && Number.isFinite(limitMB) && limitMB > 0 && growthMB > limitMB
+        ? `\n[告警] 本次执行在工作区新增约 ${growthMB}MB，超过 ${limitMB}MB 上限；请确认是否有异常写入或清理临时文件。`
+        : '';
+      reply(200, { files, output: (result.stdout + result.stderr).slice(0, 65536) + growthNote });
     } catch (error) {
       // 错误信息不得包含执行器环境、Docker 参数或宿主暂存路径。
       const detail = error && typeof error === 'object' && 'stderr' in error ? String(error.stderr ?? '').slice(0, 4000) : '';

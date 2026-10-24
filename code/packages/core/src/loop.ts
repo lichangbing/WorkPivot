@@ -222,14 +222,13 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
     toolCallCount += toolCalls.length;
 
     messages.push({ role: 'assistant', content: assistantText || null, tool_calls: toolCalls });
-    for (const call of toolCalls) {
-      if (signal?.aborted) {
-        stopReason = 'aborted';
-        break;
-      }
-      const tool = tools.find((t) => t.name === call.function.name);
+    // O-13：同一轮里的只读工具互不依赖，可以并行；写入/执行类保持串行，避免权限与文件竞争。
+    const callable = toolCalls.map((call) => ({ call, tool: tools.find((t) => t.name === call.function.name) }));
+    const parallel = callable.length > 1 && callable.every(({ tool }) => tool?.kind === 'read' && tool.endsTurn !== true);
+
+    type CallResult = { identity: { toolName: string; displayName?: string; callId: string }; tool: (typeof callable)[number]['tool']; argFp: string; ok: boolean; outcome?: AgentEvent['status']; resultText: string; startedAt?: number };
+    const runOne = async ({ call, tool }: (typeof callable)[number]): Promise<CallResult> => {
       const identity = { toolName: call.function.name, displayName: tool?.displayName, callId: call.id };
-      await options.onEvent?.({ type: 'tool_use', ...identity, status: tool?.displayName ? 'waiting' : 'running', args: safeParse(call.function.arguments) });
       let startedAt: number | undefined;
       let outcome: AgentEvent['status'];
       let resultText: string;
@@ -241,28 +240,26 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
       } else if (argFp === lastCallFp && identicalCount >= 4) {
         // F05：已连续 4 次相同调用与结果，第 5 次直接拦截，不再执行
         ok = false;
-        resultText =
-          '错误:已连续多次产生完全相同的调用与结果,本次执行被拦截。请必须更换思路、修改参数,或向用户说明情况。';
+        resultText = '错误:已连续多次产生完全相同的调用与结果,本次执行被拦截。请必须更换思路、修改参数,或向用户说明情况。';
       } else {
+        // 并行的只读调用各自持有独立上下文，避免 extraAllowedDirs 互相覆盖。
+        const callCtx: ToolContext = { ...ctx, extraAllowedDirs: [] };
         try {
-          // 权限判定（T2-04/05）：声明访问 → 钩子判定；拒绝则以错误回填，不执行
           let allowed = true;
-          ctx.extraAllowedDirs = [];
           let request: ToolAccessRequest | null = null;
-          if (ctx.requestAccess && tool.access) {
-            request = tool.access(safeParse(call.function.arguments), ctx);
-            request.paths = request.paths.map((p) => ({ ...p, path: canonicalPath(p.path, ctx.taskDir) }));
-            allowed = await ctx.requestAccess(request);
-            if (allowed) ctx.extraAllowedDirs = request.paths.map((p) => p.path);
+          if (callCtx.requestAccess && tool.access) {
+            request = tool.access(safeParse(call.function.arguments), callCtx);
+            request.paths = request.paths.map((p) => ({ ...p, path: canonicalPath(p.path, callCtx.taskDir) }));
+            allowed = await callCtx.requestAccess(request);
+            if (allowed) callCtx.extraAllowedDirs = request.paths.map((p) => p.path);
           }
           if (signal?.aborted) {
-            await options.onEvent?.({ type: 'tool_result', ...identity, ok: false, status: 'stopped', durationMs: 0, message: '任务已停止，工具未执行' });
-            stopReason = 'aborted'; break;
+            return { identity, tool, argFp, ok: false, outcome: 'stopped', resultText: '任务已停止，工具未执行', startedAt: 0 };
           }
           if (allowed) {
             startedAt = Date.now();
             await options.onEvent?.({ type: 'tool_status', ...identity, status: 'running' });
-            resultText = await tool.run(safeParse(call.function.arguments), ctx);
+            resultText = await tool.run(safeParse(call.function.arguments), callCtx);
           } else {
             outcome = 'denied';
             ok = false;
@@ -272,6 +269,30 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
           ok = false;
           resultText = `错误：${err instanceof Error ? err.message : String(err)}`;
         }
+      }
+      return { identity, tool, argFp, ok, outcome, resultText, startedAt };
+    };
+
+    for (const entry of callable) {
+      await options.onEvent?.({ type: 'tool_use', toolName: entry.call.function.name, displayName: entry.tool?.displayName, callId: entry.call.id, status: entry.tool?.displayName ? 'waiting' : 'running', args: safeParse(entry.call.function.arguments) });
+    }
+    const results = parallel ? await Promise.all(callable.map(runOne)) : await (async () => {
+      const collected: CallResult[] = [];
+      for (const entry of callable) collected.push(await runOne(entry));
+      return collected;
+    })();
+
+    for (let index = 0; index < callable.length; index += 1) {
+      if (signal?.aborted) {
+        stopReason = 'aborted';
+        break;
+      }
+      const { identity, tool, argFp, ok, outcome, startedAt } = results[index]!;
+      let { resultText } = results[index]!;
+      if (results[index]!.outcome === 'stopped') {
+        stopReason = 'aborted';
+        await options.onEvent?.({ type: 'tool_result', ...identity, ok: false, status: 'stopped', durationMs: 0, message: resultText });
+        break;
       }
 
       // 卡循环计数更新（仅在真实执行后）
@@ -294,7 +315,7 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
         resultText = await options.stashResult(resultText);
       }
       await options.onEvent?.({ type: 'tool_result', ...identity, ok, status: signal?.aborted ? 'stopped' : outcome ?? (ok ? 'ok' : 'error'), durationMs: startedAt === undefined ? 0 : Date.now() - startedAt, message: resultText.slice(0, tool?.displayName ? 8000 : 200) });
-      messages.push({ role: 'tool', tool_call_id: call.id, content: resultText });
+      messages.push({ role: 'tool', tool_call_id: callable[index]!.call.id, content: resultText });
     }
     // 声明 endsTurn 的工具（如结构化提问）执行后结束本轮：等用户回答，不进入下一次采样。
     if (toolCalls.some((call) => tools.find((t) => t.name === call.function.name)?.endsTurn)) {

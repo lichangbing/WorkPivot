@@ -24,6 +24,7 @@ import { runCodeTool } from './code-tools.js';
 import { WebTools, browserConfiguration } from './web/tools.js';
 import { workerCommand } from './worker-command.js';
 import { withDirectoryLock } from './directory-lock.js';
+import { guardDeletions } from './deletion-guard.js';
 import { transcriptArgs } from './transcript-args.js';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
@@ -833,7 +834,11 @@ ${capped}
       : async () => { throw new Error('后台未启用命令执行'); };
     const executeCommand = rawExecuteCommand === undefined
       ? undefined
-      : (command: string) => withDirectoryLock(task.directory, () => rawExecuteCommand(command));
+      // O-19：执行前记录清单并备份小文件，执行后把被删文件与恢复路径回给模型。
+      : (command: string) => withDirectoryLock(task.directory, () => guardDeletions(task.directory, () => rawExecuteCommand(command)));
+
+    // O-09：本轮登记过的交付成果，用于核验闸门判断“文件存在但用户拿不到”。
+    const deliveredThisTurn = new Set<string>();
 
     // T3-03/F02：带核验闸门的执行——声称产出但文件缺失 → 打回重做（≤2 次）
     const runWithGate = async (attempt: number, baseMessages: ChatMessage[]): Promise<{ stopReason: string; steps: number }> => {
@@ -864,6 +869,11 @@ ${capped}
         onEvent: (event) => {
           send(event);
           if (event.type === 'tool_use') {
+            // O-09：记录本轮交付登记，供收尾核验判断成果是否可下载。
+            if (event.toolName === 'deliver_files' && event.args && typeof event.args === 'object') {
+              const files = (event.args as { files?: unknown }).files;
+              if (Array.isArray(files)) for (const name of files) if (typeof name === 'string') deliveredThisTurn.add(name);
+            }
             appendTranscript(task.id, 'tool_use', { toolName: event.toolName, displayName: event.displayName, callId: event.callId, args: transcriptArgs(event.args) });
             audit({ user: user?.username, taskId: task.id, event: 'tool_use', tool: event.toolName, argsHash: argsHash(event.args) });
           }
@@ -885,17 +895,25 @@ ${capped}
       }
 
       if (result.stopReason === 'completed' && typeof finalText === 'string' && finalText.length > 0) {
-        const { missing } = verifyClaimedFiles(finalText, task.directory);
-        if (missing.length > 0 && attempt < 2) {
-          audit({ user: user?.username, taskId: task.id, event: 'gate_reject', decision: 'retry', detail: missing.join('、') });
-          send({ type: 'gate_reject', missing });
-          const note = `核验失败:以下声称产出的文件在任务目录中不存在或为空:${missing.join('、')}。请用 write 工具实际生成这些文件,然后重新给出总结。`;
+        const { missing, undelivered } = verifyClaimedFiles(finalText, task.directory, { delivered: deliveredThisTurn });
+        const problems = [
+          ...missing.map((name) => `${name}（文件不存在或为空）`),
+          ...undelivered.map((name) => `${name}（未登记交付，用户拿不到）`),
+        ];
+        if (problems.length > 0 && attempt < 2) {
+          audit({ user: user?.username, taskId: task.id, event: 'gate_reject', decision: 'retry', detail: problems.join('、') });
+          send({ type: 'gate_reject', missing: [...missing, ...undelivered] });
+          const steps = [
+            missing.length ? `用 write 工具实际生成：${missing.join('、')}` : '',
+            undelivered.length ? `用 deliver_files 登记交付：${undelivered.join('、')}` : '',
+          ].filter(Boolean).join('；');
+          const note = `核验失败:以下声称产出的文件不完整:${problems.join('、')}。请${steps},然后重新给出总结。`;
           appendTranscript(task.id, 'user_message', { content: note });
           baseMessages.push({ role: 'user', content: note });
           return runWithGate(attempt + 1, baseMessages);
         }
-        if (missing.length > 0) {
-          send({ type: 'gate_reject', missing, final: true });
+        if (problems.length > 0) {
+          send({ type: 'gate_reject', missing: [...missing, ...undelivered], final: true });
         }
       }
       return { stopReason: result.stopReason, steps: result.steps };
