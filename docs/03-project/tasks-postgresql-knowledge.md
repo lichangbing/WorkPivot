@@ -778,3 +778,24 @@ API候选`workpivot-server:local-schema49-20261019`构建完成，镜像内严�
 - 部署：重建镜像并滚动 39997（chat 已启用），启动日志 `WorkPivot PostgreSQL server ready`，`/api/health` 200，三容器 healthy。
 - 验证：`eval/task-cache.mts` 4 项（未预载回落、视图读写与排序、非法 id、移除与清空）通过并注册 run-all；`chat-store` 3 项、`chat-tasks` 5 项、`agent-loop` 8 项、`R006` 11 项、`tsc`、`lint` 均通过。
 - 遗留：HTTP 级"登录后建任务"验收因管理员口令变更未做；R003 搜索引擎出网受限（服务与 JSON 端点正常）。
+
+### 2026-10-24：Claude Code agent loop 逆向补充
+
+- 新增 [claude-code-loop.md](../../01-research/competitors/claude-code-loop.md)：基于泄露源码分析 loop 的显式状态机（transition 原因）、五层上下文治理（200k 窗口 / 13k buffer / 20k 摘要预留）、工具按 `isConcurrencySafe(parsedInput)` 分批并发（默认 10）、停止与恢复路径（max_turns / prompt_too_long 反应式压缩 / max_output_tokens 升级 / fallback model / token 预算续跑）、子代理 fork 时过滤未闭合工具调用、parentUuid 链与先落盘。
+- 优化清单据此细化 O-13（并发谓词按入参判定、上下文修改按序应用），新增 O-20（输出上限升级重试）、O-21（prompt 过长反应式压缩）。
+- 不借鉴：五层压缩、流式工具执行、stop hooks（与现有核验门禁重叠）。
+
+### 2026-10-24：循环决策显式化设计（未实现）
+
+- 在 [agent循环早停与上下文压缩](../../02-design/architecture/agent循环早停与上下文压缩-20261024.md) 增加第 5 节：L1 可解释（枚举原因）、L2 可审计（事件+计数+阈值落盘）、L3 可重放（随 R006）。
+- 设计要点：`StepDecision { step, action, reason, detail }`；`decideStep()` 纯函数固定优先级（abort → 步数/时长 → 上下文超限 → 输出截断 → 流错误 → 空转 → 工具结果）；守卫计数器（idleNudged / reactiveCompactAttempted / outputEscalated / transientRetries）；阈值集中到 `limit.ts`；`decision` 事件写转写与 `conversation_events`。
+- 与 R006 的关系：`decision` 事件是恢复对账依据（判断停在采样中还是工具执行中）。
+- 迁移顺序：先加 reason（行为不变）→ 抽 `decideStep` → 接 O-20/O-21 → R006 复用。
+
+### 2026-10-24：R007 文件链路实测（重要结论：只服务文件链路）
+
+- **结论**：本地栈配了 `WORKPIVOT_DATABASE_URL`，实际走数据库链路（`workpivot.tasks`/`task_runs`/`conversation_events`）；`chat` schema 只在**不接数据库**的文件链路生效。因此栈上启用 chat 存储属于惰性配置，不影响也不改善线上行为；数据库链路本身已把对话存 PG。
+- 文件链路隔离实测（独立容器、独立卷、无 DATABASE_URL、有 CHAT_URL、`WORKPIVOT_HOST=0.0.0.0`）：注册初始管理员 → 建任务成功；`chat.tasks=1`；容器内 `task.json` **不存在**（chat 模式确实不再写 JSONL）；重启实例后任务仍能从 PG 读回；删除后 `chat.tasks=0`、`chat.messages=0`。
+- 修复：非临时任务删除原先只清数据目录，chat 模式会残留 `chat.tasks` 行；`deleteTaskData` 末尾补 `uncacheTask` + `deleteChatTask`，复测删除后归零。
+- 未覆盖：发消息链路——没有模型供应商，`POST /api/tasks/:id/messages` 在落库前以 400 拒绝，所以 `chat.messages` 没能通过 HTTP 产生数据；消息落库由容器内 `chat-store` 往返（rows=2 seqs=1,2）与 `chat-tasks` 文件模式用例覆盖。
+- 遗留：数据库链路 `DELETE /api/tasks/:id` 返回 400（与 R007 无关），需要单独定位。
