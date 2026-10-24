@@ -752,3 +752,11 @@ API候选`workpivot-server:local-schema49-20261019`构建完成，镜像内严�
 - 已在本地栈数据库实际执行：`chat.tasks`/`chat.messages` 建成，`workpivot_chat` canlogin=true super=false。
 - 验证：`tsc`（6 项目）、`pnpm lint` 通过；`eval/chat-store.mts` 3 项（未配置关闭、任务行映射、消息行映射）通过并注册进 run-all。
 - 未完成：`tasks.ts` 的读写切换（同步 API 需改异步，约 45 处调用点），完成后才启用 `WORKPIVOT_CHAT_DATABASE_URL`；在那之前安装器不会写该变量，避免出现两个真值。
+
+### 2026-10-24：R007 异步入口（chat-tasks）
+
+- `tasks.ts` 拆出 `buildTask`/`persistTaskFile`，同步 `createTask` 复用同一份构造与落盘逻辑。
+- 新增 `chat-tasks.ts`：`loadTask/loadTasks/saveTask/saveTaskStatus/appendMessage/readTranscriptPage/loadChatMessages/removeTaskRecord`。未配置 chat 存储时委托同步实现；配置后只写 PG，不写 JSONL。
+- 分页与历史口径：转写默认尾部 100 条、`before` 翻页；历史只取 user/assistant、`displayContent` 优先、最多 200 条。
+- 验证：`eval/chat-tasks.mts` 5 项（文件模式建任务、120 条追加与分页、历史过滤、状态 meta、临时任务删除）通过；`tsc` 与 `lint` 通过。
+- 仍差：`app.ts` 等调用方切换到异步入口（涉及 45 处、以及 `filePolicy` 的同步快照改造），切换并做一次真实 PG 读写验收后 R007 完成。
