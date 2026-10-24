@@ -55,6 +55,7 @@
     "eval:backup": "tsx eval/backup-package.mts",
     "eval:backup-database": "node scripts/test-backup-database.mjs",
     "db:install": "tsx scripts/postgres-schema.mts",
+    "chat:install": "tsx scripts/chat-schema.mts",
     "dev:database": "tsx scripts/postgres-preview.mts",
     "eval:automations": "node scripts/test-automations.mjs",
     "eval:model-usage": "node --import tsx eval/model-usage.mts",

@@ -41,6 +41,7 @@ const suites: Array<[string, string]> = [
   ['R001', 'eval/builtin-skills.mts'],
   ['OUT', 'eval/output-sanitize.mts'],
   ['R006', 'eval/R006-recovery.mts'],
+  ['R007', 'eval/chat-store.mts'],
 ];
 // 这些套件用于历史设计比较，不计入当前验收：
 // 其前提是共享账号数据、管理员代执行及进程内命令执行。

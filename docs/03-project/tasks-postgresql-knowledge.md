@@ -744,3 +744,11 @@ API候选`workpivot-server:local-schema49-20261019`构建完成，镜像内严�
 - 处理：backlog R008 标记为“❌ 不实施”，设计文档状态改为“不实施，保留为参考”，不进入排期；不新增 `team_runs`/`team_artifacts`/邮箱等机制。
 - 保留：R005 单层同步 `delegate` 继续作为上下文隔离手段，不扩展并行委派与团队协议。
 - 若将来重启：先执行 [设计文档 §11](../../02-design/architecture/多agent协作-20261024.md) 的离线评估（单 agent vs 自我检查 vs Panel，盲评 + 成本对比），证明收益后再建。
+
+### 2026-10-24：R007 基础设施（chat schema 与访问层）
+
+- 新增 `packages/server/src/chat-store.ts`：`WORKPIVOT_CHAT_DATABASE_URL` 开关（空白串视为未配置）、懒加载连接池、启动探测（配置了就必须能连且表存在，否则拒绝启动、不回落到 JSONL）、`appendChatMessage`（同事务 `last_seq` 取号 + 插入，冲突重试一次）、`readChatMessages`（`before`/`limit` 分页，默认尾部 100 条）、行到 `Task`/`TranscriptRow` 的纯映射。
+- 新增 `scripts/chat-schema.mts` + `pnpm chat:install`：幂等创建 `chat` schema、两张表与索引、受限角色 `workpivot_chat`（LOGIN、非 superuser、连接数 20），并授权；建表用管理员连接串，运行时角色无 DDL。
+- 已在本地栈数据库实际执行：`chat.tasks`/`chat.messages` 建成，`workpivot_chat` canlogin=true super=false。
+- 验证：`tsc`（6 项目）、`pnpm lint` 通过；`eval/chat-store.mts` 3 项（未配置关闭、任务行映射、消息行映射）通过并注册进 run-all。
+- 未完成：`tasks.ts` 的读写切换（同步 API 需改异步，约 45 处调用点），完成后才启用 `WORKPIVOT_CHAT_DATABASE_URL`；在那之前安装器不会写该变量，避免出现两个真值。
