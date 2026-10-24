@@ -57,7 +57,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     await appPool.query('SELECT 1'); await authPool.query('SELECT 1');
     res.json({ ok: true, name: 'workpivot', version: '0.3.0-rc.1', releaseStage: 'rc', releaseScope: 'single-user', apiProtocol: API_PROTOCOL, storage: 'postgresql', productionReady: false, chatEnabled: !!execution, filesEnabled: !!files, providersEnabled: !!providers, mcpEnabled: !!mcp });
   });
-  app.get('/api/auth/state', async (req, res) => { const user = await accounts.resolve(token(req)); res.json({ needsSetup: await accounts.needsSetup(), setupTokenRequired: true, authenticated: !!user, user }); });
+  app.get('/api/auth/state', async (req, res) => { const user = await accounts.resolve(token(req)); res.json({ needsSetup: await accounts.needsSetup(), setupTokenRequired: false, authenticated: !!user, user }); });
   const throttle = authThrottle(() => { /* 数据库预览入口不得持久化旧文件审计。 */ });
   app.post('/api/auth/register', throttle, async (req, res) => { const b = body(req); res.json(await accounts.registerFirst(str(b.username), str(b.password))); });
   app.post('/api/auth/login', throttle, async (req, res) => { const b = body(req); res.json(await accounts.login(str(b.username), str(b.password))); });

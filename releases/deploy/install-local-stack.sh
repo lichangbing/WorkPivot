@@ -109,7 +109,8 @@ preflight() {
   command -v curl >/dev/null || die '缺少 curl'
   [ -f "$COMPOSE_FILE" ] || die "缺少编排文件：$COMPOSE_FILE"
   [ -f "$LOAD_SKILLS_SCRIPT" ] || die "缺少技能加载脚本：$LOAD_SKILLS_SCRIPT"
-  if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -q "127.0.0.1:$PORT "; then
+  # --seed-only 只发布内容，端口被本栈占用是正常状态。
+  if [ "$SEED_ONLY" != 1 ] && command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -q "127.0.0.1:$PORT "; then
     die "端口 $PORT 已被占用；请用 --port 指定其他端口"
   fi
   info "项目：$PROJECT   端口：$PORT   数据目录：$DATA_DIR"
@@ -347,15 +348,14 @@ seed_content() {
       info "自动创建管理员：$ADMIN_USER"
       local password body
       password="$(random_hex 12)"
-      body=$(printf '{"username":"%s","password":"%s","initToken":"%s"}' "$ADMIN_USER" "$password" "$WORKPIVOT_ADMIN_INIT_TOKEN")
+      body=$(printf '{"username":"%s","password":"%s"}' "$ADMIN_USER" "$password")
       if curl -sf --max-time 20 -H 'content-type: application/json' -d "$body" "http://127.0.0.1:$PORT/api/auth/register" >/dev/null; then
         printf '\n  管理员账号：%s\n  初始密码：%s\n  （请登录后立即修改）\n\n' "$ADMIN_USER" "$password"
       else
         die '自动创建管理员失败；请手动注册后重跑本脚本'
       fi
     else
-      printf '\n  尚未注册管理员。注册后重跑本脚本即可自动发布并加载技能：\n'
-      printf '    初始化令牌：%s\n' "$WORKPIVOT_ADMIN_INIT_TOKEN"
+      printf '\n  尚未注册管理员。打开页面注册的第一个账户即为管理员；注册后重跑本脚本（或 --seed-only）即可发布并加载技能：\n'
       printf '    注册地址：http://127.0.0.1:%s/\n' "$PORT"
       return 0
     fi
