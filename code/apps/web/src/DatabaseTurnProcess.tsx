@@ -5,6 +5,19 @@ import { retrievalStatus } from './chat-content';
 
 export const isProcessEvent = (event: StoredEvent) => event.kind === 'thinking' || event.kind.startsWith('tool_');
 
+/** run_code 的结果是 {output, artifacts:[{id,name}]}；其余工具结果仍按纯文本展示。 */
+function codeResult(content: string): { output: string; artifacts: Array<{ name?: string }> } | null {
+  const trimmed = content.trim();
+  if (!trimmed.startsWith('{')) return null;
+  try {
+    const value = JSON.parse(trimmed) as { output?: unknown; artifacts?: unknown };
+    if (typeof value.output !== 'string' || !Array.isArray(value.artifacts)) return null;
+    return { output: value.output, artifacts: value.artifacts as Array<{ name?: string }> };
+  } catch {
+    return null;
+  }
+}
+
 /** 过程区独立滚动；接近底部时依次补齐长记录与后续分页。 */
 export function DatabaseTurnProcess({ events, cursor, onMore, onContent, onInteract }: {
   events: StoredEvent[]; cursor?: string; onInteract: () => void;
@@ -42,7 +55,17 @@ export function DatabaseTurnProcess({ events, cursor, onMore, onContent, onInter
     <div hidden={!open} id={regionId} ref={viewport} role="region" aria-label="思考与执行过程" tabIndex={0} className="conversation-process-scroll h-64 overflow-y-auto overscroll-contain px-3 py-2" onFocus={onInteract} onPointerDown={onInteract} onWheel={event => { event.stopPropagation(); onInteract(); }}>
       {events.map(event => <div key={event.id} className="mb-4 min-w-0">
         <div className="mb-1 text-xs text-neutral-400">{event.kind === 'thinking' ? '思考' : event.kind === 'tool_result' ? '工具结果' : '工具调用'}</div>
-        <pre className="whitespace-pre-wrap text-xs [overflow-wrap:anywhere]">{event.content}</pre>
+        {(() => {
+          // O-14：run_code 的结果是 {output, artifacts}，按结构化渲染而不是甩一段 JSON。
+          const parsed = event.kind === 'tool_result' ? codeResult(event.content) : null;
+          if (!parsed) return <pre className="whitespace-pre-wrap text-xs [overflow-wrap:anywhere]">{event.content}</pre>;
+          return <>
+            <pre className="whitespace-pre-wrap text-xs [overflow-wrap:anywhere]">{parsed.output || '（无输出）'}</pre>
+            {parsed.artifacts.length > 0 && <ul className="mt-1 space-y-0.5 text-xs text-neutral-400">
+              {parsed.artifacts.map((artifact, index) => <li key={`${artifact.name ?? 'artifact'}-${index}`}>产物：{artifact.name ?? `#${index + 1}`}</li>)}
+            </ul>}
+          </>;
+        })()}
         {event.kind === 'tool_result' && retrievalStatus(event.content) && <p className="my-2 text-xs text-neutral-400">{retrievalStatus(event.content)}</p>}
       </div>)}
       <div ref={sentinel} className="min-h-6 text-xs text-neutral-500" role="status">{busy ? '正在加载过程…' : error ? '' : truncated || cursor ? '向下滚动加载后续过程' : '已显示全部已记录过程'}</div>

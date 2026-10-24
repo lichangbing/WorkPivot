@@ -86,7 +86,7 @@ export class DatabaseCodeExecution {
       const live = await c.query("SELECT id FROM workpivot.task_runs WHERE id=$1 AND fence=$2 AND status='running' AND NOT context_revoked AND lease_until>now() FOR UPDATE", [run.id, run.fence]);
       if (!live.rowCount) throw new RepositoryError(409, '任务已停止');
       await this.guard?.(c, args, taskId);
-      await c.query('INSERT INTO workpivot.skill_executions(id,owner_user_id,task_id,run_id) VALUES($1,$2,$3,$4)', [jobId, actor, taskId, run.id]);
+      await c.query("INSERT INTO workpivot.skill_executions(id,owner_user_id,task_id,run_id,kind) VALUES($1,$2,$3,$4,'code')", [jobId, actor, taskId, run.id]);
     }, actor);
     try {
       const result = await runSandbox(this.config, { command: target.command, files, skills: [] }, signal);

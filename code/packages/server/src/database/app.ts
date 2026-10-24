@@ -207,7 +207,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     const taskId = str(req.params['id']);
     res.json({ executions: await transaction(appPool, async c => {
       if (!(await c.query('SELECT id FROM workpivot.tasks WHERE id=$1 AND deleted_at IS NULL', [taskId])).rowCount) throw new RepositoryError(404, '任务不存在');
-      return (await c.query('SELECT j.id,j.status,j.error,j.artifact_id AS "artifactId",j.created_at AS "createdAt",j.finished_at AS "finishedAt",v.name AS "artifactName",(SELECT COALESCE(jsonb_agg(jsonb_build_object(\'id\',a.version_id,\'name\',av.name) ORDER BY av.name,a.version_id),\'[]\'::jsonb) FROM workpivot.execution_artifacts a JOIN workpivot.document_versions av ON av.id=a.version_id WHERE a.execution_id=j.id) AS artifacts FROM workpivot.skill_executions j LEFT JOIN workpivot.document_versions v ON v.id=j.artifact_id WHERE j.task_id=$1 ORDER BY j.created_at DESC,j.id LIMIT 10', [taskId])).rows;
+      return (await c.query('SELECT j.id,j.status,j.error,j.artifact_id AS "artifactId",j.created_at AS "createdAt",j.finished_at AS "finishedAt",v.name AS "artifactName",(SELECT COALESCE(jsonb_agg(jsonb_build_object(\'id\',a.version_id,\'name\',av.name) ORDER BY av.name,a.version_id),\'[]\'::jsonb) FROM workpivot.execution_artifacts a JOIN workpivot.document_versions av ON av.id=a.version_id WHERE a.execution_id=j.id) AS artifacts FROM workpivot.skill_executions j LEFT JOIN workpivot.document_versions v ON v.id=j.artifact_id WHERE j.task_id=$1 AND j.kind=\'skill\' ORDER BY j.created_at DESC,j.id LIMIT 10', [taskId])).rows;
     },actor(res).id) });
   });
   if (execution) {
