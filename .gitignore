@@ -84,3 +84,8 @@ code/apps/desktop/build/*
 !code/apps/desktop/build/icon.png
 !code/apps/desktop/build/icon.ico
 !code/apps/desktop/build/icon.icns
+
+# ===== 本次开发的临时产物 =====
+code/apps/desktop/release-*/
+.workbuddy/
+releases/v0.*/

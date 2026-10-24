@@ -5,10 +5,11 @@
  */
 import { createHash } from 'node:crypto';
 import { canonicalPath } from '@workpivot/shared/node';
+import { compactMessages, CONTEXT_CHAR_BUDGET } from './context.js';
 import type { ModelClient, ChatMessage, ToolCall, ToolSchema } from './model/openai.js';
 import type { Tool, ToolContext, ToolAccessRequest } from './tools.js';
 
-export type AgentEventType = 'assistant_delta' | 'reasoning_delta' | 'tool_use' | 'tool_status' | 'tool_result' | 'error';
+export type AgentEventType = 'assistant_delta' | 'reasoning_delta' | 'tool_use' | 'tool_status' | 'tool_result' | 'error' | 'ask_user';
 
 export interface AgentEvent {
   displayName?: string;
@@ -21,6 +22,13 @@ export interface AgentEvent {
   args?: unknown;
   ok?: boolean;
   message?: string;
+  /** 子代理事件前缀：非空表示由 delegate 子循环产生，用于前端折叠展示。 */
+  delegateId?: string;
+  /** 结构化提问事件（type=ask_user）：问题与选项，用户回答作为下一条消息进入历史。 */
+  questionId?: string;
+  question?: string;
+  options?: Array<{ label: string; description?: string }>;
+  allowFreeText?: boolean;
 }
 
 export type StopReason = 'completed' | 'max_steps' | 'time_limit' | 'aborted' | 'error';
@@ -40,6 +48,12 @@ export interface RunAgentOptions {
   maxDurationMs?: number;
   /** 工具结果超预算时的落盘钩子：返回替换后的引用文本（K04/T3-06） */
   stashResult?: (content: string) => Promise<string>;
+  /** 模型只回文本就停下时的兜底：返回非空字符串则作为用户消息继续，最多 idleLimit 次 */
+  onIdle?: (info: { steps: number; toolCalls: number; text: string }) => Promise<string | null> | string | null;
+  /** onIdle 的最大触发次数（默认 1；0 关闭） */
+  idleLimit?: number;
+  /** 消息字符预算，超过后压缩较早的工具结果；≤0 关闭（默认 120k） */
+  contextBudget?: number;
   /** bash 子进程附加环境变量（NODE_PATH 等） */
   extraEnv?: Record<string, string>;
   filePolicy?: ToolContext['filePolicy'];
@@ -95,6 +109,10 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
   let steps = 0;
   let stopReason: StopReason = 'completed';
   let wrapAttempted = false;
+  let toolCallCount = 0;
+  let idleContinues = 0;
+  const idleLimit = options.idleLimit ?? 1;
+  const contextBudget = options.contextBudget ?? CONTEXT_CHAR_BUDGET;
 
   // 卡循环检测（T3-05/F05）：同工具+同入参+同结果 连续计数
   let lastCallFp = '';
@@ -138,34 +156,57 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
       break;
     }
     steps += 1;
+    // 每轮先压一次：工具结果只增不减，长任务会撑爆窗口并让模型遗忘目标。
+    compactMessages(messages, contextBudget);
 
     let assistantText = '';
     let toolCalls: ToolCall[] | null = null;
-    try {
-      for await (const event of client.streamChat(messages, toolSchemas, signal)) {
-        if (event.type === 'delta') {
-          assistantText += event.text;
-          await options.onEvent?.({ type: 'assistant_delta', text: event.text });
-        } else if (event.type === 'reasoning_delta') {
-          await options.onEvent?.({ type: 'reasoning_delta', text: event.text });
-        } else if (event.type === 'tool_calls') {
-          toolCalls = event.tool_calls;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        for await (const event of client.streamChat(messages, toolSchemas, signal)) {
+          if (event.type === 'delta') {
+            assistantText += event.text;
+            await options.onEvent?.({ type: 'assistant_delta', text: event.text });
+          } else if (event.type === 'reasoning_delta') {
+            await options.onEvent?.({ type: 'reasoning_delta', text: event.text });
+          } else if (event.type === 'tool_calls') {
+            toolCalls = event.tool_calls;
+          }
         }
-      }
-    } catch (err) {
-      if (signal?.aborted) {
-        stopReason = 'aborted';
+        break;
+      } catch (err) {
+        if (signal?.aborted) {
+          stopReason = 'aborted';
+          break;
+        }
+        // 只在尚未产生任何增量时重试一次：已输出的文本不能重放。
+        if (attempt === 0 && assistantText === '') {
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          continue;
+        }
+        await options.onEvent?.({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+        stopReason = 'error';
         break;
       }
-      await options.onEvent?.({ type: 'error', message: err instanceof Error ? err.message : String(err) });
-      stopReason = 'error';
-      break;
     }
+    if (stopReason === 'aborted' || stopReason === 'error') break;
 
     if (toolCalls === null || toolCalls.length === 0) {
+      // 纯文本回复：默认结束；但弱模型常“表态就停”，由 onIdle 兜底追问一次。
+      const nudge = idleLimit > 0 && idleContinues < idleLimit && options.onIdle
+        ? await options.onIdle({ steps, toolCalls: toolCallCount, text: assistantText })
+        : null;
+      if (nudge) {
+        idleContinues += 1;
+        // 空文本不能作为 assistant 消息发给供应商；有内容才保留这一轮的回答。
+        if (assistantText) messages.push({ role: 'assistant', content: assistantText });
+        messages.push({ role: 'user', content: nudge });
+        continue;
+      }
       messages.push({ role: 'assistant', content: assistantText });
       break; // 纯文本回复 → 循环完成
     }
+    toolCallCount += toolCalls.length;
 
     messages.push({ role: 'assistant', content: assistantText || null, tool_calls: toolCalls });
     for (const call of toolCalls) {
@@ -241,6 +282,11 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
       }
       await options.onEvent?.({ type: 'tool_result', ...identity, ok, status: signal?.aborted ? 'stopped' : outcome ?? (ok ? 'ok' : 'error'), durationMs: startedAt === undefined ? 0 : Date.now() - startedAt, message: resultText.slice(0, tool?.displayName ? 8000 : 200) });
       messages.push({ role: 'tool', tool_call_id: call.id, content: resultText });
+    }
+    // 声明 endsTurn 的工具（如结构化提问）执行后结束本轮：等用户回答，不进入下一次采样。
+    if (toolCalls.some((call) => tools.find((t) => t.name === call.function.name)?.endsTurn)) {
+      stopReason = 'completed';
+      break;
     }
     if (stopReason === 'aborted') break;
   }

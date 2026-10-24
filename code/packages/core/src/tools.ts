@@ -29,6 +29,8 @@ export interface ToolAccessRequest {
   binding?: Record<string, unknown>;
   invocation?: { id: string; definition: string; arguments: Record<string, unknown>; digest: string };
   external?: boolean;
+  /** 服务端工具声明静默放行：不弹授权卡，直接记为已批准。由工具实现固定，模型参数不能设置。 */
+  auto?: boolean;
   tool: string;
   kind: 'read' | 'write' | 'bash';
   paths: Array<{ path: string; mode: 'read' | 'write' }>;
@@ -46,6 +48,8 @@ export interface Tool {
   parameters: Record<string, unknown>;
   /** 声明本次调用涉及的路径/命令，供权限引擎判定 */
   access?(args: Record<string, unknown>, ctx: ToolContext): ToolAccessRequest;
+  /** 工具返回后立即结束本轮（结构化提问用：等用户回答，不进入下一轮采样）。 */
+  endsTurn?: boolean;
   run(args: Record<string, unknown>, ctx: ToolContext): Promise<string>;
 }
 
@@ -170,6 +174,62 @@ export const lsTool: Tool = {
 const BASH_TIMEOUT_MS = 120_000;
 const BASH_OUTPUT_CAP = 64 * 1024;
 
+/**
+ * 执行一条 shell 命令：有 executeCommand（worker/docker）时交给隔离执行服务，
+ * 否则在宿主任务目录里直接 spawn。bash 与 run_code 共用这一条通道。
+ */
+export async function executeShell(command: string, ctx: ToolContext): Promise<string> {
+  if (command === '') return '错误：command 必填';
+  if (ctx.executeCommand) return ctx.executeCommand(command);
+  const isWin = process.platform === 'win32';
+  return new Promise((resolve) => {
+    // I01：POSIX 用进程组（detached），Windows 用 taskkill /T——终止时整树带走，防孤儿进程
+    const child = spawn(isWin ? 'cmd.exe' : '/bin/sh', isWin ? ['/d', '/s', '/c', command] : ['-c', command], {
+      cwd: ctx.taskDir,
+      windowsHide: true,
+      ...(isWin ? {} : { detached: true }),
+      env: commandEnvironment(ctx.extraEnv),
+    });
+    /** 整棵进程树强制终止（超时/中止时；不再依赖 spawn 的 timeout 只杀直接子进程）。 */
+    const killTree = (): void => {
+      if (child.killed || child.exitCode !== null) return;
+      if (isWin) {
+        spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true });
+      } else if (child.pid) {
+        try {
+          process.kill(-child.pid, 'SIGKILL');
+        } catch {
+          child.kill('SIGKILL');
+        }
+      } else {
+        child.kill('SIGKILL');
+      }
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killTree();
+    }, BASH_TIMEOUT_MS);
+    const onAbort = (): void => killTree();
+    ctx.signal?.addEventListener('abort', onAbort, { once: true });
+    let out = '';
+    let timedOut = false;
+    child.stdout?.on('data', (d: Buffer) => {
+      if (out.length < BASH_OUTPUT_CAP) out += d.toString();
+    });
+    child.stderr?.on('data', (d: Buffer) => {
+      if (out.length < BASH_OUTPUT_CAP) out += d.toString();
+    });
+    child.on('error', (err) => resolve(`执行失败：${err.message}`));
+    child.on('close', (code, signal) => {
+      clearTimeout(timer);
+      ctx.signal?.removeEventListener('abort', onAbort);
+      if (ctx.signal?.aborted) return resolve('（已中止：命令随任务停止被终止）');
+      const head = out.length > 0 ? `\n${out.slice(0, BASH_OUTPUT_CAP)}` : '\n（无输出）';
+      resolve(`${timedOut ? '超时强制终止（整棵进程树已结束）' : `exit=${code ?? signal ?? '?'}`}${head}`);
+    });
+  });
+}
+
 export const bashTool: Tool = {
   name: 'bash',
   kind: 'bash',
@@ -184,56 +244,7 @@ export const bashTool: Tool = {
   },
   access: (args) => ({ tool: 'bash', kind: 'bash' as const, paths: [] as Array<{ path: string; mode: 'read' | 'write' }>, command: String(args['command'] ?? '') }),
   async run(args, ctx) {
-    const command = String(args['command'] ?? '').trim();
-    if (command === '') return '错误：command 必填';
-    if (ctx.executeCommand) return ctx.executeCommand(command);
-    const isWin = process.platform === 'win32';
-    return new Promise((resolve) => {
-      // I01：POSIX 用进程组（detached），Windows 用 taskkill /T——终止时整树带走，防孤儿进程
-      const child = spawn(isWin ? 'cmd.exe' : '/bin/sh', isWin ? ['/d', '/s', '/c', command] : ['-c', command], {
-        cwd: ctx.taskDir,
-        windowsHide: true,
-        ...(isWin ? {} : { detached: true }),
-        env: commandEnvironment(ctx.extraEnv),
-      });
-      /** 整棵进程树强制终止（超时/中止时；不再依赖 spawn 的 timeout 只杀直接子进程）。 */
-      const killTree = (): void => {
-        if (child.killed || child.exitCode !== null) return;
-        if (isWin) {
-          spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true });
-        } else if (child.pid) {
-          try {
-            process.kill(-child.pid, 'SIGKILL');
-          } catch {
-            child.kill('SIGKILL');
-          }
-        } else {
-          child.kill('SIGKILL');
-        }
-      };
-      const timer = setTimeout(() => {
-        timedOut = true;
-        killTree();
-      }, BASH_TIMEOUT_MS);
-      const onAbort = (): void => killTree();
-      ctx.signal?.addEventListener('abort', onAbort, { once: true });
-      let out = '';
-      let timedOut = false;
-      child.stdout?.on('data', (d: Buffer) => {
-        if (out.length < BASH_OUTPUT_CAP) out += d.toString();
-      });
-      child.stderr?.on('data', (d: Buffer) => {
-        if (out.length < BASH_OUTPUT_CAP) out += d.toString();
-      });
-      child.on('error', (err) => resolve(`执行失败：${err.message}`));
-      child.on('close', (code, signal) => {
-        clearTimeout(timer);
-        ctx.signal?.removeEventListener('abort', onAbort);
-        if (ctx.signal?.aborted) return resolve('（已中止：命令随任务停止被终止）');
-        const head = out.length > 0 ? `\n${out.slice(0, BASH_OUTPUT_CAP)}` : '\n（无输出）';
-        resolve(`${timedOut ? '超时强制终止（整棵进程树已结束）' : `exit=${code ?? signal ?? '?'}`}${head}`);
-      });
-    });
+    return executeShell(String(args['command'] ?? '').trim(), ctx);
   },
 };
 
@@ -322,4 +333,45 @@ export const findTool: Tool = {
   },
 };
 
-export const BUILTIN_TOOLS: Tool[] = [readTool, writeTool, lsTool, bashTool, grepTool, findTool];
+export const editTool: Tool = {
+  name: 'edit',
+  kind: 'write',
+  description:
+    '在任务目录内按精确文本替换编辑文件：old_string 必须在文件中唯一匹配（否则补充上下文或设 replace_all=true）。先 read 再改；不做正则，整文件重写用 write。',
+  parameters: {
+    type: 'object',
+    properties: {
+      path: { type: 'string', description: '相对任务目录的文件路径' },
+      old_string: { type: 'string', description: '要被替换的原文，必须与文件内容逐字一致（含空格与缩进）' },
+      new_string: { type: 'string', description: '替换后的文本；为空表示删除这段内容' },
+      replace_all: { type: 'boolean', description: '为 true 时替换全部匹配；默认要求唯一匹配' },
+    },
+    required: ['path', 'old_string', 'new_string'],
+    additionalProperties: false,
+  },
+  access: (args) => ({
+    tool: 'edit',
+    kind: 'write' as const,
+    paths: [{ path: String(args['path'] ?? ''), mode: 'read' as const }, { path: String(args['path'] ?? ''), mode: 'write' as const }],
+  }),
+  async run(args, ctx) {
+    const path = resolveWithin(ctx.taskDir, String(args['path'] ?? ''), ctx.extraAllowedDirs);
+    if (ctx.filePolicy && !ctx.filePolicy(path, 'read')) throw new Error('无权读取该项目或任务文件');
+    if (ctx.filePolicy && !ctx.filePolicy(path, 'write')) throw new Error('无权修改该项目或任务文件');
+    if (!existsSync(path)) throw new Error(`文件不存在：${String(args['path'] ?? '')}；新建文件请用 write`);
+    const oldString = String(args['old_string'] ?? '');
+    const newString = String(args['new_string'] ?? '');
+    if (oldString === '') throw new Error('old_string 不能为空；整文件重写请用 write');
+    if (oldString === newString) throw new Error('old_string 与 new_string 相同，无需修改');
+    const original = readFileSync(path, 'utf8');
+    const occurrences = original.split(oldString).length - 1;
+    if (occurrences === 0) throw new Error('未找到目标文本：请先 read 确认原文，注意空格、缩进与换行必须逐字一致');
+    if (occurrences > 1 && args['replace_all'] !== true) throw new Error(`目标文本出现 ${occurrences} 次；请补充上下文使其唯一，或设置 replace_all=true`);
+    // 用函数式替换，避免 new_string 中的 $& 等被当成替换模式。
+    const updated = occurrences > 1 ? original.split(oldString).join(newString) : original.replace(oldString, () => newString);
+    writeFileSync(path, updated, 'utf8');
+    return `已编辑 ${path}（替换 ${occurrences} 处，${Buffer.byteLength(updated, 'utf8')} 字节）`;
+  },
+};
+
+export const BUILTIN_TOOLS: Tool[] = [readTool, writeTool, editTool, lsTool, bashTool, grepTool, findTool];
