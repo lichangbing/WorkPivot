@@ -11,6 +11,7 @@ import type { Tool } from '@workpivot/core';
 import { RepositoryError, transaction } from './connection.js';
 import { FileRepository } from './files.js';
 import type { WorkerConfiguration } from './skill-execution.js';
+import { clipOutput, sanitizeOutput } from '../output-sanitize.js';
 import { parseSandboxInputs, parseSandboxOutputs } from './sandbox-args.js';
 import { runSandbox } from './sandbox.js';
 
@@ -89,7 +90,7 @@ export class DatabaseCodeExecution {
     }, actor);
     try {
       const result = await runSandbox(this.config, { command: target.command, files, skills: [] }, signal);
-      const output = result.output.slice(0, 16000);
+      const output = clipOutput(sanitizeOutput(result.output));
       if (!outputs.length) {
         await transaction(this.db, c => c.query("UPDATE workpivot.skill_executions SET status='completed',finished_at=now() WHERE id=$1", [jobId]), actor);
         return { output, artifacts: [] };
