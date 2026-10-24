@@ -504,5 +504,7 @@ ALTER TABLE workpivot.tool_dispatches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workpivot.tool_dispatches FORCE ROW LEVEL SECURITY;
 CREATE POLICY personal_dispatches ON workpivot.tool_dispatches USING(owner_user_id=workpivot.actor_id()) WITH CHECK(owner_user_id=workpivot.actor_id());
 CREATE INDEX tool_dispatches_open ON workpivot.tool_dispatches(run_id) WHERE status='dispatched';
+`}, {version:55,sql:`
+ALTER TABLE workpivot.tasks ADD COLUMN resume_attempts integer NOT NULL DEFAULT 0 CHECK(resume_attempts>=0);
 `}] as const;
 import { usageSchema } from './usage-schema.js';

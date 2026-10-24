@@ -2,7 +2,7 @@
  * R006 恢复逻辑验收：未闭合工具对账、幂等、续跑预算、检查点回调与工具结果分级修剪。
  */
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ChatMessage, ModelClient, StreamEvent, Tool } from '../packages/core/src/index.js';
@@ -14,6 +14,14 @@ import {
   reconcileMessages,
   remainingSteps,
 } from '../packages/server/src/database/recovery.js';
+import {
+  finishFileCheckpoint,
+  latestFileCheckpoint,
+  pruneFileCheckpoints,
+  reconcileFileCheckpoints,
+  writeFileCheckpoint,
+} from '../packages/server/src/file-checkpoint.js';
+import { autoResumeEnabled, eligibleForAutoResume } from '../packages/server/src/database/auto-resume.js';
 
 let checks = 0;
 async function check(label: string, run: () => Promise<void> | void): Promise<void> {
@@ -143,6 +151,42 @@ await check('分批执行：读-写-读 不会跨写并行', async () => {
     await runAgentLoop({ client, tools: [make('r1', 'read'), make('w1', 'write'), make('r2', 'read')], system: 's', taskDir: dir, messages: [{ role: 'user', content: '跑' }], maxSteps: 3 });
     assert.equal(peak, 1, '被写操作隔开的只读调用不能并行');
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+await check('文件链路：过期运行补齐未闭合调用并标记中断，重复对账幂等', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wp-r006-file-'));
+  try {
+    writeFileCheckpoint(dir, 'run-1', [{ role: 'assistant', content: null, tool_calls: [call('x', 'bash')] }]);
+    const later = Date.now() + 180_000;
+    const first = reconcileFileCheckpoints(dir, later);
+    assert.deepEqual(first, [{ runId: 'run-1', repaired: 1 }]);
+    const latest = latestFileCheckpoint(dir);
+    assert.equal(latest?.state.status, 'interrupted');
+    assert.equal(latest?.messages.length, 2);
+    assert.equal(latest?.messages[1]?.role, 'tool');
+    assert.equal(reconcileFileCheckpoints(dir, later).length, 0, '已中断的运行不再重复处理');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+await check('文件链路：已完成的运行不参与对账，旧快照按份数清理', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wp-r006-file2-'));
+  try {
+    for (let index = 0; index < 24; index += 1) {
+      writeFileCheckpoint(dir, `run-${String(index).padStart(2, '0')}`, [{ role: 'assistant', content: '完成' }]);
+      finishFileCheckpoint(dir, `run-${String(index).padStart(2, '0')}`, 'completed');
+    }
+    assert.equal(reconcileFileCheckpoints(dir, Date.now() + 600_000).length, 0, '已完成运行不处理');
+    pruneFileCheckpoints(dir, 20);
+    const remaining = (await readdir(join(dir, '.workpivot', 'runs'))).length;
+    assert.equal(remaining, 20);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+await check('自动续跑资格：有未完成派发或已尝试过都不自动跑，默认关闭', () => {
+  assert.equal(eligibleForAutoResume({ openDispatches: 0, attempts: 0 }), true);
+  assert.equal(eligibleForAutoResume({ openDispatches: 1, attempts: 0 }), false, '可能有副作用，必须人工确认');
+  assert.equal(eligibleForAutoResume({ openDispatches: 0, attempts: 1 }), false, '每个任务只自动续跑一次');
+  assert.equal(autoResumeEnabled(), process.env['WORKPIVOT_AUTO_RESUME'] === '1');
 });
 
 console.log(`\nR006 恢复逻辑：${checks} 项通过`);

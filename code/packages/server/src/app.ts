@@ -25,6 +25,8 @@ import { WebTools, browserConfiguration } from './web/tools.js';
 import { workerCommand } from './worker-command.js';
 import { withDirectoryLock } from './directory-lock.js';
 import { guardDeletions } from './deletion-guard.js';
+import { randomUUID } from 'node:crypto';
+import { finishFileCheckpoint, pruneFileCheckpoints, reconcileFileCheckpoints, writeFileCheckpoint } from './file-checkpoint.js';
 import { transcriptArgs } from './transcript-args.js';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
@@ -839,6 +841,12 @@ ${capped}
 
     // O-09：本轮登记过的交付成果，用于核验闸门判断“文件存在但用户拿不到”。
     const deliveredThisTurn = new Set<string>();
+    // R006 P3：文件链路的运行 ID 与开跑前对账——上一轮中断留下的悬空调用先补齐再开始。
+    const fileRunId = randomUUID();
+    try {
+      const recovered = reconcileFileCheckpoints(task.directory);
+      if (recovered.length) appendTranscript(task.id, 'meta', { event: 'recovered', runs: recovered });
+    } catch { /* 对账失败不阻塞本轮 */ }
 
     // T3-03/F02：带核验闸门的执行——声称产出但文件缺失 → 打回重做（≤2 次）
     const runWithGate = async (attempt: number, baseMessages: ChatMessage[]): Promise<{ stopReason: string; steps: number }> => {
@@ -852,6 +860,8 @@ ${capped}
         maxSteps,
         maxDurationMs,
         stashResult,
+        // R006 P3：每个 step 结束写文件链路检查点，供中断后对账。
+        onCheckpoint: (checkpointMessages) => writeFileCheckpoint(task.directory, fileRunId, checkpointMessages),
         // 早停兜底：产出型任务只表态没动手时，追问一轮（最多 1 次）。
         idleLimit: 1,
         onIdle: ({ text }: { text: string }) => {
@@ -916,6 +926,8 @@ ${capped}
           send({ type: 'gate_reject', missing: [...missing, ...undelivered], final: true });
         }
       }
+      finishFileCheckpoint(task.directory, fileRunId, result.stopReason === 'completed' ? 'completed' : result.stopReason === 'aborted' ? 'aborted' : 'interrupted');
+      pruneFileCheckpoints(task.directory);
       return { stopReason: result.stopReason, steps: result.steps };
     }
 

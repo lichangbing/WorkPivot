@@ -700,3 +700,11 @@ API候选`workpivot-server:local-schema49-20261019`构建完成，镜像内严�
 - 借鉴项：上下文压缩改为分级修剪（>8192 保留头 4096 + 尾 1024 + 固定标记），仍超预算才整体省略；工具执行改为分批——连续只读并发（上限 10），写入/执行独占一批。
 - 验证：`tsc`（6 项目）、`pnpm lint` 通过；`eval/R006-recovery.mts` 8 项通过；`agent-loop` 8 项与 `optimizations-p2` 并行用例回归通过；schema v54 在本地 39997 库以事务回滚验证（表、RLS、索引、8 列）。
 - 未完成：P3 文件链路（`.workpivot/runs/<runId>/messages.jsonl` 与启动对账）、P4 有限自动续跑（需配额与审计）；真实 `kill -9` 验收需部署新镜像后执行。
+
+### 2026-10-24：R006 P3/P4（文件链路检查点与有限自动续跑）
+
+- P3 文件链路：新增 `file-checkpoint.ts`，每个 step 把完整消息快照写到 `<任务目录>/.workpivot/runs/<runId>/messages.json`（原子写），`state.json` 记录 running/completed/aborted/interrupted；任务开跑前对账过期 running 运行——补齐未闭合 tool_call、改写快照、标记 interrupted，并写一条 `recovered` 转写；保留最近 20 份。
+- P4 自动续跑：新增 `auto-resume.ts`，仅当 `WORKPIVOT_AUTO_RESUME=1` 且"没有已派发未完成工具调用"（无未知副作用）时自动续跑一次；`tasks.resume_attempts`（schema v55）先占额度，失败不重试，避免崩溃循环；默认关闭。
+- 恢复循环接入：`runtime.ts` 在 `recoverExecutions` 之后调用 `autoResumeInterrupted`。
+- 验证：`tsc`（6 项目）、`pnpm lint` 通过；`eval/R006-recovery.mts` 扩到 11 项（新增文件链路对账、幂等、清理、自动续跑资格）；schema v55 以事务回滚在本地 39997 库验证。
+- 仍待：真实 `kill -9` 端到端验收（需部署新镜像）、P4 的审计事件与配额上限（当前只有次数上限）。

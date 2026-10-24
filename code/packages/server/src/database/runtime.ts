@@ -17,6 +17,7 @@ import { CompactionService, defaultContextBudget } from './compaction.js';
 import { DocumentProcessing } from './document-processing.js';
 import { DatabaseModelService } from './model-service.js';
 import { recoverExecutions } from './execution-recovery.js';
+import { autoResumeInterrupted } from './auto-resume.js';
 import { DatabaseSkillExecution, type WorkerConfiguration } from './skill-execution.js';
 import { DatabaseArtifactTools } from './artifact-tools.js';
 import { DatabaseFileTools } from './file-tools.js';
@@ -110,7 +111,7 @@ export async function createDatabaseRuntime(auth: Pool, db: Pool, options: { ini
   let recovering = false;
   const recover = async () => {
     if (recovering || stopped) return; recovering = true;
-    try { for (const user of (await auth.query('SELECT id FROM identity.users WHERE NOT disabled')).rows) { if (stopped) break; await recoverExecutions(db,user.id); await execution.runs.cleanupContext(user.id); } }
+    try { for (const user of (await auth.query('SELECT id FROM identity.users WHERE NOT disabled')).rows) { if (stopped) break; await recoverExecutions(db,user.id); await autoResumeInterrupted(db,user.id,execution); await execution.runs.cleanupContext(user.id); } }
     catch { /* 下次定时触发时重试状态恢复，不重放命令。 */ }
     finally { recovering = false; }
   };
