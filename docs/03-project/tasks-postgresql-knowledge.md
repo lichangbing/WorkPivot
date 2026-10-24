@@ -584,3 +584,75 @@ API候选`workpivot-server:local-schema49-20261019`构建完成，镜像内严�
 - 按用户要求移除“记忆整理作业”列表、列表内重试入口与每10秒轮询；保留自动整理开关及后台记忆功能，统一管理页的十轮分析记录保持原样。
 - Web TypeScript、相关 ESLint、构建与差异检查通过。本次为展示收缩，未新增测试或重复执行数据库回归；不删除作业数据。本次按用户要求提交归档，提交前再次核对差异；沿用该轮构建与部署验证结果。
 - 本地已更新 `r1792413979350`（schema 52），健康与首页构建一致性检查通过；客户端刷新即可。备份保留在对应发布目录。
+
+### 2026-10-24：通用代码执行 run_code（未部署）
+
+- 需求确认：用户要求“没有 Skill、没有工具时能自己写代码解决问题”，接受“分析 + 生成成果”范围，并选择静默自动授权（不弹卡，代码留在对话记录）。
+- 实现：新增 `run_code`（`database/code-execution.ts`），复用宿主 worker 的一次性容器与产物发布事务；抽出 `sandbox.ts`（worker 客户端）与 `sandbox-args.ts`（输入/产物契约）供技能执行共用；注册为 `execution` 工具，仅在配置 worker 时挂载；系统提示补使用纪律。
+- 授权：`ToolAccessRequest.auto` 由工具端声明，`RunRepository` 只对 `run_code` 白名单直接登记 `consumed + allow`；部署可用 `WORKPIVOT_CODE_APPROVAL=confirm` 恢复逐次确认。未新增数据库迁移，执行日志复用 `skill_executions`。
+- 验证：`tsc`（shared/core/server/web/desktop）与改动文件 ESLint 通过；`code/eval/run-code-local.mts` 20 项离线检查、`code/eval/run-code-execution.mts` 8 项编排检查（假 Pool/worker/文件仓库跑真实 `run()` 与 `requestPermission` 路径）通过。**未执行**真实容器端到端与 PostgreSQL 发布竞态（本机无 Docker/PostgreSQL），需在 WSL/Linux 上补跑 `scripts/test-database-worker.mjs` 并把 `run_code` 用例加入 `eval/database-worker-joint.mts`。
+- 文档：设计说明见 [通用代码执行能力-20261024](../02-design/architecture/通用代码执行能力-20261024.md)。
+- 已知限制：静默执行无人工拦截点；沙箱无网络、无 numpy/pandas/matplotlib；单次 120 秒、2 并发；未配置 worker 时不出现该工具。
+
+### 2026-10-24：run_code 工作目录与联网方案（未部署）
+
+- 需求变更：用户要求 Python 能读本地工作目录、允许每次单独建容器、联网按需判断。确认：工作目录取“授权文件快照”方案（不做宿主目录挂载）；联网按任务级域名预授权；允许运行时安装依赖但只放行 pypi/npm 域名。
+- 本次实现工作目录：`inputs` 省略时把本轮授权范围内全部文件按原名挂到 `/workspace/inputs/<版本ID>/`，并生成 `/workspace/manifest.json`；按清单先做 16MB 总量预检，超限直接提示用 `inputs` 收窄；工具描述与系统提示同步。独立容器原本就是每次一个，无需改动。
+- 验证：`tsc`（core/server）与 ESLint 通过；`eval/run-code-execution.mts` 扩到 10 项并通过（新增“挂载全部授权文件 + manifest”“超限拒绝且不启动容器”）。
+- 未实现：联网（`resource_scope.networkHosts` + 出口代理 + 域名白名单）与运行时装包。原因：必须改 worker 的 Docker 网络与代理，本机无 Docker 无法验证；方案见设计文档 4.1，需在 WSL/Linux 环境另起一轮实现并验收。
+
+### 2026-10-24：文件链路 run_code（未部署）
+
+- 需求变更：线上为文件链路，用户工作目录（用户区/项目夹/临时对话夹）是主模型；要求“直接在工作目录执行、不要快照回写”。
+- 方案调整：原计划的 `local` 模式（服务进程内直接执行）经评估会与服务同 UID、可读其他账号工作区与 `/data/workpivot`，已撤回；改为 C 方案——worker 建容器时用 `volume-subpath` 直接挂载该任务目录。
+- 实现：新增 `code-tools.ts`（`run_code`，脚本落 `.workpivot/run-code/`）、`directory-lock.ts`（同目录串行）、`workspace-mount.ts`（任务目录换算成卷内子路径并校验越界）；`worker-command.ts` 在有 `WORKPIVOT_WORKSPACE_VOLUME` 时改为发送 `mount.subpath`，`skill-worker.mjs` 校验子路径并挂载、跳过复制与导出；`app.ts` 挂载工具。
+- 安全：挂载只到该任务目录，容器看不到其他账号与 `/data/workpivot`；卷名来自 worker 配置，请求不能指定；卷未配置时自动退回快照模式。
+- 验证：`tsc`（shared/core/server/web/desktop）与改动文件 ESLint 通过；`eval/run-code-file-chain.mts` 8 项、`eval/run-code-mount.mts` 6 项通过。未验证：真实 Docker 挂载与容器内读写（本机无 Docker）。
+- 部署配置：`compose.worker.yml` 增加可选 `WORKPIVOT_WORKSPACE_VOLUME`（默认空＝沿用快照模式）；`install-worker.mjs` 把它写入 worker.env 与后台 .env；`Skill执行服务部署.md` 补充前提（卷在 worker 主机、Docker 26+ 支持 `volume-subpath`、卷内属主 1000:1000）。
+
+### 2026-10-24：agent 循环早停兜底与上下文压缩（未部署）
+
+- 反馈：实际使用中“遇到问题不去想办法、不如其他 agent”。对照内核与竞品，定位到三个策略问题而非循环结构。
+- 早停兜底：`runAgentLoop` 新增 `onIdle`/`idleLimit`，纯文本结束时最多追问 1 次；判定在 `continuation.ts`（产出型任务未调用工具，或助手承诺动作未执行；纯问答不追问）。文件链路已接入。
+- 上下文压缩：`core/context.ts` 在每轮采样前压缩较早工具结果/assistant 文本，只替换 content 不删消息，保留 tool_call 配对；默认 120k 字符，`WORKPIVOT_CONTEXT_CHARS` 可覆盖。数据库链路与自动化走默认值。
+- 韧性：流在无输出时失败重试一次；新增 `edit` 工具（唯一匹配替换，支持 replace_all）；访问纪律改为“不得绕过同一路径拒绝，但可换合规路径继续”。
+- 验证：`eval/agent-loop.mts` 8 项通过；`tsc`（core/server）与改动文件 ESLint 通过。
+
+### 2026-10-24：联网搜索 web_search（未部署）
+
+- 背景：文件链路此前没有联网工具（web_fetch/browser_visit 只在数据库链路与自动化里），模型只能猜网址。对照竞品补齐“知道要查什么但不知道网址”的入口。
+- 实现：新增 `web/search.ts`（brave / searxng 适配、结果归一化、内网地址过滤、请求注入便于测试）；`WebTools` 在配置后附加该工具；文件链路启动时构建 `WebTools` 并挂上 `web_fetch`（配了浏览器服务再加 `browser_visit`，截图写 `web-artifacts/`）；数据库链路 `tool-policy` 登记为 network/web。
+- 配置：`WORKPIVOT_SEARCH_PROVIDER`、`WORKPIVOT_SEARCH_URL`、`WORKPIVOT_SEARCH_KEY`；未配置不出现，配置不完整启动失败。
+- 验证：`eval/web-search.mts` 8 项通过（注入 fetch）；`tsc`（core/server）与改动文件 ESLint 通过。未验证：真实 brave/searxng 调用与配额。
+
+### 2026-10-24：工具面路线图与 R003–R005 登记（未部署）
+
+- 对照 codex / claude-code / hermes / openclaw / pi / openworkbuddy / MyAgents 的工具面，确认差距在子任务、结构化提问、后台进程三类，而非工具数量。
+- 新增 [agent 工具面路线图](../../02-design/architecture/agent工具面路线图-20261024.md)：R003 联网搜索（已实现待部署）、R004 结构化提问（待启动）、R005 子代理（待启动），含接口、边界、验收与排期；后续候选（后台进程、apply_patch、vision、session_search、媒体）单独列出。
+- backlog 登记 R003–R005 并链接路线图；R003 设计说明见 [联网搜索能力-20261024](../../02-design/architecture/联网搜索能力-20261024.md)。
+- 排期建议：先做 R003 部署验收，再做 R005（单层同步），最后 R004（依赖前端卡片）。
+
+### 2026-10-24：优化清单建立（O-01～O-14，均未开始）
+
+- 复查了本轮改动的联网、挂载、循环与工具层，登记 14 项优化：P0 四项（授权卡文案写死“MCP”且搜索逐次弹卡、目录锁未覆盖 bash 导致挂载模式并发覆盖、read 无 offset/limit、输出只留头部）、P1 四项（usage 未采集、转写存全量参数、脚本目录不清理、非原子写）、P2 六项（核验闸门、挂载写入上限、搜索缓存配额、跨进程锁、同轮串行、数据库链路已知项）。
+- 清单见 [优化清单-20261024](优化清单-20261024.md)，含落点、影响、修法、验收与分批排期；工具面路线图的排期插入“O-01～O-04”一批。
+- 其中 O-01、O-02 是本次联网与挂载改动引入的风险，优先修。
+
+### 2026-10-24：R004 结构化提问与 R005 子代理（已部署本地栈）
+
+- 需求：按[工具面路线图](../../02-design/architecture/agent工具面路线图-20261024.md)排期实现子代理与结构化提问，补齐与 codex / claude-code 等竞品在“子任务、结构化提问”两类能力上的差距。
+- R005：新增 `database/delegation.ts`。子循环只拿 system + 一条 user（task/context），父历史不进入；子工具集剔除 `delegate` 与 `ask_user`；`max_steps` 校验 1–50（默认 20）、时长上限 10 分钟；同一运行内队列串行；失败、超预算、取消都转成带 `stopReason` 的工具结果文本，不中断父任务。
+- R004：新增 `database/ask-user.ts`，`core` 增加 `Tool.endsTurn`（工具返回后本轮立即结束，不触发 `onIdle`）；提问以 `type=ask_user` 的 meta 事件持久化，前端渲染选项卡片，点击后以 `[回答提问 <id>] <选项>` 作为普通消息回传；同轮重复调用复用同一 `questionId`；不声明 `access`，不占用授权通道。
+- 接入：`execution.ts` 按运行动态装配 delegate/ask_user，子事件与父事件共用同一条持久化通道（`AgentEvent.delegateId` 前缀，`tool-events` 保留）；`tool-policy` 登记 `effects`/`resultSource`，避免未分类工具被拒绝注册。
+- 验证：全工程 `tsc`、`pnpm lint`、`web build` 通过；新增 `eval/R005-delegate.mts`（7 项）与 `eval/R004-ask-user.mts`（5 项）并加入 `eval/run-all.mts`。
+- 部署：按 `releases/deploy/Dockerfile.local-stack-server` 重建 `workpivot-server:local-stack` 并滚动 `workpivot-stack`（39997），三容器 healthy；容器内可见 `delegation.ts`/`ask-user.ts`，前端产物 `main-*.js` 含 `ask_user` 处理。
+- **未做**真实模型与界面手工验收：该实例尚无模型供应商（providers=0），对话不可发送，模型是否主动委派/提问仍待配置 Key 后验证。
+- 边界：本轮只接入数据库运行链路，文件链路（`app.ts`）未挂载 `delegate`；子代理不切换模型、不跨工作目录；后台进程（`process`/`write_stdin`）仍未排期。
+
+### 2026-10-24：执行模式接线（未部署）
+
+- 用户确认两种模式的语义与授权矩阵：“确认模式”在进入执行前确认、联网首次确认、危险操作单独确认；“自动模式”只对危险行为（外部 MCP、取消定时任务、删除/覆盖、界外访问、高危命令）确认。
+- 实现：`RunRepository.requestPermission` 在同一事务内读取该用户 `execution.mode`，`manual` 时 `run_code` 也逐次确认，`auto` 或未设置保持静默，`WORKPIVOT_CODE_APPROVAL=confirm` 仍强制覆盖；Web 与移动端选项文案去掉“本版仍逐次确认”。
+- 文档：新增 [执行模式与授权矩阵](../../02-design/architecture/执行模式与授权矩阵-20261024.md)，含完整矩阵与已实现/待实现清单。
+- 验证：`eval/run-code-execution.mts` 扩到 12 项通过（新增“确认模式逐次确认”“自动模式与未设置静默”）；`tsc`（core/server/web/mobile）与改动文件 ESLint 通过。
+- 未实现：计划闸门（O-16）、确认模式联网首次一次（O-17）、文件链路统一两模式（O-18）、文件链路删除保护（O-19）。
