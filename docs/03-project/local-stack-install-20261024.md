@@ -45,8 +45,9 @@ bash releases/deploy/install-local-stack.sh --seed-only
 4. **镜像**：缺失才构建；`--rebuild` 强制重建。执行器构建失败（镜像源不稳、apk 长时间无响应）时退化为服务端镜像并显式警告，此时 PDF 解析、OCR、Office 转 PDF 不可用，但 Office 生成能力不受影响。
 5. **Worker**：以 `setsid` 在宿主机启动，绑定网关地址，健康检查带令牌。
 6. **数据库**：空库时创建 `workpivot_app`/`workpivot_auth` 角色、执行 schema 迁移、初始化文件卷权限；已有结构则跳过。
-7. **启动**：`docker compose up -d --wait`，随后校验服务端、浏览器、Worker 健康。
-8. **内容**：必要时先建管理员 → 发布 4 个 Office 技能 → 发布默认记忆/专家模板 → 为管理员加载技能。
+6b. **可选 chat 存储（R007）**：`--with-chat-store` 时用管理员连接创建 `chat` schema、`chat.tasks`/`chat.messages` 与受限角色 `workpivot_chat`，并把运行时连接串写入 `stack.env`；不加参数则保持 JSONL，行为不变。
+7. **启动**：`docker compose up -d --wait`，随后校验服务端、浏览器、Worker 健康。内置 SearXNG 随栈启动（`--with-office-convert` 等开关不影响它；拉不到镜像只警告并关闭 `web_search`）。
+8. **内容**：必要时先建管理员 → 发布 4 个 Office 技能 + `bull-bear-debate` → 发布默认记忆/专家模板 → 为管理员加载技能。
 9. **验收**：健康接口、首页、浏览器服务、Worker 四项。
 
 ## 验收记录（2026-10-24）

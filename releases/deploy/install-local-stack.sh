@@ -14,6 +14,7 @@
 #   bash releases/deploy/install-local-stack.sh --rebuild           # 强制重建镜像
 #   bash releases/deploy/install-local-stack.sh --auto-admin        # 自动创建管理员并打印密码
 #   bash releases/deploy/install-local-stack.sh --with-office-convert  # 额外安装 LibreOffice，支持转 PDF（镜像体积大、构建慢）
+#   bash releases/deploy/install-local-stack.sh --with-chat-store   # 对话消息入库（chat schema，R007）
 #   bash releases/deploy/install-local-stack.sh --seed-only         # 只重跑技能/模板发布与加载
 #
 # 可覆盖的环境变量：STACK_PROJECT / STACK_PORT / STACK_DATA_DIR / STACK_WORKER_PORT
@@ -43,6 +44,7 @@ REBUILD=0
 SEED_ONLY=0
 AUTO_ADMIN=0
 OFFICE_CONVERT=0
+CHAT_STORE=0
 
 NETWORK="${PROJECT}_net"
 ENV_FILE="$DATA_DIR/stack.env"
@@ -64,6 +66,7 @@ while [ $# -gt 0 ]; do
     --seed-only)  SEED_ONLY=1; shift ;;
     --auto-admin) AUTO_ADMIN=1; shift ;;
     --with-office-convert) OFFICE_CONVERT=1; shift ;;
+    --with-chat-store) CHAT_STORE=1; shift ;;
     --admin-user) ADMIN_USER="$2"; shift 2 ;;
     -h|--help)    usage; exit 0 ;;
     *) die "未知参数：$1（用 --help 查看用法）" ;;
@@ -308,6 +311,25 @@ start_stack() {
   info "浏览器服务就绪：composition 内 browser:39991（不对外暴露）"
 }
 
+# ---------- 5b. 可选：对话消息入库（R007） ----------
+# 应用自身不建表：这里用管理员连接创建 chat schema 与受限角色，然后把运行时连接串写进 stack.env。
+install_chat_store() {
+  log '5b/7 安装 chat 存储（R007，可选）'
+  local chat_pw chat_env
+  chat_pw="$(random_hex 24)"
+  chat_env="$(mktemp)"
+  chmod 600 "$chat_env"
+  printf 'WORKPIVOT_CHAT_DATABASE_ADMIN_URL=%s\nWORKPIVOT_CHAT_ROLE_PASSWORD=%s\n' \
+    "postgresql://workpivot_schema:${DATABASE_ADMIN_PASSWORD}@database:5432/workpivot" "$chat_pw" > "$chat_env"
+  docker run --rm --network "$NETWORK" --env-file "$chat_env" \
+    "$SERVER_IMAGE" ./node_modules/.bin/tsx scripts/chat-schema.mts
+  rm -f "$chat_env"
+  sed -i '/^WORKPIVOT_CHAT_DATABASE_URL=/d' "$ENV_FILE" 2>/dev/null || true
+  echo "WORKPIVOT_CHAT_DATABASE_URL=postgresql://workpivot_chat:${chat_pw}@database:5432/workpivot" >> "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
+  info 'chat schema 已就绪，运行时连接串写入 stack.env'
+}
+
 # ---------- 6. 内容：技能与模板 ----------
 seed_content() {
   log '6/7 发布内置技能与默认模板'
@@ -406,6 +428,7 @@ fi
 build_images
 start_worker
 bootstrap_database
+if [ "$CHAT_STORE" = 1 ]; then install_chat_store; fi
 start_stack
 seed_content
 verify

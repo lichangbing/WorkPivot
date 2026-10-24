@@ -106,7 +106,7 @@
 
 **设计文档**：[对话记录入库（文件链路混合存储）-20261024](../architecture/对话记录入库（文件链路混合存储）-20261024.md)。
 
-**进度（2026-10-24）**：`chat-store.ts`（连接池/开关/探测/取号追加/分页读取/行映射）、`scripts/chat-schema.mts` 与 `pnpm chat:install` 已就绪，并在本地栈库上实际建表成功（`chat.tasks`、`chat.messages`、受限角色 `workpivot_chat`，非 superuser）；启动时配置了就必须探测通过。`tasks.ts` 的 JSONL 调用点尚未切换（需要把同步读写改为异步，涉及 `app.ts` 等约 45 处调用），切换完成后才算 R007 完成。
+**进度（2026-10-24）**：消息链路已切换并部署——chat schema/受限角色/分页/降级探测就绪，`app.ts` 的读写走 `chat-tasks`，转写接口支持 `before/limit`，删除保护改为异步全量读取；本地栈已启用 `WORKPIVOT_CHAT_DATABASE_URL` 并完成容器内往返验收（`rows=2 seqs=1,2`）。安装器新增 `--with-chat-store`。**与设计的差异**：任务元数据仍以 `task.json` 为唯一真值，`chat.tasks` 只作消息归属与级联锚点，避免同一字段两处可写；若要求元数据也入 PG，需再做 45 处调用点的异步化。
 
 ## R008 多 agent 协作（❌ 不实施，2026-10-24 决策）
 
