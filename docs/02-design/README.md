@@ -1,5 +1,7 @@
 # 设计文档
 
+2026-10-24新增：[事件溯源会话与中断恢复](architecture/事件溯源会话与中断恢复-20261024.md)。崩溃后历史合法、已派发工具不重放、可续跑的设计：复用 `conversation_events` 与 `task_runs.model_messages`，补 `tool_dispatches` 对账，at-most-once 语义，分 P1–P4 实施（R006）。
+
 2026-10-24新增：[执行模式与授权矩阵](architecture/执行模式与授权矩阵-20261024.md)。确认“确认模式/自动模式”的语义与逐工具矩阵：确认模式进入执行前确认一次、联网首次确认；自动模式只对 MCP、取消定时任务、删除覆盖、界外访问与高危命令确认。`execution.mode` 已接线到 `run_code`。
 
 2026-10-24新增：[agent 工具面路线图](architecture/agent工具面路线图-20261024.md)。对照 codex/claude-code/hermes/openclaw/pi/openworkbuddy/MyAgents 确认差距在子任务、结构化提问与后台进程；登记 R003 联网搜索（已实现待部署）、R004 结构化提问、R005 子代理，含接口、边界与验收标准。

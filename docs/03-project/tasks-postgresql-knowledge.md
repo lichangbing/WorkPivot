@@ -656,3 +656,24 @@ API候选`workpivot-server:local-schema49-20261019`构建完成，镜像内严�
 - 文档：新增 [执行模式与授权矩阵](../../02-design/architecture/执行模式与授权矩阵-20261024.md)，含完整矩阵与已实现/待实现清单。
 - 验证：`eval/run-code-execution.mts` 扩到 12 项通过（新增“确认模式逐次确认”“自动模式与未设置静默”）；`tsc`（core/server/web/mobile）与改动文件 ESLint 通过。
 - 未实现：计划闸门（O-16）、确认模式联网首次一次（O-17）、文件链路统一两模式（O-18）、文件链路删除保护（O-19）。
+
+### 2026-10-24：DeepSeek Harness 源码对照（研究，未改代码）
+
+- 解包本机 `app.asar`（548 个 `@deepseek-ai/dsh-*` 包，v0.2.1-rc.2，MIT），逐项分析 agent 循环、子代理、网页搜索、终端四项能力的实现。
+- 新增竞品分析 [deepseek-harness.md](../../01-research/competitors/deepseek-harness.md) 并登记进研究索引。
+- 路线图新增「从 DeepSeek Harness 借鉴的设计」：工具结果修剪参数定为 8192/4096/1024（O-04）、并行工具默认并发 10 且写类独占（O-13）、`ask_user_question` schema 与 R004 对齐、评估“模型原生 web_search”替代自建搜索（R003）、持久 PTY 作为后台进程候选。
+- 结论：代码不可直接搬（Cordis 服务容器 + 自研 Session/LLM 抽象，与 Express + pg 不同构）；设计可借鉴。事件溯源会话与中断恢复列为长期方向。
+
+### 2026-10-24：事件溯源会话与中断恢复设计（R006，未实现）
+
+- 现状：数据库链路已有 `conversation_events`、`task_runs.model_messages`、fence/lease、`recover()` 与启动清扫，但只做到“标记中断”，无法续跑；未闭合的 tool_call 靠 `replayableMessages` 丢弃。
+- 设计：复用现有事件表与检查点字段（不改 CHECK 约束），新增 `tool_dispatches` 对账表；恢复时对“已派发未完成”的调用补合成结果、绝不重放，保证 at-most-once；续跑从 `model_messages` 检查点开始，步数预算继承剩余值。
+- 分阶段：P1 对账 + 历史合法 + 标记中断；P2 一键续跑；P3 文件链路对齐（JSONL 检查点）；P4 有限自动续跑（默认关闭）。
+- 文档：[事件溯源会话与中断恢复](../../02-design/architecture/事件溯源会话与中断恢复-20261024.md)；backlog 登记 R006（P1，设计完成），路线图 §6/§7 同步，排期插在 R004/R005 验收之前。
+
+### 2026-10-24：O-14 收尾（执行日志区分与代码结果渲染）
+
+- 执行日志区分：`workpivot.skill_executions` 增加 `kind`（schema v53，取值 `skill`/`code`）；`run_code` 登记 `code`，技能作业列表只查 `kind='skill'`，两类日志不再混用。已在本地 39997 库上以事务回滚方式验证 DDL 可执行。
+- 前端渲染：`DatabaseTurnProcess` 识别 `{output, artifacts}` 形态，把 `run_code` 结果渲染为「输出正文 + 产物清单」，不再显示整段 JSON；其他工具结果保持纯文本。
+- 验证：`tsc`（6 项目）、`pnpm lint`、`web build` 通过；`eval/optimizations-p0/p1/p2`、`output-sanitize`、`builtin-skills` 全通过。
+- 与 O-14 原始建议的差异：没有新建独立表，改为在同一表上用 `kind` 区分——保留既有外键、RLS 策略、执行恢复与迟到产物判定逻辑，避免迁移期双重写入；如后续需要独立生命周期再拆表。
