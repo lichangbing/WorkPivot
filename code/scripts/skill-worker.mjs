@@ -41,7 +41,15 @@ function exportFiles() {
   }
   walk(''); process.stdout.write(JSON.stringify(files));
 }
-export async function startWorker({ host = '127.0.0.1', port = 39990, token, image, timeoutMs = 120000, owner = OWNER, stateDir = join(tmpdir(), owner) }) {
+/** 挂载模式只接受“工作区卷内的相对子路径”，卷名来自 worker 自身配置，请求不能指定。 */
+export function validateMount(mount) {
+  if (!mount || typeof mount !== 'object' || Array.isArray(mount)) throw Error('挂载参数无效');
+  if (Object.keys(mount).some((key) => key !== 'subpath')) throw Error('挂载参数无效');
+  const subpath = mount.subpath;
+  if (typeof subpath !== 'string' || !subpath || subpath.length > 512 || subpath.startsWith('/') || /[\\:\0]/.test(subpath) || subpath.split('/').some((part) => !part || part === '.' || part === '..')) throw Error('挂载子路径无效');
+  return subpath;
+}
+export async function startWorker({ host = '127.0.0.1', port = 39990, token, image, timeoutMs = 120000, owner = OWNER, stateDir = join(tmpdir(), owner), workspaceVolume = process.env.WORKPIVOT_WORKSPACE_VOLUME }) {
   if (!token || token.length < 32 || !image) throw Error('Worker token and fixed image are required');
   if (!isAbsolute(stateDir) || /[\x00-\x1f,]/.test(stateDir) || stateDir.split('/').some(part => part === '..' || part === '.')) throw Error('Worker state requires a clean absolute path');
   if (!/^[a-z0-9-]{1,64}$/.test(owner)) throw Error('Invalid worker instance');
@@ -70,21 +78,28 @@ export async function startWorker({ host = '127.0.0.1', port = 39990, token, ima
       let length = 0; const chunks = [];
       for await (const chunk of req) { length += chunk.length; if (length > 24 * 1024 * 1024) throw Error('请求过大'); chunks.push(chunk); }
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-      if (Object.keys(body).some((key) => !['command', 'files', 'skills'].includes(key)) || typeof body.command !== 'string' || !body.command.trim() || body.command.length > 65536) throw Error('请求无效');
-      const input = validateFiles(body.files), resources = validateFiles(body.skills);
+      if (Object.keys(body).some((key) => !['command', 'files', 'skills', 'mount'].includes(key)) || typeof body.command !== 'string' || !body.command.trim() || body.command.length > 65536) throw Error('请求无效');
+      const mountSubpath = body.mount === undefined ? null : validateMount(body.mount);
+      if (mountSubpath && body.files !== undefined) throw Error('请求无效');
+      if (mountSubpath && !workspaceVolume) throw Error('执行器未配置工作区卷，无法直接挂载');
+      const input = mountSubpath ? [] : validateFiles(body.files), resources = validateFiles(body.skills);
       if ([...input, ...resources].reduce((sum, [, bytes]) => sum + bytes.length, 0) > LIMIT) throw Error('任务和技能文件合计超过16MiB');
       directory = join(stateDir, 'job-' + randomUUID()); mkdirSync(directory, { mode: 0o700 });
       for (const folder of ['input', 'skills']) mkdirSync(join(directory, folder));
       for (const [folder, files] of [['input', input], ['skills', resources]]) for (const [path, bytes] of files) { const target = join(directory, folder, path); mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, bytes); }
       controller.signal.throwIfAborted(); name = `wp-skill-${randomUUID()}`; created = true;
-      await docker(['create', '--rm', '--name', name, '--label', `workpivot.worker=${owner}`, '--network', 'none', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true', '--pids-limit', '128', '--memory', '512m', '--cpus', '1', '--user', '1000:1000', '--mount', `type=bind,src=${directory}/input,dst=/input,readonly`, '--mount', `type=bind,src=${directory}/skills,dst=/skills,readonly`, '--tmpfs', '/workspace:rw,nosuid,nodev,size=64m,uid=1000,gid=1000', '--tmpfs', '/tmp:rw,nosuid,nodev,size=64m', '--tmpfs', '/data/workpivot:ro,size=1m', '--tmpfs', '/data/workspace:ro,size=1m', '--workdir', '/workspace', '--env', 'HOME=/tmp', '--env', 'NODE_PATH=/app/packages/server/node_modules', '--entrypoint', '/bin/sh', image, '-c', 'exec sleep 150']);
+      // 挂载模式：直接把工作区卷的这一个子路径挂成 /workspace，容器只看到该任务目录。
+      const workspaceArgs = mountSubpath
+        ? ['--mount', `type=volume,src=${workspaceVolume},dst=/workspace,volume-subpath=${mountSubpath}`]
+        : ['--tmpfs', '/workspace:rw,nosuid,nodev,size=64m,uid=1000,gid=1000'];
+      await docker(['create', '--rm', '--name', name, '--label', `workpivot.worker=${owner}`, '--network', 'none', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true', '--pids-limit', '128', '--memory', '512m', '--cpus', '1', '--user', '1000:1000', '--mount', `type=bind,src=${directory}/input,dst=/input,readonly`, '--mount', `type=bind,src=${directory}/skills,dst=/skills,readonly`, ...workspaceArgs, '--tmpfs', '/tmp:rw,nosuid,nodev,size=64m', '--tmpfs', '/data/workpivot:ro,size=1m', '--tmpfs', '/data/workspace:ro,size=1m', '--workdir', '/workspace', '--env', 'HOME=/tmp', '--env', 'NODE_PATH=/app/packages/server/node_modules', '--entrypoint', '/bin/sh', image, '-c', 'exec sleep 150']);
       controller.signal.throwIfAborted(); await docker(['start', name], controller.signal);
-      await docker(['exec', name, 'cp', '-R', '/input/.', '/workspace/'], controller.signal);
+      if (!mountSubpath) await docker(['exec', name, 'cp', '-R', '/input/.', '/workspace/'], controller.signal);
       const result = await docker(['exec', name, '/bin/sh', '-c', body.command], controller.signal);
-      const output = await docker(['exec', name, 'node', '-e', `(${exportFiles.toString()})()`], controller.signal, 24 * 1024 * 1024);
+      const output = mountSubpath ? null : await docker(['exec', name, 'node', '-e', `(${exportFiles.toString()})()`], controller.signal, 24 * 1024 * 1024);
       await docker(['rm', '-f', name]); created = false;
       controller.signal.throwIfAborted();
-      const files = JSON.parse(output.stdout); validateFiles(files);
+      const files = mountSubpath ? [] : JSON.parse(output.stdout); validateFiles(files);
       reply(200, { files, output: (result.stdout + result.stderr).slice(0, 65536) });
     } catch (error) {
       // 错误信息不得包含执行器环境、Docker 参数或宿主暂存路径。

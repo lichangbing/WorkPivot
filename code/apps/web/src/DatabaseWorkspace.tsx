@@ -26,6 +26,39 @@ import { readChatStream } from './chat-stream';
 import { DatabaseSettings, type SettingsSection } from './DatabaseSettings';
 import { mergeEvents, groupEvents, type StoredEvent, type ConversationPage, type StoredTurn } from './database-chat-state';
 
+type AskUserPayload = { questionId: string; question: string; options: Array<{ label: string; description?: string }>; allowFreeText: boolean };
+/** 结构化提问以 meta 事件持久化（type=ask_user），这里只解析自己认识的形状，其他 meta 仍按原样忽略。 */
+function parseAskUser(event: StoredEvent): AskUserPayload | null {
+  if (event.kind !== 'meta' || !event.content) return null;
+  try {
+    const value = JSON.parse(event.content) as Record<string, unknown>;
+    if (value['type'] !== 'ask_user' || typeof value['questionId'] !== 'string' || typeof value['question'] !== 'string') return null;
+    const options = Array.isArray(value['options'])
+      ? value['options'].flatMap(entry => {
+        if (!entry || typeof entry !== 'object') return [];
+        const source = entry as Record<string, unknown>;
+        if (typeof source['label'] !== 'string') return [];
+        return [typeof source['description'] === 'string' ? { label: source['label'], description: source['description'] } : { label: source['label'] }];
+      })
+      : [];
+    return { questionId: value['questionId'], question: value['question'], options, allowFreeText: value['allowFreeText'] !== false };
+  } catch { return null; }
+}
+
+function AskUserCard({ payload, answered, disabled, onChoose }: { payload: AskUserPayload; answered: boolean; disabled: boolean; onChoose: (label: string) => void }) {
+  return <div className="mb-3 rounded-xl border border-sky-700/60 bg-sky-950/30 p-4 text-sm" data-ask-user={payload.questionId}>
+    <strong className="block text-sky-200">需要你确认</strong>
+    <p className="mt-1 text-neutral-100">{payload.question}</p>
+    {payload.options.length > 0 && <div className="mt-3 flex flex-wrap gap-2">
+      {payload.options.map(option => <button key={option.label} type="button" disabled={answered || disabled} title={option.description} className="rounded-lg border border-neutral-600 px-3 py-1.5 text-left hover:bg-neutral-800 disabled:opacity-40" onClick={() => onChoose(option.label)}>
+        <span className="block">{option.label}</span>
+        {option.description && <span className="mt-0.5 block text-xs text-neutral-400">{option.description}</span>}
+      </button>)}
+    </div>}
+    <p className="mt-2 text-xs text-neutral-400">{answered ? '已回答。' : payload.allowFreeText ? '也可以直接在输入框补充说明后发送。' : '请选择一个选项。'}</p>
+  </div>;
+}
+
 interface Task { expertId?:string|null; id: string; name: string; status: string; revision: number; projectId: string | null }
 interface Project { id: string; name: string; revision: number }
 interface Permission { id: string; request: { tool: string; effects?:string[]; command?: string; binding?:Record<string,unknown>; invocation?: {arguments:Record<string,unknown>} }; expiresAt: string }
@@ -243,9 +276,10 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     } catch (e) { if (epoch === generation.current) throw e; }
     finally { expanding.current.delete(event.id); }
   };
-  const send = async () => {
-    if (!chatEnabled || !active || !resourceSelection || (!input.trim() && !attachmentIds.length) || attachmentBlocked || sending) return;
-    const taskId = active, epoch = generation.current, content = input.trim() || '请查看附件。', controller = new AbortController();
+  const send = async (override?: string) => {
+    const text = (override ?? input).trim();
+    if (!chatEnabled || !active || !resourceSelection || (!text && !attachmentIds.length) || attachmentBlocked || sending) return;
+    const taskId = active, epoch = generation.current, content = text || '请查看附件。', controller = new AbortController();
     const fingerprint = JSON.stringify([taskId, content, attachmentIds,resourceSelection]);
     if (pendingSend.current?.fingerprint !== fingerprint) pendingSend.current = { fingerprint, id: crypto.randomUUID() };
     const requestId = pendingSend.current.id;
@@ -268,6 +302,13 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   if (!auth.authenticated) return <LoginView needsSetup={auth.needsSetup} setupTokenRequired={auth.setupTokenRequired} onAuthed={reloadAuth} />;
   if (auth.user?.mustChangePassword) return <RequiredPasswordChange onDone={reloadAuth} />;
   const task = tasks.find(t => t.id === active), busy = sending || ['running', 'queued', 'waiting'].includes(task?.status ?? '');
+  // 已回答的提问：用户消息带 `[回答提问 <id>]` 前缀，按前缀判断避免重复点击。
+  const answeredQuestions = new Set<string>();
+  for (const event of events) {
+    if (event.kind !== 'user' || typeof event.content !== 'string') continue;
+    const match = /^\[回答提问 ([0-9a-f-]{36})\]/.exec(event.content);
+    if (match) answeredQuestions.add(match[1]!);
+  }
   const leaveTrash = () => { setTrashPage(false); if (location.hash === '#trash') location.hash = ''; };
   const selectTask = (id: string) => { leaveTrash(); setActive(id); };
   if(automationPage)return <DatabaseAutomations username={auth.user?.username} onBack={()=>{location.hash='';}} onLogout={()=>{void api.logout().finally(()=>{clearToken();reloadAuth();});}}/>;
@@ -289,6 +330,8 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
             const firstProcess = group.events.findIndex(isProcessEvent);
             const process = index === firstProcess ? <DatabaseTurnProcess key={'process-'+group.id} events={group.events.filter(isProcessEvent)} cursor={details[group.id]?.after} onMore={() => expandTurn(group.id)} onContent={expandContent} onInteract={() => { follow.current = false; }} /> : null;
             if (isProcessEvent(e)) return process;
+            const askUser = parseAskUser(e);
+            if (askUser) return <AskUserCard key={e.id} payload={askUser} answered={answeredQuestions.has(askUser.questionId)} disabled={busy || !ready} onChoose={label => { void send(`[回答提问 ${askUser.questionId}] ${label}`); }} />;
             if (e.kind === 'meta') return null;
             return <div key={e.id} className={`mb-3 ${e.kind === 'user' ? 'workspace-message workspace-user-message ml-auto w-fit max-w-[75%] rounded-lg bg-neutral-800 px-3 py-2 text-sm' : 'message-body workspace-message max-w-none text-sm'}`}>
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={e.kind==='assistant'?citationComponents:undefined}>{e.content}</ReactMarkdown>

@@ -5,5 +5,8 @@ services:
       WORKPIVOT_EXECUTION_MODE: worker
       WORKPIVOT_WORKER_URL: "http://host.docker.internal:39990"
       WORKPIVOT_WORKER_TOKEN: "${WORKPIVOT_WORKER_TOKEN:?Missing dedicated worker token}"
+      # 可选：工作区卷名（docker volume ls）。配置后 run_code/bash 把任务目录直接挂进容器；
+      # 留空则沿用“复制快照 + 回写”。卷必须存在于 worker 所在主机，且 Docker Engine 支持 volume-subpath。
+      WORKPIVOT_WORKSPACE_VOLUME: "${WORKPIVOT_WORKSPACE_VOLUME:-}"
     extra_hosts:
       - "host.docker.internal:host-gateway"

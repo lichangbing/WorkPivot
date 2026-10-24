@@ -1,4 +1,5 @@
 import { MemoryAnalysis } from './memory-analysis.js';
+import { mobileCors } from './mobile-cors.js';
 import type {BrowserProfiles} from './browser-profiles.js';
 import {NetworkTargets} from './network-targets.js';
 import {requestAudit,RequestAudits} from './request-audit.js';
@@ -44,7 +45,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   const accounts = new AccountRepository(authPool), workspace = new WorkspaceRepository(appPool);
   const conversation = new ConversationRepository(appPool);
   const notifications = new TaskNotifications(appPool);
-  const app = express(); app.disable('x-powered-by'); app.use(requestAudit(authPool)); app.use(express.json({ limit: '1mb' }));
+  const app = express(); app.disable('x-powered-by'); app.use('/api', mobileCors(process.env['WORKPIVOT_MOBILE_ORIGINS'])); app.use(requestAudit(authPool)); app.use(express.json({ limit: '1mb' }));
   app.get(['/admin', '/admin.html'], (_req, res) => { if (webDist) res.sendFile('admin.html', { root: webDist }); else res.status(503).send('管理页面尚未构建'); });
   app.use((_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
   const token = (req: Request): string => req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : '';

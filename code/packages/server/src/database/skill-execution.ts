@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import type { Tool } from '@workpivot/core';
-import { RepositoryError, transaction, uuid } from './connection.js';
+import { RepositoryError, transaction } from './connection.js';
+import { parseSandboxInputs, parseSandboxOutputs } from './sandbox-args.js';
+import { runSandbox } from './sandbox.js';
 import { FileRepository } from './files.js';
 import { DatabaseSkills } from './skills.js';
 
@@ -11,23 +13,11 @@ export class DatabaseSkillExecution {
   constructor(private readonly db: Pool, private readonly files: FileRepository, private readonly skills: DatabaseSkills, private readonly config: WorkerConfiguration, private readonly boundRun?: () => { id: string; fence: string } | undefined, private readonly guard?:(c:PoolClient,args:Record<string,unknown>,taskId?:string)=>Promise<void>) {}
   async run(actor: string, taskId: string, versions: ReadonlyMap<string,string>, args: Record<string,unknown>, signal?: AbortSignal) {
     signal?.throwIfAborted();
-    const { skill, command, inputs = [] } = args;
+    const { skill, command } = args;
     if (typeof skill !== 'string' || !versions.has(skill) || typeof command !== 'string' || !command.trim() || command.length > 65536) throw new RepositoryError(400, '执行参数无效');
     if (args.outputs !== undefined && (args.output !== undefined || args.documentId !== undefined || args.revision !== undefined)) throw new RepositoryError(400, '单个和多个产物参数不能混用');
-    const requested = args.outputs ?? [{ name: args.output, documentId: args.documentId, revision: args.revision }];
-    if (!Array.isArray(requested) || !requested.length || requested.length > 10) throw new RepositoryError(400, '需要1至10个产物');
-    const outputs = requested.map((entry: unknown) => {
-      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new RepositoryError(400, '产物参数无效');
-      const { name, documentId, revision } = entry as Record<string, unknown>;
-      if (typeof name !== 'string' || !name.trim() || name.length > 240 || /[\x00-\x1f\x7f/\\:]/.test(name) || ['.','..'].includes(name.trim())) throw new RepositoryError(400, '产物名称只填写文件名，例如 report.docx；不要填写 /workspace/ 路径。命令应将文件写入 /workspace/report.docx');
-      if (documentId !== undefined) { if (typeof documentId !== 'string') throw new RepositoryError(400, '产物标识无效'); uuid(documentId); if (!Number.isSafeInteger(revision) || Number(revision) < 1) throw new RepositoryError(400, '需要产物修订号'); }
-      else if (revision !== undefined) throw new RepositoryError(400, '缺少产物标识');
-      return { name, documentId: documentId as string | undefined, revision: revision as number | undefined };
-    });
-    const ids = outputs.filter(o => o.documentId).map(o => o.documentId!.toLowerCase());
-    if (new Set(outputs.map(o => o.name)).size !== outputs.length || new Set(ids).size !== ids.length) throw new RepositoryError(400, '产物清单重复');
-    if (!Array.isArray(inputs) || inputs.length > 10 || inputs.some(id => typeof id !== 'string') || new Set(inputs).size !== inputs.length) throw new RepositoryError(400, '输入文件列表无效');
-    for (const id of inputs) uuid(id);
+    const outputs = parseSandboxOutputs(args.outputs ?? [{ name: args.output, documentId: args.documentId, revision: args.revision }]);
+    const inputs = parseSandboxInputs(args.inputs ?? []);
     const run = await transaction(this.db, async c => (await c.query("SELECT id,fence FROM workpivot.task_runs WHERE task_id=$1 AND status='running' AND NOT context_revoked AND lease_until>now()", [taskId])).rows[0], actor);
     if (!run) throw new RepositoryError(409, '任务已停止');
     const bound = this.boundRun?.();
@@ -51,20 +41,9 @@ export class DatabaseSkillExecution {
       await c.query('INSERT INTO workpivot.skill_executions(id,owner_user_id,task_id,run_id) VALUES($1,$2,$3,$4)', [jobId,actor,taskId,run.id]);
     }, actor);
     try {
-    const response = await fetch(`${this.config.url.replace(/\/$/,'')}/v1/run`, { method: 'POST', headers: { authorization: `Bearer ${this.config.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ command, files, skills: resources }), redirect: 'error', signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(140000)]) });
-    if (!response.body) throw new RepositoryError(502, '执行器未返回结果');
-    const reader = response.body.getReader(), chunks: Uint8Array[] = []; let bytes = 0;
-    try { for (;;) { const chunk = await reader.read(); if (chunk.done) break; bytes += chunk.value.length; if (bytes > 24 * 1024 * 1024) throw new RepositoryError(413, '执行输出过大'); chunks.push(chunk.value); } }
-    finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
-    const result = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { files?: unknown; output?: unknown; error?: unknown };
-    if (!response.ok) {
-      if (response.status === 429) throw new RepositoryError(429, '执行服务繁忙，请稍后重试；本次未发布产物');
-      const detail = typeof result.error === 'string' ? result.error.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').slice(0,3000) : '';
-      throw new RepositoryError(502, `隔离执行失败，未发布产物${detail ? '：' + detail : ''}`);
-    }
-    if (!Array.isArray(result.files) || result.files.length > 4000) throw new RepositoryError(502, '执行输出格式无效');
+    const result = await runSandbox(this.config, { command, files, skills: resources }, signal);
     const entries = outputs.map(output => {
-      const found = (result.files as unknown[]).filter(entry => Array.isArray(entry) && entry[0] === output.name);
+      const found = result.files.filter(entry => entry[0] === output.name);
       if (found.length !== 1 || !Array.isArray(found[0]) || found[0].length !== 2 || typeof found[0][1] !== 'string') throw new RepositoryError(502, '执行器没有生成全部指定产物');
       const data = Buffer.from(found[0][1], 'base64');
       if (data.toString('base64') !== found[0][1]) throw new RepositoryError(502, '产物编码无效');

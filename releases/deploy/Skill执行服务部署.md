@@ -25,9 +25,13 @@ WORKPIVOT_WORKER_BIND=<docker默认bridge网络的网关IP>
 WORKPIVOT_WORKER_PORT=39990
 WORKPIVOT_WORKER_TOKEN=<独立随机令牌>
 WORKPIVOT_WORKER_IMAGE=workpivot-executor:0.1.0
+# 可选：工作区卷名。配置后 run_code/bash 把任务目录直接挂进容器；留空沿用复制快照+回写。
+WORKPIVOT_WORKSPACE_VOLUME=<docker volume ls 中的工作区卷名>
 ```
 
 绑定地址必须先通过主机 `docker network inspect bridge` 核实，不能使用0.0.0.0开放到局域网。后台通过host.docker.internal访问此网关地址。环境文件不是模型执行环境，令牌不传入隔离容器。
+
+`WORKPIVOT_WORKSPACE_VOLUME` 可选，两端都要配置同一个值（worker 的 `worker.env` 与后台 `.env`），后台通过 `compose.worker.yml` 读取。配置后容器用 `volume-subpath` 只挂载该任务目录到 `/workspace`，不复制、不回写，文件实时可见，其他账号目录与 `/data/workpivot` 不可见。前提：卷已存在于 worker 所在主机，Docker Engine 支持 `volume-subpath`（26.0+），且卷内文件属主与容器用户（1000:1000）一致。留空则保持原有“复制快照 + 回写”行为，功能不受影响。卷名以 `docker volume ls` 为准，Compose 未显式命名时会带项目名前缀。
 
 启用用户服务：`systemctl --user daemon-reload`、`systemctl --user enable --now workpivot-worker`。确认 `/usr/bin/node` 可用；用户服务要开机自启且SSH退出后仍运行，需要主机已为该部署用户启用linger（管理员执行 `loginctl enable-linger lichb`）。未确认此项不得宣称完成重启验收。
 
@@ -35,7 +39,7 @@ WORKPIVOT_WORKER_IMAGE=workpivot-executor:0.1.0
 
 ## 执行约束与恢复
 
-命令最长120秒，并行上限2，非root、只读根、禁网、CPU1核、内存512MiB、进程128。任务和技能输入合计16MiB，产物16MiB，文件扫描/结果最多4000项。任务输入复制到/workspace；仅已加载且仍获准访问的Skill资源只读挂载在/skills/技能名。
+命令最长120秒，并行上限2，非root、只读根、禁网、CPU1核、内存512MiB、进程128。任务和技能输入合计16MiB，产物16MiB，文件扫描/结果最多4000项。任务输入复制到/workspace；配置了 `WORKPIVOT_WORKSPACE_VOLUME` 时改为直接挂载该任务目录（不复制、不回写）。仅已加载且仍获准访问的Skill资源只读挂载在/skills/技能名。
 
 成功后先停止并移除全部容器进程，再验证产物路径、文件类型、写权限和原文件哈希；冲突、取消、超时或执行失败不回写。单文件写入原子替换，删除走回收站；多个文件不构成数据库级事务。后台和执行服务通讯中断会取消任务；容器150秒自毁作为进程崩溃兜底，执行服务重启清理本实例遗留容器及暂存目录。
 

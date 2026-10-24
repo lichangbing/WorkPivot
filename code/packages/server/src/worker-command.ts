@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { pathWithin, requireWithin } from '@workpivot/shared/node';
 import { randomUUID } from 'node:crypto';
 import { moveToTrash } from './trash.js';
 import type { Skill } from './skills.js';
 import type { Task } from './tasks.js';
+import { workspaceSubpath } from './workspace-mount.js';
 type Files = Array<[string, string]>;
 const LIMIT = 16 * 1024 * 1024;
 const hash = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex');
@@ -35,12 +36,17 @@ export function workerCommand(task: Task, allowed: (path: string, mode: 'read' |
     signal.throwIfAborted();
     const url = process.env['WORKPIVOT_WORKER_URL'], token = process.env['WORKPIVOT_WORKER_TOKEN'];
     if (!url || !token) throw new Error('技能执行服务尚未配置');
-    const files = snapshotFiles(task.directory, (path) => allowed(path, 'read'));
+    // 配置了工作区卷时改为直接挂载任务目录：不复制、不回写，沙箱内只看到这一个目录。
+    const volume = process.env['WORKPIVOT_WORKSPACE_VOLUME'], workspaceRoot = process.env['WORKPIVOT_WORKSPACE'];
+    const subpath = volume && workspaceRoot ? workspaceSubpath(task.directory, workspaceRoot) : null;
+    const mounted = Boolean(volume && subpath);
+    const files = mounted ? [] : snapshotFiles(task.directory, (path) => allowed(path, 'read'));
     const originals = new Map(files.map(([name, data]) => [name, hash(Buffer.from(data, 'base64'))]));
     const resources: Files = [];
     for (const skill of skills()) for (const [name, data] of snapshotFiles(skill.dir, (path) => skill.source !== 'project' || allowed(path, 'read'))) resources.push([`${skill.name}/${name}`, data]);
     if ([...files, ...resources].reduce((size, [, data]) => size + Buffer.byteLength(data, 'base64'), 0) > LIMIT) throw new Error('任务及技能资源合计超过16MiB');
-    const response = await fetch(`${url.replace(/\/$/, '')}/v1/run`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ command, files, skills: resources }), redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(140000)]) });
+    const body = mounted ? { command, mount: { subpath }, skills: resources } : { command, files, skills: resources };
+    const response = await fetch(`${url.replace(/\/$/, '')}/v1/run`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body), redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(140000)]) });
     // 解析 JSON 前先限制不可信服务输出的大小。
     if (!response.body) throw new Error('技能执行服务未返回结果');
     const reader = response.body.getReader(); const chunks: Uint8Array[] = []; let size = 0;
@@ -48,6 +54,7 @@ export function workerCommand(task: Task, allowed: (path: string, mode: 'read' |
     finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
     const result = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { error?: string; files?: unknown; output?: string };
     if (!response.ok) throw new Error(result.error ?? '技能执行失败');
+    if (mounted) return `exit=0\n${String(result.output ?? '').slice(0, 65536)}`;
     if (!Array.isArray(result.files) || result.files.length > 4000) throw new Error('执行产物格式无效');
     const output = new Map<string, Buffer>(); const targets = new Set<string>(); let bytes = 0;
     for (const entry of result.files) {
@@ -71,6 +78,11 @@ export function workerCommand(task: Task, allowed: (path: string, mode: 'read' |
       if (change.data) { mkdirSync(dirname(change.path), { recursive: true }); const temp = `${change.path}.${randomUUID()}.tmp`; writeFileSync(temp, change.data); renameSync(temp, change.path); }
       else { const moved = moveToTrash(change.path, randomUUID()); if (!moved.ok) throw new Error(moved.error); }
     }
-    return `exit=0\n${String(result.output ?? '').slice(0, 65536)}`;
+    // 回写结果对模型是重要反馈：让它知道哪些文件真的变了，避免再 ls 一遍。
+    const describe = (items: string[]): string => items.length > 30 ? `${items.slice(0, 30).join('、')} 等 ${items.length} 个` : items.join('、');
+    const written = changes.filter((change) => change.data).map((change) => relative(task.directory, change.path)).sort();
+    const removed = changes.filter((change) => !change.data).map((change) => relative(task.directory, change.path)).sort();
+    const summary = [written.length ? `已回写：${describe(written)}` : '', removed.length ? `已删除：${describe(removed)}` : ''].filter(Boolean).join('\n');
+    return `exit=0\n${String(result.output ?? '').slice(0, 65536)}${summary ? `\n${summary}` : ''}`;
   };
 }

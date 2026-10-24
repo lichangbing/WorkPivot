@@ -21,12 +21,15 @@ const existing = existsSync(tokenPath) ? readFileSync(tokenPath, 'utf8').match(/
 const backendToken = oldEnv.match(/^WORKPIVOT_WORKER_TOKEN=(.+)$/m)?.[1];
 if (backendToken && backendToken !== existing) throw Error('Existing worker token differs; refusing to replace credentials');
 const token = existing ?? randomBytes(32).toString('hex');
+// 可选：配置后 run_code/bash 直接挂载任务目录；留空则沿用快照+回写。
+const workspaceVolume = (process.env.WORKPIVOT_WORKSPACE_VOLUME ?? '').trim();
+if (workspaceVolume && !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,254}$/.test(workspaceVolume)) throw Error('WORKPIVOT_WORKSPACE_VOLUME must be a docker volume name');
 run('docker', ['exec', 'workpivot-server', 'node', '-e', 'const fs=require("fs");const root="/data/workpivot/data/tasks";if(fs.readdirSync(root).some(x=>{const p=root+"/"+x+"/task.json";return fs.existsSync(p)&&JSON.parse(fs.readFileSync(p,"utf8")).status==="running"}))process.exit(1)']);
 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 run('node', [join(source, 'snapshot.mjs'), 'backup', 'workpivot-server', join(homedir(), 'workpivot-backups', `pre-worker-${stamp}`)]);
 copyFileSync(composePath, join(deployment, `compose.pre-worker-${stamp}.yml`));
 mkdirSync(target, { recursive: true, mode: 0o700 }); copyFileSync(join(source, 'skill-worker.mjs'), join(target, 'skill-worker.mjs'));
-writeFileSync(tokenPath, `WORKPIVOT_WORKER_BIND=${gateway}\nWORKPIVOT_WORKER_PORT=39990\nWORKPIVOT_WORKER_TOKEN=${token}\nWORKPIVOT_WORKER_IMAGE=workpivot-executor:0.1.0\n`, { mode: 0o600 });
+writeFileSync(tokenPath, `WORKPIVOT_WORKER_BIND=${gateway}\nWORKPIVOT_WORKER_PORT=39990\nWORKPIVOT_WORKER_TOKEN=${token}\nWORKPIVOT_WORKER_IMAGE=workpivot-executor:0.1.0\n${workspaceVolume ? `WORKPIVOT_WORKSPACE_VOLUME=${workspaceVolume}\n` : ''}`, { mode: 0o600 });
 const units = join(homedir(), '.config/systemd/user'); mkdirSync(units, { recursive: true }); copyFileSync(join(source, 'workpivot-worker.service'), join(units, 'workpivot-worker.service'));
 run('systemctl', ['--user', 'daemon-reload']); run('systemctl', ['--user', 'enable', '--now', 'workpivot-worker']); run('systemctl', ['--user', 'restart', 'workpivot-worker']);
 let ready = false;
@@ -34,6 +37,8 @@ for (let attempt = 0; attempt < 20; attempt++) { try { const response = await fe
 if (!ready) throw Error('Worker health check failed; backend configuration has not been changed');
 copyFileSync(join(source, 'compose.worker.yml'), join(deployment, 'compose.worker.yml'));
 if (!backendToken) writeFileSync(envPath, `${oldEnv.trimEnd()}\nWORKPIVOT_WORKER_TOKEN=${token}\n`, { mode: 0o600 });
+// 后端也要知道卷名才能发挂载请求；已存在时不覆盖，避免重装改变既有行为。
+if (workspaceVolume && !/^WORKPIVOT_WORKSPACE_VOLUME=/m.test(readFileSync(envPath, 'utf8'))) writeFileSync(envPath, `${readFileSync(envPath, 'utf8').trimEnd()}\nWORKPIVOT_WORKSPACE_VOLUME=${workspaceVolume}\n`, { mode: 0o600 });
 writeFileSync(composePath, oldCompose.replace(/image: workpivot-server:[a-zA-Z0-9.-]+/, 'image: workpivot-server:0.3.0-preview.7'));
 try { run('docker', ['compose', '-p', 'workpivot', '-f', composePath, '-f', join(deployment, 'compose.worker.yml'), '--env-file', envPath, 'up', '-d']); }
 catch { writeFileSync(composePath, oldCompose); run('docker', ['compose', '-p', 'workpivot', '-f', composePath, '--env-file', envPath, 'up', '-d']); throw Error('Backend upgrade failed; restored prior Compose configuration'); }

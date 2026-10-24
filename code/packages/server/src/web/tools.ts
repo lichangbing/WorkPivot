@@ -3,6 +3,7 @@ import type {NetworkTarget} from './network-target.js';
 import {originalResponse,decodeOriginal} from './original.js';
 import {validatedFeed} from './feed.js';
 import type { Tool } from '@workpivot/core';
+import { createSearchTool, searchConfiguration, type SearchConfiguration } from './search.js';
 import { SafeHttp, webUrl } from './safe-http.js';
 import { responseContent } from './content.js';
 import { browseInput, type BrowseResult } from './browser-engine.js';
@@ -18,8 +19,10 @@ export function browserConfiguration(): BrowserConfiguration | undefined {
 }
 type SaveScreenshot = (name: string, data: Buffer, signal?: AbortSignal) => Promise<unknown>;
 export class WebTools {
-  constructor(private readonly browser?: BrowserConfiguration, private readonly http = new SafeHttp()) {}
+  constructor(private readonly browser?: BrowserConfiguration, private readonly http = new SafeHttp(), private readonly search: SearchConfiguration | undefined = searchConfiguration()) {}
   tools(save: SaveScreenshot, urls?: string[], sessionId?: string, includeOriginal=false,targets?:NetworkTarget[],profileState?:LoginState): Tool[] {
+    // 搜索服务只在管理员配置后出现；它负责“不知道网址”的入口，正文仍由 web_fetch 读取。
+    const searchTools: Tool[] = this.search ? [createSearchTool(this.search)] : [];
     const access = (tool: string, args: Record<string, unknown>) => ({ external: true, tool, kind: 'write' as const, paths: [], command: JSON.stringify({ url: args.url, actions: args.actions ?? [] }) });
     const fetchTool: Tool = {
       name: 'web_fetch', displayName: '读取网页', kind: 'read',
@@ -58,7 +61,7 @@ export class WebTools {
         return JSON.stringify({...responseContent(result,includeOriginal),...(includeOriginal?{original:originalResponse(result)}:{})});
       },
     };
-    if (!this.browser) return [fetchTool];
+    if (!this.browser) return [...searchTools, fetchTool];
     const configuration = this.browser;
     const browserTool:Tool={
       name: 'browser_visit', displayName: '浏览网页', kind: 'read',
@@ -104,6 +107,6 @@ export class WebTools {
         return JSON.stringify({ ...result, screenshot: undefined, artifact });
       },
     };
-    return profileState?[browserTool]:[fetchTool,browserTool];
+    return profileState?[browserTool]:[...searchTools, fetchTool, browserTool];
   }
 }

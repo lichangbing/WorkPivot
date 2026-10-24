@@ -20,6 +20,8 @@ import { taskFilePolicy } from './file-policy.js';
 import { sandboxCommand } from './command-sandbox.js';
 import { availableTools, executionGuidance, executionMode } from './execution-policy.js';
 import { buildSkillTools } from './skill-tools.js';
+import { runCodeTool } from './code-tools.js';
+import { WebTools, browserConfiguration } from './web/tools.js';
 import { workerCommand } from './worker-command.js';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
@@ -29,6 +31,7 @@ import {
   MAX_STEPS_DEFAULT,
   createAnthropicClient,
   createOpenAICompatibleClient,
+  executeShell,
   runAgentLoop,
   verifyAnthropicProvider,
   verifyProvider,
@@ -37,6 +40,7 @@ import {
   type ToolAccessRequest,
 } from '@workpivot/core';
 import { verifyClaimedFiles } from './chat-gate.js';
+import { continuationPrompt } from './continuation.js';
 import { disabledSkills, editSkill, skillRevision, findSkillBySlash, listSkills, pinPublishedSkills, renderSkillDirectory, setSkillDisabled } from './skills.js';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -111,6 +115,8 @@ export function abortRunningTasks(): void { for (const controller of running.all
 
 // J02：企业服务端多用户并行，可经 WORKPIVOT_MAX_PARALLEL 调整
 const PARALLEL_LIMIT = Number(process.env['WORKPIVOT_MAX_PARALLEL']) || 8;
+// 联网工具在启动时构建：配置不完整直接启动失败，避免每个对话都报错。
+const web = new WebTools(browserConfiguration());
 
 // app.use('/api') 下 req.path 为相对路径（如 '/auth/login'）
 const PUBLIC_PATHS = new Set(['/health', '/auth/state', '/auth/login', '/auth/register']);
@@ -742,7 +748,7 @@ ${capped}
       '用户要求忘掉某事时用 forget 工具。',
       '项目的长期信息由负责人在设置中的记忆管理面板维护。需要更新时，请整理建议内容交给负责人保存。',
       '# 访问纪律（I02）',
-      '访问被用户拒绝后，不要改用其他工具或命令达成同一目的；应告知用户并停止。',
+      '访问被拒绝后，不要用其他工具绕过这次拒绝去访问同一路径；但可以改用允许范围内的其他路径或其他方法完成任务。确实无解时，说明原因并停止。',
       '# 计划纪律（A03）',
       '多步任务（预计 ≥3 步）开工前先用 update_plan 建立阶段计划；每完成一个阶段或计划调整时全量更新；阶段全部完成后收尾。',
     ].join('\n');
@@ -809,11 +815,21 @@ ${capped}
     const maxSteps = Number(process.env['WORKPIVOT_MAX_STEPS']) || MAX_STEPS_DEFAULT;
     const maxDurationMs = (Number(process.env['WORKPIVOT_MAX_MINUTES']) || 30) * 60_000;
 
+    // 文件链路原本没有联网工具；这里补上 web_fetch/web_search（配了浏览器服务再出现 browser_visit）。
+    const webTools = web.tools(async (name, data) => {
+      const relative = join('web-artifacts', String(name).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80));
+      const target = requireWithin(relative, task.directory);
+      if (!filePolicy(target, 'write')) throw new Error('无权写入网页截图');
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, data);
+      return relative;
+    });
+
     // T3-03/F02：带核验闸门的执行——声称产出但文件缺失 → 打回重做（≤2 次）
     const runWithGate = async (attempt: number, baseMessages: ChatMessage[]): Promise<{ stopReason: string; steps: number }> => {
       const result = await runAgentLoop({
         client,
-        tools: availableTools([...BUILTIN_TOOLS, ...skillTools, ...memoryTools, deliveryTool(task), planTool, ...mcpTools()], commandMode),
+        tools: availableTools([...BUILTIN_TOOLS, runCodeTool({ container: commandMode === 'worker' || commandMode === 'docker', execute: executeShell }), ...webTools, ...skillTools, ...memoryTools, deliveryTool(task), planTool, ...mcpTools()], commandMode),
         system,
         messages: baseMessages,
         taskDir: task.directory,
@@ -821,6 +837,16 @@ ${capped}
         maxSteps,
         maxDurationMs,
         stashResult,
+        // 早停兜底：产出型任务只表态没动手时，追问一轮（最多 1 次）。
+        idleLimit: 1,
+        onIdle: ({ text }: { text: string }) => {
+          const lastUser = [...baseMessages].reverse().find((m) => m.role === 'user')?.content;
+          const nudge = continuationPrompt(typeof lastUser === 'string' ? lastUser : '', text);
+          if (nudge) audit({ user: user?.username, taskId: task.id, event: 'idle_nudge', decision: 'continue' });
+          return nudge;
+        },
+        // 长任务压缩早期工具结果；0 或负数表示关闭。
+        contextBudget: Number(process.env['WORKPIVOT_CONTEXT_CHARS']) || undefined,
         extraEnv: bashNodePath ? { NODE_PATH: bashNodePath } : undefined,
         filePolicy,
         executeCommand: commandMode === 'trusted-local' ? undefined

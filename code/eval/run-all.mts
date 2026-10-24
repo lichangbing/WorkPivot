@@ -33,6 +33,8 @@ const suites: Array<[string, string]> = [
   ['W35', 'eval/W35-memory-layers.mts'],
   ['W36', 'eval/W36-deliverables.mts'],
   ['W37', 'eval/W37-password-reset.mts'],
+  ['R005', 'eval/R005-delegate.mts'],
+  ['R004', 'eval/R004-ask-user.mts'],
 ];
 // 这些套件用于历史设计比较，不计入当前验收：
 // 其前提是共享账号数据、管理员代执行及进程内命令执行。

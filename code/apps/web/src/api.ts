@@ -59,6 +59,7 @@ export type ChatEvent =
   | { type: 'tool_use' | 'tool_status'; toolName: string; args?: unknown; displayName?: string; callId?: string; status?: 'waiting' | 'running' }
   | { type: 'tool_result'; toolName: string; ok?: boolean; message?: string; displayName?: string; callId?: string; durationMs?: number; status?: 'ok' | 'error' | 'denied' | 'stopped' }
   | { type: 'permission_request'; id: string; tool: string; kind: 'read' | 'write' | 'bash'; paths: Array<{ path: string; mode: string }>; command?: string; reason: string; scope: string }
+  | { type: 'ask_user'; questionId: string; question: string; options?: Array<{ label: string; description?: string }>; allowFreeText?: boolean }
   | { type: 'risk_analysis'; id: string; analysis: string }
   | { type: 'memory_confirm'; id: string; content: string; taskId: string }
   | { type: 'memory_resolved'; id: string }

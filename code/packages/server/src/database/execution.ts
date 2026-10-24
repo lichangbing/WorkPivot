@@ -1,4 +1,6 @@
 import {publicToolEvent} from './tool-events.js';
+import {delegateTool} from './delegation.js';
+import {askUserTool} from './ask-user.js';
 import type {RunResourceScope} from './resource-scope.js';
 import {authorizeTools} from './tool-authorization.js';
 import { runAgentLoop, type AgentEvent, type RunAgentOptions, type StopReason } from '@workpivot/core';
@@ -40,7 +42,9 @@ export class DatabaseExecution {
         const requestAccess: NonNullable<RunAgentOptions['requestAccess']> = options.requestAccess ?? (async request => {
           if (!request.external || request.paths.length || request.kind !== 'write') return false;
           const permission = await this.runs.requestPermission(actor, run, request);
-          try { if (!permission.automatic) send(permission); } catch { /* 断线后仍可查询待处理请求。 */ }
+          // 静默执行已在登记时记为已批准并已消费，不弹卡也不等待人工决定。
+          if (permission.automatic) return true;
+          try { send(permission); } catch { /* 断线后仍可查询待处理请求。 */ }
           while (!controller.signal.aborted) {
             const decision = await this.runs.consumePermission(actor, run, permission.id, request);
             if (decision !== 'pending') return decision === 'allow';
@@ -52,20 +56,44 @@ export class DatabaseExecution {
           }
           return false;
         });
-        const result = await runAgentLoop({ ...options, tools: authorizeTools(options.tools,async(_tool,args)=>{if(resources)await this.runs.checkResources(actor,run,resources,args);},async(tool,result)=>{
+        const authorized = authorizeTools(options.tools,async(_tool,args)=>{if(resources)await this.runs.checkResources(actor,run,resources,args);},async(tool,result)=>{
           if(resources&&tool.name==='propose_schedule'){await this.runs.grantSchedule(actor,run,resources,JSON.parse(result).id);return;}
-          if(!resources||!['save_artifact','execute_skill','browser_visit'].includes(tool.name))return;
+          if(!resources||!['save_artifact','execute_skill','run_code','browser_visit'].includes(tool.name))return;
           const value=JSON.parse(result);const ids=tool.name==='save_artifact'?[value.id]:(value.artifacts??(value.artifact?[value.artifact]:[])).map((v:{id:string})=>v.id);
           await this.runs.grantArtifacts(actor,run,resources,ids);
-        }), requestAccess, messages, signal: controller.signal,
-          onEvent: async value => {
-            value=publicToolEvent(value);
-            try {
-              const saved = await this.runs.append(actor, run, value);
-              // 事件提交成功后才能通知客户端。
-              try { send({ ...value, ...saved }); } catch { /* 客户端可通过持久化事件重连。 */ }
-            } catch (error) { persistenceFailed = true; controller.abort(); throw error; }
-          },
+        });
+        // 子代理事件与父事件共用同一条持久化通道，靠 delegateId 区分父子。
+        const emit = async (value: AgentEvent) => {
+          value=publicToolEvent(value);
+          try {
+            const saved = await this.runs.append(actor, run, value);
+            // 事件提交成功后才能通知客户端。
+            try { send({ ...value, ...saved }); } catch { /* 客户端可通过持久化事件重连。 */ }
+          } catch (error) { persistenceFailed = true; controller.abort(); throw error; }
+        };
+        const asking = askUserTool({
+          // 提问本身写成可重放事件；回答走普通发消息接口，不需要挂起状态机。
+          emit: (question) => emit({
+            type: 'ask_user',
+            questionId: question.questionId,
+            question: question.question,
+            options: question.options,
+            allowFreeText: question.allowFreeText,
+          }),
+        });
+        const delegation = delegateTool({
+          client: options.client,
+          tools: authorized,
+          system: options.system,
+          requestAccess,
+          filePolicy: options.filePolicy,
+          executeCommand: options.executeCommand,
+          contextBudget: options.contextBudget,
+          signal: controller.signal,
+          emit: (event, delegateId) => emit({ ...event, delegateId }),
+        });
+        const result = await runAgentLoop({ ...options, tools: [...authorized, delegation, asking], requestAccess, messages, signal: controller.signal,
+          onEvent: emit,
         });
         reason = await this.runs.finish(actor, run, persistenceFailed ? 'error' : result.stopReason, result.messages.slice(messages.length + 1));
       } catch {

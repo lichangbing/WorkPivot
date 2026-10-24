@@ -8,8 +8,11 @@ export function registerDatabaseTools(tools:Tool[],external:ReadonlySet<string>)
     if(names.has(tool.name))throw Error('工具名称重复');names.add(tool.name);
     let effects:NonNullable<Tool['effects']>,resultSource:NonNullable<Tool['resultSource']>;
     if(external.has(tool.name)){effects=['network','external'];resultSource='external';if(tool.kind!=='write'||!tool.access)throw Error('外部工具缺少明确审批声明');}
-    else if(['web_fetch','browser_visit'].includes(tool.name)){effects=tool.name==='browser_visit'?['network','write']:['network'];resultSource='web';}
-    else if(['execute_skill','trial_skill_draft'].includes(tool.name)){effects=['execution','write'];resultSource='execution';}
+    else if(['web_fetch','browser_visit','web_search'].includes(tool.name)){effects=tool.name==='browser_visit'?['network','write']:['network'];resultSource='web';}
+    else if(['execute_skill','trial_skill_draft','run_code'].includes(tool.name)){effects=['execution','write'];resultSource='execution';}
+    // 子代理会实际执行子工具（可能写文件/联网），按执行类登记，避免被当成纯只读。
+    else if(tool.name==='delegate'){effects=['execution'];resultSource='operation';if(tool.kind!=='write')throw Error('子代理工具声明不一致');}
+    else if(tool.name==='ask_user'){effects=['read'];resultSource='reference';if(tool.kind!=='read')throw Error('提问工具必须声明为只读');}
     else if(write.includes(tool.name)){effects=['write'];resultSource='operation';if(tool.kind!=='write')throw Error('写操作被错误声明为只读');}
     else if(read.includes(tool.name)){effects=['read'];resultSource='reference';if(tool.kind!=='read')throw Error('只读工具声明不一致');}
     else throw Error('工具未注册效果类别，拒绝加入模型工具集');
