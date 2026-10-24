@@ -40,6 +40,8 @@ services:
       # 联网搜索：内置 SearXNG 提供 JSON 搜索；设为空字符串可关闭（工具集不再出现 web_search）
       WORKPIVOT_SEARCH_PROVIDER: ${WORKPIVOT_SEARCH_PROVIDER:-searxng}
       WORKPIVOT_SEARCH_URL: ${WORKPIVOT_SEARCH_URL:-http://searxng:8080}
+      # R007：对话消息入库（chat schema）。留空则保持 JSONL；配置后必须可用，否则拒绝启动。
+      WORKPIVOT_CHAT_DATABASE_URL: ${WORKPIVOT_CHAT_DATABASE_URL:-}
       TZ: Asia/Shanghai
     volumes:
       - files:/data/files

@@ -760,3 +760,12 @@ API候选`workpivot-server:local-schema49-20261019`构建完成，镜像内严�
 - 分页与历史口径：转写默认尾部 100 条、`before` 翻页；历史只取 user/assistant、`displayContent` 优先、最多 200 条。
 - 验证：`eval/chat-tasks.mts` 5 项（文件模式建任务、120 条追加与分页、历史过滤、状态 meta、临时任务删除）通过；`tsc` 与 `lint` 通过。
 - 仍差：`app.ts` 等调用方切换到异步入口（涉及 45 处、以及 `filePolicy` 的同步快照改造），切换并做一次真实 PG 读写验收后 R007 完成。
+
+### 2026-10-24：R007 消息链路切换并部署验证
+
+- 切换：`app.ts` 的消息写入/读取统一走 `chat-tasks`（`recordMessage`/`chatHistory`/`readTranscriptPage`），任务创建后 `ensureLedger` 建归属行；`onEvent`、任务发送/删除/项目删除路由改异步；`/api/tasks/:id/transcript` 支持 `before`/`limit`（1–500）。
+- 删除保护：`deleteTaskData`/`deleteProjectData` 改异步，peer 转写经 `readTranscriptAll`（chat 模式分页拉全量）读取，存储切换后仍能拦截共享文件误删。
+- 与设计差异（已记录）：消息进 PG，任务元数据仍由 `task.json` 作唯一真值；`chat.tasks` 只作消息归属与删除级联锚点，避免同一字段两处可写。
+- 部署：重建镜像后 `compose` 增加 `WORKPIVOT_CHAT_DATABASE_URL` 透传；重置 `workpivot_chat` 角色密码写入 `stack.env`（0600），服务端启动探测通过、health 200。
+- 验收：容器内真实往返 `rows=2 seqs=1,2`，payload 正确、删除级联可用；HTTP 级（登录后建任务）因管理员口令已变更未完成，留待用户口令确认后复验。
+- 回归：`chat-store` 3 项、`chat-tasks` 5 项、`agent-loop` 8 项、`R006` 11 项通过；`tsc`/`lint` 通过。
