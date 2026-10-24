@@ -24,6 +24,15 @@ import {
   updateChatTask,
 } from './chat-store.js';
 
+import { setTaskCache } from './task-cache.js';
+
+/** chat 模式启动时预载任务元数据；未启用则清空视图，回落 JSONL。 */
+export async function preloadTaskCache(): Promise<void> {
+  if (!chatEnabled()) return;
+  const rows = await listChatTasks();
+  setTaskCache(rows.map((row) => taskFromRow(row) as unknown as Parameters<typeof setTaskCache>[0][number]));
+}
+
 const VALID_ID = /^[a-zA-Z0-9_-]+$/;
 
 export async function loadTask(taskId: string): Promise<Task | null> {

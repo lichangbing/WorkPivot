@@ -11,6 +11,7 @@ import type { Express } from 'express';
 import { createApp, abortRunningTasks } from './app.js';
 import { markRunningTasksInterrupted } from './tasks.js';
 import { probeChatStore } from './chat-store.js';
+import { preloadTaskCache } from './chat-tasks.js';
 import { migrateTasksToDefaultProject } from './projects.js';
 import { audit } from './audit.js';
 import { startScheduler } from './schedules.js';
@@ -69,6 +70,7 @@ export async function startServer(opts: Parameters<typeof createApp>[0] & { port
   const base = opts.port ?? (envPort !== undefined && envPort !== '' ? Number(envPort) : SERVER_PORT_DEFAULT);
   // R007：配置了 chat 存储就必须可用；连不上直接失败，不静默回落到 JSONL（避免两个真值）。
   await probeChatStore();
+  await preloadTaskCache();
   const app = createApp(opts);
 
   let lastErr: unknown;

@@ -11,6 +11,8 @@ import { join } from 'node:path';
 import { appendLine, ensureWorkpivotDir, readJsonSafe, writeAtomic } from './store.js';
 import { moveToTrash } from './trash.js';
 import { canonicalPath, pathWithin } from '@workpivot/shared/node';
+import { appendChatMessage, chatEnabled, deleteChatTask, ensureChatTask, updateChatTask } from './chat-store.js';
+import { cacheTask, cachedTask, cachedTasks, taskCacheReady, uncacheTask } from './task-cache.js';
 
 export type TaskStatus = 'queued' | 'running' | 'waiting' | 'failed' | 'idle' | 'interrupted' | 'stopped';
 
@@ -94,12 +96,34 @@ export function persistTaskFile(task: Task): void {
 
 export function createTask(input: CreateTaskInput): Task {
   const task = buildTask(input);
+  if (chatEnabled()) {
+    // R007：PG 是元数据真值；内存视图供同步读取，写入异步落库（消息仍逐条 await）。
+    cacheTask(task);
+    void ensureChatTask({
+      id: task.id,
+      ownerUserId: task.ownerUserId ?? null,
+      tenantId: task.tenantId ?? null,
+      name: task.name,
+      directory: task.directory,
+      status: task.status,
+      projectId: task.projectId ?? null,
+      temp: task.temp === true,
+      createdAt: new Date(task.createdAt),
+    }).catch(() => { /* 落库失败时启动预载会以 PG 为准，元数据以最后一次成功写入为准 */ });
+    return task;
+  }
   persistTaskFile(task);
   return task;
 }
 
 export function getTask(taskId: string): Task | null {
   if (!/^[a-zA-Z0-9_-]+$/.test(taskId)) return null;
+  if (taskCacheReady()) {
+    const cached = cachedTask(taskId);
+    if (!cached) return null;
+    if (currentTenant()?.userId && cached.ownerUserId !== currentTenant()!.userId) return null;
+    return cached.tenantId && cached.tenantId !== tenantId() ? null : cached as Task;
+  }
   if (!existsSync(taskFile(taskId))) return null;
   const task = readJsonSafe<Task>(taskFile(taskId), {} as Task).value;
   if (currentTenant()?.userId && task.ownerUserId !== currentTenant()!.userId) return null;
@@ -109,7 +133,15 @@ export function getTask(taskId: string): Task | null {
 export function updateTaskStatus(taskId: string, status: TaskStatus, stopReason?: string): void {
   const task = getTask(taskId);
   if (!task) return;
-  writeAtomic(taskFile(taskId), JSON.stringify({ ...task, status, lastStopReason: status === 'running' ? undefined : stopReason }, null, 2));
+  const next = { ...task, status, lastStopReason: status === 'running' ? undefined : stopReason };
+  if (chatEnabled()) {
+    cacheTask(next);
+    void updateChatTask(taskId, { status, stopReason: status === 'running' ? null : stopReason ?? null })
+      .then((changed) => changed ? appendChatMessage({ taskId, kind: 'meta', payload: { event: 'status', status } }) : undefined)
+      .catch(() => { /* 下一次预载以 PG 为准 */ });
+    return;
+  }
+  writeAtomic(taskFile(taskId), JSON.stringify(next, null, 2));
   if (existsSync(transcriptFile(taskId))) {
     appendTranscript(taskId, 'meta', { event: 'status', status });
   }
@@ -131,7 +163,13 @@ export function markRunningTasksInterrupted(): number {
 export function setTaskProject(taskId: string, projectId: string | null): void {
   const task = getTask(taskId);
   if (!task) return;
-  writeAtomic(taskFile(taskId), JSON.stringify({ ...task, projectId: projectId ?? undefined }, null, 2));
+  const next = { ...task, projectId: projectId ?? undefined };
+  if (chatEnabled()) {
+    cacheTask(next);
+    void updateChatTask(taskId, { projectId: projectId ?? null }).catch(() => { /* 下次预载以 PG 为准 */ });
+    return;
+  }
+  writeAtomic(taskFile(taskId), JSON.stringify(next, null, 2));
 }
 
 /** F2：删除临时任务（B03 回收站：工作目录与应用数据目录移入 trash，可恢复）。 */
@@ -150,12 +188,18 @@ export function deleteTempTask(taskId: string): { ok: boolean; error?: string } 
     } catch { return { ok: false, error: '临时任务目录无法安全解析' }; }
   }
   moveToTrash(taskDir(taskId), `taskdata-${taskId}`);
+  if (chatEnabled()) {
+    // chat 模式：元数据在 PG，删除消息靠外键级联；内存视图同步移除。
+    uncacheTask(taskId);
+    void deleteChatTask(taskId).catch(() => { /* 下次预载以 PG 为准 */ });
+  }
   return { ok: true };
 }
 
 /** T3-02/F04：服务启动时扫描——上次进程中断遗留的 running → interrupted（断点续跑的前置）。 */
 
 export function listTasks(): Task[] {
+  if (taskCacheReady()) return (cachedTasks() as Task[]).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   const root = tasksRoot();
   if (!existsSync(root)) return [];
   const tasks: Task[] = [];

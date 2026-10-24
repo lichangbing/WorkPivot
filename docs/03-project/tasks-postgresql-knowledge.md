@@ -769,3 +769,12 @@ API候选`workpivot-server:local-schema49-20261019`构建完成，镜像内严�
 - 部署：重建镜像后 `compose` 增加 `WORKPIVOT_CHAT_DATABASE_URL` 透传；重置 `workpivot_chat` 角色密码写入 `stack.env`（0600），服务端启动探测通过、health 200。
 - 验收：容器内真实往返 `rows=2 seqs=1,2`，payload 正确、删除级联可用；HTTP 级（登录后建任务）因管理员口令已变更未完成，留待用户口令确认后复验。
 - 回归：`chat-store` 3 项、`chat-tasks` 5 项、`agent-loop` 8 项、`R006` 11 项通过；`tsc`/`lint` 通过。
+
+### 2026-10-24：R007 元数据入 PG（内存视图 + 写落库）与部署
+
+- 新增 `task-cache.ts`：chat 模式下启动预载全部任务到内存视图；`tasks.ts` 的同步 `getTask`/`listTasks` 读视图，`createTask`/`updateTaskStatus`/`setTaskProject`/`deleteTempTask` 同步更新视图并异步落 PG，chat 模式不再写 `task.json`。
+- 启动：`index.ts` 在 `probeChatStore()` 之后 `preloadTaskCache()`；连不上直接拒绝启动。
+- 取舍与风险：元数据写是"视图立即生效 + 异步落库"，崩溃窗口内可能丢最后一次状态变更（消息本身逐条 await，不受影响）；PG 是重启后的唯一真值。
+- 部署：重建镜像并滚动 39997（chat 已启用），启动日志 `WorkPivot PostgreSQL server ready`，`/api/health` 200，三容器 healthy。
+- 验证：`eval/task-cache.mts` 4 项（未预载回落、视图读写与排序、非法 id、移除与清空）通过并注册 run-all；`chat-store` 3 项、`chat-tasks` 5 项、`agent-loop` 8 项、`R006` 11 项、`tsc`、`lint` 均通过。
+- 遗留：HTTP 级"登录后建任务"验收因管理员口令变更未做；R003 搜索引擎出网受限（服务与 JSON 端点正常）。
