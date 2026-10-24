@@ -9,7 +9,7 @@ import { compactMessages, CONTEXT_CHAR_BUDGET } from './context.js';
 import type { ModelClient, ChatMessage, ToolCall, ToolSchema } from './model/openai.js';
 import type { Tool, ToolContext, ToolAccessRequest } from './tools.js';
 
-export type AgentEventType = 'assistant_delta' | 'reasoning_delta' | 'tool_use' | 'tool_status' | 'tool_result' | 'error' | 'ask_user' | 'usage';
+export type AgentEventType = 'assistant_delta' | 'reasoning_delta' | 'tool_use' | 'tool_status' | 'tool_result' | 'error' | 'ask_user' | 'usage' | 'recovery';
 
 export interface AgentEvent {
   displayName?: string;
@@ -32,6 +32,9 @@ export interface AgentEvent {
   /** 用量事件（type=usage）：整轮累计的输入/输出 token，供成本统计与审计。 */
   inputTokens?: number;
   outputTokens?: number;
+  /** 恢复类事件（type=recovery）：系统行为留痕，例如自动续跑。 */
+  action?: string;
+  from?: string;
 }
 
 export type StopReason = 'completed' | 'max_steps' | 'time_limit' | 'aborted' | 'error';

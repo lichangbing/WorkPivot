@@ -51,6 +51,10 @@ export async function autoResumeInterrupted(db: Pool, actor: string, execution: 
       if (!claimed.rowCount) continue;
       const startedRun = await execution.begin(actor, candidate.taskId, '自动继续上次中断的任务', randomUUID());
       if (!startedRun.execute) continue;
+      // 审计：自动续跑是系统行为，必须在时间线里留痕。
+      try {
+        await execution.runs.append(actor, startedRun.run, { type: 'recovery', action: 'auto_resumed', from: candidate.runId });
+      } catch { /* 留痕失败不阻塞续跑 */ }
       void startedRun.execute(() => { /* 事件走持久化通道，这里不推送。 */ }).catch(() => { /* 失败保持中断状态，等人工处理。 */ });
       started += 1;
     } catch { /* 单个任务失败不影响其他任务。 */ }

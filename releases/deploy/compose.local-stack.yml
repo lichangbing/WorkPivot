@@ -37,6 +37,9 @@ services:
       # Skill 隔离执行服务：Worker 在宿主机，绑定本网络网关地址
       WORKPIVOT_WORKER_URL: ${WORKPIVOT_WORKER_URL:?需要执行服务地址}
       WORKPIVOT_WORKER_TOKEN: ${WORKPIVOT_WORKER_TOKEN:?需要执行服务令牌}
+      # 联网搜索：内置 SearXNG 提供 JSON 搜索；设为空字符串可关闭（工具集不再出现 web_search）
+      WORKPIVOT_SEARCH_PROVIDER: ${WORKPIVOT_SEARCH_PROVIDER:-searxng}
+      WORKPIVOT_SEARCH_URL: ${WORKPIVOT_SEARCH_URL:-http://searxng:8080}
       TZ: Asia/Shanghai
     volumes:
       - files:/data/files
@@ -80,6 +83,26 @@ services:
       retries: 3
     restart: unless-stopped
     stop_grace_period: 15s
+
+  # 联网搜索：只在内网提供 JSON 接口，不开 html 搜索页，不暴露到宿主
+  searxng:
+    image: ${SEARXNG_IMAGE:-searxng/searxng:latest}
+    environment:
+      SEARXNG_BASE_URL: http://searxng:8080/
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?需要 SearXNG 会话密钥}
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    networks: [stack]
+    init: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:rw,nosuid,nodev,size=64m"]
+    healthcheck:
+      test: [CMD, wget, -qO-, "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
 volumes:
   postgres:

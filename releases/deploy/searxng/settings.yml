@@ -1,0 +1,35 @@
+# SearXNG 本地最小配置：只给服务端提供 JSON 搜索，不开放 html 页面、不用外部引擎代理。
+use_default_settings: true
+
+general:
+  instance_name: "WorkPivot Search"
+
+search:
+  safe_search: 0
+  # 只保留 JSON：服务端按 JSON 解析，html 结果不暴露到网络外。
+  formats:
+    - json
+
+server:
+  secret_key: "workpivot-local-searxng"
+  limiter: false
+  image_proxy: false
+  method: "GET"
+
+# 本地网络常见 TLS 拦截/HTTP2 协商问题：关掉 http2 并放宽超时，减少引擎被判定 timeout。
+outgoing:
+  request_timeout: 15.0
+  max_request_timeout: 30.0
+  enable_http2: false
+
+ui:
+  static_use_hash: true
+
+# 只启用不需要额外密钥的通用引擎，避免默认列表里的站点需要 token 或频繁超时。
+engines:
+  - name: bing
+    disabled: false
+  - name: duckduckgo
+    disabled: false
+  - name: wikipedia
+    disabled: false

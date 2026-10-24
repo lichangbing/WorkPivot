@@ -130,18 +130,27 @@ prepare_env() {
       echo "WORKPIVOT_SECRET_KEY=$(random_hex 32)"
       echo "WORKPIVOT_BROWSER_TOKEN=$(random_hex 32)"
       echo "WORKPIVOT_WORKER_TOKEN=$(random_hex 32)"
+      echo "SEARXNG_SECRET=$(random_hex 24)"
     } > "$ENV_FILE"
     chmod 600 "$ENV_FILE"
     info '已生成新凭据'
   fi
+  # 兼容旧安装：已有 stack.env 时补上 SearXNG 密钥，避免升级后缺变量起不来。
+  if ! grep -q '^SEARXNG_SECRET=' "$ENV_FILE" 2>/dev/null; then
+    echo "SEARXNG_SECRET=$(random_hex 24)" >> "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+  fi
 
   # 计算值每次重写，保证换端口/网络后仍然一致
-  sed -i '/^STACK_NETWORK=/d;/^STACK_PORT=/d;/^WORKPIVOT_WORKER_URL=/d;/^STACK_SERVER_IMAGE=/d;/^STACK_BROWSER_IMAGE=/d' "$ENV_FILE" 2>/dev/null || true
+  sed -i '/^STACK_NETWORK=/d;/^STACK_PORT=/d;/^WORKPIVOT_WORKER_URL=/d;/^STACK_SERVER_IMAGE=/d;/^STACK_BROWSER_IMAGE=/d;/^WORKPIVOT_SEARCH_PROVIDER=/d;/^WORKPIVOT_SEARCH_URL=/d' "$ENV_FILE" 2>/dev/null || true
   {
     echo "STACK_NETWORK=$NETWORK"
     echo "STACK_PORT=$PORT"
     echo "STACK_SERVER_IMAGE=$SERVER_IMAGE"
     echo "STACK_BROWSER_IMAGE=$BROWSER_IMAGE"
+    # 内置 SearXNG：需要离线搜索时把这两个变量清空即可关闭 web_search。
+    echo "WORKPIVOT_SEARCH_PROVIDER=${WORKPIVOT_SEARCH_PROVIDER:-searxng}"
+    echo "WORKPIVOT_SEARCH_URL=${WORKPIVOT_SEARCH_URL:-http://searxng:8080}"
   } >> "$ENV_FILE"
   load_env
   info '凭据已就绪（0600）'
@@ -200,6 +209,14 @@ build_images() {
     rmdir "$ctx" 2>/dev/null || true
   else
     info "执行器镜像已存在：$EXECUTOR_IMAGE"
+  fi
+
+  # SearXNG：联网搜索的内置后端；拉不到不影响安装，只关闭 web_search。
+  if ! image_exists 'searxng/searxng:latest'; then
+    info '拉取 SearXNG 镜像（联网搜索）'
+    if ! docker pull searxng/searxng:latest; then
+      printf '\n  警告：SearXNG 拉取失败，本次安装不提供 web_search；可稍后重试或配置 WORKPIVOT_SEARCH_PROVIDER=brave。\n\n' >&2
+    fi
   fi
 }
 

@@ -708,3 +708,39 @@ API候选`workpivot-server:local-schema49-20261019`构建完成，镜像内严�
 - 恢复循环接入：`runtime.ts` 在 `recoverExecutions` 之后调用 `autoResumeInterrupted`。
 - 验证：`tsc`（6 项目）、`pnpm lint` 通过；`eval/R006-recovery.mts` 扩到 11 项（新增文件链路对账、幂等、清理、自动续跑资格）；schema v55 以事务回滚在本地 39997 库验证。
 - 仍待：真实 `kill -9` 端到端验收（需部署新镜像）、P4 的审计事件与配额上限（当前只有次数上限）。
+
+### 2026-10-24：多 agent 协作设计（R008，未实现）
+
+- 现状：R005 的 `delegate` 只能一次委派一个子任务、串行执行、没有树级预算与角色约定，无法支撑并行分片与团队流程。
+- 设计三层：P1 并行委派（`delegate.tasks[]`，并发 4，失败隔离，取消传播）；P2 团队模板（`run_team`，doc/research/review 三类，编排在服务端，模型只选团队与填参数）；P3 受限 DSL 编排（不执行任意 JS）。
+- 数据模型：新增 `workpivot.agent_runs`（父子、深度、角色、预算、状态），`conversation_events` 加 `agent_id`；R006 的 `tool_dispatches` 需同时记录 `agent_id` 以对账子代理副作用。
+- 约束：默认深度 1、单次扇出 4、单任务代理总数 12、树级 token 预算为父级 3 倍、30 分钟墙钟；子代理继承工具白名单与授权，不能 `ask_user`，结论对父代理是数据不是指令。
+- 文档：[多agent协作](../../02-design/architecture/多agent协作-20261024.md)；backlog 登记 R008（P1，设计完成）。
+
+### 2026-10-24：更正——区分“子代理”与“多 agent 协作”（R008 重写）
+
+- 用户指出原设计把两者混为一谈：并行委派仍是“父派活、子回结论”的星形工具调用，不是 agent 之间的协作。
+- 重写设计：线 A 为子代理能力（A1 并行委派、A2 续聊），不进协作范畴；线 B 为多 agent 协作，必须具备团队会话、共享黑板（`team_artifacts`）、可见性规则与轮次协议，只做 Panel（独立意见+裁判）与 Review loop（写-评-改，最多 2 轮），不做自由圆桌。
+- 数据模型新增 `team_runs` 与 `team_artifacts`；`agent_runs` 增加 `team_run_id`；事件加 `team_run_id`。
+- 关键结论：协作不能靠父转发消息伪造共享状态，共享状态必须是黑板里的产物版本。
+
+### 2026-10-24：多 agent 协作的竞品复核（R008 补充）
+
+- 复核本机源码：Codex 的 `multi_agent_v1/v2`（spawn/send/wait/resume/close/list、roles、会话并发上限、explicit/proactive 两档模式）、Claude Code 的 team lead + 文件邮箱 swarm（`teams/{team}/inboxes/{agent}.json`，成员互投消息）、OpenWorkBuddy 的 `delegate_to_expert`/`delegate_to_team`（专家接力、共享工作目录）、WorkBuddy 专家团、dsh 的 subagent/fork + workflow 脚本编排、Hermes 的 delegate_task + Curator 独立评审。
+- 结论：多数停在层级委派，真正的 agent 间交互只有 Claude Code 邮箱 swarm；共享工作目录是事实黑板但未协议化；没有产品把“评审团+裁判”做成一等能力。
+- 设计补充：黑板落盘 `.workpivot/team/<teamRunId>/`，成员邮箱用 `inbox/<agentId>.jsonl`（借用 Claude Code 形态），可见性由服务端裁剪；新增 `explicit`/`proactive` 委派模式开关（默认 explicit）。
+
+### 2026-10-24：部署与验收（39997）
+
+- 部署：重建 `workpivot-server:local-stack` 并滚动 `workpivot-stack`；用 `scripts/postgres-schema.mts` 在容器内执行迁移，schema 从 52 升到 **55**（`skill_executions.kind`、`tool_dispatches`、`step_limit/used_steps`、`tasks.resume_attempts` 均已存在）；`/api/health` 200，三容器 healthy。
+- 技能：`seed-office-skills.mts` 发布 `bull-bear-debate`（"已发布新技能，未自动加载"），其余四个 Office 技能保留原版本。
+- R006 P1 端到端验收（无模型，SQL 造数据 + 等恢复循环）：伪造一条 `running` 且租约过期的运行，`model_messages` 末尾 assistant 带 `tool_calls`、缺 tool 结果，`tool_dispatches` 留 `dispatched`。恢复后实测：`messages=3 last_role=tool last_has_unknown=true`、`dispatch=interrupted`、事件含 `recovered` 与 `done`、任务 `interrupted`，随后按外键顺序清理测试数据。
+- R003：compose 增加内置 `searxng` 服务（仅内网、只开 JSON）与 `searxng/settings.yml`；安装器拉镜像、生成 `SEARXNG_SECRET`、写 `WORKPIVOT_SEARCH_PROVIDER/URL`。实测 searxng healthy、服务端可访问 `format=json`，但本机网络下各引擎 `curl_cffi` 超时（同一容器 `wget` 正常），真实结果待代理出口或 Brave Key。
+- R006 P4：自动续跑补 `recovery/auto_resumed` 事件留痕（`AgentEventType` 增加 `recovery`），配合 `tasks.resume_attempts` 的次数上限。
+
+### 2026-10-24：多 agent 协作决策——不做（R008 关闭）
+
+- 用户判断该能力只适用于特定场景，决定不投入；认同理由：协作层在竞品中普遍不成熟、收益未被评估证明、适用面窄、成本与可解释性风险不对称。
+- 处理：backlog R008 标记为“❌ 不实施”，设计文档状态改为“不实施，保留为参考”，不进入排期；不新增 `team_runs`/`team_artifacts`/邮箱等机制。
+- 保留：R005 单层同步 `delegate` 继续作为上下文隔离手段，不扩展并行委派与团队协议。
+- 若将来重启：先执行 [设计文档 §11](../../02-design/architecture/多agent协作-20261024.md) 的离线评估（单 agent vs 自我检查 vs Panel，盲评 + 成本对比），证明收益后再建。
