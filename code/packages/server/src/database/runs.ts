@@ -3,6 +3,7 @@ import {publicToolEvent} from './tool-events.js';
 import {selection,requireVersion,fileTaskScope,type RunResourceScope} from './resource-scope.js';
 import {authorizationDigest,currentInvocation} from './tool-authorization.js';
 import { compactedHistory } from './compaction.js';
+import { reconcileMessages, remainingSteps } from './recovery.js';
 import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import type { AgentEvent, ChatMessage, StopReason, ToolAccessRequest } from '@workpivot/core';
@@ -193,9 +194,21 @@ export class RunRepository {
         await c.query(`UPDATE workpivot.run_permissions SET state='cancelled',resolved_at=now(),request=${permissionSummarySql} WHERE task_id=$1 AND state IN ('pending','allowed')`,[taskId]);
       }
       const run: RunHandle = { id: randomUUID(), taskId, turnId: randomUUID(), fence: randomUUID(), duplicate: false };
+      // R006 P1：上一轮被中断时，把它的检查点作为本轮基础上下文（已补齐结果未知的调用），
+      // 用户重发"继续"即可接着做；预算按剩余步数继承，不重置。
+      const interrupted = task.status === 'interrupted'
+        ? (await c.query("SELECT model_messages,step_limit,used_steps FROM workpivot.task_runs WHERE task_id=$1 AND status='interrupted' ORDER BY created_at DESC,id DESC LIMIT 1", [taskId])).rows[0]
+        : undefined;
+      const inherited = interrupted && !interrupted.model_messages?.length
+        ? []
+        : reconcileMessages(Array.isArray(interrupted?.model_messages) ? interrupted.model_messages as ChatMessage[] : []).messages;
+      const seedMessages = inherited.length ? [...inherited, { role: 'user' as const, content }] : [];
+      const inheritedBudget = interrupted
+        ? remainingSteps(Number(interrupted.step_limit ?? 0), Number(interrupted.used_steps ?? 0)) ?? 0
+        : 0;
       const seq = (await c.query("UPDATE workpivot.tasks SET next_turn_sequence=next_turn_sequence+1,status='running',revision=revision+1 WHERE id=$1 RETURNING next_turn_sequence-1 AS sequence", [taskId])).rows[0].sequence;
       await c.query('INSERT INTO workpivot.conversation_turns(id,owner_user_id,task_id,sequence,request_id) VALUES($1,$2,$3,$4,$5)', [run.turnId, actor, taskId, seq, requestId]);
-      await c.query("INSERT INTO workpivot.task_runs(id,owner_user_id,task_id,turn_id,request_id,fence,status,lease_until) VALUES($1,$2,$3,$4,$5,$6,'running',now()+$7*interval '1 second')", [run.id, actor, taskId, run.turnId, requestId, run.fence, leaseSeconds]);
+      await c.query("INSERT INTO workpivot.task_runs(id,owner_user_id,task_id,turn_id,request_id,fence,status,lease_until,model_messages,step_limit) VALUES($1,$2,$3,$4,$5,$6,'running',now()+$7*interval '1 second',$8,$9)", [run.id, actor, taskId, run.turnId, requestId, run.fence, leaseSeconds, JSON.stringify(seedMessages), inheritedBudget]);
       if(resources)await c.query('UPDATE workpivot.task_runs SET resource_scope=$2 WHERE id=$1',[run.id,JSON.stringify(resources)]);
       await event(c, actor, run, 'user', content);
       await c.query("UPDATE workpivot.task_runs SET expert_snapshot=(SELECT jsonb_build_object('id',e.id,'revision',e.revision,'settings',e.settings) FROM workpivot.tasks t JOIN workpivot.experts e ON e.id=t.expert_id WHERE t.id=$2 AND NOT e.public AND NOT e.disabled) WHERE id=$1",[run.id,taskId]);
@@ -205,7 +218,7 @@ export class RunRepository {
   }
   private async active(c: PoolClient, run: RunHandle, allowStopping = false) {
     await lock(c, run.taskId);
-    const row = (await c.query('SELECT status,context_revoked,lease_until>now() AS live FROM workpivot.task_runs WHERE id=$1 AND task_id=$2 AND fence=$3 FOR UPDATE', [run.id, run.taskId, run.fence])).rows[0];
+    const row = (await c.query('SELECT status,context_revoked,model_messages,used_steps,step_limit,lease_until>now() AS live FROM workpivot.task_runs WHERE id=$1 AND task_id=$2 AND fence=$3 FOR UPDATE', [run.id, run.taskId, run.fence])).rows[0];
     if (row?.context_revoked && !allowStopping) throw new RepositoryError(409, '记忆已删除，请重新开始本轮对话');
     if (!row?.live || (row.status !== 'running' && !(allowStopping && row.status === 'stopping'))) throw new RepositoryError(409, '运行已停止或执行租约失效');
     return row;
@@ -249,17 +262,75 @@ export class RunRepository {
     uuid(taskId);
     return transaction(this.db, async c => {
       await lock(c, taskId);
-      const runs = (await c.query("UPDATE workpivot.task_runs SET status='interrupted',stop_reason='lease_expired',finished_at=now() WHERE task_id=$1 AND status IN ('running','stopping') AND lease_until<=now() RETURNING id,turn_id AS \"turnId\",fence", [taskId])).rows;
-      for (const run of runs) await c.query(`UPDATE workpivot.run_permissions SET state='cancelled',resolved_at=now(),request=${permissionSummarySql} WHERE run_id=$1 AND state IN ('pending','allowed')`, [run.id]);
-      for (const run of runs) await event(c, actor, { ...run, taskId, duplicate: false }, 'meta', JSON.stringify({ type: 'done', stopReason: 'interrupted' }));
+      const runs = (await c.query("UPDATE workpivot.task_runs SET status='interrupted',stop_reason='lease_expired',finished_at=now() WHERE task_id=$1 AND status IN ('running','stopping') AND lease_until<=now() RETURNING id,turn_id AS \"turnId\",fence,model_messages", [taskId])).rows;
+      for (const run of runs) {
+        await c.query(`UPDATE workpivot.run_permissions SET state='cancelled',resolved_at=now(),request=${permissionSummarySql} WHERE run_id=$1 AND state IN ('pending','allowed')`, [run.id]);
+        // R006：对账未闭合的 tool_call——已派发的只补"结果未知"，绝不重放。
+        const stored = Array.isArray(run.model_messages) ? run.model_messages as ChatMessage[] : [];
+        const { messages, repaired } = reconcileMessages(stored);
+        if (repaired.length) await c.query('UPDATE workpivot.task_runs SET model_messages=$2 WHERE id=$1', [run.id, JSON.stringify(messages)]);
+        await c.query("UPDATE workpivot.tool_dispatches SET status='interrupted',finished_at=now() WHERE run_id=$1 AND status='dispatched'", [run.id]);
+        if (repaired.length) await event(c, actor, { ...run, taskId, duplicate: false }, 'meta', JSON.stringify({ type: 'recovered', repaired: repaired.map((item) => item.tool) }));
+        await event(c, actor, { ...run, taskId, duplicate: false }, 'meta', JSON.stringify({ type: 'done', stopReason: 'interrupted' }));
+      }
       if (runs.length) await c.query("UPDATE workpivot.tasks SET status='interrupted',revision=revision+1 WHERE id=$1", [taskId]);
       return runs.length > 0;
     }, actor);
   }
+
+  /** R006 P2：一键续跑——新 run 继承上一轮检查点与剩余步数，不重放已发生的副作用。 */
+  async resume(actor: string, taskId: string): Promise<RunHandle> {
+    uuid(taskId);
+    return transaction(this.db, async c => {
+      const task = await lock(c, taskId);
+      if (task.status !== 'interrupted') throw new RepositoryError(409, '当前任务没有可继续的中断运行');
+      const previous = (await c.query("SELECT id,model_messages,step_limit,used_steps,context_revoked FROM workpivot.task_runs WHERE task_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1", [taskId])).rows[0];
+      if (!previous) throw new RepositoryError(409, '找不到上一轮运行');
+      if (previous.context_revoked) throw new RepositoryError(409, '上下文已失效，请重新发起本轮对话');
+      const stored = Array.isArray(previous.model_messages) ? previous.model_messages as ChatMessage[] : [];
+      const { messages } = reconcileMessages(stored);
+      const run: RunHandle = { id: randomUUID(), taskId, turnId: randomUUID(), fence: randomUUID(), duplicate: false };
+      const requestId = randomUUID();
+      const seq = (await c.query("UPDATE workpivot.tasks SET next_turn_sequence=next_turn_sequence+1,status='running',revision=revision+1 WHERE id=$1 RETURNING next_turn_sequence-1 AS sequence", [taskId])).rows[0].sequence;
+      await c.query('INSERT INTO workpivot.conversation_turns(id,owner_user_id,task_id,sequence,request_id) VALUES($1,$2,$3,$4,$5)', [run.turnId, actor, taskId, seq, requestId]);
+      const budget = remainingSteps(Number(previous.step_limit ?? 0), Number(previous.used_steps ?? 0)) ?? 0;
+      await c.query("INSERT INTO workpivot.task_runs(id,owner_user_id,task_id,turn_id,request_id,fence,status,lease_until,model_messages,step_limit) VALUES($1,$2,$3,$4,$5,$6,'running',now()+$7*interval '1 second',$8,$9)", [run.id, actor, taskId, run.turnId, requestId, run.fence, leaseSeconds, JSON.stringify(messages), budget]);
+      await c.query("UPDATE workpivot.task_runs SET resource_scope=(SELECT resource_scope FROM workpivot.task_runs WHERE id=$2),attachment_ids=(SELECT attachment_ids FROM workpivot.task_runs WHERE id=$2) WHERE id=$1", [run.id, previous.id]);
+      await event(c, actor, run, 'meta', JSON.stringify({ type: 'resumed', from: previous.id }));
+      return run;
+    }, actor);
+  }
   async history(actor: string, run: RunHandle): Promise<ChatMessage[]> {
     return transaction(this.db, async c => {
-      await this.active(c, run);
+      const row = await this.active(c, run);
+      // R006：续跑承接上一轮检查点；全新轮次 model_messages 为空，回落到任务级历史。
+      const stored = Array.isArray(row.model_messages) ? row.model_messages as ChatMessage[] : [];
+      if (stored.length) return stored;
       return compactedHistory(c, run.taskId);
+    }, actor);
+  }
+
+  /** R006：每一步结束写检查点（完整消息数组），恢复时以它为准；fence 不匹配则拒绝旧写入。 */
+  async checkpoint(actor: string, run: RunHandle, messages: ChatMessage[], steps: number, stepLimit = 0): Promise<void> {
+    if (JSON.stringify(messages).length > 2000000) throw new RepositoryError(413, '运行上下文过大');
+    await transaction(this.db, async c => {
+      await this.active(c, run);
+      const updated = await c.query('UPDATE workpivot.task_runs SET model_messages=$2,used_steps=GREATEST(used_steps,$3),step_limit=CASE WHEN $4::integer>0 THEN $4 ELSE step_limit END WHERE id=$1 AND fence=$5 RETURNING id', [run.id, JSON.stringify(replayableMessages(messages)), steps, stepLimit, run.fence]);
+      if (!updated.rowCount) throw new RepositoryError(409, '运行已停止或执行租约失效');
+    }, actor);
+  }
+
+  /** R006：工具派发登记（执行前），恢复时据此判断"已派发但结果未知"，绝不重放。 */
+  async dispatch(actor: string, run: RunHandle, callId: string, tool: string): Promise<void> {
+    await transaction(this.db, async c => {
+      await c.query('INSERT INTO workpivot.tool_dispatches(run_id,call_id,owner_user_id,task_id,tool) VALUES($1,$2,$3,$4,$5) ON CONFLICT(run_id,call_id) DO NOTHING', [run.id, callId, actor, run.taskId, tool]);
+    }, actor);
+  }
+
+  /** R006：工具结束登记；失败/拒绝也要落，避免被误判为"结果未知"。 */
+  async settle(actor: string, run: RunHandle, callId: string, status: 'completed' | 'failed'): Promise<void> {
+    await transaction(this.db, async c => {
+      await c.query("UPDATE workpivot.tool_dispatches SET status=$3,finished_at=now() WHERE run_id=$1 AND call_id=$2 AND status='dispatched'", [run.id, callId, status]);
     }, actor);
   }
   async requestPermission(actor: string, run: RunHandle, request: ToolAccessRequest) {

@@ -677,3 +677,26 @@ API候选`workpivot-server:local-schema49-20261019`构建完成，镜像内严�
 - 前端渲染：`DatabaseTurnProcess` 识别 `{output, artifacts}` 形态，把 `run_code` 结果渲染为「输出正文 + 产物清单」，不再显示整段 JSON；其他工具结果保持纯文本。
 - 验证：`tsc`（6 项目）、`pnpm lint`、`web build` 通过；`eval/optimizations-p0/p1/p2`、`output-sanitize`、`builtin-skills` 全通过。
 - 与 O-14 原始建议的差异：没有新建独立表，改为在同一表上用 `kind` 区分——保留既有外键、RLS 策略、执行恢复与迟到产物判定逻辑，避免迁移期双重写入；如后续需要独立生命周期再拆表。
+
+### 2026-10-24：对话记录入库设计（R007，未实现）
+
+- 现象：`readTranscript` 全量解析、`listTasks` 扫目录且被 `file-policy` 每次工具调用触发、删除任务时遍历全部同项目转写——消息与任务越多越慢。
+- 方案：新增独立 `chat` schema（`chat.tasks` / `chat.messages`），只承载任务元数据与对话消息；工作目录、`.workpivot`、附件字节仍留磁盘；`WORKPIVOT_CHAT_DATABASE_URL` 未配置时完全走现有 JSONL，配置后 PG 为唯一真值，故障直接报错不回落。
+- 顺带修复：`ordinal` 模块级计数器重启复位导致重复，改为任务行 `last_seq` 单调取号；转写读取改分页（首屏 50 条，模型取最近 200 条）。
+- 文档：[对话记录入库（文件链路混合存储）](../../02-design/architecture/对话记录入库（文件链路混合存储）-20261024.md)；backlog 登记 R007（P0，设计完成）。
+
+### 2026-10-24：R007 补充数据库角色与最小权限
+
+- `chat` schema 使用专用角色 `workpivot_chat`：仅 `USAGE ON SCHEMA chat` + 表读写，无 DDL、无 `workpivot` schema 权限，`CONNECTION LIMIT 20`。
+- 建表/授权使用独立的管理员连接（`WORKPIVOT_CHAT_DATABASE_ADMIN_URL`，仅 `pnpm chat:install` 使用）；运行时只用 `WORKPIVOT_CHAT_DATABASE_URL`。
+- 理由：连接串泄露也动不了任务、文件、记忆、知识等业务表；结构变更只能走安装脚本。
+
+### 2026-10-24：R006 P1/P2（中断对账与一键续跑）与借鉴项收口
+
+- 事件与检查点：`runAgentLoop` 新增 `onCheckpoint`，每个 step 工具结果回填后写检查点（`task_runs.model_messages` + `used_steps`/`step_limit`，schema v54）；`history()` 优先用检查点，续跑承接上一轮上下文。
+- 副作用一致性：新增 `workpivot.tool_dispatches`（主键 `(run_id,call_id)`，RLS 与个人策略一致），父代理每次 `tool_use` 登记派发、`tool_result` 结算；子代理事件不登记。
+- 恢复：`runs.recover` 在标记中断后对账 `model_messages`——未闭合的 `tool_call` 补 `{"error":"上一轮执行中断，结果未知；如仍需该操作请重新调用"}`，已派发未完成的 dispatch 标 `interrupted`，写 `recovered` 与 `done{interrupted}` 事件；重复恢复幂等。
+- 续跑：`POST /api/tasks/:id/resume`（新 run 继承检查点与剩余步数预算），对话区中断提示旁新增"继续"按钮；`start()` 在任务状态为 interrupted 时自动承接上一轮检查点，用户直接发"继续"也等价。
+- 借鉴项：上下文压缩改为分级修剪（>8192 保留头 4096 + 尾 1024 + 固定标记），仍超预算才整体省略；工具执行改为分批——连续只读并发（上限 10），写入/执行独占一批。
+- 验证：`tsc`（6 项目）、`pnpm lint` 通过；`eval/R006-recovery.mts` 8 项通过；`agent-loop` 8 项与 `optimizations-p2` 并行用例回归通过；schema v54 在本地 39997 库以事务回滚验证（表、RLS、索引、8 列）。
+- 未完成：P3 文件链路（`.workpivot/runs/<runId>/messages.jsonl` 与启动对账）、P4 有限自动续跑（需配额与审计）；真实 `kill -9` 验收需部署新镜像后执行。

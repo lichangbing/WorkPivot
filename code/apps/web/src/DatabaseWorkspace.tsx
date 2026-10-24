@@ -298,6 +298,18 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     try { await jsonFetch(`/api/tasks/${taskId}/permissions/${id}`, { method: 'POST', body: JSON.stringify({ decision, scope: 'once' }) }); if (epoch === generation.current) setPermissions(rows => rows.filter(p => p.id !== id)); }
     catch (e) { if (epoch === generation.current) setError(errorText(e)); }
   };
+  // R006：中断后一键续跑，继承检查点与剩余步数。
+  const resume = async () => {
+    if (!active || !ready || busy) return;
+    const taskId = active, epoch = generation.current, controller = new AbortController();
+    streams.current.add(controller); setSending(true); setError(''); follow.current = true;
+    try {
+      const response = await fetch(`/api/tasks/${taskId}/resume`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken() ?? ''}` }, body: JSON.stringify({ requestId: crypto.randomUUID() }), signal: controller.signal });
+      if (!response.ok) throw new Error(((await response.json()) as { error: string }).error);
+      if (response.status !== 202 && response.body) await readChatStream(response.body, () => { /* 事件通过持久化追赶展示。 */ }, controller.signal);
+    } catch (e) { if (epoch === generation.current) setError(errorText(e)); }
+    finally { streams.current.delete(controller); setSending(false); void refreshTasks().catch(() => {}); }
+  };
   if (!auth) return <div className="p-6">{error || '正在连接后台…'}<button className={button} onClick={reloadAuth}>重试</button></div>;
   if (!auth.authenticated) return <LoginView needsSetup={auth.needsSetup} setupTokenRequired={auth.setupTokenRequired} onAuthed={reloadAuth} />;
   if (auth.user?.mustChangePassword) return <RequiredPasswordChange onDone={reloadAuth} />;
@@ -349,6 +361,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
         {permissions.map(p => <div key={p.id} className="mb-3 rounded border border-neutral-700 p-4"><strong>{p.request.tool === 'execute_skill' ? '确认隔离执行' : '确认本次操作'}</strong>{p.request.tool === 'execute_skill' && <p className="mt-2 text-sm text-neutral-400">在无网络隔离环境处理所选文件，仅保存指定成果。本次允许不会变成永久授权。</p>}<pre className="my-3 whitespace-pre-wrap break-words text-sm">{p.request.command ?? p.request.tool}</pre>{p.request.invocation && <details><summary>查看本次完整参数（输入、输出及目标）</summary><pre className="my-3 max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify({effects:p.request.effects,parameters:p.request.invocation.arguments,binding:p.request.binding},null,2)}</pre></details>}<button className={button} onClick={() => { void decide(p.id, 'deny'); }}>拒绝</button><button className={button + ' ml-2'} onClick={() => { void decide(p.id, 'allow'); }}>允许本次</button></div>)}
       </div>
       {newMessages && <button className={button} onClick={() => { follow.current = true; if (viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight; setNewMessages(false); }}>查看新消息</button>}
+      {task?.status === 'interrupted' && <div className="mx-4 mb-2 flex flex-wrap items-center gap-2 text-xs text-amber-400">上一轮执行被中断，历史已补齐为合法状态，可继续完成。<button className={button} onClick={() => { void resume(); }}>继续</button></div>}
       <form className="workspace-composer mx-4 mb-4 rounded-2xl border border-neutral-700 bg-neutral-900/50 p-3" onDragOver={e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={e => { if (e.dataTransfer.files.length) { e.preventDefault(); attachmentControl.current?.addFiles(Array.from(e.dataTransfer.files)); } }} onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); attachmentControl.current?.addFiles(Array.from(e.clipboardData.files)); } }} onSubmit={e => { e.preventDefault(); void send(); }}>
         {filesEnabled && active && <DatabaseAttachments ref={attachmentControl} key={`${active}:${attachmentEpoch}`} taskId={active} disabled={busy || !ready} onChange={attachmentChange} />}
         <textarea aria-label="消息" value={input} disabled={!chatEnabled || !active || !resourceSelection || busy || !ready} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} placeholder={chatEnabled ? active ? '输入消息，Enter 发送，Shift + Enter 换行' : '请先新建/选择任务' : '后台尚未启用对话执行'} className="message-input max-h-48 min-h-[88px] w-full resize-none bg-transparent px-1 py-1 text-sm outline-none" />

@@ -244,6 +244,17 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
       finally { clearInterval(timer); res.end(); }
     });
     app.post('/api/tasks/:id/stop', async (req, res) => { await execution.stop(actor(res).id, str(req.params['id'])); res.status(202).json({ stopping: true }); });
+    // R006 P2：一键续跑——继承上一轮检查点与剩余步数；已派发的工具调用不会重放。
+    app.post('/api/tasks/:id/resume', async (req, res) => {
+      const b = body(req);
+      const started = await execution.begin(actor(res).id, str(req.params['id']), '继续上一次中断的任务', str(b.requestId));
+      if (!started.execute) { res.status(202).json({ runId: started.run.id, duplicate: true }); return; }
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' }); res.flushHeaders();
+      const send = (value: unknown) => { if (!res.destroyed && !res.writableEnded) res.write(`data: ${JSON.stringify(value)}\n\n`); };
+      const timer = setInterval(() => { if (!res.destroyed && !res.writableEnded) res.write(': ping\n\n'); }, 15000);
+      try { const stopReason = await started.execute(send); send({ type: 'done', stopReason, runId: started.run.id }); }
+      finally { clearInterval(timer); res.end(); }
+    });
   }
   app.get('/api/tasks/:id/stream', async (req,res) => {
     const user = actor(res), task = str(req.params['id']);

@@ -97,7 +97,10 @@ await check('压缩旧工具结果但保留配对与近期消息', async () => {
   const changed = compactMessages(messages, 120_000);
   assert.equal(changed, true);
   assert.ok(contextChars(messages) <= 120_000, '压缩后应回到预算内');
-  assert.ok(messages.some((m) => m.role === 'tool' && typeof m.content === 'string' && m.content.startsWith('[已压缩]')));
+  // 分级修剪：先保留头 4096 + 尾 1024，仍超预算才整体省略（可同时出现两种标记）。
+  assert.ok(messages.some((m) => m.role === 'tool' && typeof m.content === 'string' && (m.content.includes('已裁剪') || m.content.startsWith('[已压缩]'))), '应出现修剪或压缩标记');
+  const pruned = messages.find((m) => m.role === 'tool' && typeof m.content === 'string' && m.content.includes('已裁剪'));
+  if (pruned) assert.ok(pruned.content!.startsWith('x'.repeat(64)) && pruned.content!.endsWith('x'.repeat(64)), '头尾都应保留');
   assert.ok(messages.every((m) => m.role !== 'tool' || typeof m.tool_call_id === 'string'), 'tool 消息必须保留配对 id');
   assert.equal(messages.at(-1)?.content, '最近的结果', '最近消息不动');
 });

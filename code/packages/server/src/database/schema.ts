@@ -490,5 +490,19 @@ ALTER TABLE workpivot.capture_versions ADD CONSTRAINT capture_versions_original_
 `}, {version:47,sql:requestAuditCleanupSchema}, {version:48,sql:networkTargetSchema}, {version:49,sql:browserProfileSchema}, {version:50,sql:modelCapacitySchema}, {version:51,sql:memoryAnalysisSchema}, {version:52,sql:personalProjectSchema}, {version:53,sql:`
 ALTER TABLE workpivot.skill_executions ADD COLUMN kind text NOT NULL DEFAULT 'skill' CHECK(kind IN ('skill','code'));
 CREATE INDEX skill_executions_kind ON workpivot.skill_executions(kind,task_id);
+`}, {version:54,sql:`
+ALTER TABLE workpivot.task_runs ADD COLUMN step_limit integer NOT NULL DEFAULT 0 CHECK(step_limit>=0);
+ALTER TABLE workpivot.task_runs ADD COLUMN used_steps integer NOT NULL DEFAULT 0 CHECK(used_steps>=0);
+CREATE TABLE workpivot.tool_dispatches (
+ run_id uuid NOT NULL REFERENCES workpivot.task_runs(id) ON DELETE CASCADE,
+ call_id text NOT NULL, owner_user_id uuid NOT NULL, task_id uuid NOT NULL, tool text NOT NULL,
+ status text NOT NULL DEFAULT 'dispatched' CHECK(status IN ('dispatched','completed','failed','interrupted')),
+ dispatched_at timestamptz NOT NULL DEFAULT now(), finished_at timestamptz,
+ PRIMARY KEY(run_id,call_id)
+);
+ALTER TABLE workpivot.tool_dispatches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workpivot.tool_dispatches FORCE ROW LEVEL SECURITY;
+CREATE POLICY personal_dispatches ON workpivot.tool_dispatches USING(owner_user_id=workpivot.actor_id()) WITH CHECK(owner_user_id=workpivot.actor_id());
+CREATE INDEX tool_dispatches_open ON workpivot.tool_dispatches(run_id) WHERE status='dispatched';
 `}] as const;
 import { usageSchema } from './usage-schema.js';

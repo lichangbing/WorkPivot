@@ -13,8 +13,19 @@ export const CONTEXT_CHAR_BUDGET = 120_000;
 const KEEP_RECENT = 10;
 /** 单条工具结果低于该长度时不值得压缩。 */
 const MIN_TOOL_CHARS = 600;
+/** 借鉴 DeepSeek Harness 的分级修剪：超过 8192 先保留头 4096 + 尾 1024，仍超预算才整体省略。 */
+export const TOOL_RESULT_LIMIT = 8192;
+export const TOOL_RESULT_HEAD = 4096;
+export const TOOL_RESULT_TAIL = 1024;
 /** 截断 assistant 文本时保留的长度。 */
 const ASSISTANT_KEEP = 500;
+
+/** 头尾保留的裁剪；短结果原样返回。 */
+export function pruneToolResult(content: string): string {
+  if (content.length <= TOOL_RESULT_LIMIT) return content;
+  const omitted = content.length - TOOL_RESULT_HEAD - TOOL_RESULT_TAIL;
+  return `${content.slice(0, TOOL_RESULT_HEAD)}\n…[已裁剪 ${omitted} 字符，原始 ${content.length} 字符；需要时可重新读取]\n${content.slice(-TOOL_RESULT_TAIL)}`;
+}
 
 export function contextChars(messages: ChatMessage[]): number {
   let total = 0;
@@ -31,7 +42,18 @@ export function compactMessages(messages: ChatMessage[], budget: number = CONTEX
   if (contextChars(messages) <= budget) return false;
   const lastIndex = messages.length - KEEP_RECENT;
   let changed = false;
-  // 第一遍：压缩较早的工具结果
+  // 第一遍：分级修剪较早的工具结果（头 4096 + 尾 1024），尽量保住关键信息。
+  for (let index = 1; index < lastIndex; index += 1) {
+    const message = messages[index]!;
+    if (message.role !== 'tool' || typeof message.content !== 'string') continue;
+    if (message.content.length < MIN_TOOL_CHARS) continue;
+    const pruned = pruneToolResult(message.content);
+    if (pruned === message.content) continue;
+    messages[index] = { ...message, content: pruned };
+    changed = true;
+    if (contextChars(messages) <= budget) return changed;
+  }
+  // 第二遍：仍超预算时，较早的工具结果整体省略（保留占位说明）。
   for (let index = 1; index < lastIndex; index += 1) {
     const message = messages[index]!;
     if (message.role !== 'tool' || typeof message.content !== 'string') continue;

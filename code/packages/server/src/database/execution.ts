@@ -90,6 +90,11 @@ export class DatabaseExecution {
         const emit = async (value: AgentEvent) => {
           value=publicToolEvent(value);
           try {
+            // R006：父代理的工具派发与结束都要落库，恢复时据此判断"已派发但结果未知"。
+            if (!value.delegateId && value.callId) {
+              if (value.type === 'tool_use') await this.runs.dispatch(actor, run, value.callId, value.toolName ?? 'unknown');
+              else if (value.type === 'tool_result') await this.runs.settle(actor, run, value.callId, value.ok ? 'completed' : 'failed');
+            }
             const saved = await this.runs.append(actor, run, value);
             // 事件提交成功后才能通知客户端。
             try { send({ ...value, ...saved }); } catch { /* 客户端可通过持久化事件重连。 */ }
@@ -118,6 +123,8 @@ export class DatabaseExecution {
         });
         const result = await runAgentLoop({ ...options, tools: [...authorized, delegation, asking], requestAccess, messages, signal: controller.signal,
           onEvent: emit,
+          // R006：每个 step 结束写检查点（完整消息数组 + 步数），中断恢复以它为准。
+          onCheckpoint: (checkpointMessages, step) => this.runs.checkpoint(actor, run, checkpointMessages, step, options.maxSteps ?? 0),
         });
         reason = await this.runs.finish(actor, run, persistenceFailed ? 'error' : result.stopReason, result.messages.slice(messages.length + 1));
       } catch {

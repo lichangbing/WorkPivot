@@ -62,6 +62,8 @@ export interface RunAgentOptions {
   filePolicy?: ToolContext['filePolicy'];
   executeCommand?: ToolContext['executeCommand'];
   onEvent?: (event: AgentEvent) => void | Promise<void>;
+  /** R006：每个 step 的工具结果全部回填后写检查点（用于中断恢复，不作为模型上下文来源）。 */
+  onCheckpoint?: (messages: ChatMessage[], step: number) => void | Promise<void>;
   signal?: AbortSignal;
 }
 
@@ -224,7 +226,15 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
     messages.push({ role: 'assistant', content: assistantText || null, tool_calls: toolCalls });
     // O-13：同一轮里的只读工具互不依赖，可以并行；写入/执行类保持串行，避免权限与文件竞争。
     const callable = toolCalls.map((call) => ({ call, tool: tools.find((t) => t.name === call.function.name) }));
-    const parallel = callable.length > 1 && callable.every(({ tool }) => tool?.kind === 'read' && tool.endsTurn !== true);
+    // O-13 + 借鉴：按工具声明分批——连续的只读调用并发（上限 10），写入/执行独占一个批次。
+    const MAX_PARALLEL = 10;
+    const batches: Array<Array<(typeof callable)[number]>> = [];
+    for (const entry of callable) {
+      const canParallel = entry.tool?.kind === 'read' && entry.tool.endsTurn !== true;
+      const last = batches[batches.length - 1];
+      if (canParallel && last && last.length < MAX_PARALLEL && last.every((item) => item.tool?.kind === 'read')) last.push(entry);
+      else batches.push([entry]);
+    }
 
     type CallResult = { identity: { toolName: string; displayName?: string; callId: string }; tool: (typeof callable)[number]['tool']; argFp: string; ok: boolean; outcome?: AgentEvent['status']; resultText: string; startedAt?: number };
     const runOne = async ({ call, tool }: (typeof callable)[number]): Promise<CallResult> => {
@@ -276,11 +286,10 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
     for (const entry of callable) {
       await options.onEvent?.({ type: 'tool_use', toolName: entry.call.function.name, displayName: entry.tool?.displayName, callId: entry.call.id, status: entry.tool?.displayName ? 'waiting' : 'running', args: safeParse(entry.call.function.arguments) });
     }
-    const results = parallel ? await Promise.all(callable.map(runOne)) : await (async () => {
-      const collected: CallResult[] = [];
-      for (const entry of callable) collected.push(await runOne(entry));
-      return collected;
-    })();
+    const results: CallResult[] = [];
+    for (const batch of batches) {
+      results.push(...(batch.length > 1 ? await Promise.all(batch.map(runOne)) : [await runOne(batch[0]!)]));
+    }
 
     for (let index = 0; index < callable.length; index += 1) {
       if (signal?.aborted) {
@@ -317,6 +326,8 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
       await options.onEvent?.({ type: 'tool_result', ...identity, ok, status: signal?.aborted ? 'stopped' : outcome ?? (ok ? 'ok' : 'error'), durationMs: startedAt === undefined ? 0 : Date.now() - startedAt, message: resultText.slice(0, tool?.displayName ? 8000 : 200) });
       messages.push({ role: 'tool', tool_call_id: callable[index]!.call.id, content: resultText });
     }
+    // R006：这一步的工具结果已全部回填，写检查点——恢复时以最后一个检查点为准。
+    if (stopReason !== 'aborted') await options.onCheckpoint?.(messages, steps);
     // 声明 endsTurn 的工具（如结构化提问）执行后结束本轮：等用户回答，不进入下一次采样。
     if (toolCalls.some((call) => tools.find((t) => t.name === call.function.name)?.endsTurn)) {
       stopReason = 'completed';
