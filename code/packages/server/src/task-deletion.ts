@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { canonicalPath, pathWithin, requireWithin } from '@workpivot/shared/node';
 import { getTask, listTasks, workspaceRoot, type Task } from './tasks.js';
 import { readTranscriptAll } from './chat-tasks.js';
+import { chatEnabled, deleteChatTask } from './chat-store.js';
+import { uncacheTask } from './task-cache.js';
 import { ensureWorkpivotDir, writeAtomic } from './store.js';
 import { clearSessionGrants, listPathGrants, revokePathGrant } from './permission-grants.js';
 import { deleteSchedule, listSchedules } from './schedules.js';
@@ -66,4 +68,9 @@ export async function deleteTaskData(taskId: string, validateOnly = false): Prom
   }).join('\n') + '\n');
   // 此处保存元数据、转写、任务记忆、计划、待处理请求及不可变成果修订。
   rmSync(dataDir(task), { recursive: true, force: true });
+  if (chatEnabled()) {
+    // chat 模式：元数据与消息都在 PG，必须显式删除（chat.messages 由外键级联）。
+    uncacheTask(taskId);
+    await deleteChatTask(taskId).catch(() => undefined);
+  }
 }
