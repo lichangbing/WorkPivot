@@ -2,7 +2,7 @@ import { pool } from '/app/packages/server/src/database/connection.js';
 import { DatabaseSkills } from '/app/packages/server/src/database/skills.js';
 
 /** 为第一个管理员加载内置 Office 技能；由 install-local-stack.sh 注入容器执行。 */
-export const officeSkillNames = ['office-routing', 'docx-report', 'xlsx-report', 'pptx-report'];
+export const officeSkillNames = ['office-routing', 'docx-report', 'xlsx-report', 'pptx-report', 'bull-bear-debate'];
 
 const db = pool(process.env.WORKPIVOT_DATABASE_URL ?? '');
 const auth = pool(process.env.WORKPIVOT_AUTH_DATABASE_URL ?? '');

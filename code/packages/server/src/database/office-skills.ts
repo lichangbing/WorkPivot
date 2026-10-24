@@ -5,9 +5,12 @@ import { copyPackageFiles, decodePackageZip } from '../skill-package-store.js';
 import { DatabaseSkills } from './skills.js';
 
 export const officeSkillNames = ['office-routing', 'docx-report', 'xlsx-report', 'pptx-report'] as const;
+/** 非 Office 的内置技能（R001 多空辩论）：与 Office 技能同一套打包/发布流程。 */
+export const builtinSkillNames = [...officeSkillNames, 'bull-bear-debate'] as const;
+export type BuiltinSkillName = typeof builtinSkillNames[number];
 
 /** 每个技能独立打包全部资源，避免只发布入口却缺失参考资料或脚本。 */
-export function officeSkillArchive(name: typeof officeSkillNames[number], directory = fileURLToPath(new URL('../../skills/', import.meta.url))) {
+export function officeSkillArchive(name: BuiltinSkillName, directory = fileURLToPath(new URL('../../skills/', import.meta.url))) {
   const files = copyPackageFiles(join(directory, name));
   const archive = new AdmZip();
   for (const [path, bytes] of Object.entries(files)) archive.addFile(path, Buffer.from(bytes, 'base64'));
@@ -16,9 +19,14 @@ export function officeSkillArchive(name: typeof officeSkillNames[number], direct
 
 /** 显式安装缺失项；已有技能仅在指定时暂存更新，绝不隐式发布或加载新版。 */
 export async function seedOfficeSkills(skills: DatabaseSkills, actor: string, stageUpdates = false) {
+  return seedBuiltinSkills(skills, actor, stageUpdates);
+}
+
+/** 发布全部内置技能（Office + 其他），幂等且保留已有草稿/版本。 */
+export async function seedBuiltinSkills(skills: DatabaseSkills, actor: string, stageUpdates = false) {
   const existing = await skills.list(actor);
   const results: { name: string; status: string }[] = [];
-  for (const name of officeSkillNames) {
+  for (const name of builtinSkillNames) {
     const found = existing.find(s => s.name === name);
     if (found && (!stageUpdates || found.dirty)) {
       results.push({ name, status: found.dirty ? '保留已有草稿' : '保留已有发布版本' }); continue;
