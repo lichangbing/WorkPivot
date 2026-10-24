@@ -1,0 +1,25 @@
+# 签名与凭据材料不入库
+*.mobileprovision
+*.p12
+*.jks
+*.keystore
+
+# 网页构建产物（vite 输出）
+dist/
+
+# Capacitor 同步进原生工程的网页副本（由 build + cap sync 生成）
+android/app/src/main/assets/public/
+ios/App/App/public/
+
+# 原生构建产物与缓存
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+ios/App/build/
+ios/DerivedData/
+Pods/
+
+# 安装包不入库（发布产物放 local-runtime/releases）
+*.apk
+*.aab
