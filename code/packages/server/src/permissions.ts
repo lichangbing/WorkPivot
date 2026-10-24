@@ -188,19 +188,31 @@ export interface EvaluateInput {
   onSettled?: (id: string, decision: Decision, reason: 'decision' | 'aborted' | 'timeout') => void;
 }
 
+const EXTERNAL_ACTION_LABELS: Record<string, string> = {
+  web_search: '联网搜索',
+  web_fetch: '读取网页',
+  browser_visit: '浏览网页',
+};
+
+/** 外部动作的用户可见名称；MCP 等未列出的仍归为“外部工具调用”。 */
+export function externalActionLabel(tool: string): string {
+  return EXTERNAL_ACTION_LABELS[tool] ?? '外部工具调用';
+}
+
 /**
  * 判定一次工具访问。返回 'allow'；需要用户决策时调用 onRequest（发授权卡）并等待。
  * 决策含义：allow=仅此次；session=本会话记住；forever=永久白名单（仅路径类）；deny=拒绝。
- */
-export async function evaluateAccess(
+ */export async function evaluateAccess(
   input: EvaluateInput,
   onRequest: (request: AccessRequest) => void,
 ): Promise<{ allowed: boolean; auditedReason: string }> {
   if (input.signal?.aborted) return { allowed: false, auditedReason: '任务已停止' };
   const tier = getTier(input.userId);
   if (input.external) {
-    const allowed = await ask(input, 'MCP 外部工具调用：请确认服务、工具和发送参数', 'once');
-    return { allowed, auditedReason: allowed ? '用户批准 MCP 调用（一次性）' : 'MCP 调用未获授权' };
+    // O-01：文案按工具生成，不再把所有外部调用都说成 MCP。
+    const label = externalActionLabel(input.tool);
+    const allowed = await ask(input, `${label}：请确认本次访问的目标与范围`, 'once');
+    return { allowed, auditedReason: allowed ? `用户批准${label}（一次性）` : `${label}未获授权` };
   }
   // 工具声明的是相对任务目录的路径；边界判定必须先解析为绝对路径
   let absPaths: AccessPath[];

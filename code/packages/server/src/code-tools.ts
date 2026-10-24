@@ -5,11 +5,20 @@
  * trusted-local 模式直接在任务目录执行。脚本写进任务目录的 .workpivot/run-code/，用户可见可复核。
  */
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { canonicalPath, pathWithin } from '@workpivot/shared/node';
 import type { Tool, ToolContext } from '@workpivot/core';
-import { withDirectoryLock } from './directory-lock.js';
+
+/** O-07：脚本目录只保留最近 20 份，避免频繁使用后无限增长；清理失败不影响执行。 */
+const RUN_CODE_KEEP = 20;
+function pruneRunCodeScripts(taskDir: string): void {
+  try {
+    const root = canonicalPath('.workpivot/run-code', taskDir);
+    const names = readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+    for (const name of names.slice(0, Math.max(0, names.length - RUN_CODE_KEEP))) rmSync(join(root, name), { recursive: true, force: true });
+  } catch { /* 目录不存在或清理失败都不影响本次执行 */ }
+}
 
 /** Node 依赖通过 NODE_PATH 提供，而 NODE_PATH 只对 CommonJS 生效，所以入口固定 .cjs。 */
 const LANGUAGES = {
@@ -73,13 +82,12 @@ export function runCodeTool(options: RunCodeOptions): Tool {
       const absolute = canonicalPath(relative, ctx.taskDir);
       if (!pathWithin(absolute, ctx.taskDir)) return '错误：脚本路径越界';
       if (ctx.filePolicy && !ctx.filePolicy(absolute, 'write')) return '错误：无权在工作目录写入脚本';
-      // 同一工作目录串行执行：直接在工作目录里跑时没有回写冲突检查，靠队列避免互相覆盖。
-      return withDirectoryLock(ctx.taskDir, async () => {
-        mkdirSync(dirname(absolute), { recursive: true });
-        writeFileSync(absolute, code, 'utf8');
-        const output = await options.execute(`${interpreter} ${relative}`, ctx);
-        return `${output}\n脚本：${relative}`;
-      });
+      // 串行化已上移到 executeCommand 一层（bash 与 run_code 共用同一把锁），这里不再重复加锁。
+      mkdirSync(dirname(absolute), { recursive: true });
+      writeFileSync(absolute, code, 'utf8');
+      pruneRunCodeScripts(ctx.taskDir);
+      const output = await options.execute(`${interpreter} ${relative}`, ctx);
+      return `${output}\n脚本：${relative}`;
     },
   };
 }

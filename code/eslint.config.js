@@ -10,6 +10,8 @@ export default tseslint.config(
       '**/android/app/src/main/assets/public/**',
       '**/ios/App/App/public/**',
       '**/.gradle/**', '**/Pods/**',
+      // 本机排障脚本与解包产物（Harness 侧生成），不是工程源码。
+      '**/.tmp/**',
     ],
   },
   ...tseslint.configs.recommended,

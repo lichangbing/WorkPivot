@@ -89,3 +89,4 @@ code/apps/desktop/build/*
 code/apps/desktop/release-*/
 .workbuddy/
 releases/v0.*/
+code/.tmp/

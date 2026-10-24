@@ -23,6 +23,7 @@ import { buildSkillTools } from './skill-tools.js';
 import { runCodeTool } from './code-tools.js';
 import { WebTools, browserConfiguration } from './web/tools.js';
 import { workerCommand } from './worker-command.js';
+import { withDirectoryLock } from './directory-lock.js';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { canonicalPath, pathWithin, requireWithin } from '@workpivot/shared/node';
@@ -825,6 +826,15 @@ ${capped}
       return relative;
     });
 
+    // O-02：bash 与 run_code 共用同一把目录锁，避免挂载模式下同项目并发执行互相覆盖。
+    const rawExecuteCommand = commandMode === 'trusted-local' ? undefined
+      : commandMode === 'worker' ? workerCommand(task, filePolicy, controller.signal, () => discoverSkills().filter((skill) => loadedSkills.has(skill.name)))
+      : commandMode === 'docker' ? sandboxCommand(task, filePolicy, controller.signal)
+      : async () => { throw new Error('后台未启用命令执行'); };
+    const executeCommand = rawExecuteCommand === undefined
+      ? undefined
+      : (command: string) => withDirectoryLock(task.directory, () => rawExecuteCommand(command));
+
     // T3-03/F02：带核验闸门的执行——声称产出但文件缺失 → 打回重做（≤2 次）
     const runWithGate = async (attempt: number, baseMessages: ChatMessage[]): Promise<{ stopReason: string; steps: number }> => {
       const result = await runAgentLoop({
@@ -849,10 +859,7 @@ ${capped}
         contextBudget: Number(process.env['WORKPIVOT_CONTEXT_CHARS']) || undefined,
         extraEnv: bashNodePath ? { NODE_PATH: bashNodePath } : undefined,
         filePolicy,
-        executeCommand: commandMode === 'trusted-local' ? undefined
-          : commandMode === 'worker' ? workerCommand(task, filePolicy, controller.signal, () => discoverSkills().filter((skill) => loadedSkills.has(skill.name)))
-          : commandMode === 'docker' ? sandboxCommand(task, filePolicy, controller.signal)
-          : async () => { throw new Error('后台未启用命令执行'); },
+        executeCommand,
         signal: controller.signal,
         onEvent: (event) => {
           send(event);

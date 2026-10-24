@@ -20,6 +20,10 @@ function automaticRequest(request: ToolAccessRequest, mode: unknown): boolean {
   if (mode === 'manual') return false;
   return request.auto === true && request.tool === 'run_code' && !request.paths.length;
 }
+/** 联网类工具的用户可见名称，避免授权卡把所有外部调用都说成 MCP。 */
+function networkActionLabel(tool: string): string {
+  return tool === 'web_search' ? '联网搜索' : tool === 'web_fetch' ? '读取网页' : '浏览网页';
+}
 /** 中断的工具消息组不得作为未配对的模型协议消息重放。 */
 export function replayableMessages(messages: ChatMessage[]): ChatMessage[] {
   const result: ChatMessage[] = [];
@@ -274,7 +278,7 @@ export class RunRepository {
       // 任务级授权范围尚未建立，旧全局auto不能替代本次明确许可。
       await c.query("INSERT INTO workpivot.run_permissions(id,owner_user_id,task_id,run_id,request,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '3 minutes')", [id, actor, run.taskId, run.id, record]);
       await c.query("UPDATE workpivot.tasks SET status='waiting',revision=revision+1 WHERE id=$1", [run.taskId]);
-      const payload = { type: 'permission_request' as const, id, tool: request.tool, command: request.tool, paths: [], scope: 'once', redacted:true, reason: mode === 'manual' ? '确认模式：本次操作需要你确认' : request.tool === 'execute_skill' ? '本次隔离执行需要确认' : ['web_fetch','browser_visit'].includes(request.tool) ? '本次网页访问需要确认' : '本次操作需要确认，请核对参数和影响' };
+      const payload = { type: 'permission_request' as const, id, tool: request.tool, command: request.tool, paths: [], scope: 'once', redacted:true, reason: mode === 'manual' ? '确认模式：本次操作需要你确认' : request.tool === 'execute_skill' ? '本次隔离执行需要确认' : ['web_fetch','web_search','browser_visit'].includes(request.tool) ? `本次${networkActionLabel(request.tool)}需要确认` : '本次操作需要确认，请核对参数和影响' };
       const saved = await event(c, actor, run, 'meta', JSON.stringify(payload));
       return { ...saved, ...payload, automatic: false as const, eventId: saved.id };
     }, actor);

@@ -5,7 +5,7 @@
  *       工具内 resolveWithin 仍作为最后一道防线（纵深防御）。
  */
 import { spawn } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { canonicalPath, pathWithin } from '@workpivot/shared/node';
 import { commandEnvironment } from './command-env.js';
@@ -95,15 +95,40 @@ function walkFiles(root: string, opts: { maxFiles?: number; allowed?: (path: str
 }
 
 const READ_MAX_BYTES = 512 * 1024;
+const READ_DEFAULT_LINES = 2000;
+const READ_MAX_LINES = 5000;
+
+/** 写临时文件再 rename：进程中断不会留下半截文件（O-08）。 */
+function writeAtomic(path: string, content: string): void {
+  const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(temporary, content, 'utf8');
+  try {
+    renameSync(temporary, path);
+  } catch (error) {
+    try { unlinkSync(temporary); } catch { /* 清理失败不能掩盖原始错误 */ }
+    throw error;
+  }
+}
+
+/** 按行编号返回片段；超长文件用 offset/limit 续读，避免一次读满上下文。 */
+function numberedSlice(lines: string[], start: number, count: number): string {
+  const end = Math.min(lines.length, start - 1 + count);
+  const body = lines.slice(start - 1, end).map((line, index) => `${start + index}\t${line}`).join('\n');
+  const more = end < lines.length ? `\n…（还有 ${lines.length - end} 行，用 offset=${end + 1} 继续）` : '\n（已到文件末尾）';
+  return `${body}${more}`;
+}
 
 export const readTool: Tool = {
   name: 'read',
   kind: 'read',
-  description: '读取任务目录内一个文本文件的内容。修改文件前必须先 read 原文件（先读后改）。',
+  description:
+    '读取任务目录内一个文本文件的内容。大文件用 offset/limit 按行分段读取，返回带行号与总行数。修改文件前必须先 read 原文件（先读后改）。',
   parameters: {
     type: 'object',
     properties: {
       path: { type: 'string', description: '相对任务目录的文件路径，如 "data/说明.md"' },
+      offset: { type: 'integer', description: '起始行号（从 1 开始），默认 1' },
+      limit: { type: 'integer', description: `本次最多返回多少行，默认 ${READ_DEFAULT_LINES}，上限 ${READ_MAX_LINES}` },
     },
     required: ['path'],
   },
@@ -114,11 +139,20 @@ export const readTool: Tool = {
     if (!existsSync(path)) return `错误：文件不存在：${path}`;
     const stat = statSync(path);
     if (stat.isDirectory()) return `错误：${path} 是目录，请用 ls 列出`;
-    if (stat.size > READ_MAX_BYTES) {
-      const head = readFileSync(path, 'utf8').slice(0, READ_MAX_BYTES);
-      return `文件过大（${stat.size} 字节），仅返回前 ${READ_MAX_BYTES} 字节：\n${head}\n…（截断）`;
-    }
-    return readFileSync(path, 'utf8');
+
+    const rawOffset = args['offset'], rawLimit = args['limit'];
+    if (rawOffset !== undefined && (!Number.isInteger(rawOffset) || (rawOffset as number) < 1)) throw new Error('offset 必须是 ≥1 的整数');
+    if (rawLimit !== undefined && (!Number.isInteger(rawLimit) || (rawLimit as number) < 1 || (rawLimit as number) > READ_MAX_LINES)) throw new Error(`limit 必须是 1-${READ_MAX_LINES} 的整数`);
+    const start = (rawOffset as number | undefined) ?? 1;
+    const count = (rawLimit as number | undefined) ?? READ_DEFAULT_LINES;
+
+    // 小文件且未指定分页时保持原文返回，避免给普通读取加噪声。
+    if (rawOffset === undefined && rawLimit === undefined && stat.size <= READ_MAX_BYTES) return readFileSync(path, 'utf8');
+
+    const text = readFileSync(path, 'utf8');
+    const lines = text.split(/\r?\n/);
+    if (start > lines.length) return `错误：offset=${start} 超出范围（共 ${lines.length} 行）`;
+    return numberedSlice(lines, start, count);
   },
 };
 
@@ -141,7 +175,7 @@ export const writeTool: Tool = {
     if (ctx.filePolicy && !ctx.filePolicy(path, 'write')) throw new Error('无权修改该项目或任务文件');
     const content = String(args['content'] ?? '');
     mkdirSync(path.slice(0, Math.max(path.lastIndexOf(sep), path.lastIndexOf('/'))), { recursive: true });
-    writeFileSync(path, content, 'utf8');
+    writeAtomic(path, content);
     return `已写入 ${path}（${Buffer.byteLength(content, 'utf8')} 字节）`;
   },
 };
@@ -205,27 +239,44 @@ export async function executeShell(command: string, ctx: ToolContext): Promise<s
         child.kill('SIGKILL');
       }
     };
+    let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
       killTree();
     }, BASH_TIMEOUT_MS);
     const onAbort = (): void => killTree();
     ctx.signal?.addEventListener('abort', onAbort, { once: true });
-    let out = '';
-    let timedOut = false;
-    child.stdout?.on('data', (d: Buffer) => {
-      if (out.length < BASH_OUTPUT_CAP) out += d.toString();
-    });
-    child.stderr?.on('data', (d: Buffer) => {
-      if (out.length < BASH_OUTPUT_CAP) out += d.toString();
-    });
+    // O-04：头尾各留一半，命令失败时错误栈在末尾也能看到。
+    const half = BASH_OUTPUT_CAP / 2;
+    let head = '';
+    let tail = '';
+    let totalBytes = 0;
+    const collect = (chunk: Buffer): void => {
+      const text = chunk.toString();
+      totalBytes += chunk.length;
+      if (head.length < half) {
+        const room = half - head.length;
+        head += text.slice(0, room);
+        const rest = text.slice(room);
+        if (rest) tail = (tail + rest).slice(-half);
+      } else {
+        tail = (tail + text).slice(-half);
+      }
+    };
+    child.stdout?.on('data', collect);
+    child.stderr?.on('data', collect);
     child.on('error', (err) => resolve(`执行失败：${err.message}`));
     child.on('close', (code, signal) => {
       clearTimeout(timer);
       ctx.signal?.removeEventListener('abort', onAbort);
       if (ctx.signal?.aborted) return resolve('（已中止：命令随任务停止被终止）');
-      const head = out.length > 0 ? `\n${out.slice(0, BASH_OUTPUT_CAP)}` : '\n（无输出）';
-      resolve(`${timedOut ? '超时强制终止（整棵进程树已结束）' : `exit=${code ?? signal ?? '?'}`}${head}`);
+      const status = timedOut ? '超时强制终止（整棵进程树已结束）' : `exit=${code ?? signal ?? '?'}`;
+      if (totalBytes === 0) return resolve(`${status}\n（无输出）`);
+      const keptBytes = Buffer.byteLength(head, 'utf8') + Buffer.byteLength(tail, 'utf8');
+      const body = totalBytes > keptBytes
+        ? `\n${head}\n…（中间省略约 ${totalBytes - keptBytes} 字节，输出总计 ${totalBytes} 字节）…\n${tail}`
+        : `\n${head}${tail}`;
+      resolve(`${status}${body}`);
     });
   });
 }
@@ -369,7 +420,7 @@ export const editTool: Tool = {
     if (occurrences > 1 && args['replace_all'] !== true) throw new Error(`目标文本出现 ${occurrences} 次；请补充上下文使其唯一，或设置 replace_all=true`);
     // 用函数式替换，避免 new_string 中的 $& 等被当成替换模式。
     const updated = occurrences > 1 ? original.split(oldString).join(newString) : original.replace(oldString, () => newString);
-    writeFileSync(path, updated, 'utf8');
+    writeAtomic(path, updated);
     return `已编辑 ${path}（替换 ${occurrences} 处，${Buffer.byteLength(updated, 'utf8')} 字节）`;
   },
 };
