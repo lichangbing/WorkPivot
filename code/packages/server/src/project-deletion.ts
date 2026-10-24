@@ -6,7 +6,7 @@ import { deleteTaskData } from './task-deletion.js';
 import { ensureWorkpivotDir } from './store.js';
 
 /** 完整删除项目要求目录为账号工作区内的独占目录。 */
-export function deleteProjectData(id: string): string[] {
+export async function deleteProjectData(id: string): Promise<string[]> {
   const project = getProject(id);
   if (!project) throw Error('项目不存在');
   if (id === DEFAULT_PROJECT_ID) throw Error('默认项目为系统项目，请删除其中的任务');
@@ -22,8 +22,8 @@ export function deleteProjectData(id: string): string[] {
       throw Error('项目目录与其他项目或任务共用，请先调整目录后再删除');
     }
   }
-  for (const task of owned) deleteTaskData(task.id, true);
-  for (const task of owned) deleteTaskData(task.id);
+  for (const task of owned) await deleteTaskData(task.id, true);
+  for (const task of owned) await deleteTaskData(task.id);
   for (const directory of directories) rmSync(directory, { recursive: true, force: true });
   rmSync(requireWithin(id, ensureWorkpivotDir('data', 'projects')), { recursive: true, force: true });
   return owned.map(task => task.id);

@@ -1,7 +1,8 @@
 import { existsSync, lstatSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonicalPath, pathWithin, requireWithin } from '@workpivot/shared/node';
-import { getTask, listTasks, readTranscript, workspaceRoot, type Task } from './tasks.js';
+import { getTask, listTasks, workspaceRoot, type Task } from './tasks.js';
+import { readTranscriptAll } from './chat-tasks.js';
 import { ensureWorkpivotDir, writeAtomic } from './store.js';
 import { clearSessionGrants, listPathGrants, revokePathGrant } from './permission-grants.js';
 import { deleteSchedule, listSchedules } from './schedules.js';
@@ -12,10 +13,11 @@ function index(task: Task): FileIndex {
   const path = join(dataDir(task), 'artifacts.json');
   return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) as FileIndex : {};
 }
-function attachments(task: Task): string[] {
+async function attachments(task: Task): Promise<string[]> {
   const path = join(dataDir(task), 'uploads.json');
   const uploads: string[] = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) as string[] : [];
-  return [...uploads, ...readTranscript(task.id).flatMap(row => Array.isArray(row.payload['attachments'])
+  const rows = await readTranscriptAll(task.id);
+  return [...uploads, ...rows.flatMap(row => Array.isArray(row.payload['attachments'])
     ? row.payload['attachments'].filter((name): name is string => typeof name === 'string') : [])].map(name => `attachments/${name}`);
 }
 export function recordTaskUpload(task: Task, name: string): void {
@@ -25,7 +27,7 @@ export function recordTaskUpload(task: Task, name: string): void {
 }
 
 /** 只删除任务独占数据；共享项目资料和已晋升记忆仍归项目或用户所有。 */
-export function deleteTaskData(taskId: string, validateOnly = false): void {
+export async function deleteTaskData(taskId: string, validateOnly = false): Promise<void> {
   const task = getTask(taskId);
   if (!task) throw Error('任务不存在');
   const peers = listTasks().filter(other => other.id !== taskId && (
@@ -35,12 +37,14 @@ export function deleteTaskData(taskId: string, validateOnly = false): void {
   }
   const ownIndex = index(task);
   const protectedNames = new Set<string>();
-  for (const peer of peers) {
+  const peerAttachments = await Promise.all(peers.map(peer => attachments(peer)));
+  for (let position = 0; position < peers.length; position += 1) {
+    const peer = peers[position]!;
     const other = index(peer);
-    for (const name of [...attachments(peer), ...(other.produced ?? []), ...Object.keys(other.baseline ?? {})]) protectedNames.add(name);
+    for (const name of [...peerAttachments[position]!, ...(other.produced ?? []), ...Object.keys(other.baseline ?? {})]) protectedNames.add(name);
   }
-  const peerText = peers.map(peer => JSON.stringify(readTranscript(peer.id))).join('\n');
-  const candidates = [...new Set([...attachments(task), ...(ownIndex.produced ?? []).filter(name => !Object.hasOwn(ownIndex.baseline ?? {}, name))])];
+  const peerText = (await Promise.all(peers.map(peer => readTranscriptAll(peer.id)))).map(rows => JSON.stringify(rows)).join('\n');
+  const candidates = [...new Set([...await attachments(task), ...(ownIndex.produced ?? []).filter(name => !Object.hasOwn(ownIndex.baseline ?? {}, name))])];
   // 修改文件系统前解析并校验全部目标，禁止递归删除共享目录。
   const files = candidates.filter(name => !protectedNames.has(name) && !peerText.includes(name)).map(name => requireWithin(name, task.directory))
     .filter(path => !peers.some(peer => canonicalPath(peer.directory) !== canonicalPath(task.directory) && pathWithin(canonicalPath(path), canonicalPath(peer.directory))));

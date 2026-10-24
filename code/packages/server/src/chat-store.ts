@@ -119,6 +119,17 @@ export function transcriptRowFromMessage(row: ChatMessageRow) {
   };
 }
 
+/** 消息账本行：先建任务（JSONL 仍是任务元数据真值），这里只保证消息有归属可级联。 */
+export async function ensureChatTask(input: ChatTaskInput): Promise<void> {
+  await chatPool().query(
+    `INSERT INTO chat.tasks(id,owner_user_id,tenant_id,name,directory,status,stop_reason,project_id,temp,created_at)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+     ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,directory=EXCLUDED.directory,status=EXCLUDED.status,updated_at=now()`,
+    [input.id, input.ownerUserId ?? null, input.tenantId ?? null, input.name, input.directory, input.status,
+      input.stopReason ?? null, input.projectId ?? null, input.temp ?? false, input.createdAt],
+  );
+}
+
 export async function createChatTask(input: ChatTaskInput): Promise<void> {
   await chatPool().query(
     `INSERT INTO chat.tasks(id,owner_user_id,tenant_id,name,directory,status,stop_reason,project_id,temp,created_at)

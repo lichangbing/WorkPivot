@@ -28,6 +28,7 @@ import { guardDeletions } from './deletion-guard.js';
 import { randomUUID } from 'node:crypto';
 import { finishFileCheckpoint, pruneFileCheckpoints, reconcileFileCheckpoints, writeFileCheckpoint } from './file-checkpoint.js';
 import { transcriptArgs } from './transcript-args.js';
+import { appendMessage, ensureLedger, loadChatMessages, readTranscriptPage } from './chat-tasks.js';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { canonicalPath, pathWithin, requireWithin } from '@workpivot/shared/node';
@@ -71,7 +72,7 @@ import {
 import { evaluateAccess, pendingRequests, getTier, resolvePendingRequest, setTier, TIER_LABELS, type Tier } from './permissions.js';
 import { clearSessionGrants, listPathGrants, revokePathGrant } from './permission-grants.js';
 import { projectRoutes } from './project-routes.js';
-import { appendTranscript, createTask, getTask, listTasks, readHistory, readTranscript, updateTaskStatus } from './tasks.js';
+import { createTask, getTask, listTasks, updateTaskStatus } from './tasks.js';
 import { audit, argsHash, readAllAudit } from './audit.js';
 import { deleteProvider, listProviders, resolveActiveProvider, saveProvider, setActiveProvider, updateProvider } from './providers.js';
 import { listTrash } from './trash.js';
@@ -105,7 +106,12 @@ interface AuthedRequest extends Request {
   user?: PublicUser;
 }
 
-/** J02 批次4a：任务所有权——所有角色只可访问本人任务；未明确归属的旧任务不可见 */function taskVisibleTo(user: PublicUser | null | undefined, t: { ownerUserId?: string; projectId?: string }): boolean {
+/** R007：消息读写统一走这里——未启用 chat 存储时与原来的 JSONL 行为完全一致。 */
+const recordMessage = appendMessage;
+const chatHistory = loadChatMessages;
+
+/** J02 批次4a：任务所有权——所有角色只可访问本人任务；未明确归属的旧任务不可见 */
+function taskVisibleTo(user: PublicUser | null | undefined, t: { ownerUserId?: string; projectId?: string }): boolean {
   if (!user) return false;
   if ((user.tenantId ?? 'default') !== tenantId()) return false;
   if (t.ownerUserId !== user.id) return false;
@@ -517,7 +523,7 @@ export function createApp(opts: AppOptions = {}): Express {
     } catch { res.status(404).json({ error: '产物不可访问' }); }
   });
 
-  app.post('/api/tasks', (req, res) => {
+  app.post('/api/tasks', async (req, res) => {
     const user = (req as AuthedRequest).user;
     if (!user) return res.status(401).json({ error: '未登录' });
     const { name, directory, projectId, temp } = req.body as {
@@ -557,20 +563,22 @@ export function createApp(opts: AppOptions = {}): Express {
     } catch { return res.status(400).json({ error: '任务目录无法安全解析' }); }
     if (!tenantPathAllowed(resolvedDir)) return res.status(400).json({ error: '目录不属于当前账号工作区' });
     const task = createTask({ name, directory: resolvedDir, projectId: resolvedProjectId, temp: temp === true, ownerUserId: user?.id });
+    // R007：chat 存储启用时，为消息建立归属行（任务元数据仍以 JSONL 为准）。
+    await ensureLedger(task);
     if (!temp && taskFilePolicy(task, user.id)(join(task.directory, '.workpivot/memory/MEMORY.md'), 'write')) initProjectMemory(task.directory);
     audit({ user: user?.username, event: 'task_created', taskId: task.id, detail: task.directory, decision: temp ? 'temp' : 'project' });
     res.json({ task });
   });
 
 
-  app.delete('/api/tasks/:id', (req, res) => {
+  app.delete('/api/tasks/:id', async (req, res) => {
     const task = getTask(req.params['id'] ?? '');
     if (!task) return res.status(404).json({ error: '任务不存在' });
     // RL1-03（A-13）：删除与其他任务路由同守卫——member 仅可删自己的任务（先于 temp 校验）
     if (!taskVisibleTo((req as AuthedRequest).user, task)) return res.status(403).json({ error: '无权删除该任务' });
     if (running.has(task.id)) return res.status(409).json({ error: '请先停止任务，等待执行结束后再删除' });
     try {
-      deleteTaskData(task.id);
+      await deleteTaskData(task.id);
       clearSessionGrants(task.id);
       audit({ user: (req as AuthedRequest).user?.username, taskId: req.params['id'], event: 'task_deleted' });
       res.json({ ok: true });
@@ -579,11 +587,11 @@ export function createApp(opts: AppOptions = {}): Express {
     }
   });
 
-  app.get('/api/tasks/:id', (req, res) => {
+  app.get('/api/tasks/:id', async (req, res) => {
     const task = getTask(req.params['id'] ?? '');
     if (!task) return res.status(404).json({ error: '任务不存在' });
     if (!taskVisibleTo((req as AuthedRequest).user, task)) return res.status(403).json({ error: '无权访问该任务' });
-    res.json({ task, history: readHistory(task.id), pending: pendingRequests(task.id, (req as AuthedRequest).user!.id), pendingMemory: pendingMemory(task.id, (req as AuthedRequest).user!.id) });
+    res.json({ task, history: await chatHistory(task.id), pending: pendingRequests(task.id, (req as AuthedRequest).user!.id), pendingMemory: pendingMemory(task.id, (req as AuthedRequest).user!.id) });
   });
 
   // 右栏（W1）：任务目录的文件清单（含 attachments/ 子目录内的文件，前缀显示）
@@ -640,7 +648,7 @@ export function createApp(opts: AppOptions = {}): Express {
   );
 
   // ---- 对话（SSE 流式）----
-  app.post('/api/tasks/:id/messages', (req, res) => {
+  app.post('/api/tasks/:id/messages', async (req, res) => {
     const user = (req as AuthedRequest).user;
     if (!user) return res.status(401).json({ error: '未登录' });
     const task = getTask(req.params['id'] ?? '');
@@ -715,9 +723,9 @@ ${capped}
       }
     }
 
-    const history: ChatMessage[] = readHistory(task.id, true).map((m) => ({ role: m.role, content: m.content }));
+    const history: ChatMessage[] = (await chatHistory(task.id, true)).map((m) => ({ role: m.role, content: m.content }));
     history.push({ role: 'user', content: expanded });
-    appendTranscript(task.id, 'user_message', { content: expanded, displayContent: content, attachments: acceptedAttachments });
+    await recordMessage(task.id, 'user_message', { content: expanded, displayContent: content, attachments: acceptedAttachments });
 
     const controller = new AbortController();
     running.set(task.id, controller);
@@ -812,7 +820,7 @@ ${capped}
       const file = requireWithin(join(dir, `result-${Date.now()}.txt`), task.directory);
       if (!filePolicy(file, 'write')) throw new Error('无权保存工具结果');
       writeFileSync(file, content, 'utf8');
-      appendTranscript(task.id, 'meta', { event: 'result_stashed', path: file, size: content.length });
+      await recordMessage(task.id, 'meta', { event: 'result_stashed', path: file, size: content.length });
       return `（工具结果过大已落盘:${file}。可用 read 工具读取完整内容。）\n前 2000 字符预览:\n${content.slice(0, 2000)}`;
     };
 
@@ -845,7 +853,7 @@ ${capped}
     const fileRunId = randomUUID();
     try {
       const recovered = reconcileFileCheckpoints(task.directory);
-      if (recovered.length) appendTranscript(task.id, 'meta', { event: 'recovered', runs: recovered });
+      if (recovered.length) await recordMessage(task.id, 'meta', { event: 'recovered', runs: recovered });
     } catch { /* 对账失败不阻塞本轮 */ }
 
     // T3-03/F02：带核验闸门的执行——声称产出但文件缺失 → 打回重做（≤2 次）
@@ -876,7 +884,7 @@ ${capped}
         filePolicy,
         executeCommand,
         signal: controller.signal,
-        onEvent: (event) => {
+        onEvent: async (event) => {
           send(event);
           if (event.type === 'tool_use') {
             // O-09：记录本轮交付登记，供收尾核验判断成果是否可下载。
@@ -884,15 +892,15 @@ ${capped}
               const files = (event.args as { files?: unknown }).files;
               if (Array.isArray(files)) for (const name of files) if (typeof name === 'string') deliveredThisTurn.add(name);
             }
-            appendTranscript(task.id, 'tool_use', { toolName: event.toolName, displayName: event.displayName, callId: event.callId, args: transcriptArgs(event.args) });
+            await recordMessage(task.id, 'tool_use', { toolName: event.toolName, displayName: event.displayName, callId: event.callId, args: transcriptArgs(event.args) });
             audit({ user: user?.username, taskId: task.id, event: 'tool_use', tool: event.toolName, argsHash: argsHash(event.args) });
           }
           if (event.type === 'tool_result') {
-            appendTranscript(task.id, 'tool_result', { toolName: event.toolName, displayName: event.displayName, callId: event.callId, durationMs: event.durationMs, status: event.status, ok: event.ok, summary: event.message });
+            await recordMessage(task.id, 'tool_result', { toolName: event.toolName, displayName: event.displayName, callId: event.callId, durationMs: event.durationMs, status: event.status, ok: event.ok, summary: event.message });
           }
           // O-05：用量落转写，便于事后核算成本；不进入对话内容。
           if (event.type === 'usage') {
-            appendTranscript(task.id, 'meta', { event: 'usage', inputTokens: event.inputTokens ?? 0, outputTokens: event.outputTokens ?? 0 });
+            await recordMessage(task.id, 'meta', { event: 'usage', inputTokens: event.inputTokens ?? 0, outputTokens: event.outputTokens ?? 0 });
           }
         },
       });
@@ -901,7 +909,7 @@ ${capped}
         .reverse()
         .find((m) => m.role === 'assistant' && typeof m.content === 'string' && m.content.length > 0)?.content;
       if (typeof finalText === 'string' && finalText.length > 0) {
-        appendTranscript(task.id, 'assistant_message', { content: finalText });
+        await recordMessage(task.id, 'assistant_message', { content: finalText });
       }
 
       if (result.stopReason === 'completed' && typeof finalText === 'string' && finalText.length > 0) {
@@ -918,7 +926,7 @@ ${capped}
             undelivered.length ? `用 deliver_files 登记交付：${undelivered.join('、')}` : '',
           ].filter(Boolean).join('；');
           const note = `核验失败:以下声称产出的文件不完整:${problems.join('、')}。请${steps},然后重新给出总结。`;
-          appendTranscript(task.id, 'user_message', { content: note });
+          await recordMessage(task.id, 'user_message', { content: note });
           baseMessages.push({ role: 'user', content: note });
           return runWithGate(attempt + 1, baseMessages);
         }
@@ -1216,25 +1224,29 @@ ${capped}
     if (!project) return res.status(404).json({ error: '项目不存在' });
     res.json({ project });
   });
-  app.delete('/api/projects/:id', (req, res) => {
+  app.delete('/api/projects/:id', async (req, res) => {
     const admin = (req as AuthedRequest).user;
     if (!admin) return res.status(403).json({ error: '未登录' });
     if (!getProject(req.params['id'] ?? '')) return res.status(404).json({ error: '项目不存在' });
     const id = req.params['id'] ?? '';
     if (listTasks().some(task => task.projectId === id && running.has(task.id))) return res.status(409).json({ error: '请先停止项目内任务，等待执行结束后再删除' });
     try {
-      const taskIds = deleteProjectData(id);
+      const taskIds = await deleteProjectData(id);
       audit({ user: admin.username, event: 'project_deleted', detail: id });
       res.json({ ok: true, taskIds });
     } catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : '项目删除失败，请重试' }); }
   });
 
-  // T3-01：转写查看器数据源
-  app.get('/api/tasks/:id/transcript', (req, res) => {
+  // T3-01：转写查看器数据源（R007：支持 before/limit 分页，chat 模式走数据库索引）
+  app.get('/api/tasks/:id/transcript', async (req, res) => {
     const task = getTask(req.params['id'] ?? '');
     if (!task) return res.status(404).json({ error: '任务不存在' });
     if (!taskVisibleTo((req as AuthedRequest).user, task)) return res.status(403).json({ error: '无权访问该任务' });
-    res.json({ rows: readTranscript(task.id) });
+    const before = req.query['before'] === undefined ? undefined : Number(req.query['before']);
+    const limit = req.query['limit'] === undefined ? undefined : Number(req.query['limit']);
+    if (before !== undefined && (!Number.isSafeInteger(before) || before < 1)) return res.status(400).json({ error: 'before 必须是正整数' });
+    if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1 || limit > 500)) return res.status(400).json({ error: 'limit 必须是 1-500 的整数' });
+    res.json({ rows: await readTranscriptPage(task.id, { before, limit }) });
   });
 
   // M1-12/A03：任务计划（update_plan 工具落盘，前端打开任务时回显）

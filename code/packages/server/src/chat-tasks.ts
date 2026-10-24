@@ -14,6 +14,7 @@ import {
   chatEnabled,
   createChatTask,
   deleteChatTask,
+  ensureChatTask,
   getChatTask,
   listChatTasks,
   readChatMessages,
@@ -81,6 +82,35 @@ export async function readTranscriptPage(taskId: string, options: { before?: num
     return rows.filter((row) => row.ordinal < options.before!).slice(-limit);
   }
   return (await readChatMessages(taskId, options)).map((row) => transcriptRowFromMessage(row) as TranscriptRow);
+}
+
+/** 确保消息账本里有这条任务（JSONL 仍是任务元数据真值；这里只为消息提供归属与外键）。 */
+export async function ensureLedger(task: Task): Promise<void> {
+  if (!chatEnabled()) return;
+  await ensureChatTask({
+    id: task.id,
+    ownerUserId: task.ownerUserId ?? null,
+    tenantId: task.tenantId ?? null,
+    name: task.name,
+    directory: task.directory,
+    status: task.status,
+    projectId: task.projectId ?? null,
+    temp: task.temp === true,
+    createdAt: new Date(task.createdAt),
+  });
+}
+
+/** 一次性读完（删除保护等场景需要全量比对）；chat 模式按 500 条分页拉取。 */
+export async function readTranscriptAll(taskId: string): Promise<TranscriptRow[]> {
+  if (!chatEnabled()) return readTranscript(taskId);
+  const rows: TranscriptRow[] = [];
+  for (;;) {
+    const page = await readChatMessages(taskId, { before: rows[0]?.ordinal, limit: 500 });
+    if (!page.length) break;
+    rows.unshift(...page.map((row) => transcriptRowFromMessage(row) as TranscriptRow));
+    if (page.length < 500) break;
+  }
+  return rows;
 }
 
 export async function loadChatMessages(taskId: string, forModel = false): Promise<Array<{ role: 'user' | 'assistant'; content: string; attachments?: string[] }>> {
