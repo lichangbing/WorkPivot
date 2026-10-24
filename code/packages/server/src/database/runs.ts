@@ -18,6 +18,8 @@ const leaseSeconds = 30;
 function automaticRequest(request: ToolAccessRequest, mode: unknown): boolean {
   if (process.env['WORKPIVOT_CODE_APPROVAL'] === 'confirm') return false;
   if (mode === 'manual') return false;
+  // 自动模式没有计划闸门；确认模式才在首个执行动作前问一次。
+  if (request.tool === 'plan') return true;
   return request.auto === true && request.tool === 'run_code' && !request.paths.length;
 }
 /** 联网类工具的用户可见名称，避免授权卡把所有外部调用都说成 MCP。 */
@@ -278,7 +280,7 @@ export class RunRepository {
       // 任务级授权范围尚未建立，旧全局auto不能替代本次明确许可。
       await c.query("INSERT INTO workpivot.run_permissions(id,owner_user_id,task_id,run_id,request,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '3 minutes')", [id, actor, run.taskId, run.id, record]);
       await c.query("UPDATE workpivot.tasks SET status='waiting',revision=revision+1 WHERE id=$1", [run.taskId]);
-      const payload = { type: 'permission_request' as const, id, tool: request.tool, command: request.tool, paths: [], scope: 'once', redacted:true, reason: mode === 'manual' ? '确认模式：本次操作需要你确认' : request.tool === 'execute_skill' ? '本次隔离执行需要确认' : ['web_fetch','web_search','browser_visit'].includes(request.tool) ? `本次${networkActionLabel(request.tool)}需要确认` : '本次操作需要确认，请核对参数和影响' };
+      const payload = { type: 'permission_request' as const, id, tool: request.tool, command: request.tool, paths: [], scope: 'once', redacted:true, reason: request.tool === 'plan' ? '确认执行计划：接下来会调用写入或执行类工具，本轮确认后不再逐次询问' : mode === 'manual' ? '确认模式：本次操作需要你确认' : request.tool === 'execute_skill' ? '本次隔离执行需要确认' : ['web_fetch','web_search','browser_visit'].includes(request.tool) ? `本次${networkActionLabel(request.tool)}需要确认` : '本次操作需要确认，请核对参数和影响' };
       const saved = await event(c, actor, run, 'meta', JSON.stringify(payload));
       return { ...saved, ...payload, automatic: false as const, eventId: saved.id };
     }, actor);

@@ -1,6 +1,7 @@
 import {publicToolEvent} from './tool-events.js';
 import {delegateTool} from './delegation.js';
 import {askUserTool} from './ask-user.js';
+import {needsPlanGate, shouldAskNetwork} from './plan-gate.js';
 import type {RunResourceScope} from './resource-scope.js';
 import {authorizeTools} from './tool-authorization.js';
 import { runAgentLoop, type AgentEvent, type RunAgentOptions, type StopReason } from '@workpivot/core';
@@ -39,15 +40,26 @@ export class DatabaseExecution {
       timer.unref();
       try {
         const messages = await this.runs.history(actor, run);
-        const requestAccess: NonNullable<RunAgentOptions['requestAccess']> = options.requestAccess ?? (async request => {
-          if (!request.external || request.paths.length || request.kind !== 'write') return false;
+        // O-17：确认模式下联网只在首次确认，本轮其余网络工具放行（MCP 仍逐次）。
+        let networkApproved = false;
+        // O-16：确认模式下首个写入/执行动作前确认一次执行计划，本轮不再逐次拦。
+        let planApproved = false;
+        const baseAccess: NonNullable<RunAgentOptions['requestAccess']> = options.requestAccess ?? (async request => {
+          const gate = request.tool === 'plan';
+          if (!gate && (!request.external || request.paths.length || request.kind !== 'write')) return false;
+          if (!gate && !shouldAskNetwork(request.tool, networkApproved)) return true;
           const permission = await this.runs.requestPermission(actor, run, request);
           // 静默执行已在登记时记为已批准并已消费，不弹卡也不等待人工决定。
           if (permission.automatic) return true;
           try { send(permission); } catch { /* 断线后仍可查询待处理请求。 */ }
           while (!controller.signal.aborted) {
             const decision = await this.runs.consumePermission(actor, run, permission.id, request);
-            if (decision !== 'pending') return decision === 'allow';
+            if (decision !== 'pending') {
+              const allowed = decision === 'allow';
+              // approved=false 时只有网络工具需要询问，这里正好用来判断“是不是网络工具”。
+              if (allowed && !gate && shouldAskNetwork(request.tool, false)) networkApproved = true;
+              return allowed;
+            }
             await new Promise<void>(resolve => {
               const done = () => { clearTimeout(timer); controller.signal.removeEventListener('abort', done); resolve(); };
               const timer = setTimeout(done, 500); controller.signal.addEventListener('abort', done, { once: true });
@@ -56,7 +68,19 @@ export class DatabaseExecution {
           }
           return false;
         });
-        const authorized = authorizeTools(options.tools,async(_tool,args)=>{if(resources)await this.runs.checkResources(actor,run,resources,args);},async(tool,result)=>{
+        const requestAccess: NonNullable<RunAgentOptions['requestAccess']> = async request => {
+          const allowed = await baseAccess(request);
+          if (allowed && request.tool === 'plan') planApproved = true;
+          return allowed;
+        };
+        const authorized = authorizeTools(options.tools,async(tool,args)=>{
+          if(resources)await this.runs.checkResources(actor,run,resources,args);
+          // O-16：确认模式下，只读阶段不打扰；第一个写入/执行动作前确认一次计划，本轮随后不再拦。
+          if(planApproved)return;
+          if(!needsPlanGate(tool))return;
+          const allowed=await requestAccess({tool:'plan',kind:'write',paths:[],effects:['write'],external:false});
+          if(!allowed)throw Error('用户未确认执行计划，本次执行已停止');
+        },async(tool,result)=>{
           if(resources&&tool.name==='propose_schedule'){await this.runs.grantSchedule(actor,run,resources,JSON.parse(result).id);return;}
           if(!resources||!['save_artifact','execute_skill','run_code','browser_visit'].includes(tool.name))return;
           const value=JSON.parse(result);const ids=tool.name==='save_artifact'?[value.id]:(value.artifacts??(value.artifact?[value.artifact]:[])).map((v:{id:string})=>v.id);

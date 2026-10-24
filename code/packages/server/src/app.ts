@@ -24,6 +24,7 @@ import { runCodeTool } from './code-tools.js';
 import { WebTools, browserConfiguration } from './web/tools.js';
 import { workerCommand } from './worker-command.js';
 import { withDirectoryLock } from './directory-lock.js';
+import { transcriptArgs } from './transcript-args.js';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { canonicalPath, pathWithin, requireWithin } from '@workpivot/shared/node';
@@ -101,8 +102,7 @@ interface AuthedRequest extends Request {
   user?: PublicUser;
 }
 
-/** J02 批次4a：任务所有权——所有角色只可访问本人任务；未明确归属的旧任务不可见 */
-function taskVisibleTo(user: PublicUser | null | undefined, t: { ownerUserId?: string; projectId?: string }): boolean {
+/** J02 批次4a：任务所有权——所有角色只可访问本人任务；未明确归属的旧任务不可见 */function taskVisibleTo(user: PublicUser | null | undefined, t: { ownerUserId?: string; projectId?: string }): boolean {
   if (!user) return false;
   if ((user.tenantId ?? 'default') !== tenantId()) return false;
   if (t.ownerUserId !== user.id) return false;
@@ -864,11 +864,15 @@ ${capped}
         onEvent: (event) => {
           send(event);
           if (event.type === 'tool_use') {
-            appendTranscript(task.id, 'tool_use', { toolName: event.toolName, displayName: event.displayName, callId: event.callId, args: event.args });
+            appendTranscript(task.id, 'tool_use', { toolName: event.toolName, displayName: event.displayName, callId: event.callId, args: transcriptArgs(event.args) });
             audit({ user: user?.username, taskId: task.id, event: 'tool_use', tool: event.toolName, argsHash: argsHash(event.args) });
           }
           if (event.type === 'tool_result') {
             appendTranscript(task.id, 'tool_result', { toolName: event.toolName, displayName: event.displayName, callId: event.callId, durationMs: event.durationMs, status: event.status, ok: event.ok, summary: event.message });
+          }
+          // O-05：用量落转写，便于事后核算成本；不进入对话内容。
+          if (event.type === 'usage') {
+            appendTranscript(task.id, 'meta', { event: 'usage', inputTokens: event.inputTokens ?? 0, outputTokens: event.outputTokens ?? 0 });
           }
         },
       });

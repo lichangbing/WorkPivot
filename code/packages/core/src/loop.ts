@@ -9,7 +9,7 @@ import { compactMessages, CONTEXT_CHAR_BUDGET } from './context.js';
 import type { ModelClient, ChatMessage, ToolCall, ToolSchema } from './model/openai.js';
 import type { Tool, ToolContext, ToolAccessRequest } from './tools.js';
 
-export type AgentEventType = 'assistant_delta' | 'reasoning_delta' | 'tool_use' | 'tool_status' | 'tool_result' | 'error' | 'ask_user';
+export type AgentEventType = 'assistant_delta' | 'reasoning_delta' | 'tool_use' | 'tool_status' | 'tool_result' | 'error' | 'ask_user' | 'usage';
 
 export interface AgentEvent {
   displayName?: string;
@@ -29,6 +29,9 @@ export interface AgentEvent {
   question?: string;
   options?: Array<{ label: string; description?: string }>;
   allowFreeText?: boolean;
+  /** 用量事件（type=usage）：整轮累计的输入/输出 token，供成本统计与审计。 */
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
 export type StopReason = 'completed' | 'max_steps' | 'time_limit' | 'aborted' | 'error';
@@ -66,6 +69,8 @@ export interface RunAgentResult {
   messages: ChatMessage[];
   steps: number;
   stopReason: StopReason;
+  /** 本轮累计的供应商用量（O-05）：多次采样求和，用于成本与审计。 */
+  usage: { inputTokens: number; outputTokens: number };
 }
 
 export const MAX_STEPS_DEFAULT = 200;
@@ -111,6 +116,8 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
   let wrapAttempted = false;
   let toolCallCount = 0;
   let idleContinues = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
   const idleLimit = options.idleLimit ?? 1;
   const contextBudget = options.contextBudget ?? CONTEXT_CHAR_BUDGET;
 
@@ -138,6 +145,9 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
           if (event.type === 'delta') {
             finalText += event.text;
             await options.onEvent?.({ type: 'assistant_delta', text: event.text });
+          } else if (event.type === 'usage') {
+            inputTokens += event.inputTokens;
+            outputTokens += event.outputTokens;
           }
         }
         messages.push({ role: 'assistant', content: finalText });
@@ -171,6 +181,9 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
             await options.onEvent?.({ type: 'reasoning_delta', text: event.text });
           } else if (event.type === 'tool_calls') {
             toolCalls = event.tool_calls;
+          } else if (event.type === 'usage') {
+            inputTokens += event.inputTokens;
+            outputTokens += event.outputTokens;
           }
         }
         break;
@@ -291,5 +304,7 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
     if (stopReason === 'aborted') break;
   }
 
-  return { messages, steps, stopReason };
+  // 用量作为独立事件发出，服务层据此写转写与审计（不改变对话内容）。
+  await options.onEvent?.({ type: 'usage', inputTokens, outputTokens });
+  return { messages, steps, stopReason, usage: { inputTokens, outputTokens } };
 }
