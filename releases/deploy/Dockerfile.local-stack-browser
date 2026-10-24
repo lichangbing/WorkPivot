@@ -1,0 +1,29 @@
+# 本地一体化栈的浏览器服务镜像（Playwright + Chromium）
+# 不走 corepack；补拷 apps/mobile/package.json 以匹配 workspace 锁文件。
+FROM mcr.microsoft.com/playwright:v1.64.1-noble
+
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
+
+WORKDIR /app
+
+RUN npm install -g pnpm@11.22.0 --registry=https://registry.npmmirror.com \
+    && pnpm config set registry https://registry.npmmirror.com
+
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY packages/server/package.json packages/server/
+COPY packages/core/package.json packages/core/
+COPY packages/shared/package.json packages/shared/
+COPY apps/web/package.json apps/web/
+COPY apps/desktop/package.json apps/desktop/
+COPY apps/mobile/package.json apps/mobile/
+
+RUN pnpm install --frozen-lockfile --filter workpivot --filter @workpivot/server... --ignore-scripts
+
+COPY packages/server/src/web packages/server/src/web
+COPY scripts/browser-worker.mts scripts/browser-worker.mts
+
+ENV WORKPIVOT_BROWSER_HOST=0.0.0.0 WORKPIVOT_BROWSER_PORT=39991
+
+USER pwuser
+EXPOSE 39991
+CMD ["node", "--import", "tsx", "scripts/browser-worker.mts"]

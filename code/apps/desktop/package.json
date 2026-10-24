@@ -1,6 +1,6 @@
 {
   "name": "@workpivot/desktop",
-  "version": "0.3.0-preview.31",
+  "version": "0.3.0-dev.20261023",
   "private": true,
   "main": "dist/main.js",
   "scripts": {

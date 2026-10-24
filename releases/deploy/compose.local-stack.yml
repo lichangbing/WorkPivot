@@ -1,0 +1,91 @@
+# 本地一体化栈：数据库 + 服务端 + 浏览器服务
+# 由 releases/deploy/install-local-stack.sh 调用；网络是预先创建的外部网络，
+# 因为宿主机 Worker 需要先绑定该网络的网关地址。
+services:
+  database:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: workpivot
+      POSTGRES_USER: workpivot_schema
+      POSTGRES_PASSWORD: ${DATABASE_ADMIN_PASSWORD:?需要数据库管理密码}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    networks: [stack]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U workpivot_schema -d workpivot"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  server:
+    image: ${STACK_SERVER_IMAGE:-workpivot-server:local-stack}
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${STACK_PORT:-39990}:39800"
+    environment:
+      WORKPIVOT_DATABASE_URL: postgresql://workpivot_app:${DATABASE_APP_PASSWORD}@database:5432/workpivot
+      WORKPIVOT_AUTH_DATABASE_URL: postgresql://workpivot_auth:${DATABASE_AUTH_PASSWORD}@database:5432/workpivot
+      WORKPIVOT_ADMIN_INIT_TOKEN: ${WORKPIVOT_ADMIN_INIT_TOKEN}
+      WORKPIVOT_SECRET_KEY: ${WORKPIVOT_SECRET_KEY}
+      WORKPIVOT_DATABASE_FILES_ROOT: /data/files
+      # 浏览器服务：未配置时工具集只有 web_fetch
+      WORKPIVOT_BROWSER_URL: http://browser:39991
+      WORKPIVOT_BROWSER_TOKEN: ${WORKPIVOT_BROWSER_TOKEN:?需要浏览器服务令牌}
+      # Skill 隔离执行服务：Worker 在宿主机，绑定本网络网关地址
+      WORKPIVOT_WORKER_URL: ${WORKPIVOT_WORKER_URL:?需要执行服务地址}
+      WORKPIVOT_WORKER_TOKEN: ${WORKPIVOT_WORKER_TOKEN:?需要执行服务令牌}
+      TZ: Asia/Shanghai
+    volumes:
+      - files:/data/files
+    networks: [stack]
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:rw,nosuid,nodev,size=256m"]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:39800/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # Playwright 浏览器服务：只读根、cap_drop ALL、自定义 seccomp，不暴露到宿主
+  browser:
+    image: ${STACK_BROWSER_IMAGE:-workpivot-browser:local-stack}
+    environment:
+      WORKPIVOT_BROWSER_TOKEN: ${WORKPIVOT_BROWSER_TOKEN:?需要浏览器服务令牌}
+    networks: [stack]
+    init: true
+    read_only: true
+    user: pwuser
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./browser-seccomp.json
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=512m,mode=1777
+      - /home/pwuser:rw,nosuid,nodev,size=64m,uid=1000,gid=1000
+    shm_size: 256m
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 256
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:39991/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+volumes:
+  postgres:
+  files:
+
+networks:
+  stack:
+    external: true
+    name: ${STACK_NETWORK:?需要外部网络名}

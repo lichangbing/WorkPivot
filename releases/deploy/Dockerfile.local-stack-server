@@ -1,0 +1,44 @@
+# 本地一体化栈的服务端镜像（可离线重建，不依赖本机 node_modules 复制）
+# 与 Dockerfile.local-current 的差别：基础镜像用本机已有的 node:22-alpine，
+# 依赖在镜像内按锁文件安装；并且不走 corepack（它会从 registry.npmjs.org 拉 pnpm）。
+FROM node:22-alpine
+
+RUN apk add --no-cache libc6-compat
+
+RUN npm install -g pnpm@11.22.0 --registry=https://registry.npmmirror.com \
+    && pnpm config set registry https://registry.npmmirror.com
+
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1 \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    NODE_ENV=production
+
+WORKDIR /app
+
+# 依赖层：workspace 里所有 importer 的 package.json 都要在，否则 --frozen-lockfile 会判定锁文件不一致
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY packages/server/package.json packages/server/
+COPY packages/core/package.json packages/core/
+COPY packages/shared/package.json packages/shared/
+COPY apps/web/package.json apps/web/
+COPY apps/desktop/package.json apps/desktop/
+COPY apps/mobile/package.json apps/mobile/
+
+RUN pnpm install --frozen-lockfile --network-concurrency=8 --fetch-timeout=180000
+
+# 源码与前端产物
+COPY tsconfig.base.json ./
+COPY packages/ packages/
+COPY apps/web/ apps/web/
+COPY scripts/ scripts/
+
+RUN pnpm --filter @workpivot/web build
+
+# 构建内再执行一次严格许可门禁，防止把黑名单依赖打进发布镜像
+RUN node scripts/check-licenses.mjs --strict
+
+RUN mkdir -p /data/files && chown node:node /data/files
+
+USER node
+EXPOSE 39800
+
+CMD ["./node_modules/.bin/tsx", "scripts/database-server.mts"]

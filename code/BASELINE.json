@@ -1,0 +1,31 @@
+{
+  "purpose": "工具链切换前的代码回退基线。切换开发工具（DSH Desktop + deepseek-flash）时以此为参照点。",
+  "tag": "baseline-20261020-pre-dsh",
+  "commit": "034083f",
+  "commitDate": "2026-10-19T20:53:15+08:00",
+  "recordedOn": "2026-10-22",
+  "schemaVersion": 52,
+  "localDeployment": {
+    "buildId": "r1792413979350",
+    "url": "http://127.0.0.1:39986/",
+    "publicServer": "192.168.1.158 / schema 25（未随 9 月 19 日之后的批次更新）"
+  },
+  "verifiedAtBaseline": {
+    "typecheck": "pass（6 个工程，含 apps/mobile）",
+    "licenseCheck": "pass（825 个依赖，无黑名单命中）",
+    "dependencyBoundary": "pass（719 模块 / 1331 依赖，0 违规）",
+    "webBuild": "pass",
+    "lint": "fail（2312 项，全部来自手机端 Capacitor 生成物；已在基线之后的提交修复）",
+    "databaseRegression": "未在本机执行（需 WSL + PostgreSQL）；文档记录 803 项通过"
+  },
+  "uncommittedAtBaseline": "手机端 M01/M02 及配套改动（apps/mobile、mobile-cors、共用 chat-stream、移动端评测与设计文档）",
+  "rollback": {
+    "code": "git checkout baseline-20261020-pre-dsh",
+    "newWorktree": "git worktree add ../workpivot-baseline baseline-20261020-pre-dsh",
+    "database": "schema 迁移为增量（26→52）；仅代码回退不回滚结构，完整回退须使用发布目录内的数据库与文件备份"
+  },
+  "remotes": {
+    "github": "https://github.com/lichangbing/WorkPivot.git（当前环境无可用凭据）",
+    "origin": "https://git.lichb.cc.cd/lichb/workpivot（返回 HTTP 530）"
+  }
+}
