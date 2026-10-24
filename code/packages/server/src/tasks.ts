@@ -66,13 +66,14 @@ export interface CreateTaskInput {
   ownerUserId?: string;
 }
 
-export function createTask(input: CreateTaskInput): Task {
+/** 只构造任务记录与目录，不持久化——文件链路与 chat 存储共用（R007）。 */
+export function buildTask(input: CreateTaskInput): Task {
   const id = `t-${Date.now()}-${randomUUID().slice(0, 6)}`;
   const dir = input.directory && input.directory.trim() !== ''
     ? join(input.directory)
     : join(workspaceRoot(), `${slugify(input.name)}-${id.slice(-6)}`);
   mkdirSync(dir, { recursive: true });
-  const task: Task = {
+  return {
     id,
     name: input.name,
     directory: dir,
@@ -83,8 +84,17 @@ export function createTask(input: CreateTaskInput): Task {
     ownerUserId: input.ownerUserId,
     tenantId: tenantId(),
   };
-  writeAtomic(taskFile(id), JSON.stringify(task, null, 2));
-  appendLine(join(ensureWorkpivotDir('data', 'sessions'), 'index.jsonl'), JSON.stringify({ ts: task.createdAt, kind: 'task_created', payload: { taskId: id, name: input.name, directory: dir } }));
+}
+
+/** 文件链路持久化（任务元数据 + 会话索引）；chat 模式不再调用它。 */
+export function persistTaskFile(task: Task): void {
+  writeAtomic(taskFile(task.id), JSON.stringify(task, null, 2));
+  appendLine(join(ensureWorkpivotDir('data', 'sessions'), 'index.jsonl'), JSON.stringify({ ts: task.createdAt, kind: 'task_created', payload: { taskId: task.id, name: task.name, directory: task.directory } }));
+}
+
+export function createTask(input: CreateTaskInput): Task {
+  const task = buildTask(input);
+  persistTaskFile(task);
   return task;
 }
 
