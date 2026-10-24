@@ -186,10 +186,10 @@ export function createApp(opts: AppOptions = {}): Express {
 
   const throttle = authThrottle();
   app.post('/api/auth/register', throttle, (req, res) => {
-    const { username, password, initToken } = req.body as { username?: string; password?: string; initToken?: string };
+    const { username, password } = req.body as { username?: string; password?: string };
     if (typeof username !== 'string' || typeof password !== 'string' || !username || !password) return res.status(400).json({ error: 'username/password 必填' });
     try {
-      res.json(registerFirstAdmin(username, password, initToken));
+      res.json(registerFirstAdmin(username, password));
     } catch (err) {
       res.status(403).json({ error: err instanceof Error ? err.message : String(err) });
     }

@@ -4,7 +4,7 @@ import { tenantId, tenantHome, listTenants, withTenant, DEFAULT_TENANT, markFres
  * 首个注册用户自动成为管理员，此后注册关闭、由管理员创建用户（A01 登录门）。
  * 会话令牌持久化（重启免重复登录）；密码 bcrypt 哈希。
  */
-import { randomUUID, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomUUID, randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { join } from 'node:path';
 import { appendLine, ensureWorkpivotDir, readJsonSafe, writeAtomic, writeAtomicWithBackup } from './store.js';
@@ -67,18 +67,12 @@ export function needsSetup(): boolean {
   return loadUsers().users.length === 0;
 }
 
-export function setupTokenRequired(): boolean { return !['127.0.0.1', 'localhost', '::1'].includes(process.env['WORKPIVOT_HOST'] ?? '127.0.0.1'); }
-export function validateInitialization(): void {
-  if (needsSetup() && setupTokenRequired() && (process.env['WORKPIVOT_ADMIN_INIT_TOKEN']?.length ?? 0) < 24) throw new Error('对外监听首启必须配置至少 24 字符的 WORKPIVOT_ADMIN_INIT_TOKEN');
-}
-export function registerFirstAdmin(username: string, password: string, initToken?: string): { token: string; user: PublicUser } {
+/** 首启不再需要初始化凭据：第一个完成注册的账户即为管理员。保留函数以兼容旧调用点。 */
+export function setupTokenRequired(): boolean { return false; }
+export function validateInitialization(): void { /* 不再校验初始化令牌 */ }
+export function registerFirstAdmin(username: string, password: string): { token: string; user: PublicUser } {
   const file = loadUsers();
   if (file.users.length > 0) throw new Error('已有用户存在：注册已关闭，请联系管理员开通账户');
-  if (setupTokenRequired()) {
-    const expected = Buffer.from(process.env['WORKPIVOT_ADMIN_INIT_TOKEN'] ?? '');
-    const supplied = Buffer.from(typeof initToken === 'string' ? initToken.trim() : '');
-    if (expected.length < 24 || expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) throw new Error('初始化凭据无效，请联系部署管理员');
-  }
   return createUserAndToken(file, username, password, 'admin');
 }
 

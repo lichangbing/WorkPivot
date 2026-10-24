@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID, createHash, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import type { Pool, PoolClient } from 'pg';
 import { RepositoryError, transaction, uuid } from './connection.js';
@@ -37,10 +37,9 @@ async function audit(client: PoolClient, actor: string, target: string, action: 
 export class AccountRepository {
   constructor(private readonly db: Pool) {}
   async needsSetup(): Promise<boolean> { return !(await this.db.query('SELECT 1 FROM identity.users LIMIT 1')).rowCount; }
-  async registerFirst(username: string, password: string, supplied: string, expected: string): Promise<{ token: string; user: DatabaseUser }> {
+  async registerFirst(username: string, password: string): Promise<{ token: string; user: DatabaseUser }> {
     const name = usernameValid(username); passwordValid(password);
-    const left = Buffer.from(supplied), right = Buffer.from(expected);
-    if (right.length < 24 || left.length !== right.length || !timingSafeEqual(left, right)) throw new RepositoryError(403, '初始化凭据无效');
+    // 首启不再校验初始化凭据：第一个注册的账户就是管理员。
     const hash = await bcrypt.hash(password, 10);
     return transaction(this.db, async client => {
       await client.query('SELECT pg_advisory_xact_lock(937032)');

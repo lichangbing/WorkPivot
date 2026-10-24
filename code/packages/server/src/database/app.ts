@@ -59,7 +59,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   });
   app.get('/api/auth/state', async (req, res) => { const user = await accounts.resolve(token(req)); res.json({ needsSetup: await accounts.needsSetup(), setupTokenRequired: true, authenticated: !!user, user }); });
   const throttle = authThrottle(() => { /* 数据库预览入口不得持久化旧文件审计。 */ });
-  app.post('/api/auth/register', throttle, async (req, res) => { const b = body(req); res.json(await accounts.registerFirst(str(b.username), str(b.password), str(b.initToken), initToken)); });
+  app.post('/api/auth/register', throttle, async (req, res) => { const b = body(req); res.json(await accounts.registerFirst(str(b.username), str(b.password))); });
   app.post('/api/auth/login', throttle, async (req, res) => { const b = body(req); res.json(await accounts.login(str(b.username), str(b.password))); });
   app.use('/api', async (req, res, next) => {
     const user = await accounts.resolve(token(req));

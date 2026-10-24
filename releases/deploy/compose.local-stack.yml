@@ -4,6 +4,7 @@
 services:
   database:
     image: pgvector/pgvector:pg16
+    container_name: workpivot-database
     environment:
       POSTGRES_DB: workpivot
       POSTGRES_USER: workpivot_schema
@@ -20,6 +21,7 @@ services:
 
   server:
     image: ${STACK_SERVER_IMAGE:-workpivot-server:local-stack}
+    container_name: workpivot-server
     depends_on:
       database:
         condition: service_healthy
@@ -61,6 +63,7 @@ services:
   # Playwright 浏览器服务：只读根、cap_drop ALL、自定义 seccomp，不暴露到宿主
   browser:
     image: ${STACK_BROWSER_IMAGE:-workpivot-browser:local-stack}
+    container_name: workpivot-browser
     environment:
       WORKPIVOT_BROWSER_TOKEN: ${WORKPIVOT_BROWSER_TOKEN:?需要浏览器服务令牌}
     networks: [stack]
@@ -89,6 +92,7 @@ services:
   # 联网搜索：只在内网提供 JSON 接口，不开 html 搜索页，不暴露到宿主
   searxng:
     image: ${SEARXNG_IMAGE:-searxng/searxng:latest}
+    container_name: workpivot-searxng
     environment:
       SEARXNG_BASE_URL: http://searxng:8080/
       SEARXNG_SECRET: ${SEARXNG_SECRET:?需要 SearXNG 会话密钥}
