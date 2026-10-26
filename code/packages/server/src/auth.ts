@@ -70,6 +70,14 @@ export function needsSetup(): boolean {
 /** 首启不再需要初始化凭据：第一个完成注册的账户即为管理员。保留函数以兼容旧调用点。 */
 export function setupTokenRequired(): boolean { return false; }
 export function validateInitialization(): void { /* 不再校验初始化令牌 */ }
+/** 演示自助注册：没有用户时第一个是管理员，之后一律普通成员。 */
+export function registerUser(username: string, password: string): { token: string; user: PublicUser } {
+  const file = loadUsers();
+  const name = username.trim();
+  if (file.users.some((u) => u.username === name)) throw new Error('用户名已存在');
+  return createUserAndToken(file, name, password, file.users.length === 0 ? 'admin' : 'member');
+}
+
 export function registerFirstAdmin(username: string, password: string): { token: string; user: PublicUser } {
   const file = loadUsers();
   if (file.users.length > 0) throw new Error('已有用户存在：注册已关闭，请联系管理员开通账户');

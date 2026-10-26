@@ -57,9 +57,9 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     await appPool.query('SELECT 1'); await authPool.query('SELECT 1');
     res.json({ ok: true, name: 'workpivot', version: '0.3.0-rc.1', releaseStage: 'rc', releaseScope: 'single-user', apiProtocol: API_PROTOCOL, storage: 'postgresql', productionReady: false, chatEnabled: !!execution, filesEnabled: !!files, providersEnabled: !!providers, mcpEnabled: !!mcp });
   });
-  app.get('/api/auth/state', async (req, res) => { const user = await accounts.resolve(token(req)); res.json({ needsSetup: await accounts.needsSetup(), setupTokenRequired: false, authenticated: !!user, user }); });
+  app.get('/api/auth/state', async (req, res) => { const user = await accounts.resolve(token(req)); res.json({ needsSetup: await accounts.needsSetup(), setupTokenRequired: false, authenticated: !!user, user, quota: user ? await accounts.quota(user.id) : null }); });
   const throttle = authThrottle(() => { /* 数据库预览入口不得持久化旧文件审计。 */ });
-  app.post('/api/auth/register', throttle, async (req, res) => { const b = body(req); res.json(await accounts.registerFirst(str(b.username), str(b.password))); });
+  app.post('/api/auth/register', throttle, async (req, res) => { const b = body(req); res.json(await accounts.register(str(b.username), str(b.password))); });
   app.post('/api/auth/login', throttle, async (req, res) => { const b = body(req); res.json(await accounts.login(str(b.username), str(b.password))); });
   app.use('/api', async (req, res, next) => {
     const user = await accounts.resolve(token(req));
@@ -235,6 +235,9 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
       const b = body(req);
       if (b.attachments !== undefined && (!Array.isArray(b.attachments) || b.attachments.some(id => typeof id !== 'string'))) throw new RepositoryError(400, '附件列表无效');
       if (!files && Array.isArray(b.attachments) && b.attachments.length) throw new RepositoryError(400, '后台尚未启用文件上传');
+      // 演示额度：先做一次预检，超额用户即使模型不可用也能得到明确的 429；真正计数在 runs.start 事务里。
+      const quota = await accounts.quota(actor(res).id);
+      if (quota.remaining !== null && quota.remaining <= 0) throw new RepositoryError(429, `演示额度已用完（${quota.limit} 次提问），如需继续请联系管理员开通`);
       const started = await execution.begin(actor(res).id, str(req.params['id']), str(b.content), str(b.requestId), b.attachments as string[] | undefined,b.resourceScope);
       if (!started.execute) { res.status(202).json({ runId: started.run.id, duplicate: true }); return; }
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' }); res.flushHeaders();

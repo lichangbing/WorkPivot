@@ -193,6 +193,16 @@ export class RunRepository {
         await c.query("UPDATE workpivot.task_runs SET context_revoked=true,model_messages='[]' WHERE task_id=$1 AND (resource_scope->>'epoch' IS DISTINCT FROM $2) AND NOT context_revoked",[taskId,resources.epoch]);
         await c.query(`UPDATE workpivot.run_permissions SET state='cancelled',resolved_at=now(),request=${permissionSummarySql} WHERE task_id=$1 AND state IN ('pending','allowed')`,[taskId]);
       }
+      // 演示额度：只对真正新建的轮次计数（重复请求在前面已返回），与建 run 同事务。
+      const quota = await c.query(
+        'UPDATE identity.users SET messages_used=messages_used+1 WHERE id=$1 AND NOT platform_admin AND message_quota>0 AND messages_used<message_quota RETURNING message_quota-messages_used AS remaining',
+        [actor],
+      );
+      if (!quota.rowCount) {
+        const me = (await c.query('SELECT platform_admin,message_quota,messages_used FROM identity.users WHERE id=$1', [actor])).rows[0];
+        if (!me) throw new RepositoryError(401, '账号不存在');
+        if (!me.platform_admin && Number(me.message_quota) > 0) throw new RepositoryError(429, `演示额度已用完（${me.message_quota} 次），如需继续请联系管理员开通`);
+      }
       const run: RunHandle = { id: randomUUID(), taskId, turnId: randomUUID(), fence: randomUUID(), duplicate: false };
       // R006 P1：上一轮被中断时，把它的检查点作为本轮基础上下文（已补齐结果未知的调用），
       // 用户重发"继续"即可接着做；预算按剩余步数继承，不重置。

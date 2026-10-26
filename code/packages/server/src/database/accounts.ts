@@ -34,9 +34,56 @@ async function audit(client: PoolClient, actor: string, target: string, action: 
   await client.query('INSERT INTO identity.audit_events(actor_id,target_id,action) VALUES($1,$2,$3)', [actor, target, action]);
 }
 
+/** 演示额度判定（纯函数，便于单测边界）：platform_admin 或 quota=0 视为不限。 */
+export function quotaDecision(row: { platform_admin: boolean; message_quota: number | string; messages_used: number | string }): { unlimited: boolean; remaining: number | null } {
+  const limit = Number(row.message_quota);
+  const used = Number(row.messages_used);
+  if (row.platform_admin || limit === 0) return { unlimited: true, remaining: null };
+  return { unlimited: false, remaining: Math.max(0, limit - used) };
+}
+
 export class AccountRepository {
   constructor(private readonly db: Pool) {}
   async needsSetup(): Promise<boolean> { return !(await this.db.query('SELECT 1 FROM identity.users LIMIT 1')).rowCount; }
+  /** 演示自助注册：没有用户时第一个仍是管理员，之后一律普通成员。 */
+  async register(username: string, password: string): Promise<{ token: string; user: DatabaseUser }> {
+    const name = usernameValid(username); passwordValid(password);
+    const hash = await bcrypt.hash(password, 10);
+    return transaction(this.db, async client => {
+      await client.query('SELECT pg_advisory_xact_lock(937032)');
+      const first = !(await client.query('SELECT 1 FROM identity.users LIMIT 1')).rowCount;
+      const id = randomUUID();
+      await client.query(
+        'INSERT INTO identity.users(id,username,username_key,role,platform_admin) VALUES($1,$2,$3,$4,$5)',
+        [id, name, name.toLowerCase(), first ? 'admin' : 'member', first],
+      );
+      await client.query('INSERT INTO identity.credentials(user_id,password_hash) VALUES($1,$2)', [id, hash]);
+      await audit(client, id, id, first ? 'first_admin_created' : 'user_registered');
+      return { token: await issue(client, id, 1), user: { id, username: name, role: first ? 'admin' : 'member', platformAdmin: first, mustChangePassword: false } };
+    });
+  }
+
+  /** 演示额度：消费一次用户消息；返回剩余次数（null 表示不限）。 */
+  async consumeMessageQuota(actor: string): Promise<number | null> {
+    const updated = await this.db.query(
+      'UPDATE identity.users SET messages_used=messages_used+1 WHERE id=$1 AND NOT platform_admin AND message_quota>0 AND messages_used<message_quota RETURNING message_quota-messages_used AS remaining',
+      [actor],
+    );
+    if (updated.rowCount) return Number(updated.rows[0].remaining);
+    const row = (await this.db.query('SELECT platform_admin,message_quota,messages_used FROM identity.users WHERE id=$1', [actor])).rows[0];
+    if (!row) throw new RepositoryError(401, '账号不存在');
+    if (row.platform_admin || Number(row.message_quota) === 0) return null;
+    throw new RepositoryError(429, `演示额度已用完（${row.message_quota} 次），请联系管理员开通`);
+  }
+
+  /** 当前额度状态，供前端展示与禁用输入。 */
+  async quota(actor: string): Promise<{ used: number; limit: number; remaining: number | null }> {
+    const row = (await this.db.query('SELECT platform_admin,message_quota,messages_used FROM identity.users WHERE id=$1', [actor])).rows[0];
+    if (!row) throw new RepositoryError(401, '账号不存在');
+    const decision = quotaDecision(row);
+    return { used: Number(row.messages_used), limit: Number(row.message_quota), remaining: decision.remaining };
+  }
+
   async registerFirst(username: string, password: string): Promise<{ token: string; user: DatabaseUser }> {
     const name = usernameValid(username); passwordValid(password);
     // 首启不再校验初始化凭据：第一个注册的账户就是管理员。

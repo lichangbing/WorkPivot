@@ -52,7 +52,7 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   needsSetup,
-  registerFirstAdmin,
+  registerUser,
   setupTokenRequired,
   loginAccount as authLogin,
   resolveToken,
@@ -189,7 +189,7 @@ export function createApp(opts: AppOptions = {}): Express {
     const { username, password } = req.body as { username?: string; password?: string };
     if (typeof username !== 'string' || typeof password !== 'string' || !username || !password) return res.status(400).json({ error: 'username/password 必填' });
     try {
-      res.json(registerFirstAdmin(username, password));
+      res.json(registerUser(username, password));
     } catch (err) {
       res.status(403).json({ error: err instanceof Error ? err.message : String(err) });
     }

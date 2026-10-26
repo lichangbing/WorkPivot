@@ -506,5 +506,9 @@ CREATE POLICY personal_dispatches ON workpivot.tool_dispatches USING(owner_user_
 CREATE INDEX tool_dispatches_open ON workpivot.tool_dispatches(run_id) WHERE status='dispatched';
 `}, {version:55,sql:`
 ALTER TABLE workpivot.tasks ADD COLUMN resume_attempts integer NOT NULL DEFAULT 0 CHECK(resume_attempts>=0);
+`}, {version:56,sql:`
+-- 演示额度：每个注册用户默认 10 次用户消息；platform_admin 与 quota=0 视为不限。
+ALTER TABLE identity.users ADD COLUMN message_quota integer NOT NULL DEFAULT 10 CHECK(message_quota>=0);
+ALTER TABLE identity.users ADD COLUMN messages_used integer NOT NULL DEFAULT 0 CHECK(messages_used>=0);
 `}] as const;
 import { usageSchema } from './usage-schema.js';

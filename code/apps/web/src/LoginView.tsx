@@ -13,7 +13,8 @@ interface Props {
 export function LoginView({ needsSetup, onAuthed }: Props): React.JSX.Element {
   const [serverUrl, setServerUrl] = useState(location.origin);
   const changingServer = Boolean(window.workpivotDesktop && serverUrl.trim().replace(/\/$/, '') !== location.origin);
-  const mode: 'login' | 'register' = needsSetup && !changingServer ? 'register' : 'login';
+  const [wantRegister, setWantRegister] = useState(false);
+  const mode: 'login' | 'register' = (needsSetup && !changingServer) || wantRegister ? 'register' : 'login';
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +48,7 @@ export function LoginView({ needsSetup, onAuthed }: Props): React.JSX.Element {
         <div className="mb-4"><ThemeSwitch /></div>
         <h1 className="mb-1 text-xl font-semibold">WorkPivot</h1>
         <p className="mb-5 text-xs text-neutral-500">
-          {mode === 'register' ? '首次使用：注册的第一个账户自动成为管理员' : '登录以继续'}
+          {mode === 'register' ? (needsSetup ? '首次使用：注册的第一个账户自动成为管理员' : '注册演示账号：每个账号 10 次提问额度') : '登录以继续'}
         </p>
 
         <div className="space-y-3 text-sm">
@@ -75,8 +76,18 @@ export function LoginView({ needsSetup, onAuthed }: Props): React.JSX.Element {
             disabled={busy || username.trim() === '' || password === ''}
             onClick={() => void submit()}
           >
-            {busy ? '正在连接…' : mode === 'register' ? '注册管理员' : '登录'}
+            {busy ? '正在连接…' : mode === 'register' ? (needsSetup ? '注册管理员' : '注册并进入') : '登录'}
           </button>
+          {!needsSetup && (
+            <button
+              type="button"
+              className="w-full text-center text-xs text-neutral-400 underline-offset-2 hover:text-neutral-200 hover:underline"
+              disabled={busy}
+              onClick={() => { setError(null); setWantRegister(!wantRegister); }}
+            >
+              {mode === 'register' ? '已有账号？去登录' : '注册演示账号（10 次提问额度）'}
+            </button>
+          )}
         </div>
       </div>
     </div>

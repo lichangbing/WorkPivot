@@ -133,10 +133,10 @@ export const api = {
   listPathGrants: (): Promise<{ grants: Array<{ id: string; userId: string; taskId: string; path: string; mode: 'read' | 'write'; subtree: boolean; createdAt: string }> }> => jsonFetch('/api/permissions/allowdirs'),
   revokePathGrant: (id: string): Promise<{ ok: boolean }> => jsonFetch(`/api/permissions/allowdirs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   health: (): Promise<{ ok: boolean }> => jsonFetch('/api/health'),
-  authState: (): Promise<{ needsSetup: boolean; setupTokenRequired: boolean; authenticated: boolean; user: PublicUser | null }> =>
+  authState: (): Promise<{ needsSetup: boolean; setupTokenRequired: boolean; authenticated: boolean; user: PublicUser | null; quota?: { used: number; limit: number; remaining: number | null } | null }> =>
     jsonFetch('/api/auth/state'),
-  register: (username: string, password: string, initToken?: string): Promise<{ token: string; user: PublicUser }> =>
-    jsonFetch('/api/auth/register', { method: 'POST', body: JSON.stringify({ username, password, initToken }) }),
+  register: (username: string, password: string): Promise<{ token: string; user: PublicUser }> =>
+    jsonFetch('/api/auth/register', { method: 'POST', body: JSON.stringify({ username, password }) }),
   login: (username: string, password: string): Promise<{ token: string; user: PublicUser }> =>
     jsonFetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   logout: (): Promise<{ ok: boolean }> => jsonFetch('/api/auth/logout', { method: 'POST' }),

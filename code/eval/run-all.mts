@@ -44,6 +44,7 @@ const suites: Array<[string, string]> = [
   ['R007', 'eval/chat-store.mts'],
   ['R007b', 'eval/chat-tasks.mts'],
   ['R007c', 'eval/task-cache.mts'],
+  ['DEMO', 'eval/demo-quota.mts'],
 ];
 // 这些套件用于历史设计比较，不计入当前验收：
 // 其前提是共享账号数据、管理员代执行及进程内命令执行。

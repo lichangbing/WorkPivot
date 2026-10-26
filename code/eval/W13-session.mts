@@ -36,11 +36,10 @@ try {
   assert('RL3-03 再次读取仍报错不归零', await rejected(() => readJsonSafe(path, {})));
   process.env['WORKPIVOT_HOST'] = '0.0.0.0';
   delete process.env['WORKPIVOT_ADMIN_INIT_TOKEN'];
-  assert('RL3-02 对外首启缺初始化凭据拒绝启动', await rejected(() => startServer({ port: 40023 })));
-  process.env['WORKPIVOT_ADMIN_INIT_TOKEN'] = 'fixture-initialization-token-123456';
-  assert('RL3-02 首管理员注册缺凭据被拒', (await api('/api/auth/register', '', { username: 'admin', password: 'session-test-123' })).status === 403);
-  const adminResponse = await api('/api/auth/register', '', { username: 'admin', password: 'session-test-123', initToken: '  fixture-initialization-token-123456\n' });
-  assert('RL3-02 初始化凭据前后空白不影响首管理员注册', adminResponse.status === 200);
+  const adminResponse = await api('/api/auth/register', '', { username: 'admin', password: 'session-test-123' });
+  assert('RL3-02 首个注册账户免初始化凭据成为管理员', adminResponse.status === 200 && adminResponse.data.user.role === 'admin');
+  const secondResponse = await api('/api/auth/register', '', { username: 'second', password: 'session-test-123' });
+  assert('RL3-02 后续自助注册为普通成员', secondResponse.status === 200 && secondResponse.data.user.role === 'member');
   const admin = adminResponse.data;
   process.env['WORKPIVOT_HOST'] = '127.0.0.1';
   const memberId = (await api('/api/users', admin.token, { username: 'member', password: 'session-test-123', role: 'member' })).data.user.id;
