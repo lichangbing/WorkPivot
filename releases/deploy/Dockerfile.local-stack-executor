@@ -7,9 +7,14 @@ ARG BASE_IMAGE=workpivot-server:local-stack
 FROM ${BASE_IMAGE}
 
 ARG WITH_OFFICE_CONVERT=0
+# 国内访问 dl-cdn.alpinelinux.org 很慢时，可传 --build-arg APK_MIRROR=https://mirrors.aliyun.com/alpine
+ARG APK_MIRROR=
 
 USER root
-RUN apk add --no-cache \
+RUN if [ -n "$APK_MIRROR" ]; then \
+      sed -i "s#https://dl-cdn.alpinelinux.org/alpine#${APK_MIRROR}#g" /etc/apk/repositories; \
+    fi \
+    && apk add --no-cache \
         python3 py3-pillow poppler-utils \
         tesseract-ocr tesseract-ocr-data-eng tesseract-ocr-data-chi_sim \
     && if [ "$WITH_OFFICE_CONVERT" = "1" ]; then \
