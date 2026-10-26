@@ -1,4 +1,5 @@
 import './theme';
+import './crypto-compat';
 /** React 入口：挂载 App（T1-01 脚手架）。 */
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';

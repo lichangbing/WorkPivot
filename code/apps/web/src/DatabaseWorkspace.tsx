@@ -292,7 +292,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
       if (epoch === generation.current) { setInput(''); setAttachmentIds([]); setAttachmentBlocked(false); setAttachmentEpoch(v => v + 1); }
       if (response.status !== 202 && response.body) await readChatStream(response.body, () => { /* 只使用持久化追赶结果展示，避免流内容重复。 */ }, controller.signal);
     } catch (e) { if (epoch === generation.current) setError(errorText(e)); }
-    finally { streams.current.delete(controller); setSending(false); void refreshTasks().catch(() => {}); }
+    finally { streams.current.delete(controller); setSending(false); void refreshTasks().catch(() => {}); reloadAuth(); }
   };
   const decide = async (id: string, decision: 'allow' | 'deny') => {
     const taskId = active, epoch = generation.current;

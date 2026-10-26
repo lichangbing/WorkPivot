@@ -1,4 +1,5 @@
 import '../theme';
+import '../crypto-compat';
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import AdminApp from './AdminApp';
