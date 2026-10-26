@@ -510,5 +510,10 @@ ALTER TABLE workpivot.tasks ADD COLUMN resume_attempts integer NOT NULL DEFAULT 
 -- 演示额度：每个注册用户默认 10 次用户消息；platform_admin 与 quota=0 视为不限。
 ALTER TABLE identity.users ADD COLUMN message_quota integer NOT NULL DEFAULT 10 CHECK(message_quota>=0);
 ALTER TABLE identity.users ADD COLUMN messages_used integer NOT NULL DEFAULT 0 CHECK(messages_used>=0);
+`}, {version:57,sql:`
+-- 演示额度的计数发生在工作区事务里（runs.start），运行角色需要能读写这几列；
+-- 只授列级权限，不放开 identity.users 的其他字段。
+GRANT USAGE ON SCHEMA identity TO workpivot_app;
+GRANT SELECT(id,platform_admin,message_quota,messages_used), UPDATE(messages_used) ON identity.users TO workpivot_app;
 `}] as const;
 import { usageSchema } from './usage-schema.js';

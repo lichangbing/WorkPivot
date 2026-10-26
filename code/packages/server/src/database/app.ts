@@ -343,6 +343,8 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     if (code === '23505') { res.status(409).json({ error: '记录已存在或操作冲突' }); return; }
     if ((error as { type?: string })?.type === 'entity.parse.failed') { res.status(400).json({ error: '请求内容无效' }); return; }
     if ((error as { type?: string })?.type === 'entity.too.large') { res.status(413).json({ error: '上传内容超出大小限制' }); return; }
+    // 未归类的异常必须落到日志，否则线上只能看到笼统的 503。
+    console.error('[request]', _req.method, _req.originalUrl, error);
     res.status(503).json({ error: '数据库操作暂不可用，请稍后重试' });
   });
   return app;
