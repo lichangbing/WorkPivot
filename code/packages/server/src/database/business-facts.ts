@@ -306,8 +306,10 @@ export class BusinessFactsRepository {
       if (!valid.rowCount) throw new RepositoryError(409, '事实证据不属于当前项目');
     }
     if (sourceValue.sourceDocumentVersionId) {
-      const valid = await c.query(`SELECT 1 FROM workpivot.document_versions dv JOIN workpivot.documents d ON d.id=dv.document_id
-        WHERE dv.id=$1 AND d.project_id=$2 AND d.deleted_at IS NULL`, [sourceValue.sourceDocumentVersionId, projectId]);
+      const valid = await c.query(`SELECT 1 FROM workpivot.document_versions dv
+        JOIN workpivot.documents d ON d.id=dv.document_id
+        JOIN workpivot.tasks t ON t.id=d.task_id
+        WHERE dv.id=$1 AND t.project_id=$2 AND t.deleted_at IS NULL`, [sourceValue.sourceDocumentVersionId, projectId]);
       if (!valid.rowCount) throw new RepositoryError(409, '事实证据文档不属于当前项目');
     }
     await c.query(`INSERT INTO workpivot.business_fact_evidence(id,owner_user_id,project_id,fact_revision_id,relation_revision_id,source_kind,source_event_id,source_document_version_id,quote,source_hash,observed_at)
@@ -388,7 +390,7 @@ export class BusinessFactsRepository {
       [revisionId, projectId, seriesId, nextRevision, value.valueType, value.valueText, value.valueNumber, value.valueDate, value.valueBoolean,
         value.valueObjectId, value.valueJson, value.unit, value.currency, factSource.kind === 'conversation' ? 'auto' : 'manual',
         validFrom, object.modelKey, object.modelVersion, factSource.kind, factSource.kind === 'conversation' ? 'auto' : 'user']);
-      await c.query(`UPDATE workpivot.business_fact_series SET current_revision_id=$3,status='active',updated_at=now() WHERE project_id=$1 AND id=$2`, [projectId, seriesId, revisionId]);
+      await c.query(`UPDATE workpivot.business_fact_series SET current_revision_id=$3,status='active',needs_review=false,updated_at=now() WHERE project_id=$1 AND id=$2`, [projectId, seriesId, revisionId]);
       await this.evidence(c, projectId, factSource, revisionId, null);
       return { status: 'active', factId: seriesId, revisionId, revision: nextRevision, created: true };
     }, actor);
@@ -420,7 +422,7 @@ export class BusinessFactsRepository {
         VALUES($1,workpivot.actor_id(),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'active','manual',1,$14,$15,$16,$17,'manual','user')`,
       [revisionId, projectId, factId, revision, value.valueType, value.valueText, value.valueNumber, value.valueDate, value.valueBoolean,
         value.valueObjectId, value.valueJson, value.unit, value.currency, validFrom, current.id, series.modelKey, series.modelVersion]);
-      await c.query(`UPDATE workpivot.business_fact_series SET current_revision_id=$3,status='active',updated_at=now() WHERE project_id=$1 AND id=$2`, [projectId, factId, revisionId]);
+      await c.query(`UPDATE workpivot.business_fact_series SET current_revision_id=$3,status='active',needs_review=false,updated_at=now() WHERE project_id=$1 AND id=$2`, [projectId, factId, revisionId]);
       await c.query(`UPDATE workpivot.business_fact_conflict SET status='stale',resolved_at=now(),resolved_by=workpivot.actor_id() WHERE project_id=$1 AND series_id=$2 AND status='pending'`, [projectId, factId]);
       await this.evidence(c, projectId, { kind: 'manual' }, revisionId, null);
       return { factId, revisionId, revision };
@@ -443,21 +445,25 @@ export class BusinessFactsRepository {
       const target = await this.object(c, actor, projectId, modelKey, input.object);
       if (subject.id === target.id) throw new RepositoryError(400, '业务关系不能指向对象自身');
       const key = hash([subject.id, relationType, target.id]);
-      const existing = (await c.query(`SELECT id,status,current_revision_id AS "revisionId" FROM workpivot.business_relation_series
+      const existing = (await c.query(`SELECT id,status,current_revision_id AS "revisionId",needs_review AS "needsReview" FROM workpivot.business_relation_series
         WHERE project_id=$1 AND relation_key=$2 FOR UPDATE`, [projectId, key])).rows[0];
-      if (existing?.status === 'active') return { relationId: existing.id, revisionId: existing.revisionId, created: false };
+      if (existing?.status === 'active' && !existing.needsReview) return { relationId: existing.id, revisionId: existing.revisionId, created: false };
       const relationId = randomUUID(), revisionId = randomUUID();
       if (!existing) {
         await c.query(`INSERT INTO workpivot.business_relation_series(id,owner_user_id,project_id,subject_object_id,relation_type,object_object_id,relation_key)
           VALUES($1,workpivot.actor_id(),$2,$3,$4,$5,$6)`, [relationId, projectId, subject.id, relationType, target.id, key]);
       }
       const targetRelationId = existing?.id ?? relationId;
+      if (existing?.status === 'active' && existing.needsReview) {
+        await c.query(`UPDATE workpivot.business_relation_revision SET status='superseded',valid_to=now(),retired_at=now()
+          WHERE id=$1 AND project_id=$2 AND status='active'`, [existing.revisionId, projectId]);
+      }
       const revision = Number((await c.query('SELECT COALESCE(max(revision),0)+1 AS revision FROM workpivot.business_relation_revision WHERE project_id=$1 AND series_id=$2', [projectId, targetRelationId])).rows[0].revision);
       await c.query(`INSERT INTO workpivot.business_relation_revision(id,owner_user_id,project_id,series_id,revision,status,authority,confidence,valid_from,model_key,model_version,extractor_version,created_by)
         VALUES($1,workpivot.actor_id(),$2,$3,$4,'active',$5,1,$6,$7,$8,$9,$10)`,
       [revisionId, projectId, targetRelationId, revision, relationSource.kind === 'conversation' ? 'auto' : 'manual', validFrom,
         subject.modelKey, subject.modelVersion, relationSource.kind, relationSource.kind === 'conversation' ? 'auto' : 'user']);
-      await c.query(`UPDATE workpivot.business_relation_series SET current_revision_id=$3,status='active',updated_at=now() WHERE project_id=$1 AND id=$2`, [projectId, targetRelationId, revisionId]);
+      await c.query(`UPDATE workpivot.business_relation_series SET current_revision_id=$3,status='active',needs_review=false,updated_at=now() WHERE project_id=$1 AND id=$2`, [projectId, targetRelationId, revisionId]);
       await this.evidence(c, projectId, relationSource, null, revisionId);
       return { relationId: targetRelationId, revisionId, revision, created: true };
     }, actor);
@@ -496,7 +502,7 @@ export class BusinessFactsRepository {
         await c.query(`UPDATE workpivot.business_fact_revision SET status='superseded',valid_to=$3,retired_at=now()
           WHERE id=$1 AND project_id=$2 AND status='active'`, [conflict.currentRevisionId, projectId, candidate.valid_from]);
         await c.query(`UPDATE workpivot.business_fact_revision SET status='active' WHERE id=$1 AND project_id=$2 AND status='candidate'`, [conflict.candidateRevisionId, projectId]);
-        await c.query(`UPDATE workpivot.business_fact_series SET status='active',current_revision_id=$3,updated_at=now() WHERE project_id=$1 AND id=$2`, [projectId, conflict.seriesId, conflict.candidateRevisionId]);
+        await c.query(`UPDATE workpivot.business_fact_series SET status='active',current_revision_id=$3,needs_review=false,updated_at=now() WHERE project_id=$1 AND id=$2`, [projectId, conflict.seriesId, conflict.candidateRevisionId]);
         await c.query(`UPDATE workpivot.business_fact_conflict SET status='accepted',resolved_at=now(),resolved_by=workpivot.actor_id(),revision=revision+1 WHERE id=$1`, [conflictId]);
       } else {
         await c.query(`UPDATE workpivot.business_fact_revision SET status='rejected',retired_at=now() WHERE id=$1 AND project_id=$2 AND status='candidate'`, [conflict.candidateRevisionId, projectId]);
@@ -527,7 +533,7 @@ export class BusinessFactsRepository {
       o.canonical_name AS "objectName",s.predicate,s.dimensions_json AS dimensions,s.status,r.id AS "revisionId",r.revision,
       r.value_type AS "valueType",r.value_text AS "valueText",r.value_number::text AS "valueNumber",r.value_date AS "valueDate",
       r.value_boolean AS "valueBoolean",r.value_object_id AS "valueObjectId",r.value_json AS "valueJson",r.unit,r.currency,
-      r.valid_from AS "validFrom",r.valid_to AS "validTo",r.recorded_at AS "recordedAt",r.authority,r.confidence
+      r.valid_from AS "validFrom",r.valid_to AS "validTo",r.recorded_at AS "recordedAt",r.authority,r.confidence,s.needs_review AS "needsReview"
       FROM workpivot.business_fact_series s JOIN workpivot.business_object o ON o.id=s.subject_object_id AND o.project_id=s.project_id
       LEFT JOIN workpivot.business_fact_revision r ON r.id=s.current_revision_id AND r.project_id=s.project_id AND r.status='active'
       ${where}`;
@@ -561,8 +567,9 @@ export class BusinessFactsRepository {
         JOIN workpivot.business_fact_revision candidate ON candidate.id=c.candidate_revision_id AND candidate.project_id=c.project_id
         WHERE c.project_id=$1 AND c.status='pending' ORDER BY c.created_at,c.id LIMIT 20`, [projectId])).rows;
       const relations = (await c.query(`SELECT rs.id,rs.subject_object_id AS "subjectId",subject.canonical_name AS "subjectName",
-        rs.relation_type AS "relationType",rs.object_object_id AS "objectId",object_object.canonical_name AS "objectName",
-        rr.revision,rr.valid_from AS "validFrom"
+        subject.object_type AS "subjectType",rs.relation_type AS "relationType",
+        rs.object_object_id AS "objectId",object_object.canonical_name AS "objectName",object_object.object_type AS "objectType",
+        rr.revision,rr.valid_from AS "validFrom",rs.needs_review AS "needsReview"
         FROM workpivot.business_relation_series rs
         JOIN workpivot.business_object subject ON subject.id=rs.subject_object_id AND subject.project_id=rs.project_id
         JOIN workpivot.business_object object_object ON object_object.id=rs.object_object_id AND object_object.project_id=rs.project_id
@@ -579,7 +586,7 @@ export class BusinessFactsRepository {
     uuid(factId);
     return transaction(this.db, async c => {
       await this.ensureProject(c, projectId);
-      const series = (await c.query(`SELECT s.id,s.predicate,s.status,o.canonical_name AS "objectName",o.object_type AS "objectType"
+      const series = (await c.query(`SELECT s.id,s.predicate,s.status,s.needs_review AS "needsReview",o.canonical_name AS "objectName",o.object_type AS "objectType"
         FROM workpivot.business_fact_series s JOIN workpivot.business_object o ON o.id=s.subject_object_id AND o.project_id=s.project_id
         WHERE s.project_id=$1 AND s.id=$2 AND s.status<>'forgotten'`, [projectId, factId])).rows[0];
       if (!series) throw new RepositoryError(404, '业务事实不存在');
@@ -633,7 +640,7 @@ export class BusinessFactsRepository {
             AND ($5::timestamptz IS NULL OR (candidate.valid_from<=$5 AND (candidate.valid_to IS NULL OR candidate.valid_to>$5)))
           ORDER BY candidate.recorded_at DESC,candidate.revision DESC LIMIT 1
         ) r ON true
-        WHERE s.project_id=$1 AND o.status='active' AND ($3::boolean OR s.status='active')
+        WHERE s.project_id=$1 AND o.status='active' AND ($3::boolean OR (s.status='active' AND NOT s.needs_review))
           AND ($6::text IS NULL OR o.object_type=$6)
           AND (cardinality($2::text[])=0 OR EXISTS(SELECT 1 FROM unnest($2::text[]) AS q(term) WHERE
             position(term in lower(o.canonical_name))>0 OR position(term in lower(s.predicate))>0
@@ -652,7 +659,7 @@ export class BusinessFactsRepository {
         JOIN workpivot.business_object subject ON subject.id=rs.subject_object_id AND subject.project_id=rs.project_id
         JOIN workpivot.business_object object_object ON object_object.id=rs.object_object_id AND object_object.project_id=rs.project_id
         JOIN workpivot.business_relation_revision rr ON rr.id=rs.current_revision_id AND rr.project_id=rs.project_id AND rr.status='active'
-        WHERE rs.project_id=$1 AND rs.status='active' AND (cardinality($2::text[])=0 OR EXISTS(
+        WHERE rs.project_id=$1 AND rs.status='active' AND NOT rs.needs_review AND (cardinality($2::text[])=0 OR EXISTS(
           SELECT 1 FROM unnest($2::text[]) AS q(term) WHERE position(term in lower(subject.canonical_name||' '||rs.relation_type||' '||object_object.canonical_name))>0))
         ORDER BY subject.canonical_name,rs.relation_type LIMIT 20`, [projectId, terms])).rows;
       const epoch = String((await c.query('SELECT revision::text FROM workpivot.business_fact_epoch WHERE owner_user_id=workpivot.actor_id() AND project_id=$1', [projectId])).rows[0]?.revision ?? '0');
@@ -686,14 +693,14 @@ export class BusinessFactsRepository {
           UNION ALL
           SELECT CASE WHEN r.subject_object_id=w.object_id THEN r.object_object_id ELSE r.subject_object_id END,
             w.depth+1,w.path||CASE WHEN r.subject_object_id=w.object_id THEN r.object_object_id ELSE r.subject_object_id END
-          FROM walk w JOIN workpivot.business_relation_series r ON r.project_id=$2 AND r.status='active'
+          FROM walk w JOIN workpivot.business_relation_series r ON r.project_id=$2 AND r.status='active' AND NOT r.needs_review
             AND (r.subject_object_id=w.object_id OR r.object_object_id=w.object_id)
           WHERE w.depth<$3 AND NOT (CASE WHEN r.subject_object_id=w.object_id THEN r.object_object_id ELSE r.subject_object_id END=ANY(w.path))
         )
         SELECT rs.id,rs.subject_object_id AS "subjectId",subject.canonical_name AS "subjectName",rs.relation_type AS "relationType",
           rs.object_object_id AS "objectId",object_object.canonical_name AS "objectName",rr.revision
         FROM walk w
-        JOIN workpivot.business_relation_series rs ON rs.project_id=$2 AND rs.status='active' AND (rs.subject_object_id=w.object_id OR rs.object_object_id=w.object_id)
+        JOIN workpivot.business_relation_series rs ON rs.project_id=$2 AND rs.status='active' AND NOT rs.needs_review AND (rs.subject_object_id=w.object_id OR rs.object_object_id=w.object_id)
         JOIN workpivot.business_object subject ON subject.id=rs.subject_object_id AND subject.project_id=rs.project_id
         JOIN workpivot.business_object object_object ON object_object.id=rs.object_object_id AND object_object.project_id=rs.project_id
         JOIN workpivot.business_relation_revision rr ON rr.id=rs.current_revision_id AND rr.project_id=rs.project_id AND rr.status='active'

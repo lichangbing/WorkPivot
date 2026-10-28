@@ -8,17 +8,33 @@ import type {Pool} from 'pg';
 import {FileRepository} from '../packages/server/src/database/files.js';
 import {WorkspaceRepository} from '../packages/server/src/database/workspace.js';
 import {KnowledgeRepository,splitKnowledge} from '../packages/server/src/database/knowledge.js';
+import {KnowledgeIngestionRepository} from '../packages/server/src/database/knowledge-ingestion.js';
 import {RunRepository} from '../packages/server/src/database/runs.js';
 import {transaction} from '../packages/server/src/database/connection.js';
+import {BusinessFactsRepository} from '../packages/server/src/database/business-facts.js';
+import {DatabaseMemoryTools} from '../packages/server/src/database/memory-tools.js';
 export async function testKnowledge(db:Pool,actor:string,foreign:string,check:(ok:unknown,label:string)=>void){
- const root=await mkdtemp(join(tmpdir(),'wp-knowledge-')),files=new FileRepository(db,root),workspace=new WorkspaceRepository(db),knowledge=new KnowledgeRepository(db),runs=new RunRepository(db);
+ const root=await mkdtemp(join(tmpdir(),'wp-knowledge-')),files=new FileRepository(db,root),workspace=new WorkspaceRepository(db),knowledge=new KnowledgeRepository(db),ingestion=new KnowledgeIngestionRepository(db),runs=new RunRepository(db),facts=new BusinessFactsRepository(db);
  const project=await workspace.createProject(actor,'Knowledge project'),otherProject=await workspace.createProject(actor,'Other project');
- const source=await workspace.createTask(actor,'Source',project.id),reader=await workspace.createTask(actor,'Reader',project.id),outside=await workspace.createTask(actor,'Outside',otherProject.id),privateTask=await workspace.createTask(foreign,'Private');
- const publish=async(owner:string,versionId:string,text:string)=>{await transaction(db,c=>c.query("UPDATE workpivot.document_processing SET status='completed',parts=$2::jsonb,parser_fingerprint=$3 WHERE version_id=$1",[versionId,JSON.stringify([{location:'page:2',text}]),parserFingerprint]),owner);await knowledge.indexNext(owner);};
+ const source=await workspace.createTask(actor,'Source',project.id),reader=await workspace.createTask(actor,'Reader',project.id),outside=await workspace.createTask(actor,'Outside',otherProject.id),foreignProject=await workspace.createProject(foreign,'Foreign project'),privateTask=await workspace.createTask(foreign,'Private',foreignProject.id);
+ const publish=async(owner:string,taskId:string,versionId:string,text:string)=>{
+  await transaction(db,c=>c.query("UPDATE workpivot.document_processing SET status='completed',parts=$2::jsonb,parser_fingerprint=$3 WHERE version_id=$1",[versionId,JSON.stringify([{location:'page:2',text}]),parserFingerprint]),owner);
+  const candidates=await ingestion.candidates(owner,taskId,versionId);
+  await ingestion.confirm(owner,taskId,versionId,candidates.revision,candidates.candidates.map(row=>row.ordinal));
+ };
  try{
  const split=splitKnowledge([{location:'page:1',text:'😀'.repeat(2500)}]);check(split.length===3&&Array.from(split[0]!.content).length===1200&&split[1]!.offset===1080,'chunks preserve Unicode and overlap');
- const first=await files.upload(actor,source.id,'report.pdf',Buffer.from('v1'),randomUUID());await publish(actor,first.id,'收入增长 confidential first revision');
- const privateFile=await files.upload(foreign,privateTask.id,'report.pdf',Buffer.from('private'),randomUUID());await publish(foreign,privateFile.id,'收入增长 foreign secret');
+ const first=await files.upload(actor,source.id,'report.pdf',Buffer.from('v1'),randomUUID());
+ await transaction(db,c=>c.query("UPDATE workpivot.document_processing SET status='completed',parts=$2::jsonb,parser_fingerprint=$3 WHERE version_id=$1",[first.id,JSON.stringify([{location:'page:2',text:'收入增长 confidential first revision'}]),parserFingerprint]),actor);
+ const initial=await ingestion.candidates(actor,source.id,first.id);
+ check(initial.status==='pending'&&initial.total===1&&!await knowledge.indexNext(actor),'parsed project document waits for explicit ingestion confirmation');
+ check((await knowledge.search(actor,reader.id,'收入')).matches.length===0,'unconfirmed candidate is not searchable');
+ const rejected=await ingestion.reject(actor,source.id,first.id,initial.revision,'本机合成拒绝');
+ check(rejected.status==='rejected','user can reject a parsed version');
+ const reopened=await ingestion.reopen(actor,source.id,first.id,rejected.revision);
+ check(reopened.status==='pending','rejected version can be reviewed again');
+ await publish(actor,source.id,first.id,'收入增长 confidential first revision');
+ const privateFile=await files.upload(foreign,privateTask.id,'report.pdf',Buffer.from('private'),randomUUID());await publish(foreign,privateTask.id,privateFile.id,'收入增长 foreign secret');
  const found=await knowledge.search(actor,reader.id,'收入');check(found.matches.length===1&&found.matches[0].versionId===first.id,'project search recalls sibling task source but no foreign user');
  check(found.matches[0].name==='report.pdf'&&found.matches[0].location==='page:2'&&found.matches[0].revision===1,'knowledge result includes source and version');
  check((await knowledge.search(actor,outside.id,'收入')).matches.length===0,'same user cannot retrieve unrelated project');
@@ -28,7 +44,7 @@ export async function testKnowledge(db:Pool,actor:string,foreign:string,check:(o
  check((await knowledge.read(actor,reader.id,found.matches[0].chunkId)).content.includes('first revision'),'citation reads original chunk');
  const second=await files.upload(actor,source.id,'report.pdf',Buffer.from('v2'),randomUUID(),first.documentId,1);
  const pending=await knowledge.search(actor,reader.id,'收入');check(pending.matches[0].versionId===first.id&&pending.matches[0].latestRevision===2,'pending replacement retains old ready index with explicit latest version');
- await publish(actor,second.id,'收入下降 replacement revision');
+ await publish(actor,source.id,second.id,'收入下降 replacement revision');
  check((await knowledge.search(actor,reader.id,'增长')).matches.length===0,'new ready version atomically replaces old search results');
  await assert.rejects(knowledge.read(actor,reader.id,found.matches[0].chunkId));check(true,'superseded citation cannot silently serve stale text');
  check((await knowledge.search(actor,reader.id,'下降')).matches[0].versionId===second.id,'new version is retrievable');
@@ -36,7 +52,8 @@ export async function testKnowledge(db:Pool,actor:string,foreign:string,check:(o
  const tableFile=await files.upload(actor,source.id,'table.xlsx',Buffer.from('合成索引夹具'),randomUUID());
  const tableParts=[{location:'sheet:销售',text:'',object:{kind:'sheet',sheet:'销售'}},...['地区','销售额（万元）','华东','120'].map((text,i)=>({location:'sheet:销售!'+['A1','B1','A2','B2'][i],text,object:{kind:'cell',parent:'sheet:销售',sheet:'销售',address:['A1','B1','A2','B2'][i],headerRow:i<2?'true':'false'}}))];
  await transaction(db,c=>c.query("UPDATE workpivot.document_processing SET status='completed',parts=$2,parser_fingerprint=$3 WHERE version_id=$1",[tableFile.id,JSON.stringify(tableParts),parserFingerprint]),actor);
- await knowledge.indexNext(actor);
+ const tableCandidates=await ingestion.candidates(actor,source.id,tableFile.id);
+ await ingestion.confirm(actor,source.id,tableFile.id,tableCandidates.revision,tableCandidates.candidates.map(row=>row.ordinal));
  const tableMatches=(await knowledge.search(actor,reader.id,'华东销售额')).matches.filter(m=>m.versionId===tableFile.id);
  const east=tableMatches.find(m=>m.content.includes('120'))!;
  check(!!east&&east.content.includes('华东')&&east.content.includes('销售额（万元）'),'数据库检索保留表头、单位及同一行数值');
@@ -45,6 +62,43 @@ export async function testKnowledge(db:Pool,actor:string,foreign:string,check:(o
  await transaction(db,c=>c.query("UPDATE workpivot.document_processing SET parser_fingerprint='旧解析版本' WHERE version_id=$1",[tableFile.id]),actor);
  check(!(await knowledge.search(actor,reader.id,'华东')).matches.some(m=>m.versionId===tableFile.id),'旧解析指纹的表格片段立即不可检索');
  await assert.rejects(knowledge.read(actor,reader.id,east.chunkId));check(true,'旧表格引用不能继续读取');
+ const partialFile=await files.upload(actor,source.id,'选择入库.pdf',Buffer.from('partial'),randomUUID());
+ await transaction(db,c=>c.query("UPDATE workpivot.document_processing SET status='completed',parts=$2::jsonb,parser_fingerprint=$3 WHERE version_id=$1",[partialFile.id,JSON.stringify([{location:'page:1',text:'第一部分 天山项目预算说明'},{location:'page:2',text:'第二部分 昆仑项目人员说明'}]),parserFingerprint]),actor);
+ const partialCandidates=await ingestion.candidates(actor,source.id,partialFile.id);
+ check(partialCandidates.total===2&&partialCandidates.candidates.every(row=>row.suggested),'candidate review exposes only meaningful parsed fragments');
+ await knowledge.indexNext(actor);
+ check((await knowledge.search(actor,reader.id,'天山')).matches.length===0&&(await knowledge.search(actor,reader.id,'昆仑')).matches.length===0,'pending candidates never enter project retrieval');
+ await ingestion.confirm(actor,source.id,partialFile.id,partialCandidates.revision,[partialCandidates.candidates[0]!.ordinal]);
+ check((await knowledge.search(actor,reader.id,'天山')).matches.length===1&&(await knowledge.search(actor,reader.id,'昆仑')).matches.length===0,'confirmation indexes only selected fragments');
+ const sourcedFact=await facts.createFact(actor,project.id,{object:{name:'天山预算对象',type:'project'},predicate:'project.status',valueType:'text',value:'待复核'},{kind:'document',sourceDocumentVersionId:partialFile.id,quote:'第一部分 天山项目预算说明'});
+ check((await facts.searchForTask(actor,reader.id,'天山预算对象')).facts.length===1,'document-sourced business fact is recalled before source deletion');
+ const sourcedRelation=await facts.createRelation(actor,project.id,{
+   subject:{name:'天山预算对象',type:'project'},relationType:'produces',object:{name:'天山交付物',type:'deliverable'},
+ },{kind:'document',sourceDocumentVersionId:partialFile.id,quote:'第一部分 天山项目预算说明'});
+ check((await facts.searchForTask(actor,reader.id,'天山交付物')).relations.length===1,'document-sourced business relation is recalled before source deletion');
+ const sourceFactEpoch=await facts.epochForTask(actor,reader.id);
+ const sourceRun=await runs.start(actor,reader.id,randomUUID(),'引用待删除版本',[partialFile.id]);await runs.finish(actor,sourceRun,'completed',[]);
+ const sourceMemory=await workspace.createMemory(actor,'由待删除版本支持的事实','task',reader.id);
+ await transaction(db,c=>c.query('INSERT INTO workpivot.memory_sources(owner_user_id,memory_id,run_id) VALUES($1,$2,$3)',[actor,sourceMemory.id,sourceRun.id]),actor);
+ await files.removeVersion(actor,source.id,partialFile.documentId,partialFile.id,'删除此版本');
+ check((await knowledge.search(actor,reader.id,'天山')).matches.length===0,'deleting one version immediately removes its confirmed knowledge');
+ check((await transaction(db,c=>c.query('SELECT needs_review FROM workpivot.memories WHERE id=$1',[sourceMemory.id]),actor)).rows[0].needs_review,'memory supported only by deleted version is withheld for review');
+ check(await facts.epochForTask(actor,reader.id)!==sourceFactEpoch,'source review transitions advance the project fact epoch for active runs');
+ const memoryTools=new DatabaseMemoryTools(db,'load',['task']);
+ check(!(await memoryTools.search(actor,reader.id,'待删除版本')).memories.some(row=>row.id===sourceMemory.id),'memory tools stop automatic and explicit retrieval of review-needed memory');
+ const reviewingMemory=(await workspace.readMemory(actor,sourceMemory.id))!;
+ await workspace.editMemory(actor,sourceMemory.id,'用户复核后的项目记忆',reviewingMemory.revision);
+ check((await transaction(db,c=>c.query('SELECT needs_review FROM workpivot.memories WHERE id=$1',[sourceMemory.id]),actor)).rows[0].needs_review===false,'user memory edit clears source review state');
+ check((await memoryTools.search(actor,reader.id,'用户复核后的项目记忆')).memories.some(row=>row.id===sourceMemory.id),'reviewed memory returns to scoped retrieval after explicit user edit');
+ const reviewedFact=(await facts.list(actor,project.id)).facts.find(row=>row.id===sourcedFact.factId);
+ check(reviewedFact?.needsReview===true&&(await facts.searchForTask(actor,reader.id,'天山预算对象')).facts.length===0,'business fact with deleted document evidence is withheld for review');
+ await facts.updateFact(actor,project.id,sourcedFact.factId,1,{valueType:'text',value:'用户已复核'});
+ check((await facts.list(actor,project.id)).facts.find(row=>row.id===sourcedFact.factId)?.needsReview===false,'user-confirmed fact edit clears source review state');
+ check((await facts.list(actor,project.id)).relations.find(row=>row.id===sourcedRelation.relationId)?.needsReview===true&&(await facts.searchForTask(actor,reader.id,'天山交付物')).relations.length===0,'business relation with deleted document evidence is withheld for review');
+ await facts.createRelation(actor,project.id,{
+   subject:{name:'天山预算对象',type:'project'},relationType:'produces',object:{name:'天山交付物',type:'deliverable'},
+ });
+ check((await facts.list(actor,project.id)).relations.find(row=>row.id===sourcedRelation.relationId)?.needsReview===false&&(await facts.traceRelations(actor,reader.id,reviewedFact!.objectId,1)).relations.length===1,'user-confirmed relation returns to automatic and traceable retrieval');
  await files.remove(actor,source.id,tableFile.documentId,1);
  const run=await runs.start(actor,reader.id,randomUUID(),'use project knowledge');await runs.finish(actor,run,'completed',[]);
  await files.remove(actor,source.id,first.documentId,2);
@@ -55,7 +109,7 @@ export async function testKnowledge(db:Pool,actor:string,foreign:string,check:(o
  await assert.rejects(knowledge.search(actor,reader.id,'%'));check(true,'invalid keyword does not become wildcard');
  }finally{
  await workspace.deleteProject(actor,project.id,1);await workspace.deleteProject(actor,otherProject.id,1);
- await workspace.deleteTask(foreign,privateTask.id,(await workspace.listTasks(foreign)).find(t=>t.id===privateTask.id)!.revision);
+ await workspace.deleteProject(foreign,foreignProject.id,foreignProject.revision);
  await rm(root,{recursive:true,force:true});
  }
 }

@@ -32,7 +32,7 @@ const rejectStatus = async (action: () => Promise<unknown>, status: number, labe
 const root = await mkdtemp(join(tmpdir(), 'workpivot-limits-'));
 try {
   await installSchema(admin, 'limits_app', 'limits_auth');
-  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 64, 'schema v64 installed');
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 65, 'schema v65 installed');
   const privileges = (await app.query(`SELECT
     has_column_privilege(current_user,'identity.users','platform_admin','SELECT') AS platform,
     has_column_privilege(current_user,'identity.users','token_quota','SELECT') AS token,

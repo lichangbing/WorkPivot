@@ -4,7 +4,7 @@ import { useResource } from './useResource';
 
 type Scope = 'user' | 'project' | 'task';
 const labels = { user: '个人记忆', project: '项目记忆', task: '任务记忆' };
-interface Memory { id: string; revision: number; content: string; locked?: boolean }
+interface Memory { id: string; revision: number; content: string; locked?: boolean; needsReview?: boolean }
 interface Props { client: MobileClient; task: Task; onError: (error: unknown) => void }
 export function Memories(props: Props) {
   const [scope, setScope] = useState<Scope>('user');
@@ -39,7 +39,7 @@ function MemoryEditor({ client, task, onError, scope }: Props & { scope: Scope }
     </form>}
     {!resource.value && !resource.error && <p>正在读取…</p>}
     {resource.value?.memories.length === 0 && <p>暂无记忆</p>}
-    {[...(resource.value?.memories ?? []), ...extra].map(row => <article key={row.id}><small>v{row.revision}{row.locked ? ' · 已锁定' : ''}</small><p>{row.content}</p>
+    {[...(resource.value?.memories ?? []), ...extra].map(row => <article key={row.id}><small>v{row.revision}{row.locked ? ' · 已锁定' : ''}{row.needsReview ? ' · 来源已删除，待复核' : ''}</small>{row.needsReview && <p role="status">此记忆已停止自动加载，请核对内容后重新保存。</p>}<p>{row.content}</p>
       <button disabled={busy} onClick={() => setEdit({ row, content: row.content })}>修改</button>
       <button disabled={busy} title="锁定阻止自动修改，仍可手动编辑" onClick={() => void run(() => write(`/api/memories/${row.id}/lock`, 'PUT', { revision: row.revision, locked: !row.locked }))}>{row.locked ? '解锁' : '锁定'}</button>
       <button disabled={busy} onClick={() => setRemove(row.id)}>删除</button>

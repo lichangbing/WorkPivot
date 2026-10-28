@@ -11,9 +11,11 @@ import {DocumentProcessing} from '../packages/server/src/database/document-proce
 import {KnowledgeRepository} from '../packages/server/src/database/knowledge.js';
 import {DatabaseFileTools} from '../packages/server/src/database/file-tools.js';
 import {transaction} from '../packages/server/src/database/connection.js';
+import {KnowledgeIngestionRepository} from '../packages/server/src/database/knowledge-ingestion.js';
+import {confirmKnowledgeForTest} from './knowledge-fixture.mts';
 export async function testParsing(db:Pool,actor:string,foreign:string,check:(ok:unknown,label:string)=>void) {
  const root=await mkdtemp(join(tmpdir(),'wp-parse-')),files=new FileRepository(db,root),workspace=new WorkspaceRepository(db);
- const task=await workspace.createTask(actor,'parse fixture');let fail=false,erase=false;
+ const project=await workspace.createProject(actor,'parse fixture'),task=await workspace.createTask(actor,'parse fixture',project.id);let fail=false,erase=false;
  let docId='';
  let extracted:ParsedPart[]=[{location:'paragraph:1',text:'saved text'}];
  const processor=new DocumentProcessing(db,files,async()=>{if(fail)throw Error('invalid');if(erase)await files.remove(actor,task.id,docId,1);return extracted;});
@@ -42,7 +44,7 @@ export async function testParsing(db:Pool,actor:string,foreign:string,check:(ok:
  check('excerpts' in page&&page.excerpts[0]?.location==='paragraph:1'&&page.excerpts[0].continuedBefore,'长文续页保持定位并标记续读');
  check('warnings' in page&&page.warnings.some((w:string)=>w.includes('页眉页脚')),'读取不把正文提取冒充完整文档');
  check(page.versionId===long.id&&'latestRevision' in page&&page.latestRevision===1,'共用读取返回固定版本及当前修订');
- const knowledge=new KnowledgeRepository(db);while(await knowledge.indexNext(actor)) { /* 为当前合成资料建立索引。 */ }
+ const knowledge=new KnowledgeRepository(db),ingestion=new KnowledgeIngestionRepository(db);await confirmKnowledgeForTest(db,actor,task.id,long.id);while(await knowledge.indexNext(actor)) { /* 为当前合成资料建立索引。 */ }
  const found=await knowledge.search(actor,task.id,'末段来源核对');
  check(found.matches.some(r=>r.versionId===long.id&&r.location==='paragraph:2'),'知识库复用同一解析来源');
  const hit=found.matches.find(r=>r.versionId===long.id)!;
@@ -54,7 +56,10 @@ export async function testParsing(db:Pool,actor:string,foreign:string,check:(ok:
  await assert.rejects(reader.read(actor,task.id,long.id,0));await assert.rejects(knowledge.read(actor,task.id,hit.chunkId));
  check((await knowledge.search(actor,task.id,'末段来源核对')).matches.length===0,'旧指纹在重建开始前已停止召回');
  check(await knowledge.indexNext(actor)===false,'旧结果不会重新建立索引');
- await processor.process(actor);await knowledge.indexNext(actor);
+ await processor.process(actor);
+ const reprocessed=await ingestion.candidates(actor,task.id,long.id);
+ check(reprocessed.status==='pending','解析器升级后知识确认重新回到待审核');
+ await confirmKnowledgeForTest(db,actor,task.id,long.id);await knowledge.indexNext(actor);
  check((await transaction(db,c=>c.query('SELECT attempts FROM workpivot.document_processing WHERE version_id=$1',[long.id]),actor)).rows[0].attempts===1,'升级重建重置旧程序重试计数');
  check((await knowledge.search(actor,task.id,'末段来源核对')).matches.some(r=>r.versionId===long.id&&r.chunkId!==hit.chunkId),'自动重建后使用新引用');
  await assert.rejects(knowledge.read(actor,task.id,hit.chunkId));check(true,'重建不复活旧引用');
@@ -64,7 +69,7 @@ export async function testParsing(db:Pool,actor:string,foreign:string,check:(ok:
  await processor.process(actor);check((await processor.list(actor,task.id)).some(p=>p.id===invalid.id&&p.status==='failed'),'非法解析结果在持久发布前拒绝');
  const partial=await files.upload(actor,task.id,'mixed.pdf',Buffer.from('mixed'),randomUUID());
  const partialProcessor=new DocumentProcessing(db,files,async()=>({parts:[{location:'page:1',text:'部分结果可检索'}],coverage:'partial',warnings:['第2页没有可提取文字，未执行OCR。']}));
- await partialProcessor.process(actor);await knowledge.indexNext(actor);
+ await partialProcessor.process(actor);await confirmKnowledgeForTest(db,actor,task.id,partial.id);await knowledge.indexNext(actor);
  const partialRead=await partialProcessor.read(actor,task.id,partial.id,0);
  check(partialRead.coverage==='partial'&&partialRead.warnings.some(w=>w.includes('第2页')),'部分结果保留缺失页说明');
  const partialHit=(await knowledge.search(actor,task.id,'部分结果可检索')).matches[0];
@@ -83,7 +88,7 @@ export async function testParsing(db:Pool,actor:string,foreign:string,check:(ok:
  const otherTask=await workspace.createTask(actor,'other scope');
  await assert.rejects(reader.readStructure(actor,otherTask.id,structured.id));check(true,'结构化读取不可跨任务');
  check(reader.tools(actor,task.id).some(t=>t.name==='read_document_structure')&&!new DatabaseFileTools(files).tools(actor,task.id).some(t=>t.name==='read_document_structure'),'仅启用解析服务时注册结构化工具');
- while(await knowledge.indexNext(actor)) { /* 补齐当前合成资料索引。 */ }
+ await confirmKnowledgeForTest(db,actor,task.id,structured.id);while(await knowledge.indexNext(actor)) { /* 补齐当前合成资料索引。 */ }
  check((await knowledge.search(actor,task.id,'结构金额')).matches.some(r=>r.versionId===structured.id),'带对象元数据的解析继续用于知识检索');
  await transaction(db,c=>c.query("UPDATE workpivot.document_processing SET parser_fingerprint='old-structure' WHERE version_id=$1",[structured.id]),actor);
  await assert.rejects(reader.readStructure(actor,task.id,structured.id));check(true,'过期结构拒绝返回');
@@ -96,7 +101,7 @@ export async function testParsing(db:Pool,actor:string,foreign:string,check:(ok:
  await ocrProcessor.process(actor);
  const ocrRead=await ocrProcessor.read(actor,task.id,imageFile.id,0);
  check(ocrRead.coverage==='partial'&&ocrRead.excerpts[0]?.recognition?.rotation===90&&ocrRead.excerpts[0]?.recognition?.confidence===82,'OCR来源、旋转和置信度持久保存并返回');
- while(await knowledge.indexNext(actor)) { /* 为图片共用结果建立索引。 */ }
+ await confirmKnowledgeForTest(db,actor,task.id,imageFile.id);while(await knowledge.indexNext(actor)) { /* 为图片共用结果建立索引。 */ }
  check((await knowledge.search(actor,task.id,'扫描验收金额三十')).matches.some(r=>r.versionId===imageFile.id&&r.coverage==='partial'),'图片OCR内容复用于知识检索且保留警告');
  await assert.rejects(ocrProcessor.read(foreign,task.id,imageFile.id,0));check(true,'图片OCR读取遵守用户隔离');
  await files.remove(actor,task.id,imageFile.documentId,1);

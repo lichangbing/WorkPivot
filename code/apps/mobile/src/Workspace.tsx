@@ -90,7 +90,7 @@ export function Workspace({ client, user, theme, onTheme, onLogout, onError }: {
       <section><button onClick={() => setPanel('capabilities')}>技能与 MCP <span>›</span></button>
         <button disabled={!task} onClick={() => setPanel('memories')}>三层记忆 <span>›</span></button>
         <button disabled={!task?.projectId} onClick={() => setPanel('business')}>项目业务事实 <span>›</span></button>
-        <button disabled={!task} onClick={() => setPanel('resources')}>当前任务专家与产物 <span>›</span></button></section>
+        <button disabled={!task} onClick={() => setPanel('resources')}>任务专家、资料与知识 <span>›</span></button></section>
       <section><button disabled={busy} onClick={() => { setBusy(true); void onLogout().catch(fail).finally(() => setBusy(false)); }}>退出登录 / 更换服务器</button></section>
       <p className="muted">WorkPivot Mobile · 开发预览</p></>}
       <button onClick={() => setSettings(false)}>返回对话</button></div>}

@@ -15,6 +15,7 @@ import {RunRepository} from '../packages/server/src/database/runs.js';
 import {transaction} from '../packages/server/src/database/connection.js';
 import {KnowledgeRepository} from '../packages/server/src/database/knowledge.js';
 import {parserFingerprint} from '../packages/server/src/database/document-parser.js';
+import {confirmKnowledgeForTest} from './knowledge-fixture.mts';
 export async function testResourceScope(db:Pool,actor:string,foreign:string,check:(ok:unknown,label:string)=>void){
  const root=await mkdtemp(join(tmpdir(),'wp-scope-')),files=new FileRepository(db,root),tasks=new WorkspaceRepository(db),runs=new RunRepository(db),knowledge=new KnowledgeRepository(db);
  const task=await tasks.createTask(actor,'读取范围隔离验收'),other=await tasks.createTask(actor,'同用户其他任务');
@@ -31,7 +32,7 @@ export async function testResourceScope(db:Pool,actor:string,foreign:string,chec
   const reader=new DatabaseFileTools(files,undefined,[a.id]);
   check((await reader.read(actor,task.id,a.id)).content==='A旧版本','读取固定版本原件');
   await assert.rejects(reader.read(actor,task.id,a2.id));await assert.rejects(reader.read(actor,task.id,b.id));check(true,'同任务未选文件和新版均拒绝');
-  const publish=async(id:string,text:string)=>{await transaction(db,async c=>{await c.query("INSERT INTO workpivot.document_processing(version_id,owner_user_id,status,parts,parser_fingerprint) VALUES($1,$2,'completed',$3,$4) ON CONFLICT(version_id) DO UPDATE SET status='completed',parts=$3,parser_fingerprint=$4",[id,actor,JSON.stringify([{location:'page:1',text}]),parserFingerprint]);},actor);await knowledge.indexNext(actor);};
+  const publish=async(id:string,text:string)=>{await transaction(db,async c=>{await c.query("INSERT INTO workpivot.document_processing(version_id,owner_user_id,status,parts,parser_fingerprint) VALUES($1,$2,'completed',$3,$4) ON CONFLICT(version_id) DO UPDATE SET status='completed',parts=$3,parser_fingerprint=$4",[id,actor,JSON.stringify([{location:'page:1',text}]),parserFingerprint]);},actor);await confirmKnowledgeForTest(db,actor,task.id,id);await knowledge.indexNext(actor);};
   await publish(a.id,'授权关键词 旧版本');await publish(a2.id,'授权关键词 新版本');await publish(b.id,'授权关键词 不可见');
   const found=await knowledge.search(actor,task.id,'授权关键词',undefined,[a.id]);
   check(found.matches.length===1&&found.matches[0]!.versionId===a.id,'关键词在排序前按固定版本限定，旧版本可检索');
@@ -88,7 +89,7 @@ export async function testResourceScope(db:Pool,actor:string,foreign:string,chec
   await runs.checkResources(actor,generatedRun,generatedScope,{versionId:artifact.id});
   check(reference===generatedScope.versionIds&&reference.includes(artifact.id),'生成成果加入当前范围且读取工具闭包同步');
   await assert.rejects(runs.grantArtifacts(actor,generatedRun,{...generatedScope,expert:true},[artifact.id]));check(true,'过期或篡改范围不能用于成果授权');
-  const retryScope=await runs.resources(actor,task.id,original,[],request);
+  const retryScope=await runs.resources(actor,task.id,undefined,[],request);
   const retry=await runs.start(actor,task.id,request,'生成成果',[],retryScope);
   check(retry.duplicate&&retry.id===generatedRun.id,'生成成果后原始请求重试仍幂等');
   await assert.rejects(runs.resources(actor,task.id,{...original,expert:true},[],request));check(true,'同请求ID不能改动原始范围');

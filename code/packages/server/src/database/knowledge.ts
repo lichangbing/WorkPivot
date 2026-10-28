@@ -64,18 +64,47 @@ export function splitKnowledge(parts:ParsedPart[]) {
   return chunks;
 }
 
+export function selectedKnowledgeChunks(parts:ParsedPart[],selectedOrdinals:readonly number[]) {
+  const chunks=splitKnowledge(parts),selected=new Set(selectedOrdinals);
+  return chunks.map((chunk,ordinal)=>({...chunk,ordinal})).filter(chunk=>selected.has(chunk.ordinal));
+}
+
+export async function publishKnowledgeChunks(
+  c:PoolClient,
+  actor:string,
+  versionId:string,
+  parts:ParsedPart[],
+  selectedOrdinals:readonly number[],
+) {
+  const chunks=selectedKnowledgeChunks(parts,selectedOrdinals);
+  if(!selectedOrdinals.length||chunks.length!==selectedOrdinals.length)throw new RepositoryError(409,'知识候选已变化，请重新审核');
+  await c.query('DELETE FROM workpivot.knowledge_versions WHERE version_id=$1',[versionId]);
+  await c.query('INSERT INTO workpivot.knowledge_versions(version_id,owner_user_id) VALUES($1,$2)',[versionId,actor]);
+  if(chunks.length)await c.query(`INSERT INTO workpivot.knowledge_chunks(id,owner_user_id,version_id,ordinal,location,source_offset,content)
+    SELECT x.id,$1,$2,x.ordinal,x.location,x.position,x.content FROM jsonb_to_recordset($3::jsonb) AS x(id uuid,ordinal integer,location text,position integer,content text)`,
+  [actor,versionId,JSON.stringify(chunks.map(chunk=>({id:randomUUID(),ordinal:chunk.ordinal,location:chunk.location,position:chunk.offset,content:chunk.content})))]);
+  await c.query(`INSERT INTO workpivot.knowledge_state(owner_user_id,epoch) VALUES($1,1)
+    ON CONFLICT(owner_user_id) DO UPDATE SET epoch=workpivot.knowledge_state.epoch+1`,[actor]);
+}
+
 /** RLS 限定用户范围；项目范围只从已认证任务推导。 */
 export class KnowledgeRepository {
   constructor(private readonly db:Pool,private readonly embeddings?:Pick<Embeddings,'search'>) {}
   async indexNext(actor:string) {
     return transaction(this.db,async c=>{
-      const row=(await c.query("SELECT p.version_id,p.parts,v.document_id,v.revision,d.task_id FROM workpivot.document_processing p JOIN workpivot.document_versions v ON v.id=p.version_id JOIN workpivot.documents d ON d.id=v.document_id WHERE p.status='completed' AND p.parser_fingerprint=$1 AND NOT EXISTS(SELECT 1 FROM workpivot.knowledge_versions k WHERE k.version_id=p.version_id) ORDER BY v.created_at LIMIT 1 FOR UPDATE OF p SKIP LOCKED",[parserFingerprint])).rows[0];
+      const row=(await c.query(`SELECT i.version_id,i.selected_ordinals,p.parts,v.document_id,v.revision,d.task_id
+        FROM workpivot.knowledge_ingestions i
+        JOIN workpivot.document_processing p ON p.version_id=i.version_id
+        JOIN workpivot.document_versions v ON v.id=i.version_id
+        JOIN workpivot.documents d ON d.id=v.document_id
+        WHERE i.status='confirmed'
+          AND p.status='completed'
+          AND p.parser_fingerprint=i.parser_fingerprint
+          AND p.parser_fingerprint=$1
+          AND NOT EXISTS(SELECT 1 FROM workpivot.knowledge_versions k WHERE k.version_id=i.version_id)
+        ORDER BY i.decided_at,v.created_at LIMIT 1 FOR UPDATE OF i SKIP LOCKED`,[parserFingerprint])).rows[0];
       if(!row)return false;
-      // 外键删除和发布串行执行；事务失败不留下部分索引。
-      const chunks=splitKnowledge(row.parts as ParsedPart[]);
-      await c.query('INSERT INTO workpivot.knowledge_versions(version_id,owner_user_id) VALUES($1,$2)',[row.version_id,actor]);
-      await c.query(`INSERT INTO workpivot.knowledge_chunks(id,owner_user_id,version_id,ordinal,location,source_offset,content)
-        SELECT x.id,$1,$2,x.ordinal,x.location,x.position,x.content FROM jsonb_to_recordset($3::jsonb) AS x(id uuid,ordinal integer,location text,position integer,content text)`,[actor,row.version_id,JSON.stringify(chunks.map((chunk,ordinal)=>({...chunk,position:chunk.offset,id:randomUUID(),ordinal})))]);
+      await publishKnowledgeChunks(c,actor,row.version_id,row.parts as ParsedPart[],row.selected_ordinals as number[]);
       return true;
     },actor);
   }
@@ -86,7 +115,9 @@ export class KnowledgeRepository {
     return task.project_id as string|null;
   }
   private readonly joins=`FROM workpivot.knowledge_chunks k JOIN workpivot.document_versions v ON v.id=k.version_id JOIN workpivot.documents d ON d.id=v.document_id JOIN workpivot.tasks t ON t.id=d.task_id JOIN workpivot.document_processing p ON p.version_id=v.id`;
-  private readonly allowed=`p.status='completed' AND p.parser_fingerprint='${parserFingerprint}' AND t.deleted_at IS NULL AND (t.id=$1 OR ($2::uuid IS NOT NULL AND t.project_id=$2))
+  private readonly allowed=`p.status='completed' AND p.parser_fingerprint='${parserFingerprint}' AND t.deleted_at IS NULL
+    AND EXISTS(SELECT 1 FROM workpivot.knowledge_ingestions i WHERE i.version_id=v.id AND i.status='confirmed')
+    AND (t.id=$1 OR ($2::uuid IS NOT NULL AND t.project_id=$2))
     AND (($4::uuid[] IS NULL AND v.revision=(SELECT max(v2.revision) FROM workpivot.document_versions v2 JOIN workpivot.knowledge_versions ready ON ready.version_id=v2.id JOIN workpivot.document_processing p2 ON p2.version_id=v2.id WHERE v2.document_id=d.id AND p2.status='completed' AND p2.parser_fingerprint='${parserFingerprint}')) OR v.id=ANY($4::uuid[]))`;
 
   async keyword(actor:string,taskId:string,query:string,allowedVersions?:readonly string[]) {

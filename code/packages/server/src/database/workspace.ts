@@ -196,7 +196,7 @@ export class WorkspaceRepository {
       if (!result.rows[0]) throw new RepositoryError(409, '设置已更新'); return result.rows[0].revision;
     }, actor);
   }
-  async listMemories(actor: string, scope: 'user' | 'project' | 'task', scopeId?: string, after?: string): Promise<{ memories: { id: string; content: string; revision: number }[]; nextCursor: string | null }> {
+  async listMemories(actor: string, scope: 'user' | 'project' | 'task', scopeId?: string, after?: string): Promise<{ memories: { id: string; content: string; revision: number; needsReview: boolean }[]; nextCursor: string | null }> {
     if (!['user', 'project', 'task'].includes(scope)) throw new RepositoryError(400, '记忆层级无效');
     if (scope !== 'user') { if (!scopeId) throw new RepositoryError(400, '缺少记忆归属'); uuid(scopeId); }
     else if (scopeId) uuid(scopeId);
@@ -204,7 +204,7 @@ export class WorkspaceRepository {
     return transaction(this.db, async c => {
       if (scope === 'task') await task(c, scopeId!);
       if ((scope === 'project') && !(await c.query('SELECT id FROM workpivot.projects WHERE id=$1 AND deleted_at IS NULL', [scopeId])).rowCount) throw new RepositoryError(404, '项目不存在');
-      const rows = (await c.query<{ id: string; content: string; revision: number }>(`SELECT m.id,r.content,m.revision,m.locked FROM workpivot.memories m
+      const rows = (await c.query<{ id: string; content: string; revision: number; needsReview: boolean }>(`SELECT m.id,r.content,m.revision,m.locked,m.needs_review AS "needsReview" FROM workpivot.memories m
         JOIN workpivot.memory_revisions r ON r.memory_id=m.id AND r.revision=m.revision
         WHERE m.deleted_at IS NULL AND m.scope=$1 AND ((m.scope='user' AND NOT m.legacy_personal AND m.project_id IS NOT DISTINCT FROM $2::uuid) OR (m.scope<>'user' AND (m.project_id=$2 OR m.task_id=$2)))
         AND ($3::uuid IS NULL OR m.id>$3) ORDER BY m.id LIMIT 51`, [scope, scopeId ?? null, after ?? null])).rows;
@@ -274,9 +274,9 @@ export class WorkspaceRepository {
       return {revision:expected+1};
     },actor);
   }
-  async readMemory(actor: string, id: string): Promise<{ content: string; revision: number } | null> {
+  async readMemory(actor: string, id: string): Promise<{ content: string; revision: number; needsReview: boolean } | null> {
     uuid(id);
-    return transaction(this.db, async c => (await c.query('SELECT r.content,m.revision FROM workpivot.memories m JOIN workpivot.memory_revisions r ON r.memory_id=m.id AND r.revision=m.revision WHERE m.id=$1 AND m.deleted_at IS NULL', [id])).rows[0] ?? null, actor);
+    return transaction(this.db, async c => (await c.query('SELECT r.content,m.revision,m.needs_review AS "needsReview" FROM workpivot.memories m JOIN workpivot.memory_revisions r ON r.memory_id=m.id AND r.revision=m.revision WHERE m.id=$1 AND m.deleted_at IS NULL', [id])).rows[0] ?? null, actor);
   }
   async editMemory(actor: string, id: string, content: string, expected: number): Promise<number> {
     uuid(id); revision(expected);
@@ -286,7 +286,7 @@ export class WorkspaceRepository {
       if (!current) throw new RepositoryError(404, '记忆不存在');
       if (current.revision !== expected) throw new RepositoryError(409, '记忆已更新');
       await c.query('INSERT INTO workpivot.memory_revisions(owner_user_id,memory_id,revision,content) VALUES($1,$2,$3,$4)', [actor, id, expected + 1, content]);
-      await c.query('UPDATE workpivot.memories SET revision=revision+1 WHERE id=$1', [id]);
+      await c.query('UPDATE workpivot.memories SET revision=revision+1,needs_review=false WHERE id=$1', [id]);
       await this.memoryEvent(c, actor, id, expected + 1, 'memory_updated'); return expected + 1;
     }, actor);
   }

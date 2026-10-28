@@ -25,6 +25,7 @@ interface Fact {
   validFrom: string;
   validTo: string | null;
   authority: string;
+  needsReview?: boolean;
 }
 
 interface Conflict {
@@ -59,11 +60,14 @@ interface Relation {
   id: string;
   subjectId: string;
   subjectName: string;
+  subjectType: string;
   relationType: string;
   objectId: string;
   objectName: string;
+  objectType: string;
   revision: number;
   validFrom: string;
+  needsReview?: boolean;
 }
 
 interface BusinessData {
@@ -276,6 +280,18 @@ export function BusinessFactsPanel({ projectId, onClose }: { projectId: string; 
     setRelationOpen(false); setNotice('业务关系已保存');
   });
 
+  const reviewRelation = (relation: Relation) => void work(async () => {
+    await jsonFetch(`/api/projects/${encodeURIComponent(projectId)}/business-relations`, {
+      method: 'POST',
+      body: JSON.stringify({
+        subject: { id: relation.subjectId, name: relation.subjectName, type: relation.subjectType },
+        relationType: relation.relationType,
+        object: { id: relation.objectId, name: relation.objectName, type: relation.objectType },
+      }),
+    });
+    setNotice('业务关系已由用户重新确认');
+  });
+
   const modelTypes = data?.model.objectTypes ?? ['contract'];
   const modelPredicates = data?.model.predicates ?? [];
   const modelRelations = data?.model.relations ?? [];
@@ -334,6 +350,7 @@ export function BusinessFactsPanel({ projectId, onClose }: { projectId: string; 
             <div className="mb-2 flex items-center"><h3 className="font-medium">当前事实</h3><span className="ml-2 text-xs text-neutral-500">{data.facts.length} 条</span></div>
             {!data.facts.length && <p className="rounded border border-dashed border-neutral-800 p-5 text-sm text-neutral-500">暂无业务事实。手工新增或在新一轮明确陈述后由后台提取。</p>}
             <div className="space-y-2">{data.facts.map(fact => <article key={fact.id} className="rounded-lg border border-neutral-800 p-3">
+              {fact.needsReview && <p role="status" className="mb-2 rounded border border-amber-800 p-2 text-xs text-amber-300">来源文件版本已删除，此事实已停止自动召回；请核对后保存新版本。</p>}
               <div className="flex flex-wrap items-start gap-2"><div className="min-w-0 flex-1"><p className="font-medium">{fact.objectName}<span className="ml-2 text-xs text-neutral-500">{fact.objectType}</span></p><p className="mt-1 text-sm text-neutral-300">{fact.predicate} = {fact.status === 'conflicted' ? '待确认更新' : valueText(fact)}</p><p className="mt-1 text-[11px] text-neutral-500">{fact.revision ? `v${fact.revision}` : '冲突阻塞'} · {fact.authority} · 自 {new Date(fact.validFrom).toLocaleString('zh-CN')}</p></div><div className="flex flex-wrap gap-1.5"><button className={button} disabled={busy || fact.status !== 'active'} onClick={() => openHistory(fact)}>历史</button><button className={button} disabled={busy || fact.status !== 'active'} onClick={() => beginEdit(fact)}>修改</button><button className={button} disabled={busy || fact.status !== 'active'} onClick={() => setRemoving(fact)}>遗忘</button></div></div>
               {editing?.id === fact.id && <form className="mt-3 grid gap-2 rounded bg-neutral-900 p-3 sm:grid-cols-3" onSubmit={event => { event.preventDefault(); saveEdit(); }}><label className="text-xs text-neutral-400">新值<input className={input} required disabled={editForm.valueType === 'boolean'} value={editForm.valueType === 'boolean' ? String(editForm.booleanValue) : editForm.value} onChange={event => setEditForm({ ...editForm, value: event.target.value })} /></label><label className="text-xs text-neutral-400">单位<input className={input} value={editForm.unit} onChange={event => setEditForm({ ...editForm, unit: event.target.value })} /></label><label className="text-xs text-neutral-400">币种<input className={input} maxLength={3} value={editForm.currency} onChange={event => setEditForm({ ...editForm, currency: event.target.value })} /></label><div className="flex justify-end gap-2 sm:col-span-3"><button type="button" className={button} onClick={() => setEditing(null)}>取消</button><button className={button} disabled={busy}>保存新版本</button></div></form>}
               {removing?.id === fact.id && <div role="alertdialog" className="mt-3 rounded border border-red-900 bg-red-950/30 p-3 text-sm"><p>遗忘后该事实不再进入搜索和自动上下文，历史仍保留用于审计。确认遗忘？</p><div className="mt-2 flex gap-2"><button className={button} disabled={busy} onClick={() => void work(async () => { await jsonFetch(`${endpoint}/${fact.id}`, { method: 'DELETE', body: JSON.stringify({ revision: fact.revision }) }); setRemoving(null); setNotice('事实已退出项目检索'); })}>确认遗忘</button><button className={button} onClick={() => setRemoving(null)}>取消</button></div></div>}
@@ -343,7 +360,7 @@ export function BusinessFactsPanel({ projectId, onClose }: { projectId: string; 
 
           <section aria-label="业务关系" className="mt-5 border-t border-neutral-800 pt-4">
             <h3 className="mb-2 font-medium">对象关系</h3>
-            {!data.relations.length ? <p className="text-sm text-neutral-500">暂无已确认关系。</p> : <ul className="space-y-2">{data.relations.map(relation => <li key={relation.id} className="rounded border border-neutral-800 px-3 py-2 text-sm">{relation.subjectName} <span className="text-blue-300">{relation.relationType}</span> {relation.objectName}<span className="ml-2 text-xs text-neutral-500">v{relation.revision}</span><button className="ml-3 text-xs text-red-400" disabled={busy} onClick={() => setRemovingRelation(relation)}>撤销</button>{removingRelation?.id === relation.id && <span className="ml-2 text-xs"><button className="text-red-400" disabled={busy} onClick={() => void work(async () => { await jsonFetch(`/api/projects/${encodeURIComponent(projectId)}/business-relations/${relation.id}`, { method: 'DELETE', body: JSON.stringify({ revision: relation.revision }) }); setRemovingRelation(null); setNotice('业务关系已撤销'); })}>确认撤销</button><button className="ml-2" onClick={() => setRemovingRelation(null)}>取消</button></span>}</li>)}</ul>}
+            {!data.relations.length ? <p className="text-sm text-neutral-500">暂无已确认关系。</p> : <ul className="space-y-2">{data.relations.map(relation => <li key={relation.id} className="rounded border border-neutral-800 px-3 py-2 text-sm">{relation.needsReview && <p role="status" className="mb-2 rounded border border-amber-800 p-2 text-xs text-amber-300">来源文件版本已删除，此关系已停止自动召回；请核对后重新确认。</p>}{relation.subjectName} <span className="text-blue-300">{relation.relationType}</span> {relation.objectName}<span className="ml-2 text-xs text-neutral-500">v{relation.revision}</span>{relation.needsReview && <button className="ml-3 text-xs text-amber-300" disabled={busy} onClick={() => reviewRelation(relation)}>确认仍有效</button>}<button className="ml-3 text-xs text-red-400" disabled={busy} onClick={() => setRemovingRelation(relation)}>撤销</button>{removingRelation?.id === relation.id && <span className="ml-2 text-xs"><button className="text-red-400" disabled={busy} onClick={() => void work(async () => { await jsonFetch(`/api/projects/${encodeURIComponent(projectId)}/business-relations/${relation.id}`, { method: 'DELETE', body: JSON.stringify({ revision: relation.revision }) }); setRemovingRelation(null); setNotice('业务关系已撤销'); })}>确认撤销</button><button className="ml-2" onClick={() => setRemovingRelation(null)}>取消</button></span>}</li>)}</ul>}
           </section>
         </>}
       </div>

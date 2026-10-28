@@ -17,6 +17,7 @@ import {newAutomationConfig} from '../packages/shared/src/automation.js';
 import {exportRetention,applyRetention} from '../packages/server/src/database/restore-retention.js';
 import {KnowledgeRepository} from '../packages/server/src/database/knowledge.js';
 import {createDatabaseApp} from '../packages/server/src/database/app.js';
+import {confirmKnowledgeForTest} from './knowledge-fixture.mts';
 const url=process.env.WORKPIVOT_TEST_PG_URL!;if(!url||process.env.WORKPIVOT_TEST_PG_DISPOSABLE!=='1'||new URL(url).pathname!=='/workpivot_test')throw Error('仅允许隔离验收');
 const secret=randomBytes(24).toString('hex'),admin=pool(url),role=(n:string)=>{const u=new URL(url);u.username=n;u.password=secret;return u.toString();},db=pool(role('trash_app')),auth=pool(role('trash_auth')),root=await mkdtemp(join(tmpdir(),'wp-trash-'));
 let checks=0;const check=(v:unknown,n:string)=>{assert.ok(v,n);checks++;console.log('通过：'+n);};const rejects=async(f:()=>Promise<unknown>,n:string)=>{await assert.rejects(f);check(true,n);};
@@ -26,7 +27,7 @@ try{
  const ws=new WorkspaceRepository(db),files=new FileRepository(db,root),trash=new TrashRepository(db,files),skills=new DatabaseSkills(db),plans=new Automations(db,true),builds=new SkillBuilds(db,files),knowledge=new KnowledgeRepository(db);
  const project=await ws.createProject(actor,'合成项目'),task=await ws.createTask(actor,'合成任务',project.id);await ws.appendMessage(actor,task.id,'user','合成消息',randomUUID());
  const v1=await files.upload(actor,task.id,'合成资料.txt',Buffer.from('回收站合成资料'),randomUUID()),v2=await files.upload(actor,task.id,'合成资料.txt',Buffer.from('第二版合成资料'),randomUUID(),v1.documentId,1);
- await transaction(db,c=>c.query("INSERT INTO workpivot.document_processing(version_id,owner_user_id,status,parts,parser_fingerprint) VALUES($1,$2,'completed',$3,$4)",[v2.id,actor,JSON.stringify([{location:'正文',text:'第二版合成资料'}]),parserFingerprint]),actor);await knowledge.indexNext(actor);check((await knowledge.search(actor,task.id,'合成')).matches.length>0,'删除前知识可检索');
+ await transaction(db,c=>c.query("INSERT INTO workpivot.document_processing(version_id,owner_user_id,status,parts,parser_fingerprint) VALUES($1,$2,'completed',$3,$4)",[v2.id,actor,JSON.stringify([{location:'正文',text:'第二版合成资料'}]),parserFingerprint]),actor);await confirmKnowledgeForTest(db,actor,task.id,v2.id);await knowledge.indexNext(actor);check((await knowledge.search(actor,task.id,'合成')).matches.length>0,'删除前知识可检索');
  let s=await skills.create(actor,'trash-fixture');s=await skills.save(actor,s.name,'SKILL.md',Buffer.from('---\nname: trash-fixture\ndescription: 合成技能\n---\n只处理合成资料。'),s.revision);await skills.publish(actor,s.name,s.revision);await skills.select(actor,s.name,true);const release=(await skills.market(actor))[0]!.version;
  let plan=await plans.draft(actor,{...newAutomationConfig(),name:'合成计划',skill:s.name,releaseId:release,requirements:'处理固定合成资料',input:{mode:'fixed',versionIds:[v2.id],pattern:''}},randomUUID());plan=await plans.confirm(actor,plan.id,plan.revision,true);await plans.manual(actor,plan.id,plan.revision,randomUUID());
  await files.remove(actor,task.id,v1.documentId,2);let e=(await trash.list(actor)).entries.find(e=>e.entityId===v1.documentId)!;

@@ -83,6 +83,8 @@
     "eval:web-database": "node scripts/test-automations.mjs --web",
     "eval:web-quota": "node --import tsx eval/web-quota.mts",
     "eval:ask-user-dock": "node eval/ask-user-dock-ui.mjs",
+    "eval:knowledge-ui": "node eval/knowledge-ingestion-ui.mjs",
+    "eval:knowledge-db": "tsx eval/knowledge-ingestion-db.mts",
     "eval:limits": "node scripts/test-limits.mjs",
     "eval:limits-ui": "node eval/limits-panel-ui.mjs",
     "eval:users-ui": "node eval/users-panel-ui.mjs",

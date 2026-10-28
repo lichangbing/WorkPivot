@@ -5,6 +5,7 @@ import { FileLabel } from './Attachments';
 import { Capacitor } from '@capacitor/core';
 import { exportArtifact } from './artifact-export';
 import type { Artifact } from './artifact-data';
+import { KnowledgeFiles } from './KnowledgeIngestion';
 
 interface Props { client: MobileClient; onError: (error: unknown) => void }
 interface Skill { name: string; displayName?: string; description: string; loaded: boolean; visibility?: string }
@@ -69,6 +70,7 @@ export function TaskResources({ client, task, onError }: Props & { task: Task })
     {files.value?.artifacts.length === 0 && <p className="muted">暂无产物</p>}
     {notice && <p role="status">{notice}</p>}
     <p className="muted">点击名称{Capacitor.isNativePlatform() ? '打开文件，也可通过系统菜单保存或分享。临时副本在退出时清理；已保存或分享给其他应用的副本由你管理。' : '下载文件。'}</p>
+    <KnowledgeFiles client={client} task={task} onError={onError}/>
     {(error || experts.error || tasks.error || files.error) && <p className="error" role="alert">{error || experts.error || tasks.error || files.error}</p>}
   </section>;
 }

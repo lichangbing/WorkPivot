@@ -7,8 +7,14 @@ import type { Pool, PoolClient } from 'pg';
 import { RepositoryError, transaction, uuid } from './connection.js';
 
 const maximum = 10 * 1024 * 1024, quota = 100 * 1024 * 1024;
-interface Version { sourceTaskId?:string; id: string; documentId: string; revision: number; name: string; size: number; sha256: string }
+interface Version {
+  sourceTaskId?:string; id: string; documentId: string; revision: number; name: string; size: number; sha256: string;
+  current?: boolean; knowledgeStatus?: string; knowledgeRevision?: number;
+}
 const columns = 'v.id,v.document_id AS "documentId",v.revision,v.name,v.size,v.sha256';
+const displayColumns = `${columns},v.revision=d.revision AS current,
+  COALESCE((SELECT i.status FROM workpivot.knowledge_ingestions i WHERE i.version_id=v.id),'none') AS "knowledgeStatus",
+  COALESCE((SELECT i.revision FROM workpivot.knowledge_ingestions i WHERE i.version_id=v.id),0) AS "knowledgeRevision"`;
 /** 磁盘原件不可变；归属、版本和发布在 PostgreSQL 事务中维护。 */
 export class FileRepository {
   private readonly root: string;
@@ -85,14 +91,14 @@ export class FileRepository {
       signal?.throwIfAborted(); await guard?.(c); await onPublished?.(c, published); return published;
   }
   async list(actor: string, taskId: string, purpose: 'upload' | 'artifact' = 'upload', allowedVersions?:readonly string[]): Promise<Version[]> {
-    return transaction(this.db, async c => { await this.task(c, taskId); return (await c.query<Version>(`SELECT ${columns},d.task_id AS "sourceTaskId" FROM workpivot.documents d JOIN workpivot.document_versions v ON v.document_id=d.id WHERE (d.task_id=$1 OR ($3::uuid[] IS NOT NULL AND ${fileTaskScope('$1')})) AND d.purpose=$2 AND (($3::uuid[] IS NULL AND v.revision=d.revision) OR v.id=ANY($3::uuid[])) ORDER BY v.created_at,v.id LIMIT 100`, [taskId, purpose, versionScope(allowedVersions)])).rows; }, actor);
+    return transaction(this.db, async c => { await this.task(c, taskId); return (await c.query<Version>(`SELECT ${displayColumns},d.task_id AS "sourceTaskId" FROM workpivot.documents d JOIN workpivot.document_versions v ON v.document_id=d.id WHERE (d.task_id=$1 OR ($3::uuid[] IS NOT NULL AND ${fileTaskScope('$1')})) AND d.purpose=$2 AND (($3::uuid[] IS NULL AND v.revision=d.revision) OR v.id=ANY($3::uuid[])) ORDER BY v.created_at,v.id LIMIT 100`, [taskId, purpose, versionScope(allowedVersions)])).rows; }, actor);
   }
   async candidates(actor:string,taskId:string){
-    return transaction(this.db,async c=>{await this.task(c,taskId);return (await c.query<Version>(`SELECT ${columns},d.task_id AS "sourceTaskId" FROM workpivot.documents d JOIN workpivot.document_versions v ON v.document_id=d.id WHERE ${fileTaskScope('$1')} AND v.revision=d.revision ORDER BY v.created_at DESC LIMIT 100`,[taskId])).rows;},actor);
+    return transaction(this.db,async c=>{await this.task(c,taskId);return (await c.query<Version>(`SELECT ${displayColumns},d.task_id AS "sourceTaskId" FROM workpivot.documents d JOIN workpivot.document_versions v ON v.document_id=d.id WHERE ${fileTaskScope('$1')} AND v.revision=d.revision ORDER BY v.created_at DESC LIMIT 100`,[taskId])).rows;},actor);
   }
   async versions(actor: string, taskId: string, documentId: string): Promise<Version[]> {
     uuid(documentId);
-    return transaction(this.db, async c => { await this.task(c, taskId); return (await c.query<Version>(`SELECT ${columns} FROM workpivot.documents d JOIN workpivot.document_versions v ON v.document_id=d.id WHERE d.task_id=$1 AND d.id=$2 ORDER BY v.revision DESC LIMIT 100`, [taskId, documentId])).rows; }, actor);
+    return transaction(this.db, async c => { await this.task(c, taskId); return (await c.query<Version>(`SELECT ${displayColumns} FROM workpivot.documents d JOIN workpivot.document_versions v ON v.document_id=d.id WHERE d.task_id=$1 AND d.id=$2 ORDER BY v.revision DESC LIMIT 100`, [taskId, documentId])).rows; }, actor);
   }
   async download(actor: string, taskId: string, versionId: string, allowedVersions?:readonly string[]): Promise<{ version: Version; data: Buffer }> {
     requireVersion(allowedVersions,versionId);
@@ -129,6 +135,31 @@ export class FileRepository {
       await c.query('INSERT INTO workpivot.knowledge_state(owner_user_id,epoch) VALUES($1,1) ON CONFLICT(owner_user_id) DO UPDATE SET epoch=workpivot.knowledge_state.epoch+1', [actor]);
       await c.query('DELETE FROM workpivot.documents WHERE id=$1', [documentId]);
     }, actor);
+  }
+  async removeVersion(actor:string,taskId:string,documentId:string,versionId:string,confirmation:string){
+    uuid(documentId);uuid(versionId);
+    if(confirmation!=='删除此版本')throw new RepositoryError(400,'请输入“删除此版本”确认');
+    await transaction(this.db,async c=>{
+      await this.lock(c,actor);await this.task(c,taskId);
+      const version=(await c.query(`SELECT v.id,v.revision,v.name,d.purpose,d.revision AS "documentRevision"
+        FROM workpivot.document_versions v JOIN workpivot.documents d ON d.id=v.document_id
+        WHERE v.id=$1 AND v.document_id=$2 AND d.task_id=$3 FOR UPDATE OF v,d`,
+      [versionId,documentId,taskId])).rows[0];
+      if(!version)throw new RepositoryError(404,'文件版本不存在');
+      if((await c.query(`SELECT 1 FROM workpivot.task_runs
+        WHERE task_id=$1 AND status IN ('running','stopping') AND $2::uuid=ANY(attachment_ids) LIMIT 1`,
+      [taskId,versionId])).rowCount)throw new RepositoryError(409,'该版本正在被任务使用，请先停止任务');
+      await revokeTrashAutomations(c,'document',documentId);
+      await c.query(`UPDATE workpivot.task_runs SET context_revoked=true,model_messages='[]'
+        WHERE $1::uuid=ANY(attachment_ids)`,[versionId]);
+      await c.query('DELETE FROM workpivot.document_versions WHERE id=$1 AND document_id=$2',[versionId,documentId]);
+      await c.query('DELETE FROM workpivot.documents WHERE id=$1 AND NOT EXISTS(SELECT 1 FROM workpivot.document_versions WHERE document_id=$1)',[documentId]);
+      await c.query(`INSERT INTO workpivot.knowledge_state(owner_user_id,epoch) VALUES($1,1)
+        ON CONFLICT(owner_user_id) DO UPDATE SET epoch=workpivot.knowledge_state.epoch+1`,[actor]);
+    },actor);
+    let cleanupPending=false;
+    try{await unlink(join(await this.directory(actor),versionId));}catch{cleanupPending=true;}
+    return {cleanupPending};
   }
   /** 仅供服务器在同一已认证事务内导出；归属同时由行级权限复核。 */
   async exportVersion(c:PoolClient,actor:string,id:string):Promise<Buffer>{

@@ -18,6 +18,7 @@ interface Fact {
   unit: string | null;
   currency: string | null;
   validFrom: string;
+  needsReview?: boolean;
 }
 
 interface Conflict {
@@ -40,7 +41,11 @@ interface Data {
   epoch: string;
   facts: Fact[];
   conflicts: Conflict[];
-  relations: Array<{ id: string; subjectName: string; relationType: string; objectName: string; revision: number }>;
+  relations: Array<{
+    id: string; subjectId: string; subjectName: string; subjectType: string;
+    relationType: string; objectId: string; objectName: string; objectType: string;
+    revision: number; needsReview?: boolean;
+  }>;
   autoExtraction: boolean;
   settingsRevision: number;
 }
@@ -80,6 +85,17 @@ export function BusinessFacts({ client, task, onError }: { client: MobileClient;
       signal: resource.signal(),
     });
   });
+  const reviewRelation = (row: Data['relations'][number]) => run(async () => {
+    await client.json(`/api/projects/${encodeURIComponent(task.projectId!)}/business-relations`, {
+      method: 'POST',
+      body: JSON.stringify({
+        subject: { id: row.subjectId, name: row.subjectName, type: row.subjectType },
+        relationType: row.relationType,
+        object: { id: row.objectId, name: row.objectName, type: row.objectType },
+      }),
+      signal: resource.signal(),
+    });
+  });
   const data = resource.value;
   return <section className="memory-editor capabilities" aria-label="项目业务事实">
     <p className="muted">业务事实按项目隔离。未确认的更新不会作为当前答案使用。</p>
@@ -99,8 +115,9 @@ export function BusinessFacts({ client, task, onError }: { client: MobileClient;
     {data?.facts.map(fact => <article key={fact.id}>
       <strong>{fact.objectName}</strong><small>{fact.objectType} · {fact.status === 'conflicted' ? '待确认更新' : `v${fact.revision}`}</small>
       <p>{fact.predicate}：{fact.status === 'conflicted' ? '等待确认' : value(fact)}</p>
+      {fact.needsReview&&<p role="status">来源文件版本已删除，此事实已停止自动召回；请核对后更新。</p>}
     </article>)}
-    {data?.relations.length ? <><h3>对象关系</h3>{data.relations.map(row => <p key={row.id}>{row.subjectName} {row.relationType} {row.objectName} · v{row.revision}</p>)}</> : null}
+    {data?.relations.length ? <><h3>对象关系</h3>{data.relations.map(row => <div key={row.id}>{row.needsReview && <p role="status">来源文件版本已删除，此关系已停止自动召回。</p>}<p>{row.subjectName} {row.relationType} {row.objectName} · v{row.revision}</p>{row.needsReview && <button disabled={busy} onClick={() => void reviewRelation(row)}>确认仍有效</button>}</div>)}</> : null}
     {data && data.facts.length === 0 && data.conflicts.length === 0 && <p>暂无业务事实。</p>}
     {(error || resource.error) && <p className="error" role="alert">{error || resource.error}</p>}
   </section>;

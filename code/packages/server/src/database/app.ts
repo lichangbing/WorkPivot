@@ -22,6 +22,7 @@ import { workspaceStream } from './workspace-stream.js';
 import { businessFactRoutes } from './business-fact-routes.js';
 import { MemoryControls } from './memory-controls.js';
 import { KnowledgeRepository } from './knowledge.js';
+import { KnowledgeIngestionRepository } from './knowledge-ingestion.js';
 import { DocumentProcessing } from './document-processing.js';
 import { DatabaseModelService } from './model-service.js';
 import { transaction } from './connection.js';
@@ -216,8 +217,46 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   const cleanup = async (owner: string): Promise<boolean> => { if (!files) return false; try { await files.collect(owner); return false; } catch { return true; } };
   if (files) {
     const processing = new DocumentProcessing(appPool,files,async()=>{throw Error('No parser in HTTP handler');});
+    const knowledgeIngestion = new KnowledgeIngestionRepository(appPool);
     app.get('/api/tasks/:id/parsing',async(req,res)=>{res.json({files:await processing.list(actor(res).id,str(req.params['id']))});});
     app.post('/api/tasks/:id/parsing/:versionId/retry',async(req,res)=>{await processing.retry(actor(res).id,str(req.params['id']),str(req.params['versionId']));res.json({ok:true});});
+    app.get('/api/tasks/:id/knowledge-ingestions/:versionId',async(req,res)=>{
+      res.json(await knowledgeIngestion.candidates(
+        actor(res).id,
+        str(req.params['id']),
+        str(req.params['versionId']),
+        req.query['offset']===undefined?0:Number(str(req.query['offset'])),
+        req.query['limit']===undefined?50:Number(str(req.query['limit'])),
+      ));
+    });
+    app.post('/api/tasks/:id/knowledge-ingestions/:versionId/confirm',async(req,res)=>{
+      const b=body(req);
+      res.json(await knowledgeIngestion.confirm(
+        actor(res).id,
+        str(req.params['id']),
+        str(req.params['versionId']),
+        num(b.revision),
+        b.selected as number[],
+      ));
+    });
+    app.post('/api/tasks/:id/knowledge-ingestions/:versionId/reject',async(req,res)=>{
+      const b=body(req);
+      res.json(await knowledgeIngestion.reject(
+        actor(res).id,
+        str(req.params['id']),
+        str(req.params['versionId']),
+        num(b.revision),
+        b.reason===undefined||b.reason===null?undefined:str(b.reason),
+      ));
+    });
+    app.post('/api/tasks/:id/knowledge-ingestions/:versionId/reopen',async(req,res)=>{
+      res.json(await knowledgeIngestion.reopen(
+        actor(res).id,
+        str(req.params['id']),
+        str(req.params['versionId']),
+        num(body(req).revision),
+      ));
+    });
     app.get('/api/tasks/:id/artifacts', async (req, res) => { res.json({ artifacts: await files.list(actor(res).id, str(req.params['id']), 'artifact') }); });
     app.get('/api/tasks/:id/files', async (req, res) => { res.json({ files: await files.list(actor(res).id, str(req.params['id'])) }); });
     app.post('/api/tasks/:id/files', express.raw({ type: 'application/octet-stream', limit: '10mb' }), async (req, res) => {
@@ -226,6 +265,10 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
       res.json({ file: await files.upload(actor(res).id, str(req.params['id']), str(req.query['name']), req.body, str(req.query['requestId']), req.query['documentId'] === undefined ? undefined : str(req.query['documentId']), revision) });
     });
     app.get('/api/tasks/:id/files/:documentId/versions', async (req, res) => { res.json({ versions: await files.versions(actor(res).id, str(req.params['id']), str(req.params['documentId'])) }); });
+    app.delete('/api/tasks/:id/files/:documentId/versions/:versionId', async (req, res) => {
+      const b=body(req);
+      res.json(await files.removeVersion(actor(res).id,str(req.params['id']),str(req.params['documentId']),str(req.params['versionId']),str(b.confirmation)));
+    });
     app.get('/api/tasks/:id/file-versions/:versionId', async (req, res) => {
       const result = await files.download(actor(res).id, str(req.params['id']), str(req.params['versionId']));
       res.setHeader('X-Content-Type-Options', 'nosniff'); res.attachment(result.version.name); res.type('application/octet-stream').send(result.data);
@@ -375,7 +418,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     const after=req.query['after']===undefined?null:str(req.query['after']);if(after)uuid(after);
     const project=req.query['project']===undefined?'all':str(req.query['project']);if(!['all','temporary','legacy'].includes(project))uuid(project);
     res.json(await transaction(appPool,async c=>{
-      const rows=(await c.query(`SELECT m.id,m.scope,m.revision,m.locked,m.legacy_personal AS "legacyPersonal",m.project_id AS "projectId",m.task_id AS "taskId",r.content,p.name AS "projectName",t.name AS "taskName"
+      const rows=(await c.query(`SELECT m.id,m.scope,m.revision,m.locked,m.needs_review AS "needsReview",m.legacy_personal AS "legacyPersonal",m.project_id AS "projectId",m.task_id AS "taskId",r.content,p.name AS "projectName",t.name AS "taskName"
         FROM workpivot.memories m JOIN workpivot.memory_revisions r ON r.memory_id=m.id AND r.revision=m.revision
         LEFT JOIN workpivot.projects p ON p.id=m.project_id AND p.deleted_at IS NULL LEFT JOIN workpivot.tasks t ON t.id=m.task_id AND t.deleted_at IS NULL
         WHERE m.deleted_at IS NULL AND m.scope=$1 AND ($2::uuid IS NULL OR m.id>$2) AND (m.scope='user' AND (m.project_id IS NULL OR p.id IS NOT NULL) OR(m.scope='project' AND p.id IS NOT NULL) OR(m.scope='task' AND t.id IS NOT NULL)) AND ($3='all' OR ($3='legacy' AND m.legacy_personal) OR ($3='temporary' AND m.project_id IS NULL AND NOT m.legacy_personal) OR m.project_id::text=$3) ORDER BY m.id LIMIT 51`,[scope,after,project])).rows;

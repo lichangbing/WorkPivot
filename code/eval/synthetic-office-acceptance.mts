@@ -13,6 +13,7 @@ import {FileRepository} from '../packages/server/src/database/files.js';
 import {DocumentProcessing} from '../packages/server/src/database/document-processing.js';
 import {KnowledgeRepository} from '../packages/server/src/database/knowledge.js';
 import {parseDocumentResult,type ParsedDocument} from '../packages/server/src/database/document-parser.js';
+import {confirmKnowledgeForTest} from './knowledge-fixture.mts';
 
 // 合成资料与验收证据保留在独立目录；数据库、账号和执行器只用于本轮。
 const target=process.env.WORKPIVOT_TEST_PG_URL;
@@ -66,7 +67,8 @@ try{
   const uploaded=await files.upload(actor,task.id,name,await readFile(join(sources,name)),randomUUID());versions.set(name,uploaded.id);await processing.process(actor);
   const result=await transaction(db,async c=>(await c.query('SELECT status,parts,coverage,warnings FROM workpivot.document_processing WHERE version_id=$1',[uploaded.id])).rows[0],actor);
   check(result.status==='completed',name+'通过真实隔离执行器解析');parsed.set(name,result);await writeFile(join(outputs,name+'.parsed.json'),JSON.stringify(result,null,2));
-  check(await knowledge.indexNext(actor),name+'成功发布知识索引');
+  await confirmKnowledgeForTest(db,actor,task.id,uploaded.id);
+  check(await knowledge.indexNext(actor),name+'经用户确认后发布知识索引');
  }
  for(const [name,epoch] of [['sales-1900.xlsx','1900'],['sales-1904.xlsx','1904']]){
   const date=parsed.get(name)!.parts.find(p=>p.location==='sheet:销售明细!C2')!;

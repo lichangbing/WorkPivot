@@ -8,7 +8,7 @@ import {captureAutomation,recycleExpert} from './personal-recycle.js';
 import {invalidateMemoryContext} from './memory-controls.js';
 
 // 固定白名单不包含身份、模型、MCP、授权令牌或系统配置表。
-const tables=['projects','tasks','messages','conversation_turns','conversation_events','documents','document_versions','memories','memory_revisions','memory_sources','experts','expert_experiences','skill_drafts','skill_releases','skill_builds','automations','automation_runs','capture_sources','capture_versions','capture_observations','trash_entries'] as const;
+const tables=['projects','tasks','messages','conversation_turns','conversation_events','documents','document_versions','knowledge_ingestions','memories','memory_revisions','memory_sources','experts','expert_experiences','skill_drafts','skill_releases','skill_builds','automations','automation_runs','capture_sources','capture_versions','capture_observations','trash_entries'] as const;
 const labels={projects:'项目',tasks:'对话与执行任务',documents:'文件',memories:'记忆',skill_drafts:'私人技能',experts:'私人专家',automations:'自动化任务'};
 const kept=['账号和登录会话','模型、MCP与私人网页登录配置及凭据','系统和个人偏好设置','用量、管理和采集审计及已有回收站'];
 type Snapshot=Record<string,QueryResultRow[]>;
