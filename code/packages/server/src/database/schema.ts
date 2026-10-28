@@ -541,5 +541,65 @@ WHERE j.status='completed'
 -- 区分用户确认与无冲突自动保存，便于审计和后续界面说明。
 ALTER TABLE workpivot.memory_suggestions ADD COLUMN decision_source text
   CHECK(decision_source IS NULL OR decision_source IN ('auto','user'));
+`}, {version:61,sql:`
+-- 管理后台需要完整账户状态、额度、注册策略和最近登录信息。
+-- 运行角色仍只能读写额度相关列；账户资料只通过受限身份角色访问。
+ALTER TABLE identity.users ADD COLUMN email text;
+ALTER TABLE identity.users ADD COLUMN last_login_at timestamptz;
+ALTER TABLE identity.users ADD COLUMN updated_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE identity.users ADD CONSTRAINT users_email_check
+  CHECK(email IS NULL OR (length(btrim(email)) BETWEEN 3 AND 254 AND position('@' IN email) > 1));
+CREATE UNIQUE INDEX users_email_key ON identity.users(lower(email)) WHERE email IS NOT NULL;
+CREATE TABLE identity.access_policy (
+  singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton),
+  registration_mode text NOT NULL DEFAULT 'closed'
+    CHECK(registration_mode IN ('closed','open')),
+  default_message_quota integer NOT NULL DEFAULT 10
+    CHECK(default_message_quota BETWEEN 0 AND 100000),
+  revision integer NOT NULL DEFAULT 1 CHECK(revision>0),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO identity.access_policy(singleton) VALUES(true);
+GRANT SELECT,INSERT,UPDATE,DELETE ON identity.access_policy TO workpivot_auth;
+`}, {version:62,sql:`
+-- 跨终端工作区同步：项目/任务变化生成用户级单调版本，并通过独立 NOTIFY 唤醒 SSE。
+CREATE TABLE IF NOT EXISTS workpivot.workspace_state (
+  owner_user_id uuid PRIMARY KEY REFERENCES identity.users(id),
+  revision bigint NOT NULL DEFAULT 0 CHECK(revision>=0),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE workpivot.workspace_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workpivot.workspace_state FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS personal_workspace_state ON workpivot.workspace_state;
+CREATE POLICY personal_workspace_state ON workpivot.workspace_state
+  USING(owner_user_id=workpivot.actor_id())
+  WITH CHECK(owner_user_id=workpivot.actor_id());
+GRANT SELECT,INSERT,UPDATE,DELETE ON workpivot.workspace_state TO workpivot_app;
+CREATE OR REPLACE FUNCTION workpivot.bump_workspace_revision() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  target_user uuid;
+  next_revision bigint;
+BEGIN
+  IF TG_OP='DELETE' THEN
+    target_user:=OLD.owner_user_id;
+  ELSE
+    target_user:=NEW.owner_user_id;
+  END IF;
+  INSERT INTO workpivot.workspace_state(owner_user_id,revision,updated_at)
+  VALUES(target_user,1,now())
+  ON CONFLICT(owner_user_id) DO UPDATE
+    SET revision=workpivot.workspace_state.revision+1,updated_at=now()
+  RETURNING revision INTO next_revision;
+  PERFORM pg_notify('workpivot_workspace_events',target_user::text);
+  RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS notify_workspace_projects ON workpivot.projects;
+CREATE TRIGGER notify_workspace_projects
+  AFTER INSERT OR UPDATE OR DELETE ON workpivot.projects
+  FOR EACH ROW EXECUTE FUNCTION workpivot.bump_workspace_revision();
+DROP TRIGGER IF EXISTS notify_workspace_tasks ON workpivot.tasks;
+CREATE TRIGGER notify_workspace_tasks
+  AFTER INSERT OR UPDATE OR DELETE ON workpivot.tasks
+  FOR EACH ROW EXECUTE FUNCTION workpivot.bump_workspace_revision();
 `}] as const;
 import { usageSchema } from './usage-schema.js';

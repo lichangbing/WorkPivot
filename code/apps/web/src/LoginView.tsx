@@ -6,15 +6,17 @@ import { api, setToken } from './api';
 interface Props {
   needsSetup: boolean;
   setupTokenRequired?: boolean;
+  registrationEnabled?: boolean;
+  defaultMessageQuota?: number;
   onAuthed: () => void;
 }
 
 /** T2-01 登录门：无用户时展示注册（首用户=管理员），否则登录。 */
-export function LoginView({ needsSetup, onAuthed }: Props): React.JSX.Element {
+export function LoginView({ needsSetup, registrationEnabled = false, defaultMessageQuota = 10, onAuthed }: Props): React.JSX.Element {
   const [serverUrl, setServerUrl] = useState(location.origin);
   const changingServer = Boolean(window.workpivotDesktop && serverUrl.trim().replace(/\/$/, '') !== location.origin);
   const [wantRegister, setWantRegister] = useState(false);
-  const mode: 'login' | 'register' = (needsSetup && !changingServer) || wantRegister ? 'register' : 'login';
+  const mode: 'login' | 'register' = (needsSetup && !changingServer) || (wantRegister && registrationEnabled) ? 'register' : 'login';
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +50,7 @@ export function LoginView({ needsSetup, onAuthed }: Props): React.JSX.Element {
         <div className="mb-4"><ThemeSwitch /></div>
         <h1 className="mb-1 text-xl font-semibold">WorkPivot</h1>
         <p className="mb-5 text-xs text-neutral-500">
-          {mode === 'register' ? (needsSetup ? '首次使用：注册的第一个账户自动成为管理员' : '注册演示账号：每个账号 10 次提问额度') : '登录以继续'}
+          {mode === 'register' ? (needsSetup ? '首次使用：注册的第一个账户自动成为管理员' : `自助注册：默认每天 ${defaultMessageQuota === 0 ? '不限' : defaultMessageQuota + ' 次'}提问`) : '登录以继续；账号由管理员创建'}
         </p>
 
         <div className="space-y-3 text-sm">
@@ -78,14 +80,14 @@ export function LoginView({ needsSetup, onAuthed }: Props): React.JSX.Element {
           >
             {busy ? '正在连接…' : mode === 'register' ? (needsSetup ? '注册管理员' : '注册并进入') : '登录'}
           </button>
-          {!needsSetup && (
+          {!needsSetup && registrationEnabled && (
             <button
               type="button"
               className="w-full text-center text-xs text-neutral-400 underline-offset-2 hover:text-neutral-200 hover:underline"
               disabled={busy}
               onClick={() => { setError(null); setWantRegister(!wantRegister); }}
             >
-              {mode === 'register' ? '已有账号？去登录' : '注册演示账号（10 次提问额度）'}
+              {mode === 'register' ? '已有账号？去登录' : '注册新账号'}
             </button>
           )}
         </div>

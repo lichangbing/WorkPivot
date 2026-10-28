@@ -161,7 +161,7 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
       <textarea aria-label="消息" placeholder="发送消息…" rows={2} value={message} onChange={e => setMessage(e.target.value)} disabled={busy} />
       <footer><ComposerSettings client={client} disabled={busy || running} onError={onError} />{running
         ? <button type="button" disabled={busy} onClick={() => void action(`/api/tasks/${task.id}/stop`)}>停止</button>
-        : <button className="send" disabled={busy || uploadBlocked || !resourceScope || !ready || !connected || !message.trim()} aria-label="发送消息">↑</button>}</footer>
+        : <button className="send" disabled={busy || uploadBlocked || !resourceScope || !ready || !connected || !message.trim()} aria-label="发送消息"><span className="send-face" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 19V5m0 0-6 6m6-6 6 6" /></svg></span></button>}</footer>
     </form>
   </>;
 }

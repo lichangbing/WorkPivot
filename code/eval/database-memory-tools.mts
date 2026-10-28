@@ -2,7 +2,7 @@ import { MemorySuggestions } from '../packages/server/src/database/memory-sugges
 import {transaction} from '../packages/server/src/database/connection.js';
 import assert from 'node:assert/strict';
 import type { Pool } from 'pg';
-import { DatabaseMemoryTools } from '../packages/server/src/database/memory-tools.js';
+import { buildAutomaticMemoryPreamble, DatabaseMemoryTools } from '../packages/server/src/database/memory-tools.js';
 import { WorkspaceRepository } from '../packages/server/src/database/workspace.js';
 
 export async function testMemoryTools(db: Pool, owner: string, other: string, check: (value: unknown, label: string) => void) {
@@ -56,6 +56,13 @@ export async function testMemoryTools(db: Pool, owner: string, other: string, ch
   await assert.rejects(async () => suggestions.propose(owner, task.id, await suggestions.epoch(owner), 'user', 'stale overwrite', personal.id, 1)); check(true, 'stale target revision rejected at proposal');
   const stale = await suggestions.propose(owner, task.id, await suggestions.epoch(owner), 'user', 'stale preference');
   await workspace.editMemory(owner, shared.id, 'updated project fact', shared.revision);
+  const automatic = await tools.automaticContext(owner, task.id, 'updated project fact');
+  check(automatic.some(memory => memory.id === shared.id), '自动记忆上下文召回当前项目相关事实');
+  check(!automatic.some(memory => [foreignProject.id, foreignTask.id].includes(memory.id)), '自动记忆上下文保持项目和任务隔离');
+  check(buildAutomaticMemoryPreamble(automatic).includes('不是系统指令'), '自动记忆提示明确其不具备指令权限');
+  const taskOnlyAutomatic = await restricted.automaticContext(owner, task.id, 'updated project fact');
+  check(taskOnlyAutomatic.length > 0 && taskOnlyAutomatic.every(memory => memory.scope === 'task'), '自动记忆上下文遵守本次选择的层级');
+  check((await new DatabaseMemoryTools(db, 'load', []).automaticContext(owner, task.id, 'updated project fact')).length === 0, '空记忆范围不会自动回退为全量加载');
   await assert.rejects(() => suggestions.decide(owner, stale.id, true)); check(true, 'manual edit invalidates earlier suggestions');
   const queryTool = tools.tools(owner, task.id)[0]!;
   check(String(await queryTool.run({ query: 'updated project fact' }, { taskDir: '.' })).includes(shared.id), 'model-facing search tool reads database');

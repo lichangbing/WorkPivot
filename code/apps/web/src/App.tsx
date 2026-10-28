@@ -116,6 +116,8 @@ export default function App(): React.JSX.Element {
   const [currentUser, setCurrentUser] = useState<PublicUser | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [setupTokenRequired, setSetupTokenRequired] = useState(false);
+  const [registrationEnabled, setRegistrationEnabled] = useState(false);
+  const [defaultMessageQuota, setDefaultMessageQuota] = useState(10);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -216,6 +218,8 @@ export default function App(): React.JSX.Element {
       const state = await api.authState();
       setNeedsSetup(state.needsSetup);
       setSetupTokenRequired(state.setupTokenRequired);
+      setRegistrationEnabled(state.registrationEnabled ?? false);
+      setDefaultMessageQuota(state.defaultMessageQuota ?? 10);
       if (state.authenticated && state.user) {
         setCurrentUser(state.user);
         setAuthState(state.user.mustChangePassword ? 'password' : 'authed');
@@ -633,7 +637,7 @@ export default function App(): React.JSX.Element {
     return <div className="flex h-screen items-center justify-center bg-neutral-950 text-neutral-500">加载中…</div>;
   }
   if (authState === 'guest') {
-    return <LoginView needsSetup={needsSetup} setupTokenRequired={setupTokenRequired} onAuthed={() => void refreshAuth()} />;
+    return <LoginView needsSetup={needsSetup} setupTokenRequired={setupTokenRequired} registrationEnabled={registrationEnabled} defaultMessageQuota={defaultMessageQuota} onAuthed={() => void refreshAuth()} />;
   }
 
   if (authState === 'password') return <RequiredPasswordChange onDone={() => void refreshAuth()} />;

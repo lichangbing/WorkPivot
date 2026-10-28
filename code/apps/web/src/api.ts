@@ -46,6 +46,12 @@ export interface PublicUser {
   role: 'admin' | 'member';
   createdAt?: string;
   lastLoginTime?: string;
+  lastLoginAt?: string | null;
+  disabled?: boolean;
+  messageQuota?: number;
+  messagesUsed?: number;
+  quotaResetAt?: string | null;
+  activeSessions?: number;
 }
 
 export type Tier = 'ask' | 'auto';
@@ -133,7 +139,7 @@ export const api = {
   listPathGrants: (): Promise<{ grants: Array<{ id: string; userId: string; taskId: string; path: string; mode: 'read' | 'write'; subtree: boolean; createdAt: string }> }> => jsonFetch('/api/permissions/allowdirs'),
   revokePathGrant: (id: string): Promise<{ ok: boolean }> => jsonFetch(`/api/permissions/allowdirs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   health: (): Promise<{ ok: boolean }> => jsonFetch('/api/health'),
-  authState: (): Promise<{ needsSetup: boolean; setupTokenRequired: boolean; authenticated: boolean; user: PublicUser | null; quota?: { used: number; limit: number; remaining: number | null; resetsAt?: string } | null }> =>
+  authState: (): Promise<{ needsSetup: boolean; setupTokenRequired: boolean; registrationEnabled?: boolean; defaultMessageQuota?: number; authenticated: boolean; user: PublicUser | null; quota?: { used: number; limit: number; remaining: number | null; resetsAt?: string } | null }> =>
     jsonFetch('/api/auth/state'),
   register: (username: string, password: string): Promise<{ token: string; user: PublicUser }> =>
     jsonFetch('/api/auth/register', { method: 'POST', body: JSON.stringify({ username, password }) }),
@@ -143,15 +149,22 @@ export const api = {
   changePassword: (currentPassword: string, newPassword: string): Promise<{ ok: boolean }> =>
     jsonFetch('/api/auth/password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
   listUsers: (): Promise<{ users: PublicUser[] }> => jsonFetch('/api/users'),
-  createUser: (username: string, password: string, role: 'admin' | 'member', email?: string): Promise<{ user: PublicUser }> =>
-    jsonFetch('/api/users', { method: 'POST', body: JSON.stringify({ username, password, role, email: email?.trim() || undefined }) }),
+  createUser: (username: string, password: string, role: 'admin' | 'member', email?: string, messageQuota = 10): Promise<{ user: PublicUser }> =>
+    jsonFetch('/api/users', { method: 'POST', body: JSON.stringify({ username, password, role, email: email?.trim() || undefined, messageQuota }) }),
   resetUserPassword: (id: string): Promise<{ temporaryPassword: string }> => jsonFetch(`/api/users/${encodeURIComponent(id)}/reset-password`, { method: 'POST' }),
+  updateUser: (id: string, input: { email?: string | null; role?: 'admin' | 'member'; disabled?: boolean; messageQuota?: number }): Promise<{ user: PublicUser }> =>
+    jsonFetch(`/api/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  resetUserQuota: (id: string): Promise<{ ok: boolean }> => jsonFetch(`/api/users/${encodeURIComponent(id)}/quota/reset`, { method: 'POST' }),
   deleteUser: (id: string): Promise<{ ok: boolean }> => jsonFetch(`/api/users/${id}`, { method: 'DELETE' }),
   revokeUserSessions: (id: string): Promise<{ ok: boolean }> => jsonFetch(`/api/users/${id}/sessions`, { method: 'DELETE' }),
   updateUserRole: (id: string, role: 'admin' | 'member'): Promise<{ ok: boolean }> =>
     jsonFetch(`/api/users/${id}/role`, { method: 'PUT', body: JSON.stringify({ role }) }),
   updateUserEmail: (id: string, email?: string): Promise<{ ok: boolean }> =>
     jsonFetch(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify({ email: email?.trim() || null }) }),
+  accessPolicy: (): Promise<{ policy: { registrationMode: 'closed' | 'open'; defaultMessageQuota: number; revision: number } }> =>
+    jsonFetch('/api/admin/access-policy'),
+  updateAccessPolicy: (input: { registrationMode: 'closed' | 'open'; defaultMessageQuota: number; revision: number }): Promise<{ policy: { registrationMode: 'closed' | 'open'; defaultMessageQuota: number; revision: number } }> =>
+    jsonFetch('/api/admin/access-policy', { method: 'PUT', body: JSON.stringify(input) }),
   getSettings: (): Promise<{ permissionTier: Tier; tierLabels: Record<string, string>; allowDirs: string[] }> =>
     jsonFetch('/api/settings'),
   // RL1-02：个人档位（成员自选，改自己）；全局默认档仅 admin（setGlobalTier）

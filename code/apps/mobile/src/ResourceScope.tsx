@@ -21,7 +21,7 @@ export function ResourceScope({ client, taskId, refresh, disabled, onChange, onE
   }, [client, taskId, refresh, retry, onChange]);
   const update = (value: ResourceSelection) => { setScope(value); onChange(value); };
   return <details className="resource-scope"><summary>本轮资料{scope ? ` · ${scope.memoryScopes.length} 层记忆 / ${scope.versionIds.length} 个文件` : ''}</summary>
-    <p className="muted">仅使用所选资料；勾选记忆也允许后台提出该层的整理建议，仍需确认后保存。本次添加的附件自动包含。</p>
+    <p className="muted">本轮会自动加载所选层级中的相关已确认记忆；未选层级不会读取。后台自动整理由记忆设置控制，与本轮读取选择无关。本次添加的附件自动包含。</p>
     <button type="button" disabled={disabled} onClick={() => setRetry(value => value + 1)}>读取后台最新范围</button>
     {error ? <p className="error" role="alert">{error}<button type="button" onClick={() => setRetry(value => value + 1)}>重新读取</button></p> : scope && <>
       {(['user', 'project', 'task'] as const).map(value => <label key={value}><input type="checkbox" disabled={disabled} checked={scope.memoryScopes.includes(value)} onChange={event => update({ ...scope, memoryScopes: event.target.checked ? [...scope.memoryScopes, value].sort() : scope.memoryScopes.filter(item => item !== value) })} />{({ user: '个人记忆', project: '项目记忆', task: '任务记忆' })[value]}</label>)}

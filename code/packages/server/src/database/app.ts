@@ -18,6 +18,7 @@ import {expertRoutes} from './expert-routes.js';
 import {Experts} from './experts.js';
 import { TaskNotifications } from './task-notifications.js';
 import { taskStream } from './task-stream.js';
+import { workspaceStream } from './workspace-stream.js';
 import { MemoryControls } from './memory-controls.js';
 import { KnowledgeRepository } from './knowledge.js';
 import { DocumentProcessing } from './document-processing.js';
@@ -45,7 +46,22 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   const accounts = new AccountRepository(authPool), workspace = new WorkspaceRepository(appPool);
   const conversation = new ConversationRepository(appPool);
   const notifications = new TaskNotifications(appPool);
-  const app = express(); app.disable('x-powered-by'); app.use('/api', mobileCors(process.env['WORKPIVOT_MOBILE_ORIGINS'])); app.use(requestAudit(authPool)); app.use(express.json({ limit: '1mb' }));
+  const app = express();
+  app.disable('x-powered-by');
+  // 仅在受控反向代理后读取真实客户端地址，用于登录限流与访问审计。
+  app.set('trust proxy', 'loopback, linklocal, uniquelocal');
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    if (req.secure || req.headers['x-forwarded-proto'] === 'https') res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    next();
+  });
+  app.use('/api', mobileCors(process.env['WORKPIVOT_MOBILE_ORIGINS']));
+  app.use(requestAudit(authPool));
+  app.use(express.json({ limit: '1mb' }));
   app.get(['/admin', '/admin.html'], (_req, res) => { if (webDist) res.sendFile('admin.html', { root: webDist }); else res.status(503).send('管理页面尚未构建'); });
   app.use((_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
   const token = (req: Request): string => req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : '';
@@ -57,8 +73,14 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     await appPool.query('SELECT 1'); await authPool.query('SELECT 1');
     res.json({ ok: true, name: 'workpivot', version: '0.3.0-rc.1', releaseStage: 'rc', releaseScope: 'single-user', apiProtocol: API_PROTOCOL, storage: 'postgresql', productionReady: false, chatEnabled: !!execution, filesEnabled: !!files, providersEnabled: !!providers, mcpEnabled: !!mcp });
   });
-  app.get('/api/auth/state', async (req, res) => { const user = await accounts.resolve(token(req)); res.json({ needsSetup: await accounts.needsSetup(), setupTokenRequired: false, authenticated: !!user, user, quota: user ? await accounts.quota(user.id) : null }); });
-  const throttle = authThrottle(() => { /* 数据库预览入口不得持久化旧文件审计。 */ });
+  app.get('/api/auth/state', async (req, res) => {
+    const user = await accounts.resolve(token(req));
+    const policy = await accounts.publicAccessPolicy();
+    res.json({ needsSetup: await accounts.needsSetup(), setupTokenRequired: false, registrationEnabled: policy.registrationEnabled, defaultMessageQuota: policy.defaultMessageQuota, authenticated: !!user, user, quota: user ? await accounts.quota(user.id) : null });
+  });
+  const throttle = authThrottle(() => {
+    void authPool.query("INSERT INTO identity.audit_events(actor_id,target_id,action) VALUES(NULL,NULL,'auth_throttled')").catch(() => undefined);
+  });
   app.post('/api/auth/register', throttle, async (req, res) => { const b = body(req); res.json(await accounts.register(str(b.username), str(b.password))); });
   app.post('/api/auth/login', throttle, async (req, res) => { const b = body(req); res.json(await accounts.login(str(b.username), str(b.password))); });
   app.use('/api', async (req, res, next) => {
@@ -139,13 +161,28 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   app.delete('/api/auth/sessions/:id', async (req, res) => { await accounts.revokeSession(token(req), req.params.id); res.json({ ok: true }); });
   app.post('/api/auth/password', async (req, res) => { const b = body(req); await accounts.changePassword(token(req), str(b.currentPassword), str(b.newPassword)); res.json({ ok: true }); });
   app.get('/api/users', async (req, res) => { res.json({ users: await accounts.listUsers(token(req)) }); });
+  app.get('/api/admin/access-policy', async (req, res) => { res.json({ policy: await accounts.adminAccessPolicy(token(req)) }); });
+  app.put('/api/admin/access-policy', async (req, res) => { const b = body(req); res.json({ policy: await accounts.updateAccessPolicy(token(req), { registrationMode: b.registrationMode, defaultMessageQuota: b.defaultMessageQuota, revision: b.revision }) }); });
   app.post('/api/users', async (req, res) => {
     const b = body(req), role = b.role;
     if (role !== 'member' && role !== 'admin') throw new RepositoryError(400, '角色无效');
-    res.json({ user: await accounts.createUser(token(req), str(b.username), str(b.password), role) });
+    res.json({ user: await accounts.createUser(token(req), str(b.username), str(b.password), role, b.email, b.messageQuota === undefined ? 10 : b.messageQuota) });
   });
+  app.patch('/api/users/:id', async (req, res) => { res.json({ user: await accounts.updateUser(token(req), str(req.params['id']), body(req)) }); });
+  app.delete('/api/users/:id/sessions', async (req, res) => { await accounts.revokeUserSessions(token(req), str(req.params['id'])); res.json({ ok: true }); });
+  app.post('/api/users/:id/quota/reset', async (req, res) => { await accounts.resetUserQuota(token(req), str(req.params['id'])); res.json({ ok: true }); });
   app.post('/api/users/:id/reset-password', async (req, res) => { res.json(await accounts.resetPassword(token(req), str(req.params['id']))); });
   app.get('/api/projects', async (_req, res) => { res.json({ projects: await workspace.listProjects(actor(res).id) }); });
+  app.get('/api/workspace/stream', async (req, res) => {
+    const user = actor(res).id;
+    await workspaceStream(req, res, {
+      user,
+      after: str(req.query['after'] ?? req.headers['last-event-id'] ?? '0'),
+      workspace,
+      notifications,
+      authorized: async () => (await accounts.resolve(token(req)))?.id === user,
+    });
+  });
   app.post('/api/projects', async (req, res) => { res.json({ project: await workspace.createProject(actor(res).id, str(body(req).name)) }); });
   app.patch('/api/projects/:id', async (req, res) => { const b = body(req); res.json({ project: await workspace.renameProject(actor(res).id, str(req.params['id']), str(b.name), num(b.revision)) }); });
   app.get('/api/tasks', async (_req, res) => { res.json({ tasks: await workspace.listTasks(actor(res).id) }); });

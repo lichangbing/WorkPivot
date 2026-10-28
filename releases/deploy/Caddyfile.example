@@ -1,4 +1,28 @@
-# Replace with your deployment domain. Run Caddy on the Docker host.
-workpivot.example.com {
-    reverse_proxy 127.0.0.1:39800
+# 将 WORKPIVOT_DOMAIN 替换为解析到服务器的域名；Caddy 自动申请并续期 HTTPS 证书。
+# 服务端容器应只绑定 127.0.0.1，公网仅开放 Caddy 的 80/443。
+{$WORKPIVOT_DOMAIN:workpivot.example.com} {
+    encode zstd gzip
+    handle_path /downloads/* {
+        root * /srv/workpivot-downloads
+        file_server
+    }
+    handle {
+        reverse_proxy 127.0.0.1:39800 {
+            flush_interval -1
+            transport http {
+                read_timeout 0
+                write_timeout 0
+            }
+        }
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Cross-Origin-Opener-Policy "same-origin"
+        Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+        -Server
+    }
 }

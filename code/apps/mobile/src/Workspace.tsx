@@ -3,6 +3,12 @@ import { type MobileClient, type Project, type Task, type User } from './client'
 import { Conversation } from './Conversation';
 import { Capabilities, TaskResources } from './Capabilities';
 import { Memories } from './MemoryEditor';
+import { readChatStream } from '@workpivot/shared';
+
+interface WorkspaceEvent {
+  type: 'workspace';
+  value: { revision: string; projects: Project[]; tasks: Task[] };
+}
 
 export function Workspace({ client, user, theme, onTheme, onLogout, onError }: {
   client: MobileClient; user: User; theme: string; onTheme: () => void; onLogout: () => Promise<void>; onError: (error: unknown) => void;
@@ -23,6 +29,36 @@ export function Workspace({ client, user, theme, onTheme, onLogout, onError }: {
     setActive(id => t.tasks.some(row => row.id === id) ? id : null);
   };
   useEffect(() => { const c = new AbortController(); void load(c.signal).catch(reason => { if (!c.signal.aborted) fail(reason); }); return () => c.abort(); }, [client]);
+  useEffect(() => {
+    let stopped = false, after = '0', delay = 1000;
+    const controller = new AbortController();
+    let retry: ReturnType<typeof setTimeout>;
+    const connect = async () => {
+      try {
+        const response = await client.response(`/api/workspace/stream?after=${after}`, { signal: controller.signal }, 60 * 60 * 1000);
+        if (!response.body) throw new Error('工作区同步不可用');
+        await readChatStream<WorkspaceEvent | { type: 'unavailable'; status: number }>(response.body, event => {
+          if (stopped) return;
+          if (event.type === 'unavailable') {
+            if (event.status !== 401) after = '0';
+            throw new Error(event.status === 401 ? '登录已失效，请重新登录' : '工作区同步已中断');
+          }
+          after = event.value.revision;
+          setProjects(event.value.projects);
+          setTasks(event.value.tasks);
+          setActive(current => current && event.value.tasks.some(row => row.id === current) ? current : null);
+          delay = 1000;
+        }, controller.signal, 60000);
+      } catch (reason) {
+        if (stopped || controller.signal.aborted) return;
+        setError(reason instanceof Error ? reason.message : '工作区同步中断');
+        retry = setTimeout(() => { void connect(); }, delay);
+        delay = Math.min(delay * 2, 10000);
+      }
+    };
+    void connect();
+    return () => { stopped = true; clearTimeout(retry); controller.abort(); };
+  }, [client, user.id]);
   useEffect(() => { if (active) localStorage.setItem(selectionKey, active); else localStorage.removeItem(selectionKey); }, [active, selectionKey]);
   const select = (id: string) => { setActive(id); setDrawer(false); setSettings(false); setError(''); };
   const start = (kind: 'project' | 'task') => { setName(''); setProject(task?.projectId ?? projects[0]?.id ?? ''); setCreating(kind); setDrawer(false); };

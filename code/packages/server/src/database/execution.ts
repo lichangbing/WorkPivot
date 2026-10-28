@@ -11,7 +11,7 @@ import { RunRepository, type RunHandle } from './runs.js';
 import type { CompactionService } from './compaction.js';
 
 /** 由可信服务器服务配置，不接受 HTTP 提供的路径、密钥或工具。 */
-export type PrepareExecution = (actor: string, taskId: string, context: { run?: RunHandle; resources?:RunResourceScope }) => Promise<Omit<RunAgentOptions, 'messages' | 'onEvent' | 'signal'>>;
+export type PrepareExecution = (actor: string, taskId: string, context: { run?: RunHandle; resources?:RunResourceScope; content?: string }) => Promise<Omit<RunAgentOptions, 'messages' | 'onEvent' | 'signal'>>;
 export type DurableEvent = Omit<AgentEvent, 'type'> & { type: AgentEvent['type'] | 'permission_request' | 'permission_resolved'; id: string; sequence: string; turnId: string; runId: string; eventId?: string };
 export class DatabaseExecution {
   readonly runs: RunRepository;
@@ -20,7 +20,7 @@ export class DatabaseExecution {
   async begin(actor: string, taskId: string, content: string, requestId: string, attachments: string[] = [], resourceSelection?:unknown) {
     await this.runs.recover(actor, taskId);
     const resources=await this.runs.resources(actor,taskId,resourceSelection,attachments,requestId);
-    const context: { run?: RunHandle; resources?:RunResourceScope } = {resources};
+    const context: { run?: RunHandle; resources?:RunResourceScope; content?: string } = {resources, content};
     const options = await this.prepare(actor, taskId, context);
     await this.compaction?.guard(actor, taskId, content, {system:options.system,tools:options.tools.map(t=>({name:t.name,description:t.description,parameters:t.parameters}))}, requestId,resources?.epoch);
     const run = await this.runs.start(actor, taskId, requestId, content, attachments,resources);

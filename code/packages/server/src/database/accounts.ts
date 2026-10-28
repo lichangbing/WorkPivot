@@ -3,8 +3,33 @@ import bcrypt from 'bcryptjs';
 import type { Pool, PoolClient } from 'pg';
 import { RepositoryError, transaction, uuid } from './connection.js';
 
-export interface DatabaseUser { id: string; username: string; role: 'admin' | 'member'; platformAdmin: boolean; mustChangePassword: boolean }
-const userColumns = 'u.id,u.username,u.role,u.platform_admin AS "platformAdmin",c.must_change AS "mustChangePassword"';
+export interface DatabaseUser {
+  id: string;
+  username: string;
+  role: 'admin' | 'member';
+  platformAdmin: boolean;
+  mustChangePassword: boolean;
+  email: string | null;
+  disabled: boolean;
+  messageQuota: number;
+  messagesUsed: number;
+  quotaResetAt: string | null;
+  createdAt: string;
+  lastLoginAt: string | null;
+  activeSessions: number;
+}
+export interface AccessPolicy {
+  registrationMode: 'closed' | 'open';
+  defaultMessageQuota: number;
+  revision: number;
+}
+const userColumns = `u.id,u.username,u.role,u.platform_admin AS "platformAdmin",
+  c.must_change AS "mustChangePassword",u.email,u.disabled,
+  u.message_quota AS "messageQuota",
+  CASE WHEN u.quota_reset_at<=now() THEN 0 ELSE u.messages_used END AS "messagesUsed",
+  u.quota_reset_at AS "quotaResetAt",u.created_at AS "createdAt",
+  u.last_login_at AS "lastLoginAt",
+  (SELECT count(*)::int FROM identity.sessions sx WHERE sx.user_id=u.id AND sx.revoked_at IS NULL AND sx.expires_at>now() AND sx.auth_version=c.auth_version) AS "activeSessions"`;
 const digest = (token: string): string => createHash('sha256').update(token).digest('hex');
 function passwordValid(password: string): void {
   if (typeof password !== 'string' || password.length < 6 || Buffer.byteLength(password) > 72) throw new RepositoryError(400, '密码需至少6位，且不超过72字节');
@@ -12,6 +37,31 @@ function passwordValid(password: string): void {
 function usernameValid(value: string): string {
   if (typeof value !== 'string' || value.trim().length < 2 || value.trim().length > 80) throw new RepositoryError(400, '用户名需为2至80个字符');
   return value.trim().normalize('NFKC');
+}
+function emailValid(value: unknown): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string') throw new RepositoryError(400, '邮箱格式无效');
+  const email = value.trim().normalize('NFKC').toLowerCase();
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new RepositoryError(400, '邮箱格式无效');
+  return email;
+}
+function quotaValid(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > 100000) throw new RepositoryError(400, '每日提问额度需为0至100000的整数');
+  return value;
+}
+async function accessPolicy(c: PoolClient): Promise<AccessPolicy> {
+  const row = (await c.query(`SELECT registration_mode AS "registrationMode",
+    default_message_quota AS "defaultMessageQuota",revision
+    FROM identity.access_policy WHERE singleton`)).rows[0];
+  if (!row) throw new RepositoryError(503, '注册策略未初始化');
+  return row as AccessPolicy;
+}
+async function loadUser(c: PoolClient, id: string): Promise<DatabaseUser> {
+  const user = (await c.query<DatabaseUser>(`SELECT ${userColumns}
+    FROM identity.users u JOIN identity.credentials c ON c.user_id=u.id
+    WHERE u.id=$1`, [id])).rows[0];
+  if (!user) throw new RepositoryError(404, '用户不存在');
+  return user;
 }
 async function resolve(client: PoolClient, token: string): Promise<DatabaseUser | null> {
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
@@ -26,8 +76,10 @@ async function administrator(client: PoolClient, token: string): Promise<Databas
   return user;
 }
 async function issue(client: PoolClient, id: string, version: number): Promise<string> {
+  const configured = Number(process.env['WORKPIVOT_SESSION_TTL_HOURS'] ?? 24);
+  const ttlHours = Number.isSafeInteger(configured) && configured > 0 && configured <= 720 ? configured : 24;
   const token = randomBytes(32).toString('base64url');
-  await client.query("INSERT INTO identity.sessions(token_digest,user_id,auth_version,expires_at) VALUES($1,$2,$3,now()+interval '24 hours')", [digest(token), id, version]);
+  await client.query("INSERT INTO identity.sessions(token_digest,user_id,auth_version,expires_at) VALUES($1,$2,$3,now()+$4*interval '1 hour')", [digest(token), id, version, ttlHours]);
   return token;
 }
 async function audit(client: PoolClient, actor: string, target: string, action: string): Promise<void> {
@@ -61,34 +113,70 @@ export function quotaDecision(row: QuotaRow, now = new Date()): { unlimited: boo
 export class AccountRepository {
   constructor(private readonly db: Pool) {}
   async needsSetup(): Promise<boolean> { return !(await this.db.query('SELECT 1 FROM identity.users LIMIT 1')).rowCount; }
-  /** 演示自助注册：没有用户时第一个仍是管理员，之后一律普通成员。 */
+  async publicAccessPolicy(): Promise<{ registrationEnabled: boolean; defaultMessageQuota: number }> {
+    return transaction(this.db, async client => {
+      const policy = await accessPolicy(client);
+      const setup = !(await client.query('SELECT 1 FROM identity.users LIMIT 1')).rowCount;
+      return { registrationEnabled: setup || policy.registrationMode === 'open', defaultMessageQuota: policy.defaultMessageQuota };
+    });
+  }
+  async adminAccessPolicy(token: string): Promise<AccessPolicy> {
+    return transaction(this.db, async client => {
+      await administrator(client, token);
+      return accessPolicy(client);
+    });
+  }
+  async updateAccessPolicy(token: string, input: { registrationMode: unknown; defaultMessageQuota: unknown; revision: unknown }): Promise<AccessPolicy> {
+    if (!['closed', 'open'].includes(String(input.registrationMode))) throw new RepositoryError(400, '注册策略无效');
+    const revision = Number(input.revision);
+    if (!Number.isSafeInteger(revision) || revision < 1) throw new RepositoryError(400, '策略版本无效');
+    const defaultMessageQuota = quotaValid(input.defaultMessageQuota);
+    return transaction(this.db, async client => {
+      const actor = await administrator(client, token);
+      const current = await accessPolicy(client);
+      if (current.revision !== revision) throw new RepositoryError(409, '注册策略已变化，请刷新');
+      const row = (await client.query(`UPDATE identity.access_policy SET registration_mode=$1,
+        default_message_quota=$2,revision=revision+1,updated_at=now()
+        WHERE singleton AND revision=$3
+        RETURNING registration_mode AS "registrationMode",default_message_quota AS "defaultMessageQuota",revision`,
+      [input.registrationMode, defaultMessageQuota, revision])).rows[0];
+      if (!row) throw new RepositoryError(409, '注册策略已变化，请刷新');
+      await audit(client, actor.id, actor.id, `registration_policy_${String(input.registrationMode)}`);
+      return row as AccessPolicy;
+    });
+  }
+  /** 自助注册：首个账户仍为管理员；后续账户仅在管理员明确开放注册时创建。 */
   async register(username: string, password: string): Promise<{ token: string; user: DatabaseUser }> {
     const name = usernameValid(username); passwordValid(password);
     const hash = await bcrypt.hash(password, 10);
     return transaction(this.db, async client => {
       await client.query('SELECT pg_advisory_xact_lock(937032)');
       const first = !(await client.query('SELECT 1 FROM identity.users LIMIT 1')).rowCount;
+      const policy = await accessPolicy(client);
+      if (!first && policy.registrationMode !== 'open') throw new RepositoryError(403, '自助注册已关闭，请联系管理员创建账户');
       const id = randomUUID();
       await client.query(
-        'INSERT INTO identity.users(id,username,username_key,role,platform_admin) VALUES($1,$2,$3,$4,$5)',
-        [id, name, name.toLowerCase(), first ? 'admin' : 'member', first],
+        'INSERT INTO identity.users(id,username,username_key,role,platform_admin,message_quota) VALUES($1,$2,$3,$4,$5,$6)',
+        [id, name, name.toLowerCase(), first ? 'admin' : 'member', first, policy.defaultMessageQuota],
       );
       await client.query('INSERT INTO identity.credentials(user_id,password_hash) VALUES($1,$2)', [id, hash]);
       await audit(client, id, id, first ? 'first_admin_created' : 'user_registered');
-      return { token: await issue(client, id, 1), user: { id, username: name, role: first ? 'admin' : 'member', platformAdmin: first, mustChangePassword: false } };
+      const token = await issue(client, id, 1);
+      return { token, user: await loadUser(client, id) };
     });
   }
 
   /** 演示额度：消费一次用户消息；返回剩余次数（null 表示不限）。 */
   async consumeMessageQuota(actor: string): Promise<number | null> {
+    const resetAt = nextQuotaReset();
     const updated = await this.db.query(
       `UPDATE identity.users SET
          messages_used=CASE WHEN quota_reset_at<=now() THEN 1 ELSE messages_used+1 END,
-         quota_reset_at=CASE WHEN quota_reset_at<=now() THEN workpivot.quota_next_reset(now()) ELSE quota_reset_at END
+         quota_reset_at=CASE WHEN quota_reset_at<=now() THEN $2 ELSE quota_reset_at END
        WHERE id=$1 AND NOT platform_admin AND message_quota>0
          AND (quota_reset_at<=now() OR messages_used<message_quota)
        RETURNING message_quota-messages_used AS remaining`,
-      [actor],
+      [actor, resetAt],
     );
     if (updated.rowCount) return Number(updated.rows[0].remaining);
     const row = (await this.db.query('SELECT platform_admin,message_quota,messages_used,quota_reset_at FROM identity.users WHERE id=$1', [actor])).rows[0];
@@ -116,7 +204,8 @@ export class AccountRepository {
       await client.query("INSERT INTO identity.users(id,username,username_key,role,platform_admin) VALUES($1,$2,$3,'admin',true)", [id, name, name.toLowerCase()]);
       await client.query('INSERT INTO identity.credentials(user_id,password_hash) VALUES($1,$2)', [id, hash]);
       await audit(client, id, id, 'first_admin_created');
-      return { token: await issue(client, id, 1), user: { id, username: name, role: 'admin', platformAdmin: true, mustChangePassword: false } };
+      const token = await issue(client, id, 1);
+      return { token, user: await loadUser(client, id) };
     });
   }
   async login(username: string, password: string): Promise<{ token: string; user: DatabaseUser }> {
@@ -124,12 +213,17 @@ export class AccountRepository {
     const row = (await this.db.query(`SELECT ${userColumns},c.password_hash,c.auth_version FROM identity.users u JOIN identity.credentials c ON c.user_id=u.id WHERE u.username_key=$1 AND NOT u.disabled`, [username.trim().normalize('NFKC').toLowerCase()])).rows[0];
     // 未知用户名也通过固定占位哈希执行 bcrypt 校验。
     const valid = await bcrypt.compare(password, row?.password_hash ?? '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy');
-    if (!row || !valid) throw new RepositoryError(401, '用户名或密码错误');
+    if (!row || !valid) {
+      await this.db.query("INSERT INTO identity.audit_events(actor_id,target_id,action) VALUES(NULL,NULL,'login_failed')").catch(() => undefined);
+      throw new RepositoryError(401, '用户名或密码错误');
+    }
     return transaction(this.db, async client => {
       const current = (await client.query(`SELECT ${userColumns},c.password_hash,c.auth_version FROM identity.users u JOIN identity.credentials c ON c.user_id=u.id WHERE u.id=$1 AND NOT u.disabled FOR UPDATE OF c`, [row.id])).rows[0];
       if (!current || current.password_hash !== row.password_hash || current.auth_version !== row.auth_version) throw new RepositoryError(401, '凭据已更新，请重新登录');
-      const user: DatabaseUser = { id: current.id, username: current.username, role: current.role, platformAdmin: current.platformAdmin, mustChangePassword: current.mustChangePassword };
-      return { token: await issue(client, user.id, current.auth_version), user };
+      const token = await issue(client, current.id, current.auth_version);
+      await client.query('UPDATE identity.users SET last_login_at=now() WHERE id=$1', [current.id]);
+      await audit(client, current.id, current.id, 'login_succeeded');
+      return { token, user: await loadUser(client, current.id) };
     });
   }
   async resolve(token: string): Promise<DatabaseUser | null> { return transaction(this.db, client => resolve(client, token)); }
@@ -160,18 +254,73 @@ export class AccountRepository {
   async listUsers(token: string): Promise<DatabaseUser[]> {
     return transaction(this.db, async client => { await administrator(client, token); return (await client.query<DatabaseUser>(`SELECT ${userColumns} FROM identity.users u JOIN identity.credentials c ON c.user_id=u.id ORDER BY u.created_at,u.id`)).rows; });
   }
-  async createUser(token: string, username: string, password: string, role: 'admin' | 'member'): Promise<DatabaseUser> {
+  async createUser(token: string, username: string, password: string, role: 'admin' | 'member', emailInput?: unknown, quotaInput: unknown = 10): Promise<DatabaseUser> {
     const name = usernameValid(username); passwordValid(password);
     if (!['admin', 'member'].includes(role)) throw new RepositoryError(400, '角色无效');
+    const email = emailValid(emailInput), messageQuota = quotaValid(quotaInput);
     const hash = await bcrypt.hash(password, 10);
     return transaction(this.db, async client => {
       const actor = await administrator(client, token), id = randomUUID();
       const exists = await client.query('SELECT 1 FROM identity.users WHERE username_key=$1', [name.toLowerCase()]);
       if (exists.rowCount) throw new RepositoryError(409, '用户名已存在');
-      await client.query('INSERT INTO identity.users(id,username,username_key,role) VALUES($1,$2,$3,$4)', [id, name, name.toLowerCase(), role]);
+      if (email && (await client.query('SELECT 1 FROM identity.users WHERE lower(email)=$1', [email])).rowCount) throw new RepositoryError(409, '邮箱已被使用');
+      await client.query('INSERT INTO identity.users(id,username,username_key,role,email,message_quota) VALUES($1,$2,$3,$4,$5,$6)', [id, name, name.toLowerCase(), role, email, messageQuota]);
       await client.query('INSERT INTO identity.credentials(user_id,password_hash,must_change) VALUES($1,$2,true)', [id, hash]);
       await audit(client, actor.id, id, 'user_created');
-      return { id, username: name, role, platformAdmin: false, mustChangePassword: true };
+      return loadUser(client, id);
+    });
+  }
+  async updateUser(token: string, targetId: string, input: Record<string, unknown>): Promise<DatabaseUser> {
+    uuid(targetId);
+    return transaction(this.db, async client => {
+      const actor = await administrator(client, token);
+      const target = (await client.query(`SELECT id,username,role,platform_admin,disabled,email,message_quota
+        FROM identity.users WHERE id=$1 FOR UPDATE`, [targetId])).rows[0];
+      if (!target) throw new RepositoryError(404, '用户不存在');
+      if (target.platform_admin) throw new RepositoryError(400, '平台管理员的角色、状态和额度受保护');
+      const role = input.role === undefined ? target.role : input.role;
+      if (role !== 'admin' && role !== 'member') throw new RepositoryError(400, '角色无效');
+      const disabled = input.disabled === undefined ? target.disabled : input.disabled;
+      if (typeof disabled !== 'boolean') throw new RepositoryError(400, '账户状态无效');
+      const messageQuota = input.messageQuota === undefined ? Number(target.message_quota) : quotaValid(input.messageQuota);
+      const email = input.email === undefined ? target.email : emailValid(input.email);
+      if (actor.id === targetId && (role !== target.role || disabled !== target.disabled)) throw new RepositoryError(400, '不能修改自己的角色或停用自己');
+      if (target.role === 'admin' && (role !== 'admin' || disabled)) {
+        const activeAdmins = Number((await client.query("SELECT count(*)::int AS n FROM identity.users WHERE role='admin' AND NOT disabled")).rows[0].n);
+        if (activeAdmins <= 1) throw new RepositoryError(409, '不能停用或降级最后一个有效管理员');
+      }
+      if (email && email !== target.email && (await client.query('SELECT 1 FROM identity.users WHERE lower(email)=$1 AND id<>$2', [email, targetId])).rowCount) throw new RepositoryError(409, '邮箱已被使用');
+      await client.query(`UPDATE identity.users SET role=$2,disabled=$3,message_quota=$4,email=$5,updated_at=now()
+        WHERE id=$1`, [targetId, role, disabled, messageQuota, email]);
+      if (disabled && !target.disabled) {
+        await client.query('UPDATE identity.credentials SET auth_version=auth_version+1 WHERE user_id=$1', [targetId]);
+        await client.query('UPDATE identity.sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL', [targetId]);
+      }
+      await audit(client, actor.id, targetId, disabled !== target.disabled ? (disabled ? 'user_disabled' : 'user_enabled') : 'user_updated');
+      return loadUser(client, targetId);
+    });
+  }
+  async revokeUserSessions(token: string, targetId: string): Promise<void> {
+    uuid(targetId);
+    await transaction(this.db, async client => {
+      const actor = await administrator(client, token);
+      if (actor.id === targetId) throw new RepositoryError(400, '请在个人设置中撤销自己的其他会话');
+      const target = (await client.query('SELECT platform_admin FROM identity.users WHERE id=$1', [targetId])).rows[0];
+      if (!target) throw new RepositoryError(404, '用户不存在');
+      if (target.platform_admin) throw new RepositoryError(400, '平台管理员会话受保护');
+      await client.query('UPDATE identity.sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL', [targetId]);
+      await audit(client, actor.id, targetId, 'user_sessions_revoked');
+    });
+  }
+  async resetUserQuota(token: string, targetId: string): Promise<void> {
+    uuid(targetId);
+    await transaction(this.db, async client => {
+      const actor = await administrator(client, token);
+      const target = (await client.query('SELECT platform_admin FROM identity.users WHERE id=$1 FOR UPDATE', [targetId])).rows[0];
+      if (!target) throw new RepositoryError(404, '用户不存在');
+      if (target.platform_admin) throw new RepositoryError(400, '平台管理员不限额度');
+      await client.query('UPDATE identity.users SET messages_used=0,quota_reset_at=$2,updated_at=now() WHERE id=$1', [targetId, nextQuotaReset()]);
+      await audit(client, actor.id, targetId, 'user_quota_reset');
     });
   }
   async resetPassword(token: string, targetId: string): Promise<{ temporaryPassword: string }> {

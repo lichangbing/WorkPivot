@@ -44,10 +44,14 @@ const admin = pool(url);
 const appPassword = randomBytes(24).toString('hex'), authPassword = randomBytes(24).toString('hex');
 // 本测试独占的专用实例；禁止指向业务数据库。
 await admin.query(`CREATE ROLE wp_test_app LOGIN PASSWORD '${appPassword}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
- CREATE ROLE wp_test_auth LOGIN PASSWORD '${authPassword}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`);
+ CREATE ROLE wp_test_auth LOGIN PASSWORD '${authPassword}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+ CREATE ROLE workpivot_app NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+ CREATE ROLE workpivot_auth NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`);
 const appUrl = new URL(url); appUrl.username = 'wp_test_app'; appUrl.password = appPassword;
 const authUrl = new URL(url); authUrl.username = 'wp_test_auth'; authUrl.password = authPassword;
 const business = pool(appUrl.toString(), { max: 2 }), identity = pool(authUrl.toString(), { max: 2 });
+// 部分权限/执行测试在等待内存回调时没有 Socket 句柄；保持测试进程存活，避免 Node 以 13 退出。
+const keepAlive = setInterval(() => undefined, 1000);
 let checks = 0;
 const check = (condition: unknown, name: string): void => { assert.ok(condition, name); checks++; console.log('✅ ' + name); };
 for(const [input,expected] of [['HTTP 401: secret-example','认证失败'],['HTTP 429: secret-example','请求受限'],['HTTP 503: secret-example','暂时不可用'],['HTTP 400: secret-example','兼容性'],['fetch failed secret-example','无法连接'],['request timed out secret-example','超时']] as const){const result=safeModelError(new Error(input));check(result.includes(expected)&&!result.includes('secret-example'),'model errors classify failures without upstream secrets: '+expected);}
@@ -59,24 +63,25 @@ let server: ReturnType<Awaited<ReturnType<typeof createDatabaseApp>>['listen']> 
 try {
   await installSchema(admin, 'wp_test_app', 'wp_test_auth');
   await installSchema(admin, 'wp_test_app', 'wp_test_auth');
-  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 52, 'schema installation idempotent');
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 62, 'schema installation idempotent');
   // 重建准确的空 v1 结构，独立验证增量升级。
-  await admin.query('ALTER TABLE workpivot.memories DROP COLUMN legacy_personal; DROP TRIGGER clear_analysis_reason ON workpivot.memory_suggestions; DROP FUNCTION workpivot.clear_analysis_reason(); ALTER TABLE workpivot.memory_suggestions DROP COLUMN analysis_id; ALTER TABLE workpivot.memory_suggestions DROP COLUMN analysis_reason; DROP TABLE workpivot.memory_analysis_turns; DROP TABLE workpivot.memory_analysis_batches; DROP FUNCTION workpivot.audit_model_capacity() CASCADE; DROP TABLE workpivot.model_capacity_audit; DROP FUNCTION workpivot.sync_waiting_login_task() CASCADE; DROP TABLE workpivot.browser_profile_audit; DROP TABLE workpivot.browser_profiles; DROP TABLE workpivot.network_target_audit; DROP TABLE workpivot.network_targets; DROP FUNCTION identity.cleanup_request_audit(uuid,date,text); DROP TABLE identity.request_audit_cleanups; DROP TABLE identity.request_audit_results; DROP TABLE identity.request_audit; DROP FUNCTION identity.protect_request_audit(); DROP TABLE workpivot.capture_audit; DROP TABLE workpivot.capture_observations; DROP TABLE workpivot.capture_versions; DROP TABLE workpivot.capture_sources; DROP TABLE workpivot.management_attempts; DROP TABLE workpivot.automation_capacity_audit; DROP TABLE workpivot.automation_capacity; DROP FUNCTION workpivot.protect_capacity_audit(); ALTER TABLE identity.sessions DROP COLUMN id; DROP TABLE workpivot.model_usage; DROP TABLE workpivot.usage_budgets; DROP TABLE workpivot.usage_alerts; DROP TABLE workpivot.embedding_jobs; DROP TABLE workpivot.embedding_spaces; DROP TABLE workpivot.trash_entries; DROP FUNCTION workpivot.automation_source_invalidated() CASCADE; DROP TABLE workpivot.automation_notices; DROP TABLE workpivot.automation_runs; DROP TABLE workpivot.automations; ALTER TABLE workpivot.tasks DROP COLUMN origin; DROP FUNCTION workpivot.invalidate_skill_builds() CASCADE; DROP FUNCTION workpivot.skill_visibility_guard() CASCADE; DROP TABLE workpivot.skill_trials; DROP TABLE workpivot.skill_builds; DROP FUNCTION workpivot.clear_memory_review_key() CASCADE; DROP FUNCTION workpivot.clear_memory_suggestion_context() CASCADE; DROP FUNCTION workpivot.expert_epoch_changed() CASCADE; DROP FUNCTION workpivot.expert_source_deleted() CASCADE; DROP TABLE workpivot.expert_suggestions; DROP TABLE workpivot.expert_jobs; DROP TABLE workpivot.expert_experiences; ALTER TABLE workpivot.tasks DROP COLUMN expert_id; ALTER TABLE workpivot.projects DROP COLUMN expert_id; DROP TABLE workpivot.experts; DROP FUNCTION workpivot.notify_task_event() CASCADE; DROP TABLE workpivot.context_checkpoints; DROP FUNCTION workpivot.invalidate_checkpoints() CASCADE; ALTER POLICY personal_memory_revisions ON workpivot.memory_revisions USING(owner_user_id=workpivot.actor_id() AND EXISTS(SELECT 1 FROM workpivot.memories m WHERE m.id=memory_id AND m.deleted_at IS NULL)); ALTER TABLE workpivot.memories DROP COLUMN merged_into; ALTER TABLE workpivot.memories DROP COLUMN locked; DROP TABLE workpivot.memory_controls; DROP TABLE workpivot.memory_templates; DROP TABLE workpivot.knowledge_chunks; DROP TABLE workpivot.knowledge_versions; DROP TABLE workpivot.document_processing; DROP TABLE workpivot.execution_artifacts; DROP TABLE workpivot.skill_executions; DROP TABLE workpivot.memory_sources; DROP TABLE workpivot.memory_jobs; DROP TABLE workpivot.memory_suggestions; DROP TABLE workpivot.skill_selections; DROP TABLE workpivot.skill_catalog; DROP TABLE workpivot.skill_releases; DROP TABLE workpivot.skill_drafts; DROP TABLE workpivot.document_versions; DROP TABLE workpivot.documents; DROP TABLE workpivot.run_permissions; DROP TABLE workpivot.mcp_connections; DROP TABLE workpivot.default_model; DROP TABLE workpivot.model_providers; DROP TABLE workpivot.task_runs; DROP TABLE workpivot.conversation_events; DROP TABLE workpivot.conversation_turns; ALTER TABLE workpivot.tasks DROP COLUMN next_turn_sequence; DELETE FROM workpivot_meta.schema_versions WHERE version>1');
+  await admin.query('ALTER TABLE workpivot.memories DROP COLUMN legacy_personal; DROP TRIGGER clear_analysis_reason ON workpivot.memory_suggestions; DROP FUNCTION workpivot.clear_analysis_reason(); ALTER TABLE workpivot.memory_suggestions DROP COLUMN analysis_id; ALTER TABLE workpivot.memory_suggestions DROP COLUMN analysis_reason; DROP TABLE workpivot.memory_analysis_turns; DROP TABLE workpivot.memory_analysis_batches; DROP FUNCTION workpivot.audit_model_capacity() CASCADE; DROP TABLE workpivot.model_capacity_audit; DROP FUNCTION workpivot.sync_waiting_login_task() CASCADE; DROP TABLE workpivot.browser_profile_audit; DROP TABLE workpivot.browser_profiles; DROP TABLE workpivot.network_target_audit; DROP TABLE workpivot.network_targets; DROP FUNCTION identity.cleanup_request_audit(uuid,date,text); DROP TABLE identity.request_audit_cleanups; DROP TABLE identity.request_audit_results; DROP TABLE identity.request_audit; DROP FUNCTION identity.protect_request_audit(); DROP TABLE workpivot.capture_audit; DROP TABLE workpivot.capture_observations; DROP TABLE workpivot.capture_versions; DROP TABLE workpivot.capture_sources; DROP TABLE workpivot.management_attempts; DROP TABLE workpivot.automation_capacity_audit; DROP TABLE workpivot.automation_capacity; DROP FUNCTION workpivot.protect_capacity_audit(); ALTER TABLE identity.sessions DROP COLUMN id; DROP TABLE workpivot.model_usage; DROP TABLE workpivot.usage_budgets; DROP TABLE workpivot.usage_alerts; DROP TABLE workpivot.embedding_jobs; DROP TABLE workpivot.embedding_spaces; DROP TABLE workpivot.trash_entries; DROP FUNCTION workpivot.automation_source_invalidated() CASCADE; DROP TABLE workpivot.automation_notices; DROP TABLE workpivot.automation_runs; DROP TABLE workpivot.automations; ALTER TABLE workpivot.tasks DROP COLUMN origin; DROP FUNCTION workpivot.invalidate_skill_builds() CASCADE; DROP FUNCTION workpivot.skill_visibility_guard() CASCADE; DROP TABLE workpivot.skill_trials; DROP TABLE workpivot.skill_builds; DROP FUNCTION workpivot.clear_memory_review_key() CASCADE; DROP FUNCTION workpivot.clear_memory_suggestion_context() CASCADE; DROP FUNCTION workpivot.expert_epoch_changed() CASCADE; DROP FUNCTION workpivot.expert_source_deleted() CASCADE; DROP TABLE workpivot.expert_suggestions; DROP TABLE workpivot.expert_jobs; DROP TABLE workpivot.expert_experiences; ALTER TABLE workpivot.tasks DROP COLUMN expert_id; ALTER TABLE workpivot.projects DROP COLUMN expert_id; DROP TABLE workpivot.experts; DROP FUNCTION workpivot.notify_task_event() CASCADE; DROP TABLE workpivot.context_checkpoints; DROP FUNCTION workpivot.invalidate_checkpoints() CASCADE; ALTER POLICY personal_memory_revisions ON workpivot.memory_revisions USING(owner_user_id=workpivot.actor_id() AND EXISTS(SELECT 1 FROM workpivot.memories m WHERE m.id=memory_id AND m.deleted_at IS NULL)); ALTER TABLE workpivot.memories DROP COLUMN merged_into; ALTER TABLE workpivot.memories DROP COLUMN locked; DROP TABLE workpivot.memory_controls; DROP TABLE workpivot.memory_templates; DROP TABLE workpivot.knowledge_chunks; DROP TABLE workpivot.knowledge_versions; DROP TABLE workpivot.document_processing; DROP TABLE workpivot.execution_artifacts; DROP TABLE workpivot.skill_executions; DROP TABLE workpivot.memory_sources; DROP TABLE workpivot.memory_jobs; DROP TABLE workpivot.memory_suggestions; DROP TABLE workpivot.skill_selections; DROP TABLE workpivot.skill_catalog; DROP TABLE workpivot.skill_releases; DROP TABLE workpivot.skill_drafts; DROP TABLE workpivot.document_versions; DROP TABLE workpivot.documents; DROP TABLE workpivot.run_permissions; DROP TABLE workpivot.mcp_connections; DROP TABLE workpivot.default_model; DROP TABLE workpivot.model_providers; DROP TABLE workpivot.tool_dispatches; DROP TABLE workpivot.task_runs; DROP TABLE workpivot.conversation_events; DROP TABLE workpivot.conversation_turns; ALTER TABLE workpivot.tasks DROP COLUMN next_turn_sequence; ALTER TABLE workpivot.tasks DROP COLUMN resume_attempts; DROP TABLE identity.access_policy; ALTER TABLE identity.users DROP COLUMN email, DROP COLUMN last_login_at, DROP COLUMN updated_at, DROP COLUMN quota_reset_at, DROP COLUMN message_quota, DROP COLUMN messages_used; DROP FUNCTION workpivot.quota_next_reset(timestamptz); DELETE FROM workpivot_meta.schema_versions WHERE version>1');
   await installSchema(admin, 'wp_test_app', 'wp_test_auth');
-  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 52, 'existing v1 database upgrades to latest schema');
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 62, 'existing v1 database upgrades to latest schema');
   await assertRestrictedRole(business, 'workpivot'); await assertRestrictedRole(identity, 'identity');
   await rejects(() => assertRestrictedRole(admin, 'workpivot'), 'superuser runtime rejected');
   await rejects(() => business.query('SELECT * FROM identity.credentials'), 'business pool cannot read password hashes');
   await rejects(() => identity.query('SELECT * FROM workpivot.projects'), 'identity pool cannot read private projects');
   const accounts = new AccountRepository(identity), workspace = new WorkspaceRepository(business), init = randomBytes(24).toString('hex');
   check(await accounts.needsSetup(), 'fresh database requires setup');
-  await rejects(() => accounts.registerFirst('admin', 'admin-password', 'bad', init), 'invalid initialization rejected', 403);
-  const registered = await Promise.allSettled([accounts.registerFirst('admin', 'admin-password', init, init), accounts.registerFirst('admin-other', 'admin-password', init, init)]);
+  await rejects(() => accounts.registerFirst('admin', 'bad'), 'invalid administrator password rejected', 400);
+  const registered = await Promise.allSettled([accounts.registerFirst('admin', 'admin-password'), accounts.registerFirst('admin-other', 'admin-password')]);
   check(registered.filter(r => r.status === 'fulfilled').length === 1, 'concurrent initialization creates exactly one administrator');
   const first = registered.find(r => r.status === 'fulfilled'); if (!first || first.status !== 'fulfilled') throw Error('Initialization failed');
   const owner = first.value;
   check(!await accounts.needsSetup(), 'registration closes after initialization');
   const member = await accounts.createUser(owner.token, 'member', 'temporary-password', 'member');
+  await accounts.updateUser(owner.token, member.id, { messageQuota: 0 });
   const other = await accounts.createUser(owner.token, 'other', 'temporary-password', 'member');
   const cycleUser=await accounts.createUser(owner.token,'memory-cycle-test','synthetic-password','member');
   const secondary = await accounts.createUser(owner.token, 'second-admin', 'temporary-password', 'admin');
@@ -101,12 +106,32 @@ try {
   const selfSession = (await accounts.sessions(selfLogin.token)).find(s => s.current)!;
   await accounts.revokeSession(selfLogin.token, selfSession.id);
   check(await accounts.resolve(selfLogin.token) === null, '允许主动撤销当前会话');
+  await rejects(() => accounts.register('closed-registration', 'personal-password'), 'default self-registration is closed', 403);
+  const defaultPolicy = await accounts.adminAccessPolicy(owner.token);
+  const openPolicy = await accounts.updateAccessPolicy(owner.token, { registrationMode: 'open', defaultMessageQuota: 7, revision: defaultPolicy.revision });
+  const selfRegistered = await accounts.register('self-registered', 'personal-password');
+  check(openPolicy.registrationMode === 'open' && selfRegistered.user.messageQuota === 7, 'administrator can open registration with a bounded default chat quota');
+  await accounts.updateAccessPolicy(owner.token, { registrationMode: 'closed', defaultMessageQuota: 7, revision: openPolicy.revision });
+  await rejects(() => accounts.register('closed-again', 'personal-password'), 'self-registration closes immediately after policy change', 403);
+  const managedUser = await accounts.updateUser(owner.token, selfRegistered.user.id, { email: 'self@example.test', messageQuota: 3 });
+  check(managedUser.email === 'self@example.test' && managedUser.messageQuota === 3, 'administrator can update account email and daily chat quota');
+  check(await accounts.consumeMessageQuota(selfRegistered.user.id) === 2, 'configured chat quota is enforced');
+  await accounts.resetUserQuota(owner.token, selfRegistered.user.id);
+  check((await accounts.quota(selfRegistered.user.id)).used === 0, 'administrator can reset the current chat quota period');
+  await accounts.revokeUserSessions(owner.token, selfRegistered.user.id);
+  check(await accounts.resolve(selfRegistered.token) === null, 'administrator session revocation invalidates every target login');
+  await accounts.updateUser(owner.token, selfRegistered.user.id, { disabled: true });
+  await rejects(() => accounts.login('self-registered', 'personal-password'), 'disabled accounts cannot sign in', 401);
 
   await rejects(() => accounts.listUsers(login.token), 'member cannot list accounts', 403);
   const raw = await admin.query('SELECT token_digest FROM identity.sessions');
   check(raw.rows.every(r => /^[a-f0-9]{64}$/.test(r.token_digest) && r.token_digest !== login.token), 'only token digests persisted');
+  const emptyWorkspace = await workspace.snapshot(member.id);
+  check(emptyWorkspace.revision === '0' && !emptyWorkspace.projects.length && !emptyWorkspace.tasks.length, '工作区快照初始为空');
   const privateProject = await workspace.createProject(member.id, 'Private project');
   const adminProject = await workspace.createProject(owner.user.id, 'Admin project');
+  const projectWorkspace = await workspace.snapshot(member.id);
+  check(projectWorkspace.revision === '1' && projectWorkspace.projects.some(project => project.id === privateProject.id) && !projectWorkspace.projects.some(project => project.id === adminProject.id), '工作区版本和项目快照按用户隔离');
   check((await workspace.listProjects(owner.user.id)).every(p => p.id !== privateProject.id), 'application administrator cannot read another user project');
   check((await workspace.listProjects(member.id)).length === 1, 'owner sees own project');
   check((await transaction(business, c => c.query('SELECT id FROM workpivot.projects'))).rowCount === 0, 'missing actor context returns no private rows');
@@ -117,6 +142,8 @@ try {
   check(rename.filter(r => r.status === 'fulfilled').length === 1 && rename.some(r => r.status === 'rejected' && r.reason.status === 409), 'concurrent project edits produce one conflict');
   await rejects(() => workspace.renameProject(owner.user.id, privateProject.id, 'leak', 2), 'foreign update indistinguishable from missing', 404);
   const task = await workspace.createTask(member.id, 'Research', privateProject.id);
+  const taskWorkspace = await workspace.snapshot(member.id);
+  check(BigInt(taskWorkspace.revision) > BigInt(projectWorkspace.revision) && taskWorkspace.tasks.some(row => row.id === task.id), '新建任务推进工作区版本并进入跨终端快照');
   const before = (await workspace.listTasks(member.id)).length;
   await rejects(() => transaction(business, async c => { await c.query("INSERT INTO workpivot.tasks(id,owner_user_id,name) VALUES($1,$2,'rollback')", [randomUUID(), member.id]); throw Error('simulate'); }, member.id), 'failed transaction propagates');
   check((await workspace.listTasks(member.id)).length === before, 'failed transaction rolls back writes');
@@ -588,6 +615,7 @@ try {
   void other; void secondary;
 } finally {
   if (server) { server.closeAllConnections(); await new Promise<void>(r => server!.close(() => r())); }
+  clearInterval(keepAlive);
   await Promise.all([business.end(), identity.end(), admin.end()]);
 }
 import { testTaskStream } from './database-task-stream.mts';

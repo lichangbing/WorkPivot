@@ -6,6 +6,7 @@ import { RepositoryError, transaction, uuid } from './connection.js';
 export interface DatabaseProject { id: string; name: string; revision: number; workspaceKey: string; createdAt: Date }
 export interface DatabaseTask { id: string; name: string; projectId: string | null; status: string; revision: number }
 export interface DatabaseMessage { id: string; sequence: string; role: string; content: string }
+export interface WorkspaceSnapshot { revision: string; projects: DatabaseProject[]; tasks: DatabaseTask[] }
 const projectColumns = 'id,name,revision,expert_id AS "expertId",workspace_key AS "workspaceKey",created_at AS "createdAt"';
 const taskColumns = 'id,name,project_id AS "projectId",expert_id AS "expertId",status,revision';
 function title(value: string, max: number): string {
@@ -21,6 +22,14 @@ async function task(client: PoolClient, id: string): Promise<void> {
 /** 操作者身份必须来自服务器认证，不能取自请求体或查询参数。 */
 export class WorkspaceRepository {
   constructor(private readonly db: Pool,private readonly retainTrash=true) {}
+  async snapshot(actor: string): Promise<WorkspaceSnapshot> {
+    return transaction(this.db, async c => {
+      const revision = (await c.query<{ revision: string }>("SELECT revision::text FROM workpivot.workspace_state WHERE owner_user_id=workpivot.actor_id()")).rows[0]?.revision ?? '0';
+      const projects = (await c.query<DatabaseProject>(`SELECT ${projectColumns} FROM workpivot.projects WHERE deleted_at IS NULL ORDER BY created_at,id`)).rows;
+      const tasks = (await c.query<DatabaseTask>(`SELECT ${taskColumns} FROM workpivot.tasks WHERE deleted_at IS NULL AND origin='chat' ORDER BY created_at,id`)).rows;
+      return { revision, projects, tasks };
+    }, actor);
+  }
   async listProjects(actor: string): Promise<DatabaseProject[]> {
     return transaction(this.db, async c => (await c.query<DatabaseProject>(`SELECT ${projectColumns} FROM workpivot.projects WHERE deleted_at IS NULL ORDER BY created_at,id`)).rows, actor);
   }

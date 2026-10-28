@@ -1,0 +1,18 @@
+// 仅用于官方 Android/Gradle 仓库访问缓慢的构建机；不改变项目和锁文件。
+def mirrors = [
+    'https://maven.aliyun.com/repository/google',
+    'https://maven.aliyun.com/repository/central',
+    'https://maven.aliyun.com/repository/gradle-plugin',
+    'https://mirrors.cloud.tencent.com/nexus/repository/maven-public',
+]
+
+allprojects {
+    buildscript {
+        repositories {
+            mirrors.each { u -> maven { url u } }
+        }
+    }
+    repositories {
+        mirrors.each { u -> maven { url u } }
+    }
+}

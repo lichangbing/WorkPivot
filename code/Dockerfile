@@ -5,7 +5,6 @@ FROM node:22-alpine
 
 # pnpm（与 pnpm-lock.yaml 版本对齐由 corepack 读取 packageManager/package.json）
 RUN corepack enable
-RUN apk add --no-cache docker-cli
 ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 
 WORKDIR /app
@@ -19,8 +18,7 @@ COPY packages/shared/package.json packages/shared/
 COPY apps/web/package.json apps/web/
 COPY apps/desktop/package.json apps/desktop/
 
-RUN --mount=type=cache,id=workpivot-pnpm,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --network-concurrency=8 --fetch-timeout=180000
+RUN pnpm install --frozen-lockfile --network-concurrency=8 --fetch-timeout=180000
 
 # 源码（服务层直接以 tsx 运行 TS 源，无需构建步骤）
 COPY . .

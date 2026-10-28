@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily WorkPivot Nginx TLS certificate refresh
+
+[Timer]
+OnCalendar=*-*-* 03:20:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,7 @@
+[Unit]
+Description=Refresh WorkPivot Nginx TLS certificate from Caddy
+After=caddy.service nginx.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/workpivot-refresh-nginx-cert

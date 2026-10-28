@@ -75,6 +75,9 @@ export async function installSchema(db: pg.Pool, appRole: string, authRole: stri
         await client.query('INSERT INTO workpivot_meta.schema_versions(version,checksum,app_role,auth_role) VALUES($1,$2,$3,$4)', [upgrade.version, digest, appRole, authRole]);
       }
     }
+    // 业务运行角色仅能读写额度所需列，不能读取身份凭据或账户资料。
+    await client.query(`GRANT USAGE ON SCHEMA identity TO ${app};
+      GRANT SELECT(id,platform_admin,message_quota,messages_used,quota_reset_at),UPDATE(messages_used,quota_reset_at) ON identity.users TO ${app}`);
   });
 }
 

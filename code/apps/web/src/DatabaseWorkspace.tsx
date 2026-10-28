@@ -153,6 +153,44 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     } }).catch(e => { if (!cancelled) setError(errorText(e)); });
     return () => { cancelled = true; };
   }, [auth]);
+  useEffect(() => {
+    if (!auth?.authenticated || auth.user?.mustChangePassword || !auth.user?.id) return;
+    let stopped = false, after = '0', delay = 1000;
+    const controller = new AbortController();
+    let retry: ReturnType<typeof setTimeout>;
+    const connect = async () => {
+      try {
+        const response = await fetch(`/api/workspace/stream?after=${after}`, {
+          headers: { Authorization: `Bearer ${getToken() ?? ''}` },
+          signal: controller.signal,
+        });
+        if (response.status === 401) { window.dispatchEvent(new Event('wp:unauthorized')); return; }
+        if (!response.ok || !response.body) throw Error('工作区同步连接不可用');
+        await readChatStream<{ type: 'workspace'; value: { tasks: Task[]; projects: Project[]; revision: string } } | { type: 'unavailable'; status: number }>(response.body, event => {
+          if (stopped) return;
+          if (event.type === 'unavailable') {
+            if (event.status === 401) window.dispatchEvent(new Event('wp:unauthorized'));
+            else after = '0';
+            throw Error('工作区同步已中断');
+          }
+          after = event.value.revision;
+          setTasks(event.value.tasks);
+          setProjects(event.value.projects);
+          setActive(current => current && event.value.tasks.some(task => task.id === current) ? current : null);
+          delay = 1000;
+        }, controller.signal, 60000);
+      } catch {
+        if (!stopped && !controller.signal.aborted) retry = setTimeout(() => { void connect(); }, delay);
+        delay = Math.min(delay * 2, 10000);
+      }
+    };
+    void connect();
+    return () => {
+      stopped = true;
+      clearTimeout(retry);
+      controller.abort();
+    };
+  }, [auth?.authenticated, auth?.user?.id, auth?.user?.mustChangePassword]);
   useEffect(()=>{if(active&&selectionOwner.current===auth?.user?.id&&!tasks.some(task=>task.id===active))setActive(null);},[tasks,active,auth]);
   useEffect(() => {
     const owner = auth?.user?.id;
@@ -321,7 +359,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     finally { streams.current.delete(controller); setSending(false); void refreshTasks().catch(() => {}); void reloadAuth(); }
   };
   if (!auth) return <div className="p-6">{error || '正在连接后台…'}<button className={button} onClick={reloadAuth}>重试</button></div>;
-  if (!auth.authenticated) return <LoginView needsSetup={auth.needsSetup} setupTokenRequired={auth.setupTokenRequired} onAuthed={reloadAuth} />;
+  if (!auth.authenticated) return <LoginView needsSetup={auth.needsSetup} setupTokenRequired={auth.setupTokenRequired} registrationEnabled={auth.registrationEnabled} defaultMessageQuota={auth.defaultMessageQuota} onAuthed={reloadAuth} />;
   if (auth.user?.mustChangePassword) return <RequiredPasswordChange onDone={reloadAuth} />;
   const quotaRemaining = auth.quota?.remaining ?? null;
   const quotaBlocked = quotaRemaining !== null && quotaRemaining <= 0;

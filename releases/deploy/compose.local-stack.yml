@@ -36,6 +36,8 @@ services:
       # 浏览器服务：未配置时工具集只有 web_fetch
       WORKPIVOT_BROWSER_URL: http://browser:39991
       WORKPIVOT_BROWSER_TOKEN: ${WORKPIVOT_BROWSER_TOKEN:?需要浏览器服务令牌}
+      # 手机端内置页面来源；默认仅允许 Capacitor 的固定来源，不启用通配符。
+      WORKPIVOT_MOBILE_ORIGINS: ${WORKPIVOT_MOBILE_ORIGINS:-https://localhost,capacitor://localhost}
       # Skill 隔离执行服务：Worker 在宿主机，绑定本网络网关地址
       WORKPIVOT_WORKER_URL: ${WORKPIVOT_WORKER_URL:?需要执行服务地址}
       WORKPIVOT_WORKER_TOKEN: ${WORKPIVOT_WORKER_TOKEN:?需要执行服务令牌}
