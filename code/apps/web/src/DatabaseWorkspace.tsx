@@ -115,6 +115,21 @@ interface Project { id: string; name: string; revision: number }
 interface Permission { id: string; request: { tool: string; reason?:string; effects?:string[]; command?: string; binding?:Record<string,unknown>; invocation?: {arguments:Record<string,unknown>} }; expiresAt: string }
 const errorText = (e: unknown) => e instanceof Error ? e.message : '操作失败，请重试';
 const button = 'rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800 disabled:opacity-40';
+const rightPanelMinimum = 320, rightPanelMaximum = 900;
+const navigationWidth = 256, conversationMinimum = 360, separatorWidth = 8;
+function rightPanelViewportLimit() {
+  if (typeof window === 'undefined') return rightPanelMaximum;
+  return Math.min(rightPanelMaximum, window.innerWidth - navigationWidth - conversationMinimum - separatorWidth);
+}
+function defaultRightPanelWidth() {
+  return typeof window === 'undefined' ? 520 : Math.max(rightPanelMinimum, Math.min(760, Math.round(window.innerWidth * 0.42)));
+}
+function boundedRightPanelWidth(value: number) {
+  return Math.max(rightPanelMinimum, Math.min(rightPanelViewportLimit(), Math.round(value)));
+}
+function rememberRightPanelWidth(value: number) {
+  try { localStorage.setItem('wp-right-panel-width', String(value)); } catch { /* 存储被禁用时仍保留当前会话内的宽度。 */ }
+}
 const selectionKey = (userId: string) => `wp-active-task:${userId}`;
 function rememberedTask(userId: string): string | null {
   try { return sessionStorage.getItem(selectionKey(userId)); } catch { return null; }
@@ -151,6 +166,15 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   const [settings, setSettings] = useState<SettingsSection | null>(null);
   const [businessFactsOpen, setBusinessFactsOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(() => localStorage.getItem('wp-right-panel-open') !== 'false');
+  const [rightWidth, setRightWidth] = useState(() => {
+    const stored = Number(localStorage.getItem('wp-right-panel-width'));
+    return Number.isFinite(stored) && stored > 0 ? boundedRightPanelWidth(stored) : defaultRightPanelWidth();
+  });
+  useEffect(() => {
+    const resize = () => setRightWidth(width => boundedRightPanelWidth(width));
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
   const generation = useRef(0);
   const pendingSend = useRef<{ fingerprint: string; id: string } | null>(null);
   const expanding = useRef(new Set<string>());
@@ -411,6 +435,26 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     }
     await send(`[回答提问 ${questionId}] ${label}`, { scope, answerOnly: true });
   };
+  const beginRightResize = useCallback((event: {clientX:number; preventDefault:()=>void}) => {
+    event.preventDefault();
+    const startX = event.clientX, startWidth = rightWidth;
+    const move = (next: PointerEvent) => setRightWidth(boundedRightPanelWidth(startWidth + startX - next.clientX));
+    const stop = (next: PointerEvent) => {
+      const width = boundedRightPanelWidth(startWidth + startX - next.clientX);
+      setRightWidth(width);
+      rememberRightPanelWidth(width);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
+  }, [rightWidth]);
   const decide = async (id: string, decision: 'allow' | 'deny') => {
     const taskId = active, epoch = generation.current;
     setPermissionBusy(id);
@@ -502,7 +546,33 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
         {active&&<AutomaticResourceScope taskId={active} refresh={attachmentEpoch} onChange={resourceChange}/> }<div className="composer-footer"><div className="flex shrink-0 items-center gap-2">{filesEnabled && <button type="button" aria-label="添加文件" title="添加文件（最多10个，单个10MB）；也可拖拽或粘贴" disabled={!active || busy || !ready || attachmentBlocked || attachmentIds.length >= 10} className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40" onClick={() => attachmentControl.current?.open()}><Icon name="plus" size={22} /></button>}<DatabaseExecutionMode /></div><div className="composer-actions"><DatabaseModelStatus />{busy && <button type="button" className={button} onClick={() => { void jsonFetch(`/api/tasks/${active}/stop`, { method: 'POST' }).catch(e => setError(errorText(e))); }}>停止</button>}<button title="发送" aria-label="发送" className="composer-send flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-950 hover:opacity-80 disabled:opacity-40" disabled={!chatEnabled || !active || !resourceSelection || busy || !ready || attachmentBlocked || quotaBlocked || (!input.trim() && !attachmentIds.length)}><Icon name="up" size={18} /></button></div></div>
       </form>
     </main>
-    {rightOpen && !trashPage && <DatabaseBrowser key={active??'empty'} taskId={active} onHide={()=>{setRightOpen(false);localStorage.setItem('wp-right-panel-open','false');}} />}
+    {rightOpen && !trashPage && <>
+      <div
+        role="separator"
+        aria-label="调整对话区与右侧窗口宽度"
+        aria-orientation="vertical"
+        aria-valuemin={rightPanelMinimum}
+        aria-valuemax={rightPanelMaximum}
+        aria-valuenow={rightWidth}
+        tabIndex={0}
+        title="拖动调整对话区与右侧窗口；双击恢复默认宽度"
+        className="group relative w-2 shrink-0 cursor-col-resize touch-none bg-neutral-800 outline-none transition-colors hover:bg-blue-600 focus-visible:bg-blue-600"
+        onPointerDown={beginRightResize}
+        onDoubleClick={() => {
+          const width = defaultRightPanelWidth();
+          setRightWidth(width);
+          rememberRightPanelWidth(width);
+        }}
+        onKeyDown={event => {
+          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+          event.preventDefault();
+          const width = boundedRightPanelWidth(rightWidth + (event.key === 'ArrowLeft' ? 20 : -20));
+          setRightWidth(width);
+          rememberRightPanelWidth(width);
+        }}
+      ><span className="pointer-events-none absolute left-1/2 top-1/2 h-10 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded bg-neutral-500 group-hover:bg-blue-200" /></div>
+      <DatabaseBrowser key={active??'empty'} width={rightWidth} taskId={active} onHide={()=>{setRightOpen(false);localStorage.setItem('wp-right-panel-open','false');}} />
+    </>}
     {settings && <DatabaseSettings initialSection={settings} configurationEnabled={chatEnabled} onClose={() => setSettings(null)} onChanged={refreshWorkspace} />}
     {businessFactsOpen && task?.projectId && <BusinessFactsPanel key={task.projectId} projectId={task.projectId} onClose={() => setBusinessFactsOpen(false)} />}
   </div>;

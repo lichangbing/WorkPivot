@@ -5,7 +5,7 @@ import { Icon } from './Icon';
 interface Frame { available: boolean; open: boolean; busy: boolean; url?: string; title?: string; image?: string; width?: number; height?: number; blockedRequests?: number;blockedUrls?:string[] }
 const button = 'rounded px-2 py-1 text-sm hover:bg-neutral-800 disabled:opacity-40';
 /** 显示真实远程浏览器画面；鼠标坐标按实际视口缩放，输入只发往当前任务。 */
-export function DatabaseBrowser({ taskId, onHide }: { taskId: string | null; onHide: () => void }) {
+export function DatabaseBrowser({ taskId, onHide, width }: { taskId: string | null; onHide: () => void; width?: number }) {
   const [frame, setFrame] = useState<Frame | null>(null), [address, setAddress] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const surface = useRef<HTMLDivElement>(null), editing = useRef(false), active = useRef(taskId), current = useRef(frame);
   const chain = useRef(Promise.resolve()), pending = useRef(0), composing = useRef(false), [composition, setComposition] = useState('');
@@ -48,7 +48,7 @@ export function DatabaseBrowser({ taskId, onHide }: { taskId: string | null; onH
     observer.observe(element); return () => { observer.disconnect(); clearTimeout(timer); };
   }, [frame?.open, command]);
   const disabled = !taskId || !frame?.available || busy || frame.busy;
-  return <aside aria-label="共享浏览器" className="flex min-w-[320px] flex-col border-l border-neutral-800 bg-neutral-950" style={{ width: 'clamp(360px,42vw,760px)' }}>
+  return <aside aria-label="共享浏览器" className="flex min-w-[320px] shrink-0 flex-col border-l border-neutral-800 bg-neutral-950" style={{ width: width ? `${width}px` : 'clamp(360px,42vw,760px)' }}>
     <div className="flex h-12 shrink-0 items-center justify-between border-b border-neutral-800 px-3"><strong className="truncate text-sm">{frame?.title || '浏览器'}</strong><div className="flex items-center gap-1"><span className="text-xs text-neutral-500">{busy || frame?.busy ? '正在操作…' : '与 AI 共享'}</span><button className={button} title="关闭当前网页会话" aria-label="关闭当前网页会话" disabled={!frame?.open || busy} onClick={() => { flush(); command({ kind: 'close' }); }}>×</button><button className={button} aria-label="隐藏浏览器" onClick={onHide}><Icon name="panelClose" size={17} /></button></div></div>
     <form className="flex shrink-0 gap-1 border-b border-neutral-800 p-2" onSubmit={e => { e.preventDefault(); flush(); editing.current = false; command({ kind: 'navigate', url: /^https?:\/\//i.test(address) ? address : 'https://' + address }); }}>
       <button type="button" className={button} aria-label="浏览器后退" disabled={disabled || !frame?.open} onClick={() => { flush(); command({ kind: 'back' }); }}>←</button><button type="button" className={button} aria-label="浏览器前进" disabled={disabled || !frame?.open} onClick={() => { flush(); command({ kind: 'forward' }); }}>→</button><button type="button" className={button} aria-label="刷新网页" disabled={disabled || !frame?.open} onClick={() => { flush(); command({ kind: 'reload' }); }}>↻</button>
