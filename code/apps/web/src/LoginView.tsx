@@ -11,6 +11,26 @@ interface Props {
   onAuthed: () => void;
 }
 
+function WindowsIcon(): React.JSX.Element {
+  return <svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M2.5 4.6 10.6 3v8.1H2.5V4.6Zm9.2-1.8L21.5 1v10.1h-9.8V2.8ZM2.5 12.2h8.1V21l-8.1-1.7v-7.1Zm9.2 0h9.8V23l-9.8-1.8v-9Z" />
+  </svg>;
+}
+
+function AndroidIcon(): React.JSX.Element {
+  return <svg aria-hidden="true" width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m7.2 5.4-1-1.8M16.8 5.4l1-1.8" />
+    <path d="M5.5 8.2a6.8 6.8 0 0 1 13 0v8.9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2V8.2Z" />
+    <path d="M8.4 11h.01M15.6 11h.01M9 15.3h6M8 19.1v2M16 19.1v2" />
+  </svg>;
+}
+
+function DownloadArrow(): React.JSX.Element {
+  return <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 3v12m-5-5 5 5 5-5M5 20h14" />
+  </svg>;
+}
+
 /** T2-01 登录门：无用户时展示注册（首用户=管理员），否则登录。 */
 export function LoginView({ needsSetup, registrationEnabled = false, defaultMessageQuota = 10, onAuthed }: Props): React.JSX.Element {
   const [serverUrl, setServerUrl] = useState(location.origin);
@@ -94,20 +114,41 @@ export function LoginView({ needsSetup, registrationEnabled = false, defaultMess
               {mode === 'register' ? '已有账号？去登录' : '注册新账号'}
             </button>
           )}
+          {!needsSetup && !registrationEnabled && (
+            <p className="rounded-lg border border-neutral-800 bg-neutral-950/50 px-3 py-2 text-center text-xs text-neutral-500">
+              自助注册当前未开放；没有账号请联系管理员创建。
+            </p>
+          )}
         </div>
-        <section aria-label="客户端下载" className="mt-5 border-t border-neutral-800 pt-4">
-          <h2 className="text-sm font-medium text-neutral-200">客户端直接下载</h2>
-          <p className="mt-1 text-xs text-neutral-500">无需登录，点击即可下载安装包。</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            <a href={desktopDownload} download className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-200 hover:border-blue-600 hover:bg-neutral-800">
-              Windows 客户端（便携版）
-              <span className="mt-1 block break-all text-[10px] text-neutral-500">{desktopDownload}</span>
+        <section aria-labelledby="download-title" className="mt-5 border-t border-neutral-800 pt-5">
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div>
+              <h2 id="download-title" className="text-sm font-medium text-neutral-100">下载 WorkPivot 客户端</h2>
+              <p className="mt-1 text-xs text-neutral-500">无需登录，选择你的设备</p>
+            </div>
+            <span className="rounded-full border border-emerald-800 bg-emerald-950/40 px-2 py-0.5 text-[10px] text-emerald-300">免费下载</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <a href={desktopDownload} download aria-label="下载 Windows 便携客户端" className="group flex min-h-40 flex-col rounded-xl border border-neutral-700 bg-neutral-950 p-4 text-neutral-100 transition hover:-translate-y-0.5 hover:border-blue-500 hover:bg-neutral-800/60">
+              <div className="flex items-start justify-between">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-500/15 text-blue-300"><WindowsIcon /></span>
+                <span className="text-[10px] uppercase tracking-wider text-neutral-500">Desktop</span>
+              </div>
+              <strong className="mt-4 text-sm">Windows 客户端</strong>
+              <span className="mt-1 text-xs text-neutral-500">Windows 10/11 · 免安装便携版</span>
+              <span className="mt-auto flex items-center justify-between pt-4 text-xs"><span className="text-neutral-500">约 118 MB</span><span className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 font-medium text-white group-hover:bg-blue-500">下载<DownloadArrow /></span></span>
             </a>
-            <a href={androidDownload} download className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-200 hover:border-blue-600 hover:bg-neutral-800">
-              Android APK
-              <span className="mt-1 block break-all text-[10px] text-neutral-500">{androidDownload}</span>
+            <a href={androidDownload} download aria-label="下载 Android APK" className="group flex min-h-40 flex-col rounded-xl border border-neutral-700 bg-neutral-950 p-4 text-neutral-100 transition hover:-translate-y-0.5 hover:border-emerald-500 hover:bg-neutral-800/60">
+              <div className="flex items-start justify-between">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-300"><AndroidIcon /></span>
+                <span className="text-[10px] uppercase tracking-wider text-neutral-500">Mobile</span>
+              </div>
+              <strong className="mt-4 text-sm">Android 客户端</strong>
+              <span className="mt-1 text-xs text-neutral-500">Android 8+ · APK 安装包</span>
+              <span className="mt-auto flex items-center justify-between pt-4 text-xs"><span className="text-neutral-500">约 3.3 MB</span><span className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 font-medium text-white group-hover:bg-emerald-500">下载<DownloadArrow /></span></span>
             </a>
           </div>
+          <p className="mt-3 text-center text-[10px] text-neutral-600">Windows 版为内部测试构建，首次运行可能触发 SmartScreen 提示。</p>
         </section>
       </div>
     </div>
