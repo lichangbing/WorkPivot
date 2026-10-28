@@ -21,6 +21,8 @@ export function LoginView({ needsSetup, registrationEnabled = false, defaultMess
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const desktopDownload = `${location.origin}/downloads/WorkPivot-Windows-portable.zip`;
+  const androidDownload = `${location.origin}/downloads/WorkPivot-android-1.3.apk`;
 
   const submit = async (): Promise<void> => {
     if (busy) return;
@@ -46,7 +48,7 @@ export function LoginView({ needsSetup, registrationEnabled = false, defaultMess
 
   return (
     <div className="flex h-screen items-center justify-center bg-neutral-950 text-neutral-100">
-      <div className="w-[360px] rounded-xl border border-neutral-800 bg-neutral-900 p-6">
+      <div className="w-[430px] max-w-[calc(100vw-32px)] rounded-xl border border-neutral-800 bg-neutral-900 p-6">
         <div className="mb-4"><ThemeSwitch /></div>
         <h1 className="mb-1 text-xl font-semibold">WorkPivot</h1>
         <p className="mb-5 text-xs text-neutral-500">
@@ -91,6 +93,20 @@ export function LoginView({ needsSetup, registrationEnabled = false, defaultMess
             </button>
           )}
         </div>
+        <section aria-label="客户端下载" className="mt-5 border-t border-neutral-800 pt-4">
+          <h2 className="text-sm font-medium text-neutral-200">客户端直接下载</h2>
+          <p className="mt-1 text-xs text-neutral-500">无需登录，点击即可下载安装包。</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <a href={desktopDownload} download className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-200 hover:border-blue-600 hover:bg-neutral-800">
+              Windows 客户端（便携版）
+              <span className="mt-1 block break-all text-[10px] text-neutral-500">{desktopDownload}</span>
+            </a>
+            <a href={androidDownload} download className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-200 hover:border-blue-600 hover:bg-neutral-800">
+              Android APK
+              <span className="mt-1 block break-all text-[10px] text-neutral-500">{androidDownload}</span>
+            </a>
+          </div>
+        </section>
       </div>
     </div>
   );

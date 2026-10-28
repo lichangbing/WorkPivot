@@ -21,12 +21,16 @@
 - 用户端：<https://workpivot.lichb.cc.cd/>
 - 管理端：<https://workpivot.lichb.cc.cd/admin>
 - Android 内测包：[WorkPivot-android-1.3.apk](https://workpivot.lichb.cc.cd/downloads/WorkPivot-android-1.3.apk)
+- Windows 便携客户端：[WorkPivot-Windows-portable.zip](https://workpivot.lichb.cc.cd/downloads/WorkPivot-Windows-portable.zip)
 - 回退入口：<https://115-191-1-188.sslip.io:80/>
 - APK 直连回退：[WorkPivot-android-1.3.apk](https://115-191-1-188.sslip.io:80/downloads/WorkPivot-android-1.3.apk)
 
 正式域名通过 Cloudflare Tunnel 对外提供标准 HTTPS，源站只连接本机
 `127.0.0.1:8080`。旧 `sslip.io` 入口暂时保留用于迁移回退。
 Cloudflare 免费链路在部分大陆网络下可能首次连接较慢；遇到超时应重试，或临时使用回退入口。
+
+Windows 便携客户端下载后解压，进入 `win-unpacked` 运行 `WorkPivot.exe`。该构建未做代码签名，
+Windows SmartScreen 首次运行可能需要选择“更多信息 → 仍要运行”。
 
 APK SHA-256：`26a4168ed9483d9d124493122f0eb1c1a9ba1bdc8fcbf81c6c973adcab713672`。该包使用 WorkPivot 独立内测签名，仅用于内部测试。
 

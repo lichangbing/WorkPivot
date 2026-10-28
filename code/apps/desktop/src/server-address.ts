@@ -1,4 +1,4 @@
-export const DEFAULT_SERVER_URL = 'http://127.0.0.1:39990';
+export const DEFAULT_SERVER_URL = 'https://workpivot.lichb.cc.cd';
 
 export function normalizeServerUrl(value: unknown): string {
   if (typeof value !== 'string' || value.trim() === '') throw new Error('请填写服务器地址');
