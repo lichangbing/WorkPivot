@@ -3,7 +3,7 @@
 > **分析方式**：本地源码 `E:\project\codex`（github.com/openai/codex，main@459a79e，2026-09-05 克隆）。源码级分析，未运行。
 > **一段话结论**：OpenAI 官方开源的编程 agent（Apache-2.0），Rust workspace **146 个 crate、161 万行**，是目前工程化程度最高的开源 agent harness——工具面收缩到 `exec_command`+`apply_patch`+`view_image`+`update_plan` 四五件，压缩/会话持久化/审批沙箱全部做成一等公民；安全模型是「平台沙箱兜底 + 审批例外通道 + Starlark 规则层 + 托管网络代理」四层叠加，Windows 投入最重。对 WorkPivot 的价值在**设计、协议与格式参考**（Rust 代码不可复用），且注意：它开源但不接受外部代码 PR。
 >
-> 姊妹文档：[pi-agent.md](pi-agent.md)（同类可嵌入内核，极简路线）｜[openclaw.md](openclaw.md)（用 pi 内核做生活助理）｜[myagents.md](myagents.md)（Claude Agent SDK 系）｜[workbuddy-technical-analysis.md](workbuddy-technical-analysis.md)（闭源对标）
+> 姊妹文档：[pi-agent.md](pi-agent.md)（同类可嵌入内核，极简路线）｜[openclaw.md](openclaw.md)（用 pi 内核做生活助理）｜[myagents.md](myagents.md)（Claude Agent SDK 系）｜[workbuddy-technical-analysis.md](evidence/workbuddy/technical-analysis.md)（闭源对标）
 
 - **分析人**：lichb
 - **日期**：2026-09-05

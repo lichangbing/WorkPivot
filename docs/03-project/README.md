@@ -6,16 +6,30 @@
 
 本目录记录“做到哪里、怎样验证、部署了什么、还剩什么”。它不再用几十条按时间堆叠的“最新进度”充当状态入口。
 
+## 目录结构
+
+```text
+03-project/
+├── STATUS.md          当前状态唯一快照
+├── HISTORY.md         历史证据时间线
+├── planning/          计划、任务台账、工程债、可靠性问题
+├── verification/      验收报告、复盘、截图与可复现脚本
+├── deployments/       安装、升级、备份、回退和远程部署记录
+└── weekly/            周报
+```
+
+根目录只保留状态、历史和索引。当前结论不放日期文件；日期文件只证明当时做了什么。
+
 ## 先看这里
 
 | 目标 | 文档 |
 | --- | --- |
 | 查看当前完成度和限制 | [项目状态](STATUS.md) |
-| 查看长期任务与依赖 | [PostgreSQL 与知识开发台账](tasks-postgresql-knowledge.md) |
-| 查看工程债 | [优化清单](优化清单-20261024.md) |
-| 查看可靠性问题 | [可靠性问题台账](可靠性问题台账.md) |
-| 查看最近部署 | [远程部署记录](远程部署-20261026.md) |
-| 查看业务事实交付 | [业务事实交付记录](业务事实交付-20261028.md) |
+| 查看长期任务与依赖 | [PostgreSQL 与知识开发台账](planning/tasks-postgresql-knowledge.md) |
+| 查看工程债 | [优化清单](planning/优化清单-20261024.md) |
+| 查看可靠性问题 | [可靠性问题台账](planning/可靠性问题台账.md) |
+| 查看最近部署 | [远程部署记录](deployments/远程部署-20261026.md) |
+| 查看业务事实交付 | [业务事实交付记录](verification/业务事实交付-20261028.md) |
 | 查看历史验收证据 | [历史索引](HISTORY.md) |
 | 执行安装/升级/排障 | [运维文档](../04-operations/README.md) |
 
@@ -32,11 +46,11 @@
 | 类型 | 示例 | 维护方式 |
 | --- | --- | --- |
 | 当前状态 | `STATUS.md` | 持续覆盖更新 |
-| 长期计划/任务台账 | `tasks-postgresql-knowledge.md`、`plan-2026.md` | 追加状态，保留历史 |
-| 专项验收 | `*-closeout-*.md`、`*acceptance*.md` | 保留结果和限制 |
-| 日期部署 | `远程部署-20261026.md`、`local-*-*.md` | 按日期追加 |
-| 发布手册 | `local-release-runbook-20261017.md` | 反映可复用流程，历史变化写文内 |
-| 周报/复盘 | `weekly/`、`engineering-review-*` | 归档，不改变当前事实源 |
+| 长期计划/任务台账 | `planning/tasks-postgresql-knowledge.md`、`planning/plan-2026.md` | 追加状态，保留历史 |
+| 专项验收 | `verification/*-closeout-*.md`、`verification/*acceptance*.md` | 保留结果和限制 |
+| 日期部署 | `deployments/远程部署-20261026.md`、`deployments/local-*.md` | 按日期追加 |
+| 发布手册 | `deployments/local-release-runbook-20261017.md` | 反映可复用流程，历史变化写文内 |
+| 周报/复盘 | `weekly/`、`verification/engineering-review-*` | 归档，不改变当前事实源 |
 
 ## 当前里程碑
 
@@ -50,6 +64,7 @@
 
 ## 最近关键节点
 
+- 2026-10-28：文档按产品、研究、设计、交付分层；竞品收敛为一产品一主卡，架构、PRD与项目证据完成分组。
 - 2026-10-28：三层记忆自动保存、冲突确认与提示词规则统一；随后增加每轮自动召回、工作区跨终端同步和 schema v62。
 - 2026-10-28：项目级业务事实已部署，schema v63 增加对象、事实/关系版本、证据、冲突和异步提取；Web/API 与 Android 1.3 验收通过。
 - 2026-10-28：schema v64 新增用户四维日限额与独立限额管理页；管理员创建账户默认不限。

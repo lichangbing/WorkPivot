@@ -1,7 +1,7 @@
 # 开源项目分析：OpenClaw（个人 AI 助理框架——记忆/人设/通道生态的事实标准源头）
 
 > 分析方式：源码级分析（E:\project\openclaw，v2026.4.6）+ docs/concepts 架构文档精读。
-> 姊妹文档：[workbuddy-technical-analysis.md](workbuddy-technical-analysis.md)（其记忆/人设/通道层借鉴 OpenClaw）、[myagents.md](myagents.md)（用 OpenClaw 插件协议）、[openworkbuddy.md](openworkbuddy.md)——本文补全三家共同引用的生态源头。
+> 姊妹文档：[workbuddy-technical-analysis.md](evidence/workbuddy/technical-analysis.md)（其记忆/人设/通道层借鉴 OpenClaw）、[myagents.md](myagents.md)（用 OpenClaw 插件协议）、[openworkbuddy.md](openworkbuddy.md)——本文补全三家共同引用的生态源头。
 
 - **分析人**：ZCode
 - **日期**：2026-08-28

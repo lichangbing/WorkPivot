@@ -65,7 +65,7 @@ WorkPivot 把一次工作变成带资源范围、持久运行、版本成果和�
 
 ## 进一步阅读
 
-- 产品范围与指标：[PRD-00 产品总纲](../02-design/product/PRD-00-产品总纲.md)
+- 产品范围与指标：[PRD-00 产品总纲](../02-design/product/prd/PRD-00-产品总纲.md)
 - 系统架构：[系统总览](../02-design/architecture/系统总览.md)
 - 当前完成度：[项目状态](../03-project/STATUS.md)
 - 安装和运行：[快速部署](../04-operations/快速部署.md)

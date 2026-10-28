@@ -3,7 +3,7 @@
 > **分析方式**：四个官方仓库本地实测（2026-09-05 shallow clone）：`E:\project\claude-code`（主仓库）、`E:\project\skills`（Agent Skills 官方源头）、`E:\project\claude-code-action`（MIT headless 实现）、`E:\project\knowledge-work-plugins`（岗位插件包）。核心 CLI 无源码可看，闭源部分的机制信息来自仓库内规格文本 + CHANGELOG + 姊妹文档的间接证据链。
 > **一段话结论**：Claude Code 的"开源"是**卫星开源、核心闭源**——核心 npm 包是全版权保留 + 商业条款（连主仓库都整体套这个许可）；真正可用的开源资产是：SKILL.md 格式规范与写作方法论（agentskills.io 开放标准 + Apache-2.0 示例技能）、headless 集成工程蓝图（MIT）、岗位技能包内容范式（Apache-2.0，212 个领域技能）。⚠️ 但驱动 Claude.ai 生产力的**文档四件套技能（docx/pptx/xlsx/pdf）是 Proprietary**，内容与脚本不可复用——WorkPivot 的 H 模块必须自研。
 >
-> 姊妹文档：[**claude-code-internals.md**](claude-code-internals.md)（**泄露源码级分析**：51.2 万行 ground truth，2026-03-31 npm source map 事故版本，只读研究用途）｜[codex.md](codex.md)（同类官方开源对照）｜[workbuddy-technical-analysis.md](workbuddy-technical-analysis.md)（WorkBuddy 内嵌同源引擎的逆向）｜[myagents.md](myagents.md)（Claude Agent SDK 系）｜[qwenwork.md](qwenwork.md)（migration 里的 Claude Code 痕迹）
+> 姊妹文档：[**claude-code-internals.md**](evidence/claude-code/internals.md)（**泄露源码级分析**：51.2 万行 ground truth，2026-03-31 npm source map 事故版本，只读研究用途）｜[codex.md](codex.md)（同类官方开源对照）｜[workbuddy-technical-analysis.md](evidence/workbuddy/technical-analysis.md)（WorkBuddy 内嵌同源引擎的逆向）｜[myagents.md](myagents.md)（Claude Agent SDK 系）｜[qwenwork.md](qwenwork.md)（migration 里的 Claude Code 痕迹）
 
 - **分析人**：lichb
 - **日期**：2026-09-05

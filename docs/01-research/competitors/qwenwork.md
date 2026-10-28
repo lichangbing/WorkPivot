@@ -3,7 +3,7 @@
 > **分析方式**：本机安装目录（`D:\Program Files\QwenWorkCN`）与应用工作目录（`E:\workspace\qwenwork`）实测。app.asar **未解包**，结论来自文件指纹、PE 版本信息、asar 头部索引与目录结构；产品侧信息全部来自本机证据，未引用公开资料。
 > **一段话结论**：阿里（钉钉/Qoder 团队）出品的 Electron 37 + React 桌面 AI 工作台，v1.0.2 刚上线一周；自带多版本更新器、Rust 辅助进程、VM 沙箱、独立 agent CLI、MV3 浏览器自动化扩展，以及 AgentSkills/SKILL.md 格式的技能生态；SQL migration 显示其沿袭 Claude Code 类 agent 架构。工作区实测显示它已能承接真实咨询项目交付，产物分层与溯源纪律非常成熟。
 >
-> 姊妹文档：[workbuddy.md](workbuddy.md)（最直接对标）｜[workbuddy-technical-analysis.md](workbuddy-technical-analysis.md)（同为闭源本机逆向）｜[workbuddy-extension-system.md](workbuddy-extension-system.md)（扩展系统对照）｜[openclaw.md](openclaw.md)（人设/心跳文件格式源头）
+> 姊妹文档：[workbuddy.md](workbuddy.md)（最直接对标）｜[workbuddy-technical-analysis.md](evidence/workbuddy/technical-analysis.md)（同为闭源本机逆向）｜[workbuddy-extension-system.md](evidence/workbuddy/extension-system.md)（扩展系统对照）｜[openclaw.md](openclaw.md)（人设/心跳文件格式源头）
 
 - **分析人**：lichb
 - **日期**：2026-09-02

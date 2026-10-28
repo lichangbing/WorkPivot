@@ -117,4 +117,4 @@
 - 本地源码：`E:\project\deepseek-harness`（docs/architecture.md、docs/cordis-primer.md、packages/extensions/*、packages/skill/*）
 - Cordis：<https://github.com/cordiverse/cordis>（论文：A Programming Paradigm for Spatiotemporal Composability）
 - dsh 仓库：<https://github.com/deepseek-ai/deepseek-harness>
-- 关联文档：[workbuddy-extension-system.md](../competitors/workbuddy-extension-system.md)（文件清单插件体系对照）、[myagents.md](../competitors/myagents.md)（多 Runtime 抽象对照）、[../02-design/product/需求清单.md](../../02-design/product/需求清单.md)
+- 关联文档：[workbuddy-extension-system.md](../competitors/evidence/workbuddy/extension-system.md)（文件清单插件体系对照）、[myagents.md](../competitors/myagents.md)（多 Runtime 抽象对照）、[../02-design/product/需求清单.md](../../02-design/product/requirements/历史需求基线.md)

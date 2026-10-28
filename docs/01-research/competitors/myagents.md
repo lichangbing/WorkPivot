@@ -1,7 +1,7 @@
 # 开源项目分析：MyAgents（Tauri 桌面个人 Agent 工作台）
 
 > 分析方式：源码级分析（E:\project\MyAgents，v0.4.11 源码 + 项目自带 specs/ARCHITECTURE.md 1169 行架构文档）+ 本机安装目录与数据目录实测。
-> 姊妹文档：WorkBuddy 系列（[workbuddy.md](workbuddy.md) / [workbuddy-technical-analysis.md](workbuddy-technical-analysis.md) / [workbuddy-extension-system.md](workbuddy-extension-system.md) / [workbuddy-official-docs.md](workbuddy-official-docs.md)）——文末有两者对照。
+> 姊妹文档：WorkBuddy 系列（[workbuddy.md](workbuddy.md) / [workbuddy-technical-analysis.md](evidence/workbuddy/technical-analysis.md) / [workbuddy-extension-system.md](evidence/workbuddy/extension-system.md) / [workbuddy-official-docs.md](evidence/workbuddy/official-docs.md)）——文末有两者对照。
 
 - **分析人**：ZCode
 - **日期**：2026-08-27

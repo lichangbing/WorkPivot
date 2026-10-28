@@ -4,7 +4,7 @@
 > 运行时：Node.js 22、pnpm 11
 > 当前主链路：PostgreSQL + 服务端 Worker/浏览器/执行器
 
-本目录是 pnpm monorepo。开发前先阅读仓库根 [AGENTS.md](../AGENTS.md)、[产品总纲](../docs/02-design/product/PRD-00-产品总纲.md)和[系统总览](../docs/02-design/architecture/系统总览.md)。
+本目录是 pnpm monorepo。开发前先阅读仓库根 [AGENTS.md](../AGENTS.md)、[产品总纲](../docs/02-design/product/prd/PRD-00-产品总纲.md)和[系统总览](../docs/02-design/architecture/系统总览.md)。
 
 ## 目录
 

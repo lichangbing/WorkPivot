@@ -12,11 +12,11 @@
 | --- | --- |
 | 新机器安装 | [快速部署](快速部署.md) |
 | 日常健康检查与故障定位 | [运行与排障](运行与排障.md) |
-| 最近一次远程部署证据 | [远程部署记录](../03-project/远程部署-20261026.md) |
+| 最近一次远程部署证据 | [远程部署记录](../03-project/deployments/远程部署-20261026.md) |
 | Cloudflare Tunnel 与正式域名 | [域名和 Tunnel 运维](Cloudflare-Tunnel与正式域名.md) |
-| 本地发布与升级流程 | [本地发布手册](../03-project/local-release-runbook-20261017.md) |
-| 备份与隔离恢复 | [备份恢复](../03-project/backup-recovery-20261016.md) |
-| 回退基线 | [回退基线](../03-project/回退基线-20261020.md) |
+| 本地发布与升级流程 | [本地发布手册](../03-project/deployments/local-release-runbook-20261017.md) |
+| 备份与隔离恢复 | [备份恢复](../03-project/deployments/backup-recovery-20261016.md) |
+| 回退基线 | [回退基线](../03-project/deployments/回退基线-20261020.md) |
 | 发布说明与版本材料 | [releases](../../releases/README.md) |
 
 ## 环境要求

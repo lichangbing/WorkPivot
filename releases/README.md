@@ -12,11 +12,11 @@
 | 当前完成度与限制 | [项目状态](../docs/03-project/STATUS.md) |
 | 新环境安装 | [快速部署](../docs/04-operations/快速部署.md) |
 | 一体化本地栈 | [install-local-stack.sh](deploy/install-local-stack.sh) |
-| 远程部署恢复记录 | [远程部署记录](../docs/03-project/远程部署-20261026.md) |
+| 远程部署恢复记录 | [远程部署记录](../docs/03-project/deployments/远程部署-20261026.md) |
 | RC.1 历史发布说明 | [v0.3.0-rc.1](v0.3.0-rc.1/RELEASE-NOTES.md) |
 | Android 1.3 内测包 | `https://115-191-1-188.sslip.io:80/downloads/WorkPivot-android-1.3.apk` |
 | Windows 便携客户端 | `https://115-191-1-188.sslip.io:80/downloads/WorkPivot-Windows-portable.zip` |
-| 备份与恢复 | [backup-recovery](../docs/03-project/backup-recovery-20261016.md) |
+| 备份与恢复 | [backup-recovery](../docs/03-project/deployments/backup-recovery-20261016.md) |
 | 全量变更日志 | [CHANGELOG](CHANGELOG.md) |
 
 `v0.3.0-rc.1/RELEASE-NOTES.md` 记录 RC 初始交付时点；后续增量已部署到私有环境但未重新打 tag 的能力，以 `STATUS.md` 和远程部署记录为准。

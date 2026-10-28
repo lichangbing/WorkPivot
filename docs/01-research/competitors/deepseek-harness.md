@@ -4,7 +4,7 @@
 - **日期**：2026-10-24
 - **信息来源**：本机安装包静态分析（`D:\Program Files\DeepSeek Harness\resources\app.asar`，解包 548 个 `@deepseek-ai/dsh-*` 包，v0.2.1-rc.2，MIT）；未运行实测。
 
-> 插件与长期记忆专项：[Hindsight 与 DSH 长期记忆插件](hindsight-dsh-memory-20261028.md)。该专项说明 Hindsight 官方支持 DSH、第三方插件并非 DeepSeek 官方插件，并提炼自动召回、知识页和证据化归纳的可借鉴机制。
+> 插件与长期记忆专项：[Hindsight 与 DSH 长期记忆插件](hindsight.md)。该专项说明 Hindsight 官方支持 DSH、第三方插件并非 DeepSeek 官方插件，并提炼自动召回、知识页和证据化归纳的可借鉴机制。
 
 ## 1. 产品概述
 

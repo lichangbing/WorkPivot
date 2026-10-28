@@ -1,94 +1,66 @@
 # 竞品与参考项目
 
-> 状态：✅ 已统一整理
+> 状态：✅ 一产品一主卡；原始证据集中归档
 > 研究窗口：2026-08 至 2026-10
 > 统一结论：[2026 产品与技术格局](product-landscape-2026.md)
 
 ## 阅读方式
 
-本目录分两层：
+1. 先读[产品与技术格局](product-landscape-2026.md)，了解横向结论和对 WorkPivot 的取舍。
+2. 需要追查某个产品时，进入对应主卡；主卡负责给出统一口径，不要求读者拼接多篇日报。
+3. 需要核验源码、安装包或运行记录时，再进入[证据目录](evidence/README.md)。证据文件保留原貌，不作为新的结论入口。
 
-1. **统一分析**：本文和[产品与技术格局](product-landscape-2026.md)给出相同维度、相同证据标准下的横向结论。
-2. **专项证据**：单产品长文、本机安装包分析、运行录屏记录、哈希和截图保留在原名文件中，用于追溯细节，不再各自定义一套结论口径。
+## 竞品主卡
 
-判断当前产品取舍时，以统一分析为准；需要复核某个事实时，再进入专项证据。
-
-## 分析范围
-
-| 类型 | 对象 | 主要参考价值 |
+| 类型 | 产品 | WorkPivot 主要参考点 |
 | --- | --- | --- |
-| 直接商业竞品 | WorkBuddy、QwenWork | 任务交付、专家/技能、本地执行与企业形态 |
-| 通用 Agent 产品 | Claude Code、OpenAI Codex CLI | 工具循环、上下文工程、沙箱、审批与会话协议 |
-| 开源工作台 | MyAgents、OpenWorkBuddy | 桌面 Agent、工作区、任务与成果链路 |
-| 运行时/记忆生态 | OpenClaw、Hindsight、Pi Agent Harness、Hermes Agent、DeepSeek Harness | 插件、分层长期记忆、混合召回、技能、会话恢复与多模型协议 |
-| 观察名单 | 飞书智能伙伴、钉钉 AI、Coze、Microsoft 365 Copilot | 待补充公开资料和可复现实测 |
+| 直接办公竞品 | [WorkBuddy（腾讯）](workbuddy.md)、[QwenWork（阿里）](qwenwork.md) | 任务交付、专家/Skill、Office、本地执行与企业治理 |
+| 通用 Agent | [Claude Code](claude-code.md)、[OpenAI Codex CLI](codex.md) | 工具循环、上下文、沙箱、审批与会话恢复 |
+| 开源工作台 | [MyAgents](myagents.md)、[OpenWorkBuddy](openworkbuddy.md) | 桌面 Agent、多 Runtime、成果核验与评测驱动 |
+| 运行时/生态 | [OpenClaw](openclaw.md)、[Hermes Agent](hermes.md)、[Pi Agent Harness](pi-agent.md)、[DeepSeek Harness](deepseek-harness.md)、[Hindsight](hindsight.md) | 记忆、插件、Skill 沉淀、事件溯源、证据化归纳与多模型协议 |
 
-## 横向结论
+## 统一比较维度
 
-| 维度 | 市场正在收敛的做法 | WorkPivot 的判断 |
+| 维度 | 市场趋势 | WorkPivot 判断 |
 | --- | --- | --- |
-| 产品单位 | 从“聊天”转向“任务/项目” | 采用项目 → 任务 → 运行 → 成果 |
-| 工作区 | 任务绑定真实目录或受控文件空间 | 服务端任务目录 + 版本化成果，不依赖本地同步盘 |
-| 扩展 | SKILL.md、MCP、专家/插件包生态 | 支持兼容格式，但技能发布和执行权限由 WorkPivot 自己控制 |
-| 记忆 | 从单一 MEMORY.md 转向作用域分层、证据化归纳和预生成知识页 | 保留 user/project/task 三层，补 Observation 与概览，冲突确认，来源可追溯 |
-| 上下文 | 按需读取、压缩、恢复，而非无限堆消息 | 预算、检索、压缩和事件恢复分离 |
-| 安全 | 工具审批、文件边界、隔离执行和密钥加密 | 任务资源绑定 + 独立执行器 + 不可信数据隔离 |
-| 部署 | 桌面免部署与私有化服务并存 | 当前优先服务端集中部署，桌面/移动作为客户端 |
-| 文档交付 | Office/PDF 是核心验收物 | 文件产出、结构检查、版本与下载进入同一链路 |
+| 产品单位 | 聊天转向任务/项目 | 项目 → 任务 → 运行 → 成果 |
+| 工作区 | 本地目录或受控云端文件空间 | 服务端任务目录 + 不可变成果版本 |
+| 扩展 | SKILL.md、MCP、专家与插件包 | 兼容格式，发布和执行权限由 WorkPivot 控制 |
+| 记忆 | 会话、项目、用户多层 | 三层事实、revision、来源、冲突确认与遗忘 |
+| 上下文 | 预算、检索、压缩和恢复分离 | 轻量压缩 + 长对话摘要确认 + 子任务隔离 |
+| 安全 | 工具审批、文件边界、隔离执行 | 任务授权快照 + 调用绑定 + 独立执行面 |
+| 交付 | Office/PDF 是核心验收物 | 生成、检查、版本、预览、下载一体 |
+| 部署 | SaaS、本地和私有化并存 | 私有化优先，Web/桌面/移动作为客户端 |
 
-## 竞争空白
+## 当前差异化
 
-WorkPivot 不以“功能数量最多”为目标，当前差异化集中在：
+1. 模型中立和私有化部署，不绑定单一模型或办公生态。
+2. 权限跟着任务与文件版本走，账号权限不自动扩大为模型权限。
+3. 工具副作用可恢复、可对账，避免中断后盲目重放。
+4. 记忆支持无冲突自动保存，修改与冲突逐条确认，删除可传播到索引与摘要。
+5. Office/PDF 成果闭环，失败不发布半成品。
 
-1. **私有化与模型中立**：不绑定单一模型或企业生态，支持 OpenAI 兼容与 Anthropic 协议。
-2. **任务授权而非全局权限**：文件版本、网页 URL、记忆层、技能和写操作随运行绑定。
-3. **可恢复的副作用**：事件和工具派发持久化，恢复时不盲目重放。
-4. **记忆可纠错**：无冲突新增自动保存，修改与冲突逐条确认。
-5. **成果闭环**：Office/PDF、引用、版本、下载和回收站统一管理。
-6. **中文办公与私有化交付**：面向文档密集、数据敏感的内部团队。
+## 证据与规范
 
-## 证据等级
-
-| 等级 | 含义 | 可用于 |
+| 等级 | 证据 | 用途 |
 | --- | --- | --- |
-| A | 官方公开文档、可运行实测、可复现哈希 | 产品/架构结论 |
-| B | 安装包静态分析、源码阅读、日志证据 | 技术推断与选型 |
-| C | 媒体报道、第三方测评 | 市场和方向观察 |
+| A | 官方文档、公开源码、可复现实测 | 可支撑产品/架构结论 |
+| B | 安装包静态分析、运行日志、局部源码 | 技术线索，需注明验证边界 |
+| C | 媒体、访谈、第三方测评 | 市场观察 |
 | D | 未验证假设 | 只能进入待验证清单 |
 
-原则：
+规则：
 
-- 商业产品未公开的内部实现只能写“观察/推断”，不能写成确定事实。
-- 开源项目的许可必须在复用前重新核对；本目录结论不构成法律意见。
-- 本机路径、账号、样本内容和私有运行数据不进入公开结论。
-- 竞品更新后先修订统一卡片，再在专项文件追加新证据。
+- 每个产品只维护一个根目录主卡；新证据合并到主卡对应章节，详细材料放入 `evidence/{product}/`。
+- 商业产品未公开的内部实现写“观察/推断”，不写成源码事实。
+- 开源项目复用前重新核对许可证、NOTICE 和第三方依赖。
+- 不在研究材料中保存真实账号、密钥、客户样本或未脱敏日志。
+- 新卡从 [_template.md](_template.md) 开始；模板字段改变时同批检查现有主卡。
 
-## 专项证据索引
+## 待研究
 
-### WorkBuddy
-
-产品与官方能力：[workbuddy.md](workbuddy.md)、[官方文档纪要](workbuddy-official-docs.md)
-运行与扩展：[技术拆解](workbuddy-technical-analysis.md)、[扩展系统](workbuddy-extension-system.md)、[Agent 运行时](workbuddy-agent-runtime-20261014.md)
-Office 与证据：[Office 静态分析](workbuddy-office-static-20261017.md)、[Word 新建](workbuddy-word-runtime-20261017.md)、[Word 读取](workbuddy-word-read-runtime-20261017.md)、[Word 修改](workbuddy-word-edit-runtime-20261017.md)、[Excel 生成](workbuddy-excel-create-runtime-20261017.md)、[Excel 读取](workbuddy-excel-read-runtime-20261017.md)、[Excel 修改](workbuddy-excel-edit-runtime-20261017.md)
-
-### 其他产品
-
-- [WorkBuddy 本地记忆实证](workbuddy-local-memory-20261014.md)
-- [QwenWork](qwenwork.md)
-- [MyAgents](myagents.md)
-- [OpenWorkBuddy](openworkbuddy.md)
-- [OpenClaw](openclaw.md)
-- [Hermes Agent](hermes.md)
-- [Pi Agent Harness](pi-agent.md)
-- [DeepSeek Harness](deepseek-harness.md)
-- [Hindsight 与 DSH 长期记忆插件](hindsight-dsh-memory-20261028.md)
-- [OpenAI Codex CLI](codex.md)
-- [Claude Code](claude-code.md)
-- [Claude Code 内核专项](claude-code-internals.md)
-
-## 维护规则
-
-- 新建分析从[_template.md](_template.md)开始。
-- 同一产品只有一个主卡片；新证据追加到主卡片“证据与限制”或对应专项文件。
-- 统一卡片必须写明研究日期、证据等级和未验证项。
-- 对外发布前删除本地绝对路径、账号信息、业务样本和未经授权的内容。
+- 首批种子客户的行业、团队规模与采购门槛。
+- 中文复杂 Office 样版的业务与视觉验收集。
+- 本地模型、私有云模型和公有云模型的质量/成本路由。
+- 企业身份、组织同步、跨项目共享与撤权。
+- 多人项目协作进入版本的时间点。

@@ -7,7 +7,7 @@
 
   把自然语言任务变成可追踪、可恢复、可下载的 Word、Excel、PPT、PDF 与研究报告。
 
-  [产品设计](docs/02-design/product/PRD-00-产品总纲.md) ·
+  [产品设计](docs/02-design/product/prd/PRD-00-产品总纲.md) ·
   [系统架构](docs/02-design/architecture/系统总览.md) ·
   [快速部署](docs/04-operations/快速部署.md) ·
   [开发说明](code/README.md) ·
@@ -181,8 +181,8 @@ WorkPivot/
 │   └── eval/                 # 自动化评测与回归用例
 ├── docs/
 │   ├── 00-overview/          # 产品一页纸
-│   ├── 01-research/          # 竞品、技术研究与结论
-│   ├── 02-design/            # 主 PRD、架构、ADR、UI/UX
+│   ├── 01-research/          # 横向格局、产品主卡、原始证据
+│   ├── 02-design/            # PRD、分层架构、ADR、原型、UI/UX
 │   ├── 03-project/           # 状态、计划、验收与历史归档
 │   └── 04-operations/        # 部署、升级与运维
 ├── releases/                 # 发布说明、部署编排和版本材料
@@ -208,10 +208,12 @@ pnpm eval
 
 | 想了解 | 从这里开始 |
 | --- | --- |
-| 产品定位、用户、范围与验收指标 | [产品总纲 PRD](docs/02-design/product/PRD-00-产品总纲.md) |
+| 产品定位、用户、范围与验收指标 | [产品总纲 PRD](docs/02-design/product/prd/PRD-00-产品总纲.md) |
 | 模块行为与交互细节 | [PRD 分册](docs/02-design/product/README.md) |
 | 系统组件、数据流、安全边界 | [系统总览](docs/02-design/architecture/系统总览.md) |
+| 架构专题与历史归档 | [架构设计索引](docs/02-design/architecture/README.md) |
 | 竞品格局与取舍 | [竞品总览](docs/01-research/competitors/README.md) |
+| 竞品原始证据 | [证据库](docs/01-research/competitors/evidence/README.md) |
 | 当前完成度、限制和路线 | [项目状态](docs/03-project/STATUS.md) |
 | 部署、备份和故障恢复 | [运维文档](docs/04-operations/README.md) |
 | 历史里程碑与验收证据 | [项目历史](docs/03-project/HISTORY.md) |

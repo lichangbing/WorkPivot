@@ -47,7 +47,7 @@ WorkPivot 的机会不在复制更多聊天功能，而在把“私有化、任�
 | 证据等级 | A/B：官方文档 + 本机产品与文件工作流观察 |
 | 对 WorkPivot 的启示 | 保留“任务交付”心智；同时强化模型中立、任务授权和证据可追溯 |
 
-专项证据：[产品分析](workbuddy.md)、[官方文档](workbuddy-official-docs.md)、[技术拆解](workbuddy-technical-analysis.md)、[扩展系统](workbuddy-extension-system.md)、[Office 证据](workbuddy-office-static-20261017.md)。
+深入阅读：[WorkBuddy 主卡](workbuddy.md)；静态分析与运行材料见[证据目录](evidence/workbuddy/)。
 
 ### 3.2 QwenWork / 千问办公（阿里）
 
@@ -77,7 +77,7 @@ WorkPivot 的机会不在复制更多聊天功能，而在把“私有化、任�
 | 证据等级 | A：官方开放仓库和公开规格；核心内部行为为间接证据 |
 | 对 WorkPivot 的启示 | 对齐有用格式，采用自研技能发布和权限控制；不复制专有内容 |
 
-专项证据：[Claude Code](claude-code.md)、[内核专项](claude-code-internals.md)。
+深入阅读：[Claude Code 主卡](claude-code.md)；源码事故样本与 Loop 专项见[证据目录](evidence/claude-code/)。
 
 ### 3.4 OpenAI Codex CLI
 
@@ -197,7 +197,7 @@ WorkPivot 的机会不在复制更多聊天功能，而在把“私有化、任�
 | 证据等级 | B：公开源码与官方文档，未完成本地 DSH 端到端运行 |
 | 对 WorkPivot 的启示 | 将 `fact / experience / observation / overview` 作为正交形态叠加到现有三层作用域；先做概览与证据链，再评估混合检索 |
 
-专项证据：[Hindsight 与 DSH 长期记忆插件](hindsight-dsh-memory-20261028.md)。
+专项证据：[Hindsight 与 DSH 长期记忆插件](hindsight.md)。
 
 ## 4. 对 WorkPivot 的产品取舍
 

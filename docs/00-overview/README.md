@@ -7,6 +7,6 @@
 
 更完整的信息：
 
-- [产品总纲](../02-design/product/PRD-00-产品总纲.md)
+- [产品总纲](../02-design/product/prd/PRD-00-产品总纲.md)
 - [系统总览](../02-design/architecture/系统总览.md)
 - [项目状态](../03-project/STATUS.md)

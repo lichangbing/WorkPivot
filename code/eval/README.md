@@ -6,7 +6,7 @@
 - `pnpm eval` 跑当前账号隔离/独立后台架构的常规验收；Linux主机执行专项单独运行。历史设计套件可设置 `WORKPIVOT_EVAL_LEGACY=1` 一并比较，当前仍有与产品设计不一致的失败，不计入发布通过项。
 - 模拟 LLM 原则：零成本跑 CI，不打真实模型（题库分层 L1/L2/L3 见需求清单 K01）。
 - `pnpm eval:backup` 离线验证备份包完整性、篡改、符号链接、重复路径及额外文件拒绝，不连接真实数据库。
-- `pnpm eval:backup-database` 在 Linux Docker 宿主创建一次性 PostgreSQL 16，调用真实 pg_dump/pg_restore，验证联合备份、安全快照、空目标恢复、权限/文件引用、登录/下载、遗忘清单及失败回滚；只挂载本次临时合成文件，结束后清理。详见[记录](../../docs/03-project/backup-recovery-20261016.md)。
+- `pnpm eval:backup-database` 在 Linux Docker 宿主创建一次性 PostgreSQL 16，调用真实 pg_dump/pg_restore，验证联合备份、安全快照、空目标恢复、权限/文件引用、登录/下载、遗忘清单及失败回滚；只挂载本次临时合成文件，结束后清理。详见[记录](../../docs/03-project/deployments/backup-recovery-20261016.md)。
 
 - W20-skills：技能加载、参考资料、停用、项目访问撤销、路径/链接和大小边界。`pnpm eval:skills`。
 - real-model-skills.mts：单独启用的真实模型专项，必须设置WORKPIVOT_LIVE_EVAL=1，读取已配置模型，在临时目录验证自主选择技能、读取参考资料和生成文件，结束清理；不加入pnpm eval，不替代完整浏览器业务验收。
@@ -61,9 +61,9 @@ preview.25：W33更新为两种模式32项，验证旧设置转换、默认自�
 
 ## 当前数据库与工程检查入口
 
-- 真实单用户浏览器验收：`WORKPIVOT_LIVE_EVAL=1 WORKPIVOT_LIVE_ENV_FILE=/绝对路径/model.env WORKPIVOT_TEST_PG_IMAGE=pgvector/pgvector:pg16 node scripts/test-rc-browser.mjs --live`。配置文件提供 `DEEPSEEK_API_KEY`，可选 `DEEPSEEK_MODEL`（默认 deepseek-flash）；请求仅发送到 DeepSeek 官方地址，会产生真实用量。使用生产 createDatabaseRuntime 和临时数据库，账号 `live-test / Live-Test-2026!` 只用于本机测试。需要 Office 联调时，另启动专用测试 worker，通过 `WORKPIVOT_LIVE_WORKER_FILE` 指定仅本地可读的 JSON `{ "url": "http://127.0.0.1:端口", "token": "测试worker凭据" }`，或设置既有 WORKPIVOT_WORKER_URL/TOKEN；夹具预置 office-acceptance 技能。worker 需预装 Node、exceljs、docx、Python 及 poppler，文件仍由浏览器上传。60 分钟后清理临时数据库，也可在请求完成后通过认证的 POST /fixture/stop 提前关闭。外部 worker 生命周期由启动方管理，密钥文件不提交。本入口与 --workflow 互斥，不自动调用真实模型、不自动完成界面验收。结果见[单用户收尾记录](../../docs/03-project/single-user-closeout-20261016.md)。
+- 真实单用户浏览器验收：`WORKPIVOT_LIVE_EVAL=1 WORKPIVOT_LIVE_ENV_FILE=/绝对路径/model.env WORKPIVOT_TEST_PG_IMAGE=pgvector/pgvector:pg16 node scripts/test-rc-browser.mjs --live`。配置文件提供 `DEEPSEEK_API_KEY`，可选 `DEEPSEEK_MODEL`（默认 deepseek-flash）；请求仅发送到 DeepSeek 官方地址，会产生真实用量。使用生产 createDatabaseRuntime 和临时数据库，账号 `live-test / Live-Test-2026!` 只用于本机测试。需要 Office 联调时，另启动专用测试 worker，通过 `WORKPIVOT_LIVE_WORKER_FILE` 指定仅本地可读的 JSON `{ "url": "http://127.0.0.1:端口", "token": "测试worker凭据" }`，或设置既有 WORKPIVOT_WORKER_URL/TOKEN；夹具预置 office-acceptance 技能。worker 需预装 Node、exceljs、docx、Python 及 poppler，文件仍由浏览器上传。60 分钟后清理临时数据库，也可在请求完成后通过认证的 POST /fixture/stop 提前关闭。外部 worker 生命周期由启动方管理，密钥文件不提交。本入口与 --workflow 互斥，不自动调用真实模型、不自动完成界面验收。结果见[单用户收尾记录](../../docs/03-project/verification/single-user-closeout-20261016.md)。
 
-- pnpm eval:browser-workflow：临时 PostgreSQL + 当前数据库 API/执行器/记忆作业 + 当前构建前端，使用可控模型响应做浏览器人工验收。Windows 需 WSL Ubuntu-24.04 和本地 postgres:15-alpine，页面为 127.0.0.1:39987，临时账号 workflow-test / Workflow-Test-2026!。覆盖审批恢复、停止、文本成果、记忆建议确认/纠错/拒绝及新任务读取；15 分钟后关闭，或 POST /fixture/stop 正常结束。先在 apps/web 构建前端；脚本启动不等于所有浏览器检查自动通过。步骤、结果与限制见 [2026-10-16 验收记录](../../docs/03-project/browser-workflow-20261016.md)。
+- pnpm eval:browser-workflow：临时 PostgreSQL + 当前数据库 API/执行器/记忆作业 + 当前构建前端，使用可控模型响应做浏览器人工验收。Windows 需 WSL Ubuntu-24.04 和本地 postgres:15-alpine，页面为 127.0.0.1:39987，临时账号 workflow-test / Workflow-Test-2026!。覆盖审批恢复、停止、文本成果、记忆建议确认/纠错/拒绝及新任务读取；15 分钟后关闭，或 POST /fixture/stop 正常结束。先在 apps/web 构建前端；脚本启动不等于所有浏览器检查自动通过。步骤、结果与限制见 [2026-10-16 验收记录](../../docs/03-project/verification/browser-workflow-20261016.md)。
 
 - pnpm eval:worker-recovery：在 WSL/Linux Docker 宿主运行（Windows 可执行 `wsl -d Ubuntu-24.04 -- node /mnt/e/project/WorkPivot/code/eval/worker-recovery.mjs`）。默认使用本地 `workpivot-executor:0.2.0`，可通过 WORKPIVOT_TEST_IMAGE 指定兼容镜像。使用随机实例名、临时目录、动态本地端口和随机凭据，真实终止执行沙箱与 worker 子进程，验证取消、失败不返回半成品、重启清理及显式重试。仅清理本次实例资源，不挂载 Docker socket。该入口不覆盖数据库产物发布和浏览器联动。
 - pnpm eval:database：W38 及其引入的数据库专项，运行于独立临时 PostgreSQL，不使用业务数据。与 pnpm eval 分开运行。
@@ -78,7 +78,7 @@ preview.25：W33更新为两种模式32项，验证旧设置转换、默认自�
 
 `pnpm eval:skill-build` 使用独立临时 PostgreSQL 和真实 Docker，验证私人文件树、脚本语法、断言及 Excel→Word 草稿。`WORKPIVOT_LIVE_EVAL=1` 显式启用本机 DeepSeek 配置，`WORKPIVOT_SKILL_LIVE_OFFICE=1` 补真实模型生成办公技能及下一轮执行，`WORKPIVOT_SKILL_BROWSER_HOLD=1` 保留临时浏览器页。密钥只从本机配置读取，不写命令或记录。
 
-数据库回归新增45项，累计630/630；真实恢复28项、聊天10/10通过。详见[验收、命令与边界](../../docs/03-project/skill-build-closeout-20261017.md)。这些结果不代表已经部署或ST定时已完成。
+数据库回归新增45项，累计630/630；真实恢复28项、聊天10/10通过。详见[验收、命令与边界](../../docs/03-project/verification/skill-build-closeout-20261017.md)。这些结果不代表已经部署或ST定时已完成。
 
 - `pnpm eval:embeddings`：隔离 pgvector 数据库和合成 HTTP 服务，验证持久索引、项目/用户隔离、异步暂停、重试、重建切换及过期租约；不调用云端模型。schema31起数据库镜像必须提供vector扩展。
 

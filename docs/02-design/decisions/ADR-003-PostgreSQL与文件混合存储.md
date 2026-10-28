@@ -26,4 +26,4 @@ PostgreSQL 使用独立持久卷和内部网络；不给公网发布数据库端
 
 用户已明确不需要旧数据迁移。使用新 PostgreSQL 数据库和独立文件命名空间；不开发 JSON 导入、双写或旧 ID 映射。保留数据库结构升级脚本，不等于迁移历史业务数据。不迁移不意味着删除旧部署或文件。
 
-RAG 知识库、数据版本和用户自主删除纳入核心范围。详见 [PostgreSQL与项目知识数据架构](../architecture/PostgreSQL与项目知识数据架构.md) 与 [RAG知识库、版本与遗忘管理](../architecture/RAG知识库、版本与遗忘管理.md)。当前设计不代表运行版本已被替换。
+RAG 知识库、数据版本和用户自主删除纳入核心范围。详见 [PostgreSQL与项目知识数据架构](../architecture/data/PostgreSQL项目知识架构.md) 与 [RAG知识库、版本与遗忘管理](../architecture/data/RAG知识库与遗忘管理.md)。当前设计不代表运行版本已被替换。
