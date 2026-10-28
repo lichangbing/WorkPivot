@@ -79,7 +79,8 @@ export async function installSchema(db: pg.Pool, appRole: string, authRole: stri
     await client.query(`GRANT USAGE ON SCHEMA identity TO ${app};
       GRANT SELECT(id,platform_admin,message_quota,messages_used,quota_reset_at,token_quota,tokens_used,upload_quota_bytes,upload_bytes_used,concurrent_task_limit,usage_period_started_at),
         UPDATE(messages_used,quota_reset_at,tokens_used,upload_bytes_used,usage_period_started_at) ON identity.users TO ${app};
-      GRANT EXECUTE ON FUNCTION identity.quota_period_start(timestamptz) TO ${app},${auth}`);
+      GRANT EXECUTE ON FUNCTION identity.quota_period_start(timestamptz) TO ${app},${auth};
+      GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA workpivot TO ${app}`);
   });
 }
 

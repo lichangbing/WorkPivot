@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import type { Tool } from '@workpivot/core';
 import { RepositoryError, transaction, uuid } from './connection.js';
+import { validateParsedParts, type ParsedPart } from './parsed-content.js';
 
 export type BusinessModelKey = 'project.delivery' | 'company.operations';
 export type BusinessValueType = 'text' | 'number' | 'date' | 'boolean' | 'object' | 'json';
@@ -52,6 +53,37 @@ export interface FactSource {
   observedAt?: string;
 }
 
+export interface TableImportMapping {
+  taskId: string;
+  versionId: string;
+  subjectColumn: string;
+  valueColumn: string;
+  identifierColumn?: string;
+  objectType: string;
+  predicate: string;
+  sheet?: string;
+  headerRow?: number;
+  unit?: string;
+  currency?: string;
+  dimensions?: Record<string, string>;
+}
+
+export interface TableImportCandidate {
+  ordinal: number;
+  objectName: string;
+  objectType: string;
+  identifiers: Array<{ type: string; value: string }>;
+  predicate: string;
+  valueType: BusinessValueType;
+  value: string | number | boolean;
+  unit?: string;
+  currency?: string;
+  dimensions?: Record<string, string>;
+  evidence: string;
+  location: string;
+  row: number;
+}
+
 interface ValidatedValue {
   valueType: BusinessValueType;
   valueText: string | null;
@@ -73,6 +105,7 @@ interface BusinessObjectRow {
   objectType: string;
   canonicalName: string;
   status: string;
+  revision: number;
 }
 
 function normalize(value: string): string {
@@ -184,6 +217,41 @@ function sourceHash(value: FactSource): string | null {
   return value.quote ? createHash('sha256').update(value.quote.normalize('NFKC')).digest('hex') : null;
 }
 
+function objectSimilarity(left: { name: string; aliases: string[] }, right: { name: string; aliases: string[] }) {
+  const leftNames = [left.name, ...left.aliases].map(normalize).filter(Boolean);
+  const rightNames = [right.name, ...right.aliases].map(normalize).filter(Boolean);
+  const reasons: string[] = [];
+  let score = 0;
+  for (const a of leftNames) {
+    for (const b of rightNames) {
+      if (a === b) {
+        const exact = normalize(left.name) === normalize(right.name);
+        score = Math.max(score, exact ? 100 : 96);
+        reasons.push(exact ? '规范名称完全相同' : '名称与别名存在完全匹配');
+      } else if (Math.min(a.length, b.length) >= 2 && (a.includes(b) || b.includes(a))) {
+        score = Math.max(score, 84);
+        reasons.push('名称存在包含关系');
+      } else {
+        let prefix = 0;
+        while (prefix < a.length && prefix < b.length && a[prefix] === b[prefix]) prefix++;
+        if (prefix >= 2) {
+          score = Math.max(score, 70 + Math.min(12, prefix));
+          reasons.push(`名称共享 ${prefix} 个起始字符`);
+        }
+        const aBigrams = new Set(Array.from({ length: Math.max(0, a.length - 1) }, (_, index) => a.slice(index, index + 2)));
+        const bBigrams = new Set(Array.from({ length: Math.max(0, b.length - 1) }, (_, index) => b.slice(index, index + 2)));
+        const shared = [...aBigrams].filter(value => bBigrams.has(value)).length;
+        const union = new Set([...aBigrams, ...bBigrams]).size;
+        if (union && shared / union >= 0.45) {
+          score = Math.max(score, Math.round(65 + shared / union * 20));
+          reasons.push('名称片段高度相似');
+        }
+      }
+    }
+  }
+  return { score, reasons: [...new Set(reasons)] };
+}
+
 export class BusinessFactsRepository {
   constructor(private readonly db: Pool) {}
 
@@ -225,7 +293,7 @@ export class BusinessFactsRepository {
       const modelKey = await this.ensureProject(c, projectId);
       const profile = (await c.query(`SELECT project_id AS "projectId",model_key AS "modelKey",model_version AS "modelVersion",updated_at AS "updatedAt"
         FROM workpivot.business_project_profile WHERE project_id=$1`, [projectId])).rows[0];
-      const epoch = String((await c.query('SELECT revision::text FROM workpivot.business_fact_epoch WHERE owner_user_id=workpivot.actor_id() AND project_id=$1', [projectId])).rows[0]?.revision ?? '0');
+      const epoch = String((await c.query('SELECT COALESCE(max(revision),0)::text AS revision FROM workpivot.business_fact_epoch WHERE project_id=$1', [projectId])).rows[0]?.revision ?? '0');
       return { profile, model: BUSINESS_FACT_MODELS[modelKey], epoch };
     }, actor);
   }
@@ -239,12 +307,426 @@ export class BusinessFactsRepository {
     }, actor);
   }
 
+  private async bumpEpoch(c: PoolClient, projectId: string) {
+    await c.query(`INSERT INTO workpivot.business_fact_epoch(owner_user_id,project_id,revision)
+      VALUES(workpivot.actor_id(),$1,1)
+      ON CONFLICT(owner_user_id,project_id) DO UPDATE
+        SET revision=workpivot.business_fact_epoch.revision+1,updated_at=now()`, [projectId]);
+    await c.query(`SELECT pg_notify('workpivot_business_facts',$1)`, [projectId]);
+  }
+
+  private tableImportCandidates(parts: ParsedPart[], mapping: TableImportMapping): TableImportCandidate[] {
+    const wanted = [mapping.subjectColumn, mapping.valueColumn, ...(mapping.identifierColumn ? [mapping.identifierColumn] : []), ...Object.values(mapping.dimensions ?? {})]
+      .map(normalize);
+    if (wanted.some(value => !value)) throw new RepositoryError(400, '表格列名不能为空');
+    const groups = new Map<string, Map<number, Map<string, { value: string; location: string }>>>();
+    const tableText = new Map<string, string>();
+    for (const part of parts) {
+      const object = part.object;
+      if (object?.kind === 'paragraph' && object.parent) tableText.set(object.parent, (tableText.get(object.parent) ?? '') + part.text);
+    }
+    for (const part of parts) {
+      const object = part.object;
+      if (object?.kind === 'table-cell' && object.parent) {
+        const value = tableText.get(part.location)?.trim();
+        if (!value) continue;
+        const rows = groups.get(object.parent) ?? new Map();
+        const row = rows.get(object.row!) ?? new Map();
+        row.set(String(object.column), { value, location: part.location });
+        rows.set(object.row!, row);
+        groups.set(object.parent, rows);
+      }
+      if (object?.kind === 'cell' && object.row && (!mapping.sheet || object.sheet === mapping.sheet)) {
+        const value = (object.normalizedValue ?? object.cached ?? object.rawValue ?? part.text).trim();
+        if (!value) continue;
+        const group = object.sheet ?? object.parent ?? 'sheet';
+        const rows = groups.get(group) ?? new Map();
+        const row = rows.get(object.row) ?? new Map();
+        const cell = { value, location: part.location };
+        row.set(normalize(part.text), cell);
+        row.set(`address:${normalize(object.address ?? '')}`, cell);
+        row.set(`header:${normalize(value)}`, cell);
+        const column = /^([A-Z]+)\d+$/.exec(object.address ?? '')?.[1];
+        if (column) row.set(`column:${column}`, cell);
+        rows.set(object.row, row);
+        groups.set(group, rows);
+      }
+    }
+    if (!groups.size) throw new RepositoryError(409, '该文件没有可导入的表格行');
+    const selectedGroup = [...groups.entries()].find(([name, rows]) => (!mapping.sheet || name === mapping.sheet) &&
+      (mapping.headerRow ? rows.has(mapping.headerRow) : [...rows.values()].some(cells =>
+        wanted.every(column => [...cells.keys()].some(key => key === column || key === `header:${column}` || key === `address:${column}`))))) ??
+      [...groups.entries()][0];
+    if (!selectedGroup) throw new RepositoryError(409, '找不到可导入的表格');
+    const [, rows] = selectedGroup;
+    const entries = [...rows.entries()].sort(([left], [right]) => left - right);
+    const header = mapping.headerRow ?? entries.find(([, cells]) =>
+      wanted.every(column => [...cells.keys()].some(key => key === column || key === `header:${column}` || key === `address:${column}`)))?.[0];
+    if (!header || !rows.has(header)) throw new RepositoryError(409, '找不到包含所选列名的表头行');
+    const headerCells = rows.get(header)!;
+    const columnKey = (name: string) => {
+      const normalized = normalize(name);
+      const matched = [...headerCells.entries()].find(([key, cell]) =>
+        key === normalized || key === `header:${normalized}` || key === `address:${normalized}` || normalize(cell.value) === normalized);
+      if (!matched) return undefined;
+      const column = /^([A-Z]+)\d+$/.exec(matched[1].location.split('!').at(-1) ?? '')?.[1];
+      return column ? `column:${column}` : matched[0];
+    };
+    const subjectKey = columnKey(mapping.subjectColumn), valueKey = columnKey(mapping.valueColumn);
+    const identifierKey = mapping.identifierColumn ? columnKey(mapping.identifierColumn) : undefined;
+    if (!subjectKey || !valueKey || mapping.identifierColumn && !identifierKey) throw new RepositoryError(409, '表头中找不到指定列');
+    const dimensionKeys = Object.fromEntries(Object.entries(mapping.dimensions ?? {}).map(([name, column]) => [name, columnKey(column)]));
+    if (Object.values(dimensionKeys).some(value => !value)) throw new RepositoryError(409, '维度列在表头中不存在');
+    const result: TableImportCandidate[] = [];
+    for (const [rowNumber, cells] of entries) {
+      if (rowNumber <= header) continue;
+      const subject = cells.get(subjectKey)?.value.trim(), rawValue = cells.get(valueKey)?.value.trim();
+      if (!subject || !rawValue) continue;
+      const compact = rawValue.replace(/\s+/gu, '');
+      const numeric = compact.replace(/,/gu, '');
+      let valueType: BusinessValueType = 'text';
+      let value: string | number | boolean = rawValue;
+      if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/u.test(numeric)) {
+        valueType = 'number'; value = numeric;
+      } else if (/^(?:true|false|是|否)$/iu.test(rawValue)) {
+        valueType = 'boolean'; value = /^(?:true|是)$/iu.test(rawValue);
+      } else if (/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})?)?$/u.test(rawValue) && !Number.isNaN(Date.parse(rawValue))) {
+        valueType = 'date'; value = rawValue;
+      }
+      const dimensions = Object.fromEntries(Object.entries(dimensionKeys).flatMap(([name, key]) => {
+        const found = cells.get(key!)?.value.trim();
+        return found ? [[name, found]] : [];
+      }));
+      const identifier = identifierKey ? cells.get(identifierKey)?.value.trim() : undefined;
+      const evidence = [
+        `${mapping.subjectColumn}: ${subject}`,
+        `${mapping.valueColumn}: ${rawValue}`,
+        ...Object.entries(mapping.dimensions ?? {}).map(([name, column]) => `${column}: ${cells.get(dimensionKeys[name]!)?.value.trim() ?? ''}`),
+        ...(identifier ? [`${mapping.identifierColumn}: ${identifier}`] : []),
+      ].join('；');
+      if (evidence.length > 4000) continue;
+      result.push({
+        ordinal: result.length,
+        objectName: subject,
+        objectType: mapping.objectType,
+        identifiers: identifier ? [{ type: mapping.objectType + '_identifier', value: identifier }] : [],
+        predicate: mapping.predicate,
+        valueType,
+        value,
+        ...(mapping.unit ? { unit: mapping.unit } : {}),
+        ...(mapping.currency ? { currency: mapping.currency } : {}),
+        ...(Object.keys(dimensions).length ? { dimensions } : {}),
+        evidence,
+        location: [cells.get(subjectKey)?.location, cells.get(valueKey)?.location, identifierKey ? cells.get(identifierKey)?.location : undefined].filter(Boolean).join(' | '),
+        row: rowNumber,
+      });
+      if (result.length >= 200) break;
+    }
+    if (!result.length) throw new RepositoryError(409, '表头之后没有可导入的数据行');
+    return result;
+  }
+
+  async previewTableImport(actor: string, projectId: string, mapping: TableImportMapping) {
+    uuid(projectId); uuid(mapping.taskId); uuid(mapping.versionId);
+    const objectType = identity(mapping.objectType, '对象类型');
+    const predicate = identity(mapping.predicate, '事实属性');
+    if (!mapping.subjectColumn.trim() || !mapping.valueColumn.trim()) throw new RepositoryError(400, '必须选择主体列和值列');
+    if (mapping.headerRow !== undefined && (!Number.isSafeInteger(mapping.headerRow) || mapping.headerRow < 1 || mapping.headerRow > 1048576)) throw new RepositoryError(400, '表头行号无效');
+    if (mapping.currency !== undefined && !/^[A-Za-z]{3}$/.test(mapping.currency)) throw new RepositoryError(400, '币种必须是三位代码');
+    return transaction(this.db, async c => {
+      await this.ensureProject(c, projectId);
+      const source = (await c.query<{
+        name: string; sha256: string; parts: ParsedPart[]; parserStatus: string; parserFingerprint: string | null;
+      }>(`SELECT v.name,v.sha256,COALESCE(p.parts,'[]'::jsonb) AS parts,COALESCE(p.status,'missing') AS "parserStatus",
+          p.parser_fingerprint AS "parserFingerprint"
+        FROM workpivot.document_versions v
+        JOIN workpivot.documents d ON d.id=v.document_id
+        JOIN workpivot.tasks t ON t.id=d.task_id
+        LEFT JOIN workpivot.document_processing p ON p.version_id=v.id
+        WHERE v.id=$1 AND d.task_id=$2 AND t.project_id=$3 AND d.purpose='upload' AND t.deleted_at IS NULL
+        FOR UPDATE OF v`, [mapping.versionId, mapping.taskId, projectId])).rows[0];
+      if (!source) throw new RepositoryError(404, '文件版本不属于当前任务和项目');
+      if (source.parserStatus !== 'completed') throw new RepositoryError(409, '文件尚未完成解析');
+      const parts = validateParsedParts(source.parts);
+      const candidates = this.tableImportCandidates(parts, { ...mapping, objectType, predicate, currency: mapping.currency?.toUpperCase() });
+      const existing = (await c.query<{ id: string; status: string; revision: number }>(
+        'SELECT id,status,revision FROM workpivot.business_fact_import WHERE version_id=$1 FOR UPDATE', [mapping.versionId],
+      )).rows[0];
+      if (existing?.status === 'confirmed') throw new RepositoryError(409, '该文件版本已经确认导入；如需再次导入请上传新版本');
+      const id = existing?.id ?? randomUUID();
+      const revision = existing ? existing.revision + 1 : 1;
+      const normalizedMapping = { ...mapping, objectType, predicate, unit: mapping.unit ?? null, currency: mapping.currency?.toUpperCase() ?? null };
+      if (existing) {
+        await c.query(`UPDATE workpivot.business_fact_import
+          SET status='draft',revision=$2,mapping=$3,candidates=$4,source_hash=$5,decided_at=NULL
+          WHERE id=$1`, [id, revision, JSON.stringify(normalizedMapping), JSON.stringify(candidates), source.sha256]);
+      } else {
+        await c.query(`INSERT INTO workpivot.business_fact_import(
+          id,owner_user_id,project_id,task_id,version_id,revision,mapping,candidates,source_hash
+        ) VALUES($1,workpivot.actor_id(),$2,$3,$4,1,$5,$6,$7)`,
+        [id, projectId, mapping.taskId, mapping.versionId, JSON.stringify(normalizedMapping), JSON.stringify(candidates), source.sha256]);
+      }
+      return { id, status: 'draft', revision, versionId: mapping.versionId, name: source.name, candidates };
+    }, actor);
+  }
+
+  async confirmTableImport(actor: string, projectId: string, importId: string, expectedRevision: number, selectedOrdinals: number[]) {
+    uuid(importId);
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) throw new RepositoryError(400, '导入预览版本无效');
+    if (!Array.isArray(selectedOrdinals) || !selectedOrdinals.length || selectedOrdinals.length > 200 ||
+      selectedOrdinals.some(value => !Number.isSafeInteger(value) || value < 0) || new Set(selectedOrdinals).size !== selectedOrdinals.length) {
+      throw new RepositoryError(400, '请选择至少一条有效候选事实');
+    }
+    return transaction(this.db, async c => {
+      await this.ensureProject(c, projectId);
+      const row = (await c.query<{
+        id: string; taskId: string; versionId: string; status: string; revision: number; candidates: TableImportCandidate[]; sourceHash: string;
+      }>(`SELECT id,task_id AS "taskId",version_id AS "versionId",status,revision,candidates,source_hash AS "sourceHash"
+        FROM workpivot.business_fact_import WHERE project_id=$1 AND id=$2 FOR UPDATE`, [projectId, importId])).rows[0];
+      if (!row || row.status !== 'draft') throw new RepositoryError(404, '可确认的表格导入不存在');
+      if (row.revision !== expectedRevision) throw new RepositoryError(409, '导入预览已变化，请刷新');
+      const source = (await c.query<{ sha256: string; taskId: string; parserStatus: string }>(`SELECT v.sha256,d.task_id AS "taskId",COALESCE(p.status,'missing') AS "parserStatus"
+        FROM workpivot.document_versions v JOIN workpivot.documents d ON d.id=v.document_id
+        LEFT JOIN workpivot.document_processing p ON p.version_id=v.id
+        WHERE v.id=$1`, [row.versionId])).rows[0];
+      if (!source || source.taskId !== row.taskId || source.sha256 !== row.sourceHash || source.parserStatus !== 'completed') throw new RepositoryError(409, '来源文件或解析结果已变化');
+      const selected = [...selectedOrdinals].sort((left, right) => left - right);
+      if (selected.some(value => value >= row.candidates.length)) throw new RepositoryError(409, '候选事实已变化，请刷新');
+      const outcomes = [];
+      for (const ordinal of selected) {
+        const candidate = row.candidates[ordinal]!;
+        outcomes.push(await this.createFactInTransaction(c, actor, projectId, {
+          object: { name: candidate.objectName, type: candidate.objectType, identifiers: candidate.identifiers },
+          predicate: candidate.predicate,
+          valueType: candidate.valueType,
+          value: candidate.value,
+          ...(candidate.dimensions ? { dimensions: candidate.dimensions } : {}),
+          ...(candidate.unit ? { unit: candidate.unit } : {}),
+          ...(candidate.currency ? { currency: candidate.currency } : {}),
+        }, { kind: 'document', sourceDocumentVersionId: row.versionId, quote: candidate.evidence }));
+      }
+      const updated = (await c.query(`UPDATE workpivot.business_fact_import
+        SET status='confirmed',revision=revision+1,decided_at=now()
+        WHERE project_id=$1 AND id=$2 AND revision=$3 RETURNING revision`, [projectId, importId, expectedRevision])).rows[0];
+      if (!updated) throw new RepositoryError(409, '导入预览已更新');
+      return { status: 'confirmed', revision: updated.revision, imported: selected.length, outcomes };
+    }, actor);
+  }
+
+  async rejectTableImport(actor: string, projectId: string, importId: string, expectedRevision: number) {
+    uuid(importId);
+    return transaction(this.db, async c => {
+      await this.ensureProject(c, projectId);
+      const updated = (await c.query(`UPDATE workpivot.business_fact_import
+        SET status='rejected',revision=revision+1,decided_at=now()
+        WHERE project_id=$1 AND id=$2 AND status='draft' AND revision=$3 RETURNING id`, [projectId, importId, expectedRevision])).rows[0];
+      if (!updated) throw new RepositoryError(409, '可拒绝的导入预览不存在或已更新');
+      return { ok: true };
+    }, actor);
+  }
+
+  async mergeObjects(
+    actor: string,
+    projectId: string,
+    sourceId: string,
+    targetId: string,
+    sourceRevision: number,
+    targetRevision: number,
+  ) {
+    uuid(sourceId); uuid(targetId);
+    if (sourceId === targetId) throw new RepositoryError(400, '不能把对象合并到自身');
+    if (![sourceRevision, targetRevision].every(value => Number.isSafeInteger(value) && value > 0)) throw new RepositoryError(400, '对象版本无效');
+    return transaction(this.db, async c => {
+      await this.ensureProject(c, projectId);
+      const objects = (await c.query<BusinessObjectRow>(`SELECT id,project_id AS "projectId",model_key AS "modelKey",model_version AS "modelVersion",
+        object_type AS "objectType",canonical_name AS "canonicalName",status,revision
+        FROM workpivot.business_object
+        WHERE project_id=$1 AND id=ANY($2::uuid[]) AND status='active'
+        ORDER BY id FOR UPDATE`, [projectId, [sourceId, targetId]])).rows;
+      const source = objects.find(item => item.id === sourceId);
+      const target = objects.find(item => item.id === targetId);
+      if (!source || !target) throw new RepositoryError(404, '待合并的业务对象不存在');
+      if (source.objectType !== target.objectType || source.modelKey !== target.modelKey) throw new RepositoryError(409, '只能合并同一领域、同一类型的业务对象');
+      if (source.revision !== sourceRevision || target.revision !== targetRevision) throw new RepositoryError(409, '业务对象已更新，请刷新后重新确认');
+
+      const factSeries = (await c.query<{ id: string; predicate: string; dimensionKey: string }>(`SELECT id,predicate,dimension_key AS "dimensionKey"
+        FROM workpivot.business_fact_series
+        WHERE project_id=$1 AND subject_object_id=$2 AND status<>'forgotten'
+        ORDER BY id FOR UPDATE`, [projectId, sourceId])).rows;
+      for (const series of factSeries) {
+        const nextKey = hash([targetId, series.predicate, series.dimensionKey]);
+        const collision = await c.query(`SELECT 1 FROM workpivot.business_fact_series
+          WHERE project_id=$1 AND series_key=$2 AND id<>$3`, [projectId, nextKey, series.id]);
+        if (collision.rowCount) throw new RepositoryError(409, `合并后事实「${series.predicate}」会与目标对象已有事实冲突，请先逐条核对两个对象的事实`);
+      }
+
+      const relationSeries = (await c.query<{
+        id: string;
+        subjectObjectId: string;
+        relationType: string;
+        objectObjectId: string;
+      }>(`SELECT id,subject_object_id AS "subjectObjectId",relation_type AS "relationType",object_object_id AS "objectObjectId"
+        FROM workpivot.business_relation_series
+        WHERE project_id=$1 AND (subject_object_id=$2 OR object_object_id=$2) AND status<>'forgotten'
+        ORDER BY id FOR UPDATE`, [projectId, sourceId])).rows;
+      for (const relation of relationSeries) {
+        const subject = relation.subjectObjectId === sourceId ? targetId : relation.subjectObjectId;
+        const object = relation.objectObjectId === sourceId ? targetId : relation.objectObjectId;
+        if (subject === object) throw new RepositoryError(409, '合并后会产生对象指向自身的关系，请先调整关系');
+        const nextKey = hash([subject, relation.relationType, object]);
+        const collision = await c.query(`SELECT 1 FROM workpivot.business_relation_series
+          WHERE project_id=$1 AND relation_key=$2 AND id<>$3`, [projectId, nextKey, relation.id]);
+        if (collision.rowCount) throw new RepositoryError(409, `合并后关系「${relation.relationType}」会与目标对象已有关系冲突`);
+      }
+
+      const identifierIds = (await c.query<{ id: string }>(`SELECT id FROM workpivot.business_object_identifier
+        WHERE project_id=$1 AND object_id=$2 AND valid_to IS NULL ORDER BY id`, [projectId, sourceId])).rows.map(row => row.id);
+      const aliasIds = (await c.query<{ id: string }>(`SELECT id FROM workpivot.business_object_alias
+        WHERE project_id=$1 AND object_id=$2 AND valid_to IS NULL ORDER BY id`, [projectId, sourceId])).rows.map(row => row.id);
+      const mergeId = randomUUID();
+      await c.query(`INSERT INTO workpivot.business_object_merge(
+          id,owner_user_id,project_id,source_object_id,target_object_id,source_object_revision,target_object_revision,
+          identifier_ids,alias_ids,fact_series_ids,relation_series_ids)
+        VALUES($1,workpivot.actor_id(),$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [mergeId, projectId, sourceId, targetId, sourceRevision, targetRevision,
+        identifierIds, aliasIds, factSeries.map(item => item.id), relationSeries.map(item => item.id)]);
+
+      await c.query(`UPDATE workpivot.business_object_identifier SET object_id=$3
+        WHERE project_id=$1 AND id=ANY($2::uuid[])`, [projectId, identifierIds, targetId]);
+      await c.query(`UPDATE workpivot.business_object_alias SET object_id=$3
+        WHERE project_id=$1 AND id=ANY($2::uuid[])`, [projectId, aliasIds, targetId]);
+      for (const series of factSeries) {
+        await c.query(`UPDATE workpivot.business_fact_series
+          SET subject_object_id=$3,series_key=$4,merge_id=$5,merged_from_object_id=$6,updated_at=now()
+          WHERE project_id=$1 AND id=$2`, [projectId, series.id, targetId, hash([targetId, series.predicate, series.dimensionKey]), mergeId, sourceId]);
+      }
+      for (const relation of relationSeries) {
+        const subject = relation.subjectObjectId === sourceId ? targetId : relation.subjectObjectId;
+        const object = relation.objectObjectId === sourceId ? targetId : relation.objectObjectId;
+        await c.query(`UPDATE workpivot.business_relation_series
+          SET subject_object_id=$3,object_object_id=$4,relation_key=$5,merge_id=$6,
+            merged_subject_from_object_id=$7,merged_object_from_object_id=$8,updated_at=now()
+          WHERE project_id=$1 AND id=$2`,
+        [projectId, relation.id, subject, object, hash([subject, relation.relationType, object]), mergeId,
+          relation.subjectObjectId === sourceId ? sourceId : null,
+          relation.objectObjectId === sourceId ? sourceId : null]);
+      }
+      await c.query(`UPDATE workpivot.business_object
+        SET status='merged',merged_into_id=$3,revision=revision+1,updated_at=now()
+        WHERE project_id=$1 AND id=$2`, [projectId, sourceId, targetId]);
+      await c.query(`UPDATE workpivot.business_object SET revision=revision+1,updated_at=now()
+        WHERE project_id=$1 AND id=$2`, [projectId, targetId]);
+      await this.bumpEpoch(c, projectId);
+      return { mergeId, revision: 1, sourceId, targetId, factsMoved: factSeries.length, relationsMoved: relationSeries.length };
+    }, actor);
+  }
+
+  async revertObjectMerge(
+    actor: string,
+    projectId: string,
+    mergeId: string,
+    expectedRevision: number,
+    sourceRevision: number,
+    targetRevision: number,
+  ) {
+    uuid(mergeId);
+    if (![expectedRevision, sourceRevision, targetRevision].every(value => Number.isSafeInteger(value) && value > 0)) throw new RepositoryError(400, '合并版本无效');
+    return transaction(this.db, async c => {
+      await this.ensureProject(c, projectId);
+      const merge = (await c.query<{
+        id: string;
+        sourceId: string;
+        targetId: string;
+        revision: number;
+        status: string;
+        identifierIds: string[];
+        aliasIds: string[];
+        factSeriesIds: string[];
+        relationSeriesIds: string[];
+      }>(`SELECT id,source_object_id AS "sourceId",target_object_id AS "targetId",revision,status,
+          identifier_ids AS "identifierIds",alias_ids AS "aliasIds",
+          fact_series_ids AS "factSeriesIds",relation_series_ids AS "relationSeriesIds"
+        FROM workpivot.business_object_merge
+        WHERE project_id=$1 AND id=$2 FOR UPDATE`, [projectId, mergeId])).rows[0];
+      if (!merge || merge.status !== 'active') throw new RepositoryError(404, '有效实体合并不存在');
+      if (merge.revision !== expectedRevision) throw new RepositoryError(409, '实体合并记录已更新');
+      const objects = (await c.query<BusinessObjectRow>(`SELECT id,project_id AS "projectId",model_key AS "modelKey",model_version AS "modelVersion",
+        object_type AS "objectType",canonical_name AS "canonicalName",status,revision
+        FROM workpivot.business_object
+        WHERE project_id=$1 AND id=ANY($2::uuid[]) ORDER BY id FOR UPDATE`, [projectId, [merge.sourceId, merge.targetId]])).rows;
+      const source = objects.find(item => item.id === merge.sourceId);
+      const target = objects.find(item => item.id === merge.targetId);
+      if (!source || !target || source.status !== 'merged') throw new RepositoryError(409, '原对象已不再处于合并状态');
+      const mergedInto = (await c.query<{ mergedIntoId: string | null }>('SELECT merged_into_id AS "mergedIntoId" FROM workpivot.business_object WHERE project_id=$1 AND id=$2', [projectId, source.id])).rows[0]?.mergedIntoId;
+      if (mergedInto !== target.id) throw new RepositoryError(409, '对象合并关系已变化');
+      if (source.revision !== sourceRevision || target.revision !== targetRevision) throw new RepositoryError(409, '业务对象已更新，请刷新后重新确认');
+
+      const facts = (await c.query<{ id: string; predicate: string; dimensionKey: string }>(`SELECT id,predicate,dimension_key AS "dimensionKey"
+        FROM workpivot.business_fact_series
+        WHERE project_id=$1 AND id=ANY($2::uuid[]) AND merge_id=$3 AND merged_from_object_id=$4
+        ORDER BY id FOR UPDATE`, [projectId, merge.factSeriesIds, merge.id, source.id])).rows;
+      for (const series of facts) {
+        const originalKey = hash([source.id, series.predicate, series.dimensionKey]);
+        const collision = await c.query(`SELECT 1 FROM workpivot.business_fact_series
+          WHERE project_id=$1 AND series_key=$2 AND id<>$3`, [projectId, originalKey, series.id]);
+        if (collision.rowCount) throw new RepositoryError(409, '拆回后事实键发生冲突，请先人工核对');
+      }
+      const relations = (await c.query<{
+        id: string;
+        subjectObjectId: string;
+        relationType: string;
+        objectObjectId: string;
+        mergedSubjectFrom: string | null;
+        mergedObjectFrom: string | null;
+      }>(`SELECT id,subject_object_id AS "subjectObjectId",relation_type AS "relationType",
+          object_object_id AS "objectObjectId",merged_subject_from_object_id AS "mergedSubjectFrom",
+          merged_object_from_object_id AS "mergedObjectFrom"
+        FROM workpivot.business_relation_series
+        WHERE project_id=$1 AND id=ANY($2::uuid[]) AND merge_id=$3
+        ORDER BY id FOR UPDATE`, [projectId, merge.relationSeriesIds, merge.id])).rows;
+      for (const relation of relations) {
+        const subject = relation.mergedSubjectFrom === source.id ? source.id : relation.subjectObjectId;
+        const object = relation.mergedObjectFrom === source.id ? source.id : relation.objectObjectId;
+        if (subject === object) throw new RepositoryError(409, '拆回后会产生自环关系');
+      }
+
+      await c.query(`UPDATE workpivot.business_object_identifier SET object_id=$3
+        WHERE project_id=$1 AND id=ANY($2::uuid[]) AND object_id=$4`, [projectId, merge.identifierIds, source.id, target.id]);
+      await c.query(`UPDATE workpivot.business_object_alias SET object_id=$3
+        WHERE project_id=$1 AND id=ANY($2::uuid[]) AND object_id=$4`, [projectId, merge.aliasIds, source.id, target.id]);
+      for (const series of facts) {
+        await c.query(`UPDATE workpivot.business_fact_series
+          SET subject_object_id=$3,series_key=$4,merge_id=NULL,merged_from_object_id=NULL,updated_at=now()
+          WHERE project_id=$1 AND id=$2`, [projectId, series.id, source.id, hash([source.id, series.predicate, series.dimensionKey])]);
+      }
+      for (const relation of relations) {
+        const subject = relation.mergedSubjectFrom === source.id ? source.id : relation.subjectObjectId;
+        const object = relation.mergedObjectFrom === source.id ? source.id : relation.objectObjectId;
+        await c.query(`UPDATE workpivot.business_relation_series
+          SET subject_object_id=$3,object_object_id=$4,relation_key=$5,merge_id=NULL,
+            merged_subject_from_object_id=NULL,merged_object_from_object_id=NULL,updated_at=now()
+          WHERE project_id=$1 AND id=$2`, [projectId, relation.id, subject, object, hash([subject, relation.relationType, object])]);
+      }
+      await c.query(`UPDATE workpivot.business_object
+        SET status='active',merged_into_id=NULL,revision=revision+1,updated_at=now()
+        WHERE project_id=$1 AND id=$2`, [projectId, source.id]);
+      await c.query(`UPDATE workpivot.business_object SET revision=revision+1,updated_at=now()
+        WHERE project_id=$1 AND id=$2`, [projectId, target.id]);
+      const updated = await c.query(`UPDATE workpivot.business_object_merge
+        SET status='reverted',revision=revision+1,reverted_at=now(),reverted_by=workpivot.actor_id()
+        WHERE project_id=$1 AND id=$2 AND revision=$3 RETURNING revision`, [projectId, merge.id, expectedRevision]);
+      if (!updated.rowCount) throw new RepositoryError(409, '实体合并记录已更新');
+      await this.bumpEpoch(c, projectId);
+      return { mergeId: merge.id, revision: expectedRevision + 1, sourceId: source.id, targetId: target.id };
+    }, actor);
+  }
+
   private async object(c: PoolClient, actor: string, projectId: string, modelKey: BusinessModelKey, input: BusinessObjectInput): Promise<BusinessObjectRow> {
     if (!input || typeof input !== 'object') throw new RepositoryError(400, '业务对象无效');
     if (input.id !== undefined) {
       uuid(input.id);
       const row = (await c.query<BusinessObjectRow>(`SELECT id,project_id AS "projectId",model_key AS "modelKey",model_version AS "modelVersion",
-        object_type AS "objectType",canonical_name AS "canonicalName",status FROM workpivot.business_object
+        object_type AS "objectType",canonical_name AS "canonicalName",status,revision FROM workpivot.business_object
         WHERE id=$1 AND project_id=$2 AND status='active'`, [input.id, projectId])).rows[0];
       if (!row) throw new RepositoryError(404, '业务对象不存在');
       return row;
@@ -264,7 +746,7 @@ export class BusinessFactsRepository {
 
     for (const identifier of identifiers) {
       const found = (await c.query<BusinessObjectRow>(`SELECT o.id,o.project_id AS "projectId",o.model_key AS "modelKey",o.model_version AS "modelVersion",
-        o.object_type AS "objectType",o.canonical_name AS "canonicalName",o.status
+        o.object_type AS "objectType",o.canonical_name AS "canonicalName",o.status,o.revision
         FROM workpivot.business_object_identifier i JOIN workpivot.business_object o ON o.id=i.object_id AND o.project_id=i.project_id
         WHERE i.project_id=$1 AND i.namespace=$2 AND i.identifier_type=$3 AND lower(i.identifier_value)=lower($4)
           AND i.valid_to IS NULL AND o.status='active'`, [projectId, identifier.namespace, identifier.type, identifier.value])).rows;
@@ -276,7 +758,7 @@ export class BusinessFactsRepository {
     }
 
     const matches = (await c.query<BusinessObjectRow>(`SELECT DISTINCT o.id,o.project_id AS "projectId",o.model_key AS "modelKey",o.model_version AS "modelVersion",
-      o.object_type AS "objectType",o.canonical_name AS "canonicalName",o.status
+      o.object_type AS "objectType",o.canonical_name AS "canonicalName",o.status,o.revision
       FROM workpivot.business_object o LEFT JOIN workpivot.business_object_alias a ON a.object_id=o.id AND a.project_id=o.project_id AND a.valid_to IS NULL
       WHERE o.project_id=$1 AND o.object_type=$2 AND o.status='active' AND (o.name_key=$3 OR a.alias_key=$3) LIMIT 3`,
     [projectId, objectType, nameKey])).rows;
@@ -286,7 +768,7 @@ export class BusinessFactsRepository {
     const id = randomUUID();
     const row = (await c.query<BusinessObjectRow>(`INSERT INTO workpivot.business_object(id,owner_user_id,project_id,model_key,object_type,canonical_name,name_key,created_by)
       VALUES($1,workpivot.actor_id(),$2,$3,$4,$5,$6,$7)
-      RETURNING id,project_id AS "projectId",model_key AS "modelKey",model_version AS "modelVersion",object_type AS "objectType",canonical_name AS "canonicalName",status`,
+      RETURNING id,project_id AS "projectId",model_key AS "modelKey",model_version AS "modelVersion",object_type AS "objectType",canonical_name AS "canonicalName",status,revision`,
     [id, projectId, modelKey, objectType, name, nameKey, 'user'])).rows[0]!;
     for (const identifier of identifiers) {
       await c.query(`INSERT INTO workpivot.business_object_identifier(id,owner_user_id,project_id,object_id,namespace,identifier_type,identifier_value)
@@ -324,13 +806,16 @@ export class BusinessFactsRepository {
   }
 
   async createFact(actor: string, projectId: string, input: BusinessFactInput, sourceValue?: FactSource) {
+    return transaction(this.db, c => this.createFactInTransaction(c, actor, projectId, input, sourceValue), actor);
+  }
+
+  private async createFactInTransaction(c: PoolClient, actor: string, projectId: string, input: BusinessFactInput, sourceValue?: FactSource) {
     if (!input || typeof input !== 'object') throw new RepositoryError(400, '业务事实无效');
     const predicate = identity(input.predicate, '事实属性');
     const value = validateValue(input);
     const dims = dimensions(input.dimensions);
     const validFrom = input.validFrom ? dateValue(input.validFrom, '生效时间') : new Date();
     const factSource = source(sourceValue);
-    return transaction(this.db, async c => {
       const modelKey = await this.ensureProject(c, projectId);
       const object = await this.object(c, actor, projectId, modelKey, input.object);
       if (value.valueObjectId) {
@@ -393,7 +878,6 @@ export class BusinessFactsRepository {
       await c.query(`UPDATE workpivot.business_fact_series SET current_revision_id=$3,status='active',needs_review=false,updated_at=now() WHERE project_id=$1 AND id=$2`, [projectId, seriesId, revisionId]);
       await this.evidence(c, projectId, factSource, revisionId, null);
       return { status: 'active', factId: seriesId, revisionId, revision: nextRevision, created: true };
-    }, actor);
   }
 
   async updateFact(actor: string, projectId: string, factId: string, expectedRevision: number, valueInput: BusinessFactValueInput, validFromValue?: string) {
@@ -551,11 +1035,40 @@ export class BusinessFactsRepository {
           OR EXISTS(SELECT 1 FROM workpivot.business_object_identifier i WHERE i.project_id=s.project_id AND i.object_id=o.id AND i.valid_to IS NULL AND position(term in lower(i.identifier_value))>0)
           OR EXISTS(SELECT 1 FROM workpivot.business_object_alias a WHERE a.project_id=s.project_id AND a.object_id=o.id AND a.valid_to IS NULL AND position(term in lower(a.alias))>0)))
         ORDER BY o.canonical_name,s.predicate,s.id LIMIT 200`), [projectId, terms])).rows;
-      const objects = (await c.query(`SELECT o.id,o.object_type AS "objectType",o.canonical_name AS "name",o.status,
+      const objects = (await c.query(`SELECT o.id,o.object_type AS "objectType",o.canonical_name AS "name",o.status,o.revision,
         COALESCE((SELECT jsonb_agg(jsonb_build_object('type',i.identifier_type,'value',i.identifier_value,'namespace',i.namespace) ORDER BY i.identifier_type,i.identifier_value)
           FROM workpivot.business_object_identifier i WHERE i.project_id=o.project_id AND i.object_id=o.id AND i.valid_to IS NULL),'[]'::jsonb) AS identifiers,
         COALESCE((SELECT jsonb_agg(a.alias ORDER BY a.alias) FROM workpivot.business_object_alias a WHERE a.project_id=o.project_id AND a.object_id=o.id AND a.valid_to IS NULL),'[]'::jsonb) AS aliases
         FROM workpivot.business_object o WHERE o.project_id=$1 AND o.status='active' ORDER BY o.canonical_name,o.id LIMIT 500`, [projectId])).rows;
+      const mergeCandidates = [];
+      for (let leftIndex = 0; leftIndex < objects.length; leftIndex++) {
+        for (let rightIndex = leftIndex + 1; rightIndex < objects.length; rightIndex++) {
+          const left = objects[leftIndex] as { id: string; objectType: string; name: string; revision: number; aliases: string[] };
+          const right = objects[rightIndex] as { id: string; objectType: string; name: string; revision: number; aliases: string[] };
+          if (left.objectType !== right.objectType) continue;
+          const match = objectSimilarity(left, right);
+          if (match.score < 65) continue;
+          mergeCandidates.push({
+            sourceId: left.id, targetId: right.id, sourceRevision: left.revision, targetRevision: right.revision,
+            sourceName: left.name, targetName: right.name, objectType: left.objectType,
+            score: match.score, reasons: match.reasons,
+          });
+        }
+      }
+      mergeCandidates.sort((left, right) => right.score - left.score || left.sourceName.localeCompare(right.sourceName, 'zh-CN'));
+      const merges = (await c.query(`SELECT m.id,m.status,m.revision,
+          m.source_object_id AS "sourceId",source.canonical_name AS "sourceName",m.source_object_revision AS "sourceRevision",
+          m.target_object_id AS "targetId",target.canonical_name AS "targetName",m.target_object_revision AS "targetRevision",
+          cardinality(m.fact_series_ids) AS "factCount",cardinality(m.relation_series_ids) AS "relationCount",
+          m.merged_at AS "mergedAt",m.reverted_at AS "revertedAt"
+        FROM workpivot.business_object_merge m
+        JOIN workpivot.business_object source ON source.id=m.source_object_id AND source.project_id=m.project_id
+        JOIN workpivot.business_object target ON target.id=m.target_object_id AND target.project_id=m.project_id
+        WHERE m.project_id=$1 ORDER BY m.merged_at DESC,m.id LIMIT 30`, [projectId])).rows;
+      const imports = (await c.query(`SELECT i.id,i.status,i.revision,i.version_id AS "versionId",v.name,
+          jsonb_array_length(i.candidates) AS "candidateCount",i.created_at AS "createdAt",i.decided_at AS "decidedAt"
+        FROM workpivot.business_fact_import i JOIN workpivot.document_versions v ON v.id=i.version_id
+        WHERE i.project_id=$1 ORDER BY i.created_at DESC,i.id LIMIT 20`, [projectId])).rows;
       const conflicts = (await c.query(`SELECT c.id,c.revision,c.reason,c.created_at AS "createdAt",s.id AS "factId",o.canonical_name AS "objectName",
         s.predicate,current_revision.revision AS "currentRevision",candidate.revision AS "candidateRevision",
         current_revision.value_type AS "currentType",current_revision.value_text AS "currentText",current_revision.value_number::text AS "currentNumber",
@@ -575,9 +1088,10 @@ export class BusinessFactsRepository {
         JOIN workpivot.business_object object_object ON object_object.id=rs.object_object_id AND object_object.project_id=rs.project_id
         JOIN workpivot.business_relation_revision rr ON rr.id=rs.current_revision_id AND rr.project_id=rs.project_id AND rr.status='active'
         WHERE rs.project_id=$1 AND rs.status='active' ORDER BY subject.canonical_name,rs.relation_type,object_object.canonical_name LIMIT 200`, [projectId])).rows;
-      const epoch = String((await c.query('SELECT revision::text FROM workpivot.business_fact_epoch WHERE owner_user_id=workpivot.actor_id() AND project_id=$1', [projectId])).rows[0]?.revision ?? '0');
+      const epoch = String((await c.query('SELECT COALESCE(max(revision),0)::text AS revision FROM workpivot.business_fact_epoch WHERE project_id=$1', [projectId])).rows[0]?.revision ?? '0');
       const settings = (await c.query("SELECT value,revision FROM workpivot.user_settings WHERE owner_user_id=workpivot.actor_id() AND key='business-facts.auto-extraction'")).rows[0];
       return { modelKey, model: BUSINESS_FACT_MODELS[modelKey], epoch, facts, objects, conflicts, relations,
+        mergeCandidates: mergeCandidates.slice(0, 12), merges, imports,
         autoExtraction: settings?.value !== false, settingsRevision: settings?.revision ?? 0 };
     }, actor);
   }
@@ -612,7 +1126,7 @@ export class BusinessFactsRepository {
     return transaction(this.db, async c => {
       const projectId = await this.taskProject(c, taskId);
       if (!projectId) return null;
-      return String((await c.query('SELECT revision::text FROM workpivot.business_fact_epoch WHERE owner_user_id=workpivot.actor_id() AND project_id=$1', [projectId])).rows[0]?.revision ?? '0');
+      return String((await c.query('SELECT COALESCE(max(revision),0)::text AS revision FROM workpivot.business_fact_epoch WHERE project_id=$1', [projectId])).rows[0]?.revision ?? '0');
     }, actor);
   }
 
@@ -662,7 +1176,7 @@ export class BusinessFactsRepository {
         WHERE rs.project_id=$1 AND rs.status='active' AND NOT rs.needs_review AND (cardinality($2::text[])=0 OR EXISTS(
           SELECT 1 FROM unnest($2::text[]) AS q(term) WHERE position(term in lower(subject.canonical_name||' '||rs.relation_type||' '||object_object.canonical_name))>0))
         ORDER BY subject.canonical_name,rs.relation_type LIMIT 20`, [projectId, terms])).rows;
-      const epoch = String((await c.query('SELECT revision::text FROM workpivot.business_fact_epoch WHERE owner_user_id=workpivot.actor_id() AND project_id=$1', [projectId])).rows[0]?.revision ?? '0');
+      const epoch = String((await c.query('SELECT COALESCE(max(revision),0)::text AS revision FROM workpivot.business_fact_epoch WHERE project_id=$1', [projectId])).rows[0]?.revision ?? '0');
       return { projectId, epoch, asOf: asOf?.toISOString() ?? null, knownAt: knownAt?.toISOString() ?? null, facts, relations, conflicts };
     }, actor);
   }

@@ -12,7 +12,7 @@ export class DatabaseFileTools {
   async read(actor: string, taskId: string, versionId: string, offset = 0) {
     if (!Number.isSafeInteger(offset) || offset < 0) throw new RepositoryError(400, '读取位置无效');
     const { version, data } = await this.files.download(actor, taskId, versionId,this.allowedVersions);
-    if (this.processing && /[.](docx|xlsx|pptx|pdf|png|jpg|jpeg)$/i.test(version.name)) return {name:version.name,...await this.processing.read(actor,version.sourceTaskId??taskId,versionId,offset)};
+    if (this.processing && /[.](docx|xlsx|pptx|pdf|png|jpg|jpeg|csv)$/i.test(version.name)) return {name:version.name,...await this.processing.read(actor,version.sourceTaskId??taskId,versionId,offset)};
     if (!textExtensions.has(extname(version.name).toLowerCase())) throw new RepositoryError(415, '此格式尚未接入解析；当前可读取文本、Markdown、CSV、TSV、JSON、JSONL和日志');
     if (data.length > 1024 * 1024) throw new RepositoryError(413, '当前文本读取限制为1MB，不能只读取部分后声称分析了全文');
     let text: string;

@@ -41,6 +41,41 @@ export class WorkspaceRepository {
       return result.rows[0]!;
     }, actor);
   }
+  async projectMembers(actor: string, projectId: string) {
+    uuid(projectId);
+    return transaction(this.db, async c => (await c.query(`SELECT user_id AS "userId",role,revoked_at AS "revokedAt"
+      FROM workpivot.project_members WHERE project_id=$1 ORDER BY role,user_id`, [projectId])).rows, actor);
+  }
+  async addProjectMember(actor: string, projectId: string, userId: string, role: 'editor' | 'reader') {
+    uuid(projectId); uuid(userId);
+    if (role !== 'editor' && role !== 'reader') throw new RepositoryError(400, '项目成员角色无效');
+    return transaction(this.db, async c => {
+      const project = (await c.query(`SELECT owner_user_id AS "owner" FROM workpivot.projects
+        WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, [projectId])).rows[0];
+      if (!project) throw new RepositoryError(404, '项目不存在');
+      if (project.owner !== actor) throw new RepositoryError(403, '只有项目所有者可以管理成员');
+      if (userId === actor) throw new RepositoryError(400, '项目所有者已经拥有完整权限');
+      await c.query(`INSERT INTO workpivot.project_members(project_id,user_id,role,revoked_at)
+        VALUES($1,$2,$3,NULL)
+        ON CONFLICT(project_id,user_id) DO UPDATE SET role=EXCLUDED.role,revoked_at=NULL`,
+      [projectId, userId, role]);
+      return { userId, role };
+    }, actor);
+  }
+  async removeProjectMember(actor: string, projectId: string, userId: string) {
+    uuid(projectId); uuid(userId);
+    return transaction(this.db, async c => {
+      const project = (await c.query(`SELECT owner_user_id AS "owner" FROM workpivot.projects
+        WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, [projectId])).rows[0];
+      if (!project) throw new RepositoryError(404, '项目不存在');
+      if (project.owner !== actor) throw new RepositoryError(403, '只有项目所有者可以管理成员');
+      if (userId === project.owner) throw new RepositoryError(400, '不能移除项目所有者');
+      const result = await c.query(`UPDATE workpivot.project_members SET revoked_at=now()
+        WHERE project_id=$1 AND user_id=$2 AND revoked_at IS NULL`, [projectId, userId]);
+      if (!result.rowCount) throw new RepositoryError(404, '项目成员不存在');
+      return { ok: true };
+    }, actor);
+  }
   async renameProject(actor: string, id: string, name: string, expected: number): Promise<DatabaseProject> {
     uuid(id); revision(expected); const clean = title(name, 120);
     return transaction(this.db, async c => {

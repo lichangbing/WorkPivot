@@ -46,6 +46,9 @@ try {
   check(structured.parts.find(p => p.location === 'table-cell:3')?.object?.verticalMerge === 'continue', '纵向合并省略值仍为延续');
   check(readStructurePage(structured.parts, {parent:'table-cell:1'}).items.length === 2, '按父对象只读取直接子对象');
   check(structured.parts.filter(p=>p.text==='内嵌表').length===1, '嵌套表文字不重复进入知识索引');
+  const csv = await parse('.csv', Buffer.from('客户名称,合同金额,合同编号\n客户星河,"1,250.50",KH-XH-01\n'));
+  check(csv.parts.some(part=>part.object?.kind==='cell'&&part.object.address==='B2'&&part.object.rawValue==='1,250.50'), 'CSV引号字段保留原始金额文本');
+  check(csv.parts.filter(part=>part.object?.kind==='cell'&&part.object.headerRow==='true').length===3, 'CSV首行标记为三列表头');
   const book = new Zip();
   book.addFile('xl/workbook.xml', Buffer.from('<workbook xmlns:r="urn:rel"><sheets><sheet name="收入" r:id="r1" state="hidden"/><sheet name="空表" r:id="r2"/></sheets></workbook>'));
   book.addFile('xl/_rels/workbook.xml.rels', Buffer.from('<Relationships><Relationship Id="r1" Target="worksheets/s1.xml"/><Relationship Id="r2" Target="worksheets/s2.xml"/></Relationships>'));

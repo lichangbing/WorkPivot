@@ -276,6 +276,18 @@ export class AccountRepository {
     });
   }
   async resolve(token: string): Promise<DatabaseUser | null> { return transaction(this.db, client => resolve(client, token)); }
+  /** 仅供服务端已验证的 OIDC/企业身份映射换取 WorkPivot 自身会话。 */
+  async issueExternalSession(userId: string, providerId: string): Promise<{ token: string; user: DatabaseUser }> {
+    uuid(userId); uuid(providerId);
+    return transaction(this.db, async client => {
+      const row = (await client.query('SELECT c.auth_version FROM identity.users u JOIN identity.credentials c ON c.user_id=u.id WHERE u.id=$1 AND NOT u.disabled FOR UPDATE OF u,c', [userId])).rows[0];
+      if (!row) throw new RepositoryError(403, '外部身份对应账号已停用');
+      const token = await issue(client, userId, row.auth_version);
+      await client.query('UPDATE identity.users SET last_login_at=now() WHERE id=$1', [userId]);
+      await client.query('INSERT INTO identity.audit_events(actor_id,target_id,action) VALUES($1,$1,$2)', [userId, 'oidc_login:' + providerId]);
+      return { token, user: await loadUser(client, userId) };
+    });
+  }
   async logout(token: string): Promise<void> { await this.db.query('UPDATE identity.sessions SET revoked_at=now() WHERE token_digest=$1', [digest(token)]); }
   async sessions(token: string): Promise<Array<{ id: string; createdAt: string; expiresAt: string; current: boolean }>> {
     return transaction(this.db, async client => {

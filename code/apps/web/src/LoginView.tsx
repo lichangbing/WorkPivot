@@ -9,6 +9,7 @@ interface Props {
   registrationEnabled?: boolean;
   defaultMessageQuota?: number;
   defaultTokenQuota?: number;
+  oidcProviders?: Array<{ id: string; name: string; organizationName: string }>;
   onAuthed: () => void;
 }
 
@@ -33,7 +34,7 @@ function DownloadArrow(): React.JSX.Element {
 }
 
 /** T2-01 登录门：无用户时展示注册（首用户=管理员），否则登录。 */
-export function LoginView({ needsSetup, registrationEnabled = false, defaultMessageQuota = 10, defaultTokenQuota = 200000, onAuthed }: Props): React.JSX.Element {
+export function LoginView({ needsSetup, registrationEnabled = false, defaultMessageQuota = 10, defaultTokenQuota = 200000, oidcProviders = [], onAuthed }: Props): React.JSX.Element {
   const [serverUrl, setServerUrl] = useState(location.origin);
   const changingServer = Boolean(window.workpivotDesktop && serverUrl.trim().replace(/\/$/, '') !== location.origin);
   const [wantRegister, setWantRegister] = useState(false);
@@ -42,6 +43,7 @@ export function LoginView({ needsSetup, registrationEnabled = false, defaultMess
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [oidcBusy, setOidcBusy] = useState('');
   const [submittingMode, setSubmittingMode] = useState<'login' | 'register' | null>(null);
   // 大文件走已验证的直连入口，避免 Cloudflare 免费链路在中国大陆网络的吞吐瓶颈。
   const downloadOrigin = 'https://115-191-1-188.sslip.io:80';
@@ -77,6 +79,28 @@ export function LoginView({ needsSetup, registrationEnabled = false, defaultMess
     setError(null);
     void submit(nextMode);
   };
+
+  const externalLogin = async (providerId: string): Promise<void> => {
+    if (busy || oidcBusy) return;
+    setOidcBusy(providerId); setError(null);
+    try {
+      const response = await fetch(`/api/auth/oidc/${encodeURIComponent(providerId)}/start`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ returnTo: location.pathname }),
+      });
+      const result = await response.json() as { authorizationUrl?: string; error?: string };
+      if (!response.ok || !result.authorizationUrl) throw Error(result.error ?? '无法启动企业登录');
+      location.assign(result.authorizationUrl);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '企业登录失败');
+      setOidcBusy('');
+    }
+  };
+  const query = new URLSearchParams(location.search);
+  const externalMessage = query.get('oidc_pending') === '1'
+    ? '企业身份已验证，但尚未绑定本地账号。请联系管理员授权后重新登录。'
+    : query.get('oidc_error') === '1' ? '企业登录未完成，请重新尝试或使用本地账号登录。' : '';
 
   return (
     <div className="flex h-screen items-center justify-center bg-neutral-950 text-neutral-100">
@@ -143,6 +167,13 @@ export function LoginView({ needsSetup, registrationEnabled = false, defaultMess
               自助注册当前未开放；没有账号请联系管理员创建。
             </p>
           )}
+          {externalMessage && <p role="status" className="rounded-lg border border-amber-800 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">{externalMessage}</p>}
+          {!needsSetup && !changingServer && oidcProviders.length > 0 && <div className="space-y-2 border-t border-neutral-800 pt-3">
+            <p className="text-center text-xs text-neutral-500">或使用企业身份登录</p>
+            {oidcProviders.map(provider => <button key={provider.id} type="button" disabled={busy || Boolean(oidcBusy)} onClick={() => void externalLogin(provider.id)} className="w-full rounded-lg border border-neutral-700 bg-neutral-950 py-2.5 text-sm text-neutral-200 hover:border-blue-600 hover:bg-neutral-800 disabled:opacity-40">
+              {oidcBusy === provider.id ? '正在跳转…' : provider.organizationName} · {provider.name}
+            </button>)}
+          </div>}
         </div>
         <section aria-labelledby="download-title" className="mt-5 border-t border-neutral-800 pt-5">
           <div className="mb-3 flex items-end justify-between gap-3">

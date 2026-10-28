@@ -31,7 +31,7 @@ export class TrashRepository {
    if(!this.files)throw new RepositoryError(503,'文件存储未配置');
    await this.files.verifyRetained(actor,e.files);
    await this.insert(c,'documents',[r]);await this.insert(c,'document_versions',e.files);
-   for(const v of e.files)if(r.purpose==='upload'&&/\.(docx|xlsx|pptx|pdf|png|jpg|jpeg)$/i.test(v.name))await c.query('INSERT INTO workpivot.document_processing(version_id,owner_user_id) VALUES($1,$2)',[v.id,actor]);
+   for(const v of e.files)if(r.purpose==='upload'&&/\.(docx|xlsx|pptx|pdf|png|jpg|jpeg|csv)$/i.test(v.name))await c.query('INSERT INTO workpivot.document_processing(version_id,owner_user_id) VALUES($1,$2)',[v.id,actor]);
   }else if(e.kind==='memory'){
    const content=(p.revisions as {content:string}[]).at(-1)?.content;if(content===undefined)throw new RepositoryError(409,'此历史条目没有可恢复正文');
    const changed=(await c.query('UPDATE workpivot.memories SET deleted_at=NULL,merged_into=NULL,revision=revision+1 WHERE id=$1 AND deleted_at IS NOT NULL RETURNING revision',[e.entity_id])).rows[0];if(!changed)throw new RepositoryError(409,'记忆状态已变化');

@@ -5,7 +5,7 @@ export type { ParsedPart } from './parsed-content.js';
 
 // 固定程序，不执行文档提供的命令；仅在隔离执行器中运行。
 export const parserProgram = String.raw`
-import sys,json,zipfile,xml.etree.ElementTree as ET,subprocess,pathlib,datetime,math,re,posixpath
+import sys,json,zipfile,xml.etree.ElementTree as ET,subprocess,pathlib,datetime,math,re,posixpath,io,csv
 path=pathlib.Path('/workspace/source'+sys.argv[1]); parts=[]; total=0; warnings=[]
 def add(location,text,object=None):
  global total
@@ -19,7 +19,7 @@ def xml(z,name):
  return ET.fromstring(data)
 def local(e): return e.tag.split('}')[-1]
 def recognize(image,location):
- import csv,time
+ import time
  from PIL import Image,ImageOps
  if time.monotonic()>ocr_deadline: raise ValueError('OCR total timeout')
  with Image.open(image) as original:
@@ -72,6 +72,27 @@ if ext=='.pdf':
  pathlib.Path('/workspace/plain.txt').unlink()
 elif ext in ('.png','.jpg','.jpeg'):
  recognize(path,'image:1')
+elif ext=='.csv':
+ raw=path.read_bytes()
+ if len(raw)>1000000: raise ValueError('CSV exceeds 1MB')
+ try: text=raw.decode('utf-8-sig')
+ except UnicodeDecodeError: text=raw.decode('gb18030')
+ if '\x00' in text: raise ValueError('CSV contains NUL')
+ try: rows=list(csv.reader(io.StringIO(text),strict=True))
+ except csv.Error as exc: raise ValueError('invalid CSV') from exc
+ if not rows or len(rows)>20000: raise ValueError('CSV row count invalid')
+ add('sheet:CSV','',{'kind':'sheet','sheet':'CSV','state':'visible','dateSystem':'1900'})
+ add('table:csv','',{'kind':'table','parent':'sheet:CSV'})
+ for ri,row in enumerate(rows,1):
+  if len(row)>512: raise ValueError('CSV column limit')
+  for ci,value in enumerate(row,1):
+   if len(value)>32768: raise ValueError('CSV cell too large')
+   address='';column=ci
+   while column:
+    column,remainder=divmod(column-1,26);address=chr(65+remainder)+address
+   address+=str(ri)
+   add('sheet:CSV!'+address,value,{'kind':'cell','parent':'sheet:CSV','sheet':'CSV','address':address,'valueType':'inlineStr','rawValue':value,'headerRow':'true' if ri==1 else 'false','dateSystem':'1900'})
+ warnings.append('CSV按UTF-8或GB18030文本解析；公式外观仍按文本处理，未执行计算。')
 else:
  with zipfile.ZipFile(path) as z:
   info=z.infolist()
@@ -308,7 +329,7 @@ export async function parseDocument(config: WorkerConfiguration, extension: stri
   return (await parseDocumentResult(config, extension, data)).parts;
 }
 export async function parseDocumentResult(config: WorkerConfiguration, extension: string, data: Buffer): Promise<ParsedDocument> {
-  if (!['.docx','.xlsx','.pptx','.pdf','.png','.jpg','.jpeg'].includes(extension)) throw Error('不支持此格式');
+  if (!['.docx','.xlsx','.pptx','.pdf','.png','.jpg','.jpeg','.csv'].includes(extension)) throw Error('不支持此格式');
   const response = await fetch(config.url.replace(/\/$/,'')+'/v1/run', { method:'POST', headers:{authorization:`Bearer ${config.token}`,'content-type':'application/json'}, body:JSON.stringify({command:`python3 /skills/parser/read.py ${extension}`,files:[['source'+extension,data.toString('base64')]],skills:[['parser/read.py',Buffer.from(parserProgram).toString('base64')]]}),signal:AbortSignal.timeout(140000) });
   if (!response.ok) { await response.body?.cancel(); throw Error('隔离解析失败或服务繁忙；请重试。扫描PDF需要OCR，旧版Office请转换格式。'); }
   const reader=response.body!.getReader(), chunks:Uint8Array[]=[];let bytes=0;

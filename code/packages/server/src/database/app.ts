@@ -42,11 +42,13 @@ import type { McpRepository } from './mcp.js';
 import { API_PROTOCOL } from '@workpivot/shared';
 import type { FileRepository } from './files.js';
 import { DailyLimits } from './daily-limits.js';
+import { IamRepository, oidcBindingCookie } from './iam.js';
 
 /** K01 联调接口；各服务适配完成后接入生产界面。 */
 export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken: string, execution?: DatabaseExecution, providers?: ProviderRepository, mcp?: McpRepository, webDist?: string, files?: FileRepository, skillBuilds?: SkillBuilds, automations?: Automations, embeddings?: Embeddings, browserWorkspace?: BrowserWorkspace,browserProfiles?:BrowserProfiles): Promise<Express> {
   await assertRestrictedRole(authPool, 'identity'); await assertRestrictedRole(appPool, 'workpivot');
   const accounts = new AccountRepository(authPool), workspace = new WorkspaceRepository(appPool);
+  const iam = new IamRepository(authPool);
   const dailyLimits = new DailyLimits(authPool, appPool);
   const conversation = new ConversationRepository(appPool);
   const notifications = new TaskNotifications(appPool);
@@ -88,6 +90,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
       defaultTokenQuota: policy.defaultTokenQuota,
       defaultUploadQuotaBytes: policy.defaultUploadQuotaBytes,
       defaultConcurrentTaskLimit: policy.defaultConcurrentTaskLimit,
+      oidcProviders: await iam.publicProviders(),
       authenticated: !!user,
       user,
       quota: user ? await accounts.quota(user.id) : null,
@@ -98,6 +101,33 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   });
   app.post('/api/auth/register', throttle, async (req, res) => { const b = body(req); res.json(await accounts.register(str(b.username), str(b.password))); });
   app.post('/api/auth/login', throttle, async (req, res) => { const b = body(req); res.json(await accounts.login(str(b.username), str(b.password))); });
+  const bindingCookie = (req: Request, value: string, maxAge: number) =>
+    `wp_oidc_binding=${value}; Path=/api/auth/oidc; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${req.secure || req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : ''}`;
+  app.post('/api/auth/oidc/:providerId/start', throttle, async (req, res) => {
+    const existing = oidcBindingCookie(req.headers.cookie, 'wp_oidc_binding');
+    const result = await iam.start(str(req.params['providerId']), body(req).returnTo, existing);
+    res.setHeader('Set-Cookie', bindingCookie(req, result.binding, result.maxAge));
+    res.json({ authorizationUrl: result.authorizationUrl });
+  });
+  app.get('/api/auth/oidc/callback', async (req, res) => {
+    try {
+      if (typeof req.query['state'] !== 'string' || typeof req.query['code'] !== 'string') throw new RepositoryError(400, 'OIDC 回调参数不完整');
+      const binding = oidcBindingCookie(req.headers.cookie, 'wp_oidc_binding');
+      const result = await iam.callback(req.query['state'], req.query['code'], binding);
+      const target = new URL(result.returnTo, 'http://workpivot.local');
+      if (result.status === 'authorized') target.searchParams.set('oidc_ticket', result.ticket);
+      else if (result.status === 'pending') target.searchParams.set('oidc_pending', '1');
+      else target.searchParams.set('oidc_error', '1');
+      res.redirect(303, target.pathname + target.search);
+    } catch {
+      res.redirect(303, '/?oidc_error=1');
+    }
+  });
+  app.post('/api/auth/oidc/complete', throttle, async (req, res) => {
+    const binding = oidcBindingCookie(req.headers.cookie, 'wp_oidc_binding');
+    const result = await iam.complete(str(body(req).ticket), binding);
+    res.json(await accounts.issueExternalSession(result.userId, 'oidc'));
+  });
   app.use('/api', async (req, res, next) => {
     const user = await accounts.resolve(token(req));
     if (!user) throw new RepositoryError(401, '未登录或会话失效');
@@ -190,6 +220,35 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
       revision: b.revision,
     }) });
   });
+  app.use('/api/admin/identity', (_req, res, next) => {
+    if (actor(res).role !== 'admin') throw new RepositoryError(403, '仅管理员可管理企业身份');
+    next();
+  });
+  app.get('/api/admin/identity', async (_req, res) => { res.json(await iam.adminOverview(actor(res).id)); });
+  app.post('/api/admin/identity/organizations', async (req, res) => { res.json({ organization: await iam.createOrganization(actor(res).id, str(body(req).name)) }); });
+  app.post('/api/admin/identity/providers', async (req, res) => {
+    const b = body(req);
+    res.json({ provider: await iam.createProvider(actor(res).id, {
+      organizationId: str(b.organizationId), name: str(b.name), issuer: str(b.issuer), clientId: str(b.clientId),
+      ...(b.clientSecret === undefined ? {} : { clientSecret: str(b.clientSecret) }),
+      redirectUri: str(b.redirectUri), ...(b.enabled === undefined ? {} : { enabled: b.enabled === true }),
+    }) });
+  });
+  app.patch('/api/admin/identity/providers/:id', async (req, res) => {
+    const b = body(req);
+    res.json({ provider: await iam.updateProvider(actor(res).id, str(req.params['id']), {
+      revision: num(b.revision),
+      ...(b.enabled === undefined ? {} : { enabled: b.enabled === true }),
+      ...(b.clientSecret === undefined ? {} : { clientSecret: str(b.clientSecret) }),
+    }) });
+  });
+  app.post('/api/admin/identity/pending/:id/approve', async (req, res) => {
+    const b = body(req);
+    res.json(await iam.approvePending(actor(res).id, str(req.params['id']), str(b.userId), num(b.revision)));
+  });
+  app.post('/api/admin/identity/pending/:id/reject', async (req, res) => {
+    res.json(await iam.rejectPending(actor(res).id, str(req.params['id']), num(body(req).revision)));
+  });
   app.post('/api/users', async (req, res) => {
     const b = body(req), role = b.role;
     if (role !== 'member' && role !== 'admin') throw new RepositoryError(400, '角色无效');
@@ -213,6 +272,36 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   });
   app.post('/api/projects', async (req, res) => { res.json({ project: await workspace.createProject(actor(res).id, str(body(req).name)) }); });
   app.patch('/api/projects/:id', async (req, res) => { const b = body(req); res.json({ project: await workspace.renameProject(actor(res).id, str(req.params['id']), str(b.name), num(b.revision)) }); });
+  app.get('/api/projects/:id/members', async (req, res) => {
+    const projectId = str(req.params['id']);
+    const project = (await appPool.query('SELECT owner_user_id AS "owner" FROM workpivot.projects WHERE id=$1 AND deleted_at IS NULL', [projectId])).rows[0];
+    if (!project) throw new RepositoryError(404, '项目不存在');
+    const members = await workspace.projectMembers(actor(res).id, projectId);
+    const ids = members.map((member: { userId: string }) => member.userId);
+    const users = ids.length ? (await authPool.query('SELECT id,username,email FROM identity.users WHERE id=ANY($1::uuid[])', [ids])).rows : [];
+    const byId = new Map(users.map(user => [user.id, user]));
+    res.json({ canManage: project.owner === actor(res).id, members: members.map((member: { userId: string }) => ({ ...member, ...byId.get(member.userId) })) });
+  });
+  app.get('/api/projects/:id/member-candidates', async (req, res) => {
+    const projectId = str(req.params['id']);
+    const owner = (await appPool.query('SELECT owner_user_id AS "owner" FROM workpivot.projects WHERE id=$1 AND deleted_at IS NULL', [projectId])).rows[0];
+    if (!owner || owner.owner !== actor(res).id) throw new RepositoryError(403, '只有项目所有者可以添加成员');
+    const current = await workspace.projectMembers(actor(res).id, projectId);
+    const excluded = current.filter((member: { revokedAt: string | null }) => !member.revokedAt).map((member: { userId: string }) => member.userId);
+    res.json({ users: (await authPool.query(`SELECT id,username,email FROM identity.users
+      WHERE NOT disabled AND NOT (id=ANY($1::uuid[])) ORDER BY username LIMIT 200`, [excluded])).rows });
+  });
+  app.post('/api/projects/:id/members', async (req, res) => {
+    const b = body(req);
+    const role = b.role === 'reader' ? 'reader' : 'editor';
+    const projectId = str(req.params['id']), userId = str(b.userId);
+    const user = await authPool.query('SELECT 1 FROM identity.users WHERE id=$1 AND NOT disabled', [userId]);
+    if (!user.rowCount) throw new RepositoryError(404, '账号不存在或已停用');
+    res.json(await workspace.addProjectMember(actor(res).id, projectId, userId, role));
+  });
+  app.delete('/api/projects/:id/members/:userId', async (req, res) => {
+    res.json(await workspace.removeProjectMember(actor(res).id, str(req.params['id']), str(req.params['userId'])));
+  });
   app.get('/api/tasks', async (_req, res) => { res.json({ tasks: await workspace.listTasks(actor(res).id) }); });
   const cleanup = async (owner: string): Promise<boolean> => { if (!files) return false; try { await files.collect(owner); return false; } catch { return true; } };
   if (files) {

@@ -1,0 +1,74 @@
+[
+  {
+    "id": "company-contract-amount-correction",
+    "domain": "company.operations",
+    "input": "合同 HT-001 原金额 100 万元，补充协议确认调整为 200 万元。",
+    "expected": { "object": "合同 HT-001", "predicate": "contract.amount.total", "value": "2000000", "currency": "CNY", "must_confirm": true }
+  },
+  {
+    "id": "company-contract-currency",
+    "domain": "company.operations",
+    "input": "采购合同 CG-09 总价 35 万美元，币种 USD，当前执行中。",
+    "expected": { "object": "采购合同 CG-09", "predicate": "contract.amount.total", "value": "350000", "currency": "USD" }
+  },
+  {
+    "id": "company-supplier-alias",
+    "domain": "company.operations",
+    "input": "供应商星海科技，也叫星海公司，统一信用代码 91310000TEST001。",
+    "expected": { "object": "星海科技", "aliases": ["星海公司"], "identifier": "91310000TEST001" }
+  },
+  {
+    "id": "company-production-quantity",
+    "domain": "company.operations",
+    "input": "生产订单 MO-2026-17 计划生产 1,200 件，单位件。",
+    "expected": { "object": "生产订单 MO-2026-17", "predicate": "production_order.quantity", "value": "1200", "unit": "件" }
+  },
+  {
+    "id": "delivery-milestone-date-change",
+    "domain": "project.delivery",
+    "input": "项目里程碑“试运行”原定 10 月 20 日，现改为 11 月 3 日。",
+    "expected": { "object": "试运行", "predicate": "milestone.due_at", "value": "2026-11-03", "must_confirm": true }
+  },
+  {
+    "id": "delivery-risk-status",
+    "domain": "project.delivery",
+    "input": "风险“供应商交付延迟”已经从高调整为中，负责人是王经理。",
+    "expected": { "object": "供应商交付延迟", "predicate": "risk.level", "value": "中", "must_confirm": true }
+  },
+  {
+    "id": "delivery-decision",
+    "domain": "project.delivery",
+    "input": "项目决策：一期先上线华东区域，华南区域延期。",
+    "expected": { "object": "一期上线范围", "predicate": "decision.status", "value": "华东先行" }
+  },
+  {
+    "id": "cross-project-same-contract",
+    "domain": "company.operations",
+    "input": "两个项目都出现合同 HT-001，但分别属于不同公司，不得自动合并。",
+    "expected": { "cross_project_merge": false }
+  },
+  {
+    "id": "temporary-not-memory",
+    "domain": "project.delivery",
+    "input": "这次先按 3 天估算，仅用于当前讨论，不作为正式计划。",
+    "expected": { "write": false, "reason": "临时假设" }
+  },
+  {
+    "id": "question-not-fact",
+    "domain": "company.operations",
+    "input": "公司今年收入是不是 5000 万？我只是在确认。",
+    "expected": { "write": false, "reason": "疑问" }
+  },
+  {
+    "id": "source-delete-review",
+    "domain": "company.operations",
+    "input": "合同金额 200 万元来自补充协议.pdf。",
+    "expected": { "predicate": "contract.amount.total", "source_delete": "needs_review" }
+  },
+  {
+    "id": "table-import",
+    "domain": "company.operations",
+    "input": "CSV 表头：客户名称、合同金额、合同编号；数据行：客户星河、1250.50、KH-XH-01。",
+    "expected": { "object": "客户星河", "predicate": "contract.amount.total", "value": "1250.50", "confirmation_required": true }
+  }
+]

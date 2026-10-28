@@ -108,7 +108,7 @@ export function TaskSidebar({ taskId, projectId, steps, onSelect, onTranscript, 
       <p className="mt-1 text-[10px] text-neutral-500">{projectId ? '当前值、历史、证据与逐条冲突确认' : '临时任务没有业务事实'}</p>
     </section>
     {memoryLayer && <MemoryCenter key={taskId} taskId={taskId} initialLayer={memoryLayer} onClose={() => setMemoryLayer(null)} />}
-    {businessFactsOpen && projectId && <BusinessFactsPanel key={projectId} projectId={projectId} onClose={() => setBusinessFactsOpen(false)} />}
+    {businessFactsOpen && projectId && taskId && <BusinessFactsPanel key={projectId} projectId={projectId} taskId={taskId} onClose={() => setBusinessFactsOpen(false)} />}
     {browseFiles && <ArtifactBrowser key={taskId} taskId={taskId} onClose={() => setBrowseFiles(false)} />}
   </div>;
 }

@@ -24,6 +24,8 @@
     "eval:automatic-memory-db": "tsx eval/automatic-memory-db.mts",
     "eval:workspace-sync": "tsx eval/workspace-sync.mts",
     "eval:business-facts-db": "node scripts/test-business-facts.mjs",
+    "eval:business-governance-ui": "node eval/business-governance-ui.mjs",
+    "eval:execution-boundary": "node eval/execution-boundary.mjs",
     "eval:w1": "tsx eval/W1-smoke.mts",
     "eval:w2": "tsx eval/W2-smoke.mts",
     "eval:w3": "tsx eval/W3-smoke.mts",
@@ -94,7 +96,8 @@
     "eval:automation-capacity": "node scripts/test-automations.mjs --capacity",
     "eval:automation-capacity-ui": "node eval/automation-capacity-ui.mjs",
     "iam:lab": "node scripts/iam-lab.mjs",
-    "eval:iam-lab": "node eval/iam-oidc-lab.mjs"
+    "eval:iam-lab": "node eval/iam-oidc-lab.mjs",
+    "eval:iam-business": "tsx eval/iam-business-oidc.mts"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

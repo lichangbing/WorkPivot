@@ -19,7 +19,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { DatabaseAttachments, AttachmentLabel, type AttachmentActions } from './DatabaseAttachments';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { api, clearToken, getToken, jsonFetch } from './api';
+import { api, clearToken, getToken, jsonFetch, setToken } from './api';
 import { LoginView } from './LoginView';
 import { RequiredPasswordChange } from './AccountAccess';
 import { Icon } from './Icon';
@@ -202,7 +202,24 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   },[events,details,older,ready,active]);
 
   const previousTop = useRef(0);
-  const reloadAuth = () => { void api.authState().then(setAuth).catch(e => setError(errorText(e))); };
+  const reloadAuth = () => {
+    void (async () => {
+      const params = new URLSearchParams(location.search), ticket = params.get('oidc_ticket');
+      if (ticket) {
+        try {
+          const result = await jsonFetch<{ token: string }>('/api/auth/oidc/complete', {
+            method: 'POST', body: JSON.stringify({ ticket }),
+          });
+          setToken(result.token);
+        } finally {
+          params.delete('oidc_ticket');
+          const query = params.toString();
+          history.replaceState(null, '', location.pathname + (query ? `?${query}` : '') + location.hash);
+        }
+      }
+      setAuth(await api.authState());
+    })().catch(e => setError(errorText(e)));
+  };
   useEffect(() => {
     const resetsAt = auth?.quota?.resetsAt;
     if (!resetsAt) return;
@@ -475,7 +492,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     finally { streams.current.delete(controller); setSending(false); void refreshTasks().catch(() => {}); void reloadAuth(); }
   };
   if (!auth) return <div className="p-6">{error || '正在连接后台…'}<button className={button} onClick={reloadAuth}>重试</button></div>;
-  if (!auth.authenticated) return <LoginView needsSetup={auth.needsSetup} setupTokenRequired={auth.setupTokenRequired} registrationEnabled={auth.registrationEnabled} defaultMessageQuota={auth.defaultMessageQuota} defaultTokenQuota={auth.defaultTokenQuota} onAuthed={reloadAuth} />;
+  if (!auth.authenticated) return <LoginView needsSetup={auth.needsSetup} setupTokenRequired={auth.setupTokenRequired} registrationEnabled={auth.registrationEnabled} defaultMessageQuota={auth.defaultMessageQuota} defaultTokenQuota={auth.defaultTokenQuota} oidcProviders={auth.oidcProviders} onAuthed={reloadAuth} />;
   if (auth.user?.mustChangePassword) return <RequiredPasswordChange onDone={reloadAuth} />;
   const quotaRemaining = auth.quota?.remaining ?? null;
   const quotaBlocked = quotaRemaining !== null && quotaRemaining <= 0;
@@ -574,6 +591,6 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
       <DatabaseBrowser key={active??'empty'} width={rightWidth} taskId={active} onHide={()=>{setRightOpen(false);localStorage.setItem('wp-right-panel-open','false');}} />
     </>}
     {settings && <DatabaseSettings initialSection={settings} configurationEnabled={chatEnabled} onClose={() => setSettings(null)} onChanged={refreshWorkspace} />}
-    {businessFactsOpen && task?.projectId && <BusinessFactsPanel key={task.projectId} projectId={task.projectId} onClose={() => setBusinessFactsOpen(false)} />}
+    {businessFactsOpen && task?.projectId && <BusinessFactsPanel key={task.projectId} projectId={task.projectId} taskId={task.id} onClose={() => setBusinessFactsOpen(false)} />}
   </div>;
 }
