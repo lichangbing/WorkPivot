@@ -45,6 +45,7 @@ try{
  await toggle.click();
  await process.waitFor();
  assert.equal(await toggle.getAttribute('aria-expanded'),'true');
+ await process.getByRole('button',{name:/步骤 1/}).click();
  assert.equal(await page.getByRole('button',{name:'查看本次对话的更多过程',exact:true}).count(),0);
  await process.getByRole('button',{name:'重试加载过程'}).click();
  await page.getByText('最终答复已加载',{exact:true}).waitFor();
@@ -54,7 +55,7 @@ try{
  assert.ok((await process.textContent()).includes('最后一段思考'));
  assert.equal(await process.getByRole('button',{name:'展开完整内容'}).count(),0);
  assert.equal(pageRequests,3);
- assert.equal(await process.evaluate(el=>el.clientHeight),256);
+ assert.equal(await process.evaluate(el=>el.clientHeight),288);
  assert.equal(await process.evaluate(el=>el.scrollHeight>el.clientHeight),true);
  await toggle.click();
  assert.equal(await process.isVisible(),false);

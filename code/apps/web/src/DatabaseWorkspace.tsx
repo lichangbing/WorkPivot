@@ -142,6 +142,8 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   const selectionOwner = useRef<string | null>(null);
   const [events, setEvents] = useState<StoredEvent[]>([]), [permissions, setPermissions] = useState<Permission[]>([]);
   const [permissionBusy, setPermissionBusy] = useState<string | null>(null);
+  const groupedEvents = useMemo(() => groupEvents(events), [events]);
+  const latestTurnId = groupedEvents.at(-1)?.id;
   const [older, setOlder] = useState<string | null>(null), [details, setDetails] = useState<Record<string, { after: string; snapshot: string }>>({});
   const [loading, setLoading] = useState(false), [ready, setReady] = useState(false), [sending, setSending] = useState(false);
   const [error, setError] = useState(''), [input, setInput] = useState('');
@@ -466,10 +468,10 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
         {active && <AutomationDraftNotice taskId={active}/>}
         {active && <p className="mb-3 text-center text-xs text-neutral-500">{loading ? '正在加载…' : !ready ? '正在读取对话…' : older ? '向上滚动查看更早对话' : '已到最早消息'}</p>}
         {active && <ExpertSuggestions key={"expert-"+active} task={active}/>} 
-        {groupEvents(events).map(group => <section key={group.id} data-turn={group.id} className="mb-6">
+        {groupedEvents.map(group => <section key={group.id} data-turn={group.id} className="mb-6">
           {group.events.map((e, index) => {
             const firstProcess = group.events.findIndex(isProcessEvent);
-            const process = index === firstProcess ? <DatabaseTurnProcess key={'process-'+group.id} events={group.events.filter(isProcessEvent)} cursor={details[group.id]?.after} onMore={() => expandTurn(group.id)} onContent={expandContent} onInteract={() => { follow.current = false; }} /> : null;
+            const process = index === firstProcess ? <DatabaseTurnProcess key={'process-'+group.id} events={group.events.filter(isProcessEvent)} cursor={details[group.id]?.after} live={busy && group.id === latestTurnId} onMore={() => expandTurn(group.id)} onContent={expandContent} onInteract={() => { follow.current = false; }} /> : null;
             if (isProcessEvent(e)) return process;
             const askUser = parseAskUser(e);
             if (askUser) return null;
@@ -480,7 +482,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
               {!!e.attachments?.length && <div className="mt-2 flex flex-wrap gap-2">{e.attachments.map(a => <AttachmentLabel key={a.id} attachment={a} />)}</div>}
             </div>;
           })}
-          {details[group.id] && !group.events.some(isProcessEvent) && <DatabaseTurnProcess key={'process-'+group.id} events={[]} cursor={details[group.id]?.after} onMore={() => expandTurn(group.id)} onContent={expandContent} onInteract={() => { follow.current = false; }} />}
+          {details[group.id] && !group.events.some(isProcessEvent) && <DatabaseTurnProcess key={'process-'+group.id} events={[]} cursor={details[group.id]?.after} live={busy && group.id === latestTurnId} onMore={() => expandTurn(group.id)} onContent={expandContent} onInteract={() => { follow.current = false; }} />}
 
         </section>)}
         {active && <DatabaseSummary key={'summary-'+active} taskId={active} busy={busy} />}

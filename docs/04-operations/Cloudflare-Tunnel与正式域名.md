@@ -117,7 +117,7 @@ Registered tunnel connection
 curl -fsS https://workpivot.lichb.cc.cd/api/health
 curl -fsSI https://workpivot.lichb.cc.cd/
 curl -fsSI https://workpivot.lichb.cc.cd/admin
-curl -fsSI https://workpivot.lichb.cc.cd/downloads/WorkPivot-android-1.6.apk
+curl -fsSI https://workpivot.lichb.cc.cd/downloads/WorkPivot-android-1.7.apk
 ```
 
 手机来源预检：

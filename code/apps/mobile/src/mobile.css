@@ -21,6 +21,16 @@ label { display:block; font-size:14px; margin:20px 0; } input,select { display:b
 .memory-card { margin:16px 0; font-size:14px; overflow-wrap:anywhere; }
 .permission-dock { margin:8px 12px 4px; border-color:#c7954a; background:var(--surface); }
 .permission-dock p { margin:6px 0; }
+.process-timeline { margin:10px 0 16px; border:1px solid var(--line); border-radius:14px; overflow:hidden; background:var(--surface); }
+.process-timeline-toggle,.process-step-toggle { width:100%; display:flex; align-items:center; gap:8px; text-align:left; border-radius:0; }
+.process-timeline-toggle small { color:var(--muted); }.process-live { margin-left:auto; display:flex; align-items:center; gap:6px; color:#2f8f62; font-size:12px; }
+.process-live i { width:7px; height:7px; border-radius:50%; background:#38a169; animation:pulse 1.2s infinite; }
+.process-timeline-body { max-height:260px; overflow:auto; border-top:1px solid var(--line); padding:8px; }
+.process-step { border:1px solid var(--line); border-radius:10px; overflow:hidden; margin:6px 0; background:var(--bg); }.process-step.current { border-color:#6aa889; }
+.process-step-toggle { min-height:40px; padding:8px 10px; background:none; }.process-step-toggle small { color:var(--muted); }.process-step-toggle em { margin-left:auto; color:var(--muted); font-style:normal; font-size:12px; }
+.process-step-body { border-top:1px solid var(--line); padding:10px; }.process-event { margin-bottom:12px; }.process-event:last-child { margin-bottom:0; }.process-event strong { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }.process-event p { margin:0; font-size:13px; }.process-event pre { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; }
+.process-cursor { display:inline-block; width:2px; height:12px; background:#4f8d72; margin-left:2px; vertical-align:middle; animation:pulse 1s infinite; }
+@keyframes pulse { 50% { opacity:.25; } }
 .memory-card p { white-space:pre-wrap; }
 .memory-card textarea,.memory-editor textarea { width:100%; min-height:120px; padding:12px; background:var(--surface); color:var(--fg); border:1px solid var(--line); border-radius:12px; resize:vertical; }
 .memory-card details { margin:10px 0; }

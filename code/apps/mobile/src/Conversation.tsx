@@ -9,6 +9,7 @@ import { Attachments, FileLabel } from './Attachments';
 import { ComposerSettings } from './ComposerSettings';
 import { MemoryReview, SummaryReview } from './MemoryReview';
 import { ResourceScope, type ResourceSelection } from './ResourceScope';
+import { ProcessTimeline } from './ProcessTimeline';
 
 interface Changes { type: 'changes'; events: StoredEvent[]; nextSequence: string }
 interface Permission { id: string; request: { tool: string; command?: string } }
@@ -80,6 +81,7 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
     finally { loading.current = false; }
   };
   const running = ['running', 'waiting', 'queued'].includes(status);
+  const turns = groupEvents(events), latestTurnId = turns.at(-1)?.id;
   const send = async () => {
     if (busy || running || uploadBlocked || !resourceScope || !ready || !message.trim()) return;
     const content = message.trim();
@@ -139,15 +141,20 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
     }}>
       {before && <button className="load-more" onClick={() => void older()}>查看更早一轮</button>}
       {ready && !events.length && <div className="empty"><h2>开始这个项目的工作</h2><p>输入你的问题，继续整理想法。</p></div>}
-      {groupEvents(events).map(turn => <section key={turn.id}>{turn.events.filter(e => e.kind !== 'meta').map(event =>
+      {turns.map(turn => {
+        const processEvents = turn.events.filter(event => event.kind === 'thinking' || event.kind.startsWith('tool_'));
+        return <section key={turn.id}>
+        <ProcessTimeline events={processEvents} live={running && turn.id === latestTurnId}/>
+        {turn.events.filter(e => e.kind !== 'meta' && e.kind !== 'thinking' && !e.kind.startsWith('tool_')).map(event =>
         ['user', 'assistant'].includes(event.kind)
           ? <article key={event.id} className={event.kind === 'user' ? 'message user-message' : 'message'}>
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.kind === 'user' ? displayUserMessageContent(event.content) : event.content}</ReactMarkdown>
             {event.truncated && <button disabled={busy} onClick={() => void expand(event)}>展开完整内容</button>}
             {event.attachments?.map(file => <FileLabel key={file.id} name={file.name ?? '附件'} />)}
           </article>
-          : <details className="process" key={event.id}><summary>{event.kind === 'thinking' ? '思考过程' : '执行过程'}</summary><pre>{event.content}</pre></details>
-      )}{details[turn.id] && <button disabled={busy} onClick={() => void expandTurn(turn.id)}>继续加载本轮内容</button>}</section>)}
+          : null
+      )}{details[turn.id] && <button disabled={busy} onClick={() => void expandTurn(turn.id)}>继续加载本轮内容</button>}</section>;
+      })}
       <MemoryReview client={client} taskId={task.id} onError={onError} />
       <SummaryReview client={client} taskId={task.id} onError={onError} running={running} />
     </div>

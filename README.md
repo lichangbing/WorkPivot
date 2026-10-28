@@ -20,7 +20,7 @@
 
 - 用户端：<https://workpivot.lichb.cc.cd/>
 - 管理端：<https://workpivot.lichb.cc.cd/admin>
-- Android 下载：[WorkPivot-android-1.6.apk](https://115-191-1-188.sslip.io:80/downloads/WorkPivot-android-1.6.apk)
+- Android 下载：[WorkPivot-android-1.7.apk](https://115-191-1-188.sslip.io:80/downloads/WorkPivot-android-1.7.apk)
 - Windows 下载：[WorkPivot-Windows-portable.zip](https://115-191-1-188.sslip.io:80/downloads/WorkPivot-Windows-portable.zip)
 - 回退入口：<https://115-191-1-188.sslip.io:80/>
 
@@ -40,8 +40,8 @@ Windows SmartScreen 首次运行可能需要选择“更多信息 → 仍要运�
 
 Windows ZIP SHA-256：`6d0e057ff8ed0a50fe2cf68091c01e601a025f1d82c774faca33170f98271294`。
 
-Android `1.6`（versionCode 7）APK SHA-256：
-`afce81cfc7c6cbe50f9abd1a79ede9fdcb7f9e80bdd37d780e9de54f23c13899`。
+Android `1.7`（versionCode 8）APK SHA-256：
+`00768fcdc9759d82bdfe19e3445be5f7fce471b186209c0741155df0548f9ed6`。
 该包使用 WorkPivot 独立内测签名，仅用于内部测试。
 
 ## WorkPivot 是什么
