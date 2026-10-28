@@ -42,12 +42,13 @@
 | --- | --- |
 | 用户端 | `https://workpivot.lichb.cc.cd/` |
 | 管理端 | `https://workpivot.lichb.cc.cd/admin` |
-| Android 内测包 | `https://workpivot.lichb.cc.cd/downloads/WorkPivot-android-1.3.apk` |
+| Android 内测包 | `https://workpivot.lichb.cc.cd/downloads/WorkPivot-android-1.4.apk` |
 | 迁移回退 | `https://115-191-1-188.sslip.io:80/` |
 
 正式域名通过 Cloudflare Tunnel 提供标准 HTTPS。`cloudflared` 从服务器主动向
 Cloudflare 建立出站连接，再把请求转发到仅监听本机的 Nginx `127.0.0.1:8080`。
-旧 `sslip.io` 入口暂时作为迁移回退，不应继续扩展新客户端。
+旧 `sslip.io` 网页入口暂时作为迁移回退；Android 与 Windows 客户端的 API 默认使用该直连入口，
+以减少 Cloudflare 免费链路对长连接和大文件的影响。
 
 ## 当前组件
 

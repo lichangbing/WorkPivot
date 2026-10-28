@@ -4,6 +4,7 @@ const status = document.getElementById('status');
 window.workpivotConnection.settings().then((settings) => {
   input.value = settings.serverUrl;
   status.textContent = settings.error || '';
+  if (settings.error) document.getElementById('advanced-server').open = true;
 });
 document.getElementById('connection-form').addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -12,7 +13,10 @@ document.getElementById('connection-form').addEventListener('submit', async (eve
   status.textContent = '';
   try {
     const result = await window.workpivotDesktop.loginServer(input.value, document.getElementById('username').value, document.getElementById('password').value);
-    if (!result.ok) status.textContent = result.error;
+    if (!result.ok) {
+      status.textContent = result.error;
+      document.getElementById('advanced-server').open = true;
+    }
   } catch { status.textContent = '无法连接服务器，请检查地址和网络后重试。'; }
   finally { button.disabled = false; button.textContent = '登录'; }
 });

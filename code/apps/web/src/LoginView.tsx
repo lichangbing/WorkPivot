@@ -41,13 +41,15 @@ export function LoginView({ needsSetup, registrationEnabled = false, defaultMess
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [submittingMode, setSubmittingMode] = useState<'login' | 'register' | null>(null);
   // 大文件走已验证的直连入口，避免 Cloudflare 免费链路在中国大陆网络的吞吐瓶颈。
   const downloadOrigin = 'https://115-191-1-188.sslip.io:80';
   const desktopDownload = `${downloadOrigin}/downloads/WorkPivot-Windows-portable.zip`;
-  const androidDownload = `${downloadOrigin}/downloads/WorkPivot-android-1.3.apk`;
+  const androidDownload = `${downloadOrigin}/downloads/WorkPivot-android-1.4.apk`;
 
-  const submit = async (): Promise<void> => {
+  const submit = async (action: 'login' | 'register' = mode): Promise<void> => {
     if (busy) return;
+    setSubmittingMode(action);
     setBusy(true);
     setError(null);
     try {
@@ -58,14 +60,21 @@ export function LoginView({ needsSetup, registrationEnabled = false, defaultMess
         return;
       }
       const result =
-        mode === 'register' ? await api.register(username.trim(), password) : await api.login(username.trim(), password);
+        action === 'register' ? await api.register(username.trim(), password) : await api.login(username.trim(), password);
       setToken(result.token);
       onAuthed();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
+      setSubmittingMode(null);
     }
+  };
+
+  const chooseMode = (nextMode: 'login' | 'register'): void => {
+    setWantRegister(nextMode === 'register');
+    setError(null);
+    void submit(nextMode);
   };
 
   return (
@@ -74,11 +83,13 @@ export function LoginView({ needsSetup, registrationEnabled = false, defaultMess
         <div className="mb-4"><ThemeSwitch /></div>
         <h1 className="mb-1 text-xl font-semibold">WorkPivot</h1>
         <p className="mb-5 text-xs text-neutral-500">
-          {mode === 'register' ? (needsSetup ? '首次使用：注册的第一个账户自动成为管理员' : `自助注册：默认每天 ${defaultMessageQuota === 0 ? '不限' : defaultMessageQuota + ' 次'}提问`) : '登录以继续；账号由管理员创建'}
+          {mode === 'register'
+            ? (needsSetup ? '首次使用：注册的第一个账户自动成为管理员' : `自助注册：默认每天 ${defaultMessageQuota === 0 ? '不限' : defaultMessageQuota + ' 次'}提问`)
+            : registrationEnabled ? '登录已有账号，或注册后开始使用' : '登录以继续；账号由管理员创建'}
         </p>
 
         <div className="space-y-3 text-sm">
-          {window.workpivotDesktop && <input aria-label="服务器地址" type="url" placeholder="服务器地址，例如 http://127.0.0.1:39800" value={serverUrl} disabled={busy} onChange={e=>setServerUrl(e.target.value)} className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2 outline-none focus:border-neutral-500" /> }
+          {window.workpivotDesktop && <details className="rounded-lg border border-neutral-800 p-3 text-xs text-neutral-500"><summary className="cursor-pointer">高级服务器设置</summary><input aria-label="服务器地址" type="url" placeholder="服务器由管理员配置" value={serverUrl} disabled={busy} onChange={e=>setServerUrl(e.target.value)} className="mt-3 w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm outline-none focus:border-neutral-500" /></details>}
           <input
             autoFocus
             className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2 outline-none focus:border-neutral-500"
@@ -97,21 +108,33 @@ export function LoginView({ needsSetup, registrationEnabled = false, defaultMess
             }}
           />
           {error && <p className="text-xs text-red-400">{error}</p>}
-          <button
-            className="w-full rounded bg-blue-600 py-2 hover:bg-blue-500 disabled:opacity-40"
-            disabled={busy || username.trim() === '' || password === ''}
-            onClick={() => void submit()}
-          >
-            {busy ? '正在连接…' : mode === 'register' ? (needsSetup ? '注册管理员' : '注册并进入') : '登录'}
-          </button>
-          {!needsSetup && registrationEnabled && (
+          {!needsSetup && registrationEnabled ? (
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <button
+                type="button"
+                className="rounded-lg bg-blue-600 py-2.5 font-medium text-white transition hover:bg-blue-500 disabled:cursor-wait disabled:opacity-40"
+                disabled={busy || username.trim() === '' || password === ''}
+                onClick={() => chooseMode('login')}
+              >
+                {submittingMode === 'login' ? '登录中…' : '登录'}
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-emerald-600 py-2.5 font-medium text-white transition hover:bg-emerald-500 disabled:cursor-wait disabled:opacity-40"
+                disabled={busy || username.trim() === '' || password === ''}
+                onClick={() => chooseMode('register')}
+              >
+                {submittingMode === 'register' ? '注册中…' : '注册'}
+              </button>
+            </div>
+          ) : (
             <button
               type="button"
-              className="w-full text-center text-xs text-neutral-400 underline-offset-2 hover:text-neutral-200 hover:underline"
-              disabled={busy}
-              onClick={() => { setError(null); setWantRegister(!wantRegister); }}
+              className="w-full rounded-lg bg-blue-600 py-2.5 font-medium text-white transition hover:bg-blue-500 disabled:cursor-wait disabled:opacity-40"
+              disabled={busy || username.trim() === '' || password === ''}
+              onClick={() => void submit()}
             >
-              {mode === 'register' ? '已有账号？去登录' : '注册新账号'}
+              {submittingMode === 'register' ? '注册中…' : submittingMode === 'login' ? '登录中…' : needsSetup ? '注册管理员' : '登录'}
             </button>
           )}
           {!needsSetup && !registrationEnabled && (

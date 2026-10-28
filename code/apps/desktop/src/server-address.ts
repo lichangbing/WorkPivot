@@ -1,4 +1,6 @@
-export const DEFAULT_SERVER_URL = 'https://workpivot.lichb.cc.cd';
+// 客户端内部 API 入口。Web 正式入口使用 workpivot.lichb.cc.cd；
+// 客户端走直连域名以避开 Cloudflare 免费链路的大文件与长连接吞吐限制。
+export const DEFAULT_SERVER_URL = 'https://115-191-1-188.sslip.io:80';
 
 export function normalizeServerUrl(value: unknown): string {
   if (typeof value !== 'string' || value.trim() === '') throw new Error('请填写服务器地址');

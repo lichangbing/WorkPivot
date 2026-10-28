@@ -48,7 +48,7 @@ async function connect(value: unknown): Promise<{ ok: boolean; error?: string }>
     if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, error: '窗口已关闭' };
     connectedOrigin = serverUrl;
     await mainWindow.loadURL(serverUrl);
-    mainWindow.setTitle(`WorkPivot · 已连接 ${new URL(serverUrl).host} · ${service.version}`);
+    mainWindow.setTitle(`WorkPivot · ${service.version}`);
     saveServer(serverUrl); lastError = ''; mainWindow.show();
     log(`CONNECTED ${serverUrl}; local backend disabled`);
     if (smoke) { log('SMOKE OK'); setTimeout(() => app.exit(0), 300); }
@@ -84,7 +84,7 @@ async function loginServer(value: unknown, username: unknown, password: unknown)
     if (window.isDestroyed() || new URL(window.webContents.getURL()).origin !== serverUrl) throw Error('连接目标发生变化');
     await window.webContents.executeJavaScript(`localStorage.setItem('wp_token',${JSON.stringify(result.token)});location.reload();`);
     saveServer(serverUrl); lastError='';
-    window.setTitle(`WorkPivot · 已连接 ${new URL(serverUrl).host} · ${service.version}`);
+    window.setTitle(`WorkPivot · ${service.version}`);
     window.show();
     return {ok:true};
   } catch (error) {

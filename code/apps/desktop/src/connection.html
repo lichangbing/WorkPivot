@@ -7,7 +7,7 @@
   <title>连接 WorkPivot</title>
   <style>
     :root{--color-neutral-900:#f5f7fb;--color-neutral-800:#e0e6ee;--color-neutral-700:#e4eaf2;--color-neutral-300:#18263a}
-    *{box-sizing:border-box}body{margin:0;background:#f5f7fb;color:#18263a;font:15px/1.6 system-ui,sans-serif;display:grid;min-height:calc(100vh - var(--desktop-titlebar-height, 0px));place-items:center}.card{width:min(480px,90vw);background:#fff;border:1px solid #e0e6ee;border-radius:18px;padding:38px;box-shadow:0 14px 50px #193b6510}.brand{font-weight:700;color:#176e92;letter-spacing:.06em}h1{font-size:26px;margin:12px 0}p{color:#65748a;margin:0 0 25px}label{display:block;font-weight:600;margin-bottom:8px}input{width:100%;padding:12px;border:1px solid #b9c6d6;border-radius:8px;font:inherit}input:focus{outline:2px solid #38a3c8;outline-offset:2px}button{width:100%;padding:12px;border:0;border-radius:8px;background:#176e92;color:#fff;font:inherit;margin-top:20px;cursor:pointer}button:disabled{opacity:.6;cursor:wait}#status{min-height:44px;margin:14px 0 0;color:#a32d36;font-size:14px}.hint{font-size:13px;margin:12px 0 0}
+    *{box-sizing:border-box}body{margin:0;background:#f5f7fb;color:#18263a;font:15px/1.6 system-ui,sans-serif;display:grid;min-height:calc(100vh - var(--desktop-titlebar-height, 0px));place-items:center}.card{width:min(480px,90vw);background:#fff;border:1px solid #e0e6ee;border-radius:18px;padding:38px;box-shadow:0 14px 50px #193b6510}.brand{font-weight:700;color:#176e92;letter-spacing:.06em}h1{font-size:26px;margin:12px 0}p{color:#65748a;margin:0 0 25px}label{display:block;font-weight:600;margin-bottom:8px}input{width:100%;padding:12px;border:1px solid #b9c6d6;border-radius:8px;font:inherit}input:focus{outline:2px solid #38a3c8;outline-offset:2px}button{width:100%;padding:12px;border:0;border-radius:8px;background:#176e92;color:#fff;font:inherit;margin-top:20px;cursor:pointer}button:disabled{opacity:.6;cursor:wait}#status{min-height:44px;margin:14px 0 0;color:#a32d36;font-size:14px}.hint{font-size:13px;margin:12px 0 0}.advanced{margin:18px 0 4px;padding:12px;border:1px solid #e0e6ee;border-radius:10px}.advanced summary{cursor:pointer;color:#65748a;font-size:13px}.advanced[open] summary{margin-bottom:12px}
   </style>
 </head>
 <body>
@@ -16,8 +16,12 @@
     <h1>登录 WorkPivot</h1>
     <p>登录、模型调用和任务处理由服务器统一完成。</p>
     <form id="connection-form">
-      <label for="server-url">服务器地址</label>
-      <input id="server-url" type="url" required placeholder="http://192.168.1.158:39800" autocomplete="url">
+      <details id="advanced-server" class="advanced">
+        <summary>高级服务器设置</summary>
+        <label for="server-url">服务器地址</label>
+        <input id="server-url" type="url" required placeholder="服务器由管理员配置" autocomplete="url">
+        <p class="hint">默认服务器已配置，通常不需要修改。</p>
+      </details>
       <label for="username" style="margin-top:16px">用户名</label>
       <input id="username" required autocomplete="username" placeholder="用户名">
       <label for="password" style="margin-top:16px">密码</label>
@@ -25,7 +29,7 @@
       <button id="connect" type="submit">登录</button>
     </form>
     <div id="status" role="status" aria-live="polite"></div>
-    <p class="hint">填写服务器地址和账号后直接登录。服务器地址会保留，密码不会保存。</p>
+    <p class="hint">输入账号和密码后直接登录。密码不会保存在本机。</p>
   </main>
   <script src="connection.js"></script>
 </body>
