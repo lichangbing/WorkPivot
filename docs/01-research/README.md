@@ -34,7 +34,7 @@
 | Hermes Agent（开源） | **自改进智能体**（Nous Research，Python/MIT）——技能自动生成四层闭环（工具策略/nudge/Curator 治理/状态机） | 源码级分析：[hermes.md](competitors/hermes.md) ✅ |
 | Pi Agent Harness（开源） | **极简自扩展内核**（7 内置工具 + jiti 动态加载 TS 扩展）——OpenClaw 运行时、OWB 压缩设计的源头；引用链终点 | 源码级分析：[pi-agent.md](competitors/pi-agent.md) ✅ |
 | OpenAI Codex CLI（开源） | **OpenAI 官方编程 agent**（Rust 160 万行，Apache-2.0）——工具面收缩/压缩工程/审批沙箱四层模型的顶配参考实现；可合法复用设计件但 Rust 代码不复用，且不收外部 PR | 源码级分析：[codex.md](competitors/codex.md) ✅ |
-| Claude Code（Anthropic） | **闭源核心 + 开源卫星**——SKILL.md 格式与内容生态的事实标准源头：headless 集成蓝图（MIT）、岗位技能包范式（Apache-2.0，212 领域技能）；⚠️ 核心 npm 与文档四件套技能 Proprietary 不可复用，H 模块必须自研。另：2026-03-31 泄露源码已做完整源码级分析（仅供研究，K05 红线） | 生态分析（四仓库实测）：[claude-code.md](competitors/claude-code.md) ✅<br>泄露源码级分析（51.2 万行 ground truth）：[claude-code-internals.md](competitors/claude-code-internals.md) ✅<br>agent loop 专项：[claude-code-loop.md](competitors/claude-code-loop.md) ✅ |
+| Claude Code（Anthropic） | **闭源核心 + 开源卫星**——SKILL.md 格式与内容生态的事实标准源头：headless 集成蓝图（MIT）、岗位技能包范式（Apache-2.0，212 领域技能）；⚠️ 核心 npm 与文档四件套技能 Proprietary 不可复用，H 模块必须自研。另：2026-03-31 泄露源码已做完整源码级分析（仅供研究，K05 红线） | 生态分析（四仓库实测）：[claude-code.md](competitors/claude-code.md) ✅<br>泄露源码级分析（51.2 万行 ground truth）：[claude-code-internals.md](competitors/claude-code-internals.md) ✅ |
 | DeepSeek Harness（开源） | **DeepSeek 官方 agent 客户端**（Electron + Cordis 插件，548 个 npm 包，MIT）——事件溯源会话、并行工具池、子代理编排、模型原生 web_search、持久 PTY 的参考实现；单机单用户，无多租户 | 安装包静态分析（asar 解包）：[deepseek-harness.md](competitors/deepseek-harness.md) ✅ |
 
 新建竞品分析请复制 [competitors/_template.md](competitors/_template.md)。

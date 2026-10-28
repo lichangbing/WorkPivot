@@ -78,7 +78,7 @@ export class DatabaseExecution {
           // O-16：确认模式下，只读阶段不打扰；第一个写入/执行动作前确认一次计划，本轮随后不再拦。
           if(planApproved)return;
           if(!needsPlanGate(tool))return;
-          const allowed=await requestAccess({tool:'plan',kind:'write',paths:[],effects:['write'],external:false});
+          const allowed=await requestAccess({tool:'plan',kind:'write',paths:[],effects:['write'],external:true});
           if(!allowed)throw Error('用户未确认执行计划，本次执行已停止');
         },async(tool,result)=>{
           if(resources&&tool.name==='propose_schedule'){await this.runs.grantSchedule(actor,run,resources,JSON.parse(result).id);return;}

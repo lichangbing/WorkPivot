@@ -7,7 +7,7 @@ import type { Pool } from 'pg';
 import type { Tool } from '@workpivot/core';
 import { RepositoryError, transaction, uuid } from './connection.js';
 
-/** 建议不等于生效记忆；只有已认证用户的决定才能发布。 */
+/** 建议不等于生效记忆；无冲突新增可由受控后台发布，其他决定仍须已认证用户确认。 */
 export class MemorySuggestions {
   constructor(private readonly db: Pool) {}
   async epoch(actor: string): Promise<string> { return transaction(this.db, async c => String((await c.query('SELECT epoch FROM workpivot.knowledge_state WHERE owner_user_id=$1', [actor])).rows[0]?.epoch ?? 0), actor); }
@@ -62,20 +62,21 @@ export class MemorySuggestions {
         fingerprint = createHash('sha256').update(fingerprint + ':' + source.runId).digest('hex');
         existing = (await c.query('SELECT id,status FROM workpivot.memory_suggestions WHERE task_id=$1 AND fingerprint=$2', [taskId, fingerprint])).rows[0];
       }
-      if (existing) return existing;
+      if (existing) return {...existing,created:false};
       await validateReplacements(c, taskId, scope, epoch, source?.runId, replaces, targetId, targetRevision, mergeTargets, source?.context?.map(item => item.runId) ?? []);
       const id = randomUUID();
       await c.query('INSERT INTO workpivot.memory_suggestions(id,owner_user_id,task_id,scope,project_id,content,fingerprint,epoch,target_id,target_revision,source_run_id,evidence,merge_targets,source_context,dedupe_hash,replaces,review_key,analysis_id,analysis_reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)', [id, actor, taskId, scope, scope !== 'task' ? task.project_id : null, content.trim(), fingerprint, epoch, targetId ?? null, targetRevision ?? null, source?.runId ?? null, source?.evidence ?? null, JSON.stringify(mergeTargets), JSON.stringify(source?.context ?? []), dedupeHash, replaces, review.dedupeKey ?? null,review.analysisId??null,review.reason??null]);
       if (replaces.length) await c.query("UPDATE workpivot.memory_suggestions SET status='stale',content='',evidence=NULL,replaced_by=$1 WHERE id=ANY($2::uuid[])", [id, replaces]);
-      return { id, status: 'pending' };
+      return { id, status: 'pending', created:true };
     }, actor);
   }
   async list(actor: string) {
     return transaction(this.db, async c => (await c.query(`SELECT s.id,s.scope,s.analysis_id AS "analysisId",s.analysis_reason AS reason,s.project_id AS "projectId",(SELECT name FROM workpivot.projects WHERE id=s.project_id AND deleted_at IS NULL) AS "projectName",s.merge_targets AS "mergeTargets",COALESCE((SELECT jsonb_agg(jsonb_build_object('id',mm.id,'content',rr.content,'revision',mm.revision)) FROM jsonb_to_recordset(s.merge_targets) AS mt(id uuid,revision integer) JOIN workpivot.memories mm ON mm.id=mt.id AND mm.deleted_at IS NULL AND mm.revision=mt.revision JOIN workpivot.memory_revisions rr ON rr.memory_id=mm.id AND rr.revision=mm.revision),'[]'::jsonb) AS "mergeOriginals",s.content,s.evidence,cardinality(s.replaces) AS "replacedCount",s.source_context AS "sourceContext",s.target_id AS "targetId",s.target_revision AS "targetRevision",r.content AS "originalContent",s.task_id AS "taskId",t.name AS "taskName",s.created_at AS "createdAt" FROM workpivot.memory_suggestions s JOIN workpivot.tasks t ON t.id=s.task_id LEFT JOIN workpivot.memories m ON m.id=s.target_id AND m.deleted_at IS NULL AND m.revision=s.target_revision LEFT JOIN workpivot.memory_revisions r ON r.memory_id=m.id AND r.revision=m.revision
       WHERE s.status='pending' AND (s.target_id IS NULL OR m.id IS NOT NULL) AND t.deleted_at IS NULL AND s.epoch=COALESCE((SELECT epoch FROM workpivot.knowledge_state WHERE owner_user_id=$1),0) ORDER BY s.created_at,s.id LIMIT 50`, [actor])).rows, actor);
   }
-  async decide(actor: string, id: string, accept: boolean, content?: string) {
+  async decide(actor: string, id: string, accept: boolean, content?: string, source: 'user'|'auto' = 'user') {
     uuid(id); if (content !== undefined && (typeof content !== 'string' || !content.trim() || content.length > 20000)) throw new RepositoryError(400, '确认内容无效');
+    const decisionSource = source === 'auto' ? 'auto' : 'user';
     return transaction(this.db, async c => {
       // 与任务和项目删除保持一致，先锁任务。
       const source = (await c.query('SELECT task_id,target_id,merge_targets FROM workpivot.memory_suggestions WHERE id=$1', [id])).rows[0];
@@ -95,7 +96,7 @@ export class MemorySuggestions {
         if(s.analysis_id)await validateAnalysisContext(c,s.analysis_id,s.task_id,s.scope,{runId:s.source_run_id,evidence:s.evidence},s.source_context);
         else await validateMemoryContext(c, s.task_id, { runId: s.source_run_id, evidence: s.evidence }, s.source_context);
       }
-      if (!accept) { await c.query("UPDATE workpivot.memory_suggestions SET status='rejected',content='',evidence=NULL WHERE id=$1", [id]); return { status: 'rejected' }; }
+      if (!accept) { await c.query(`UPDATE workpivot.memory_suggestions SET status='rejected',content='',evidence=NULL,decision_source='${decisionSource}' WHERE id=$1`, [id]); return { status: 'rejected' }; }
       await c.query('INSERT INTO workpivot.knowledge_state(owner_user_id,epoch) VALUES($1,0) ON CONFLICT DO NOTHING', [actor]);
       const epoch = (await c.query('SELECT epoch FROM workpivot.knowledge_state WHERE owner_user_id=$1 FOR UPDATE', [actor])).rows[0].epoch;
       if (String(epoch) !== String(s.epoch)) throw new RepositoryError(409, '记忆已被修改或删除，此建议已失效');
@@ -117,7 +118,7 @@ export class MemorySuggestions {
       if (s.source_run_id) for (const runId of [s.source_run_id, ...(s.source_context as MemorySource[]).map(item => item.runId)]) await c.query('INSERT INTO workpivot.memory_sources(owner_user_id,memory_id,run_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING', [actor, memoryId, runId]);
       await c.query('UPDATE workpivot.knowledge_state SET epoch=epoch+1 WHERE owner_user_id=$1', [actor]);
       await c.query('INSERT INTO workpivot.outbox_events(id,owner_user_id,kind,entity_id,revision) VALUES($1,$2,$3,$4,$5)', [randomUUID(), actor, 'memory_updated', memoryId, revision]);
-      await c.query("UPDATE workpivot.memory_suggestions SET status='accepted',content='',evidence=NULL WHERE id=$1", [id]);
+      await c.query(`UPDATE workpivot.memory_suggestions SET status='accepted',content='',evidence=NULL,decision_source='${decisionSource}' WHERE id=$1`, [id]);
       await c.query("UPDATE workpivot.memory_suggestions SET status='stale',content='',evidence=NULL WHERE owner_user_id=$1 AND status='pending' AND (target_id=ANY($2::uuid[]) OR EXISTS (SELECT 1 FROM jsonb_to_recordset(merge_targets) AS mt(id uuid,revision integer) WHERE mt.id=ANY($2::uuid[])))", [actor, [memoryId, ...mergedIds]]);
       await c.query("UPDATE workpivot.memory_suggestions SET epoch=(SELECT epoch FROM workpivot.knowledge_state WHERE owner_user_id=$1) WHERE owner_user_id=$1 AND status='pending'", [actor]);
       return { status: 'accepted', memoryId };

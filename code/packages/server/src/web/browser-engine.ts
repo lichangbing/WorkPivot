@@ -11,6 +11,70 @@ export interface BrowserIdentity {state?:LoginState;manual?:boolean}
 export type BrowserAction = { kind: 'click'; selector: string } | { kind: 'scroll'; pixels: number } | { kind: 'wait'; milliseconds: number } | { kind: 'fill'; selector: string; text: string } | { kind: 'press'; key: string } | {kind:'reload'};
 export interface BrowseInput { url: string; actions: BrowserAction[]; screenshot: boolean }
 export interface BrowseResult extends WebContent { screenshot?: string; original?:Original; blockedRequests: number; blockedUrls?:string[]; fields?: {selector:string;type:string;value:string}[] }
+export interface PdfInput { title: string; bodyHtml: string; pageSize: 'A4' | 'Letter' | 'Legal'; landscape: boolean; marginMm: number; pageNumbers: boolean }
+export interface PdfResult { data: Buffer; pageCount: number }
+
+const escapeHtml = (value: string): string => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+
+/** PDF只渲染模型提供的受控正文；脚本、页面导航和外部资源均不执行。 */
+export function pdfInput(value: Record<string, unknown>): PdfInput {
+  const title = value.title ?? '';
+  const bodyHtml = value.bodyHtml;
+  const pageSize = value.pageSize ?? 'A4';
+  const landscape = value.landscape ?? false;
+  const marginMm = value.marginMm ?? 14;
+  const pageNumbers = value.pageNumbers ?? true;
+  if (typeof title !== 'string' || title.length > 200) throw Error('PDF标题无效');
+  if (typeof bodyHtml !== 'string' || !bodyHtml.trim() || Buffer.byteLength(bodyHtml) > 256 * 1024) throw Error('PDF正文为空或超过256KiB');
+  if (/(?:<!doctype|<html|<head|<body|<(?:script|iframe|frame|object|embed|link|meta|base|form)\b|\son[a-z]+\s*=|javascript\s*:)/i.test(bodyHtml)) throw Error('PDF正文只能使用安全的HTML片段');
+  if (!['A4', 'Letter', 'Legal'].includes(String(pageSize))) throw Error('PDF纸张尺寸无效');
+  if (typeof landscape !== 'boolean' || typeof pageNumbers !== 'boolean') throw Error('PDF选项无效');
+  if (!Number.isInteger(marginMm) || Number(marginMm) < 5 || Number(marginMm) > 40) throw Error('PDF页边距须为5至40毫米');
+  return { title, bodyHtml, pageSize: pageSize as PdfInput['pageSize'], landscape, marginMm: Number(marginMm), pageNumbers };
+}
+
+function pdfDocument(input: PdfInput): string {
+  const title = escapeHtml(input.title || 'PDF 文档');
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; connect-src 'none'">
+<title>${title}</title>
+<style>
+  :root { color: #172033; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 11pt; line-height: 1.65; }
+  article { overflow-wrap: anywhere; }
+  h1 { margin: 0 0 18px; font-size: 24pt; line-height: 1.3; color: #111827; }
+  h2 { margin: 24px 0 10px; font-size: 16pt; line-height: 1.4; color: #111827; break-after: avoid; }
+  h3 { margin: 18px 0 8px; font-size: 13pt; break-after: avoid; }
+  p { margin: 0 0 10px; }
+  ul, ol { margin: 0 0 12px; padding-left: 1.8em; }
+  li { margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 9.5pt; break-inside: auto; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #eef2f7; font-weight: 600; }
+  code, pre { font-family: "Noto Sans Mono CJK SC", "Noto Sans Mono", monospace; }
+  code { font-size: 9.5pt; background: #f1f5f9; padding: 1px 4px; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px; font-size: 9pt; }
+  blockquote { margin: 12px 0; padding: 8px 12px; border-left: 3px solid #94a3b8; color: #475569; }
+  a { color: #1d4ed8; text-decoration: none; }
+  img { max-width: 100%; height: auto; }
+  .page-break { break-before: page; }
+  .avoid-break { break-inside: avoid; }
+</style>
+</head>
+<body><article>${input.bodyHtml}</article></body>
+</html>`;
+}
+
+function pdfPageCount(data: Buffer): number {
+  return (data.toString('latin1').match(/\/Type\s*\/Page\b/g) ?? []).length;
+}
 export function browseInput(value: Record<string, unknown>,targets?:NetworkTarget[]): BrowseInput {
   const url = webUrl(value.url,undefined,undefined,targets).href;
   if (value.screenshot !== undefined && typeof value.screenshot !== 'boolean') throw Error('截图参数无效');
@@ -149,5 +213,40 @@ export class BrowserEngine {
       if (error instanceof Error && !/\n/.test(error.message) && !/browserType|Executable|Target|page\./.test(error.message)) throw error;
       throw Error('浏览器操作失败，请检查页面、选择器或浏览器服务运行环境');
     } finally { signal.removeEventListener('abort', cancel); lifecycle.abort(); await context?.close().catch(() => undefined); this.busy--; }
+  }
+  async pdf(raw: Record<string, unknown>, signal?: AbortSignal): Promise<PdfResult> {
+    const input = pdfInput(raw);
+    if (this.busy >= 2) throw Error('浏览器执行槽已满，请稍后重试');
+    this.busy++;
+    const lifecycle = new AbortController();
+    const combined = AbortSignal.any([lifecycle.signal, AbortSignal.timeout(30000), ...(signal ? [signal] : [])]);
+    let context: BrowserContext | undefined;
+    try {
+      combined.throwIfAborted();
+      context = await (await this.getBrowser()).newContext({ javaScriptEnabled: false, serviceWorkers: 'block', acceptDownloads: false });
+      await context.route('**/*', route => route.abort('blockedbyclient'));
+      const page = await context.newPage();
+      page.on('dialog', dialog => { void dialog.dismiss(); });
+      await page.setContent(pdfDocument(input), { waitUntil: 'load', timeout: 10000 });
+      combined.throwIfAborted();
+      const data = await page.pdf({
+        format: input.pageSize,
+        landscape: input.landscape,
+        printBackground: true,
+        preferCSSPageSize: false,
+        margin: { top: `${input.marginMm}mm`, right: `${input.marginMm}mm`, bottom: `${input.marginMm}mm`, left: `${input.marginMm}mm` },
+        displayHeaderFooter: input.pageNumbers,
+        headerTemplate: '<span></span>',
+        footerTemplate: `<div style="width:100%;padding:0 ${input.marginMm}mm;font:8px 'Noto Sans CJK SC',sans-serif;color:#64748b;text-align:center"><span class="pageNumber"></span> / <span class="totalPages"></span></div>`,
+      });
+      if (data.length < 8 || data.subarray(0, 5).toString('ascii') !== '%PDF-' || data.length > 16 * 1024 * 1024) throw Error('PDF生成结果无效或超过16MiB');
+      const pageCount = pdfPageCount(data);
+      if (!pageCount || pageCount > 100) throw Error('PDF页数为空或超过100页');
+      return { data, pageCount };
+    } catch (error) {
+      if (combined.aborted) throw Error('PDF生成已取消或超时');
+      if (error instanceof Error && /^PDF/.test(error.message)) throw error;
+      throw Error('PDF渲染失败，请检查正文HTML或浏览器服务运行环境');
+    } finally { lifecycle.abort(); await context?.close().catch(() => undefined); this.busy--; }
   }
 }

@@ -10,22 +10,29 @@ export async function testMemoryWorker(db: Pool, actor: string, check: (value: u
   const workspace = new WorkspaceRepository(db), runs = new RunRepository(db), suggestions = new MemorySuggestions(db);
   const project = await workspace.createProject(actor, 'auto memory');
   const task = await workspace.createTask(actor, 'auto extraction', project.id);
-  const run = await runs.start(actor, task.id, randomUUID(), '我的报告需要使用中文。');
+  const initialScope = await runs.resources(actor, task.id, { versionIds: [], memoryScopes: [], expert: false });
+  check(initialScope.memoryScopes.join(',') === 'project,task,user', '空记忆范围按三层默认启用范围规范化');
+  const run = await runs.start(actor, task.id, randomUUID(), '我的报告需要使用中文。', [], initialScope);
   await runs.finish(actor, run, 'completed', [{ role: 'assistant', content: '好的。' }]);
+  await transaction(db, c => c.query("UPDATE workpivot.task_runs SET resource_scope=jsonb_set(resource_scope,'{memoryScopes}','[]'::jsonb) WHERE id=$1", [run.id]), actor);
   let calls = 0;
-  const worker = new MemoryWorker(db, async () => ({ providerId: 'test', model: 'test', async *streamChat() {
-    calls++; yield { type: 'delta', text: JSON.stringify(calls % 2 ? [{ scope: 'task', content: '报告使用中文', evidence: '报告需要使用中文', query: '报告语言' }] : { action: 'add', content: '报告使用中文' }) };
+  const worker = new MemoryWorker(db, async () => ({ providerId: 'test', model: 'test', async *streamChat(messages) {
+    calls++;
+    const input=JSON.parse(messages[1]!.content!);
+    yield { type: 'delta', text: JSON.stringify(input.candidate ? { action: 'add', content: input.candidate.content, dedupeKey: input.candidate.query } : [
+      { scope: 'user', content: '长期偏好中文报告', evidence: '报告需要使用中文', query: '个人|报告语言|中文' },
+      { scope: 'project', content: '项目要求中文报告', evidence: '报告需要使用中文', query: '项目|报告语言|中文' },
+      { scope: 'task', content: '报告使用中文', evidence: '报告需要使用中文', query: '任务|报告语言|中文' },
+    ]) };
   } }));
   await worker.enqueue(actor, task.id, run.id);
   await worker.enqueue(actor, task.id, run.id);
-  check(await worker.process(actor), 'durable extraction job claimed');
-  check(calls === 2, 'extraction and semantic consolidation are distinct model calls');
-  const candidate = (await suggestions.list(actor)).find(s => s.evidence === '报告需要使用中文');
-  check(candidate, 'automatic extraction retains exact source evidence');
-  check(!(await workspace.listMemories(actor, 'task',task.id)).memories.some(m => m.content === '报告使用中文'), 'automatic extraction cannot bypass user confirmation');
-  await suggestions.decide(actor, candidate!.id, true);
+  check(await worker.process(actor), '旧空记忆范围仍执行三层记忆提取');
+  check(calls === 4, '一次提取及三条语义整理调用完成');
   const memory = (await workspace.listMemories(actor, 'task',task.id)).memories.find(m => m.content === '报告使用中文')!;
-  check(memory, 'confirm publishes extracted memory');
+  check(memory, '无冲突的新任务记忆自动保存');
+  check((await workspace.listMemories(actor,'user',project.id)).memories.some(m=>m.content==='长期偏好中文报告')&&(await workspace.listMemories(actor,'project',project.id)).memories.some(m=>m.content==='项目要求中文报告'),'无冲突的用户和项目记忆也自动保存');
+  check(!(await suggestions.list(actor)).some(s => s.content === '报告使用中文'), '自动保存后不留下重复确认项');
   check(!await worker.process(actor), 'completed extraction job not replayed');
   const updateRun = await runs.start(actor, task.id, randomUUID(), '现在报告需要使用英文。');
   await runs.finish(actor, updateRun, 'completed', []);

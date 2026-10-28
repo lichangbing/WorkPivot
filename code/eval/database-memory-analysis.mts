@@ -18,7 +18,7 @@ export async function testMemoryAnalysis(db:Pool,actor:string,foreign:string,che
   if(mode==='update'){const target=input.existing.find((m:{content:string})=>m.content==='长期使用中文');yield {type:'delta',text:JSON.stringify(input.scope==='user'&&target?[{action:'update',content:'长期使用中文并注明依据',reason:'补充长期格式约定',runId:source.runId,evidence:'持续使用中文',key:'user|语言|中文附依据',targetId:target.id,targetRevision:target.revision}]:[])};return;}
   yield {type:'delta',text:JSON.stringify(mode==='empty'?[]:[{action:'add',content:input.scope==='user'?'长期使用中文'+(mode==='new'?'并标注来源':''):'项目交付中文报告'+(mode==='new'?'并核验日期':''),reason:'用户多次明确表达，供后续复用',runId:source.runId,evidence:'持续使用中文',key:input.scope+'|语言|中文'+(mode==='new'?'|新增':'')}])};
  }}));
- const complete=async(taskId:string,status:'completed'|'failed'='completed')=>{const run=await r.start(actor,taskId,randomUUID(),'持续使用中文，并根据项目要求工作。');await r.finish(actor,run,status,[]);return run;};
+ const complete=async(taskId:string,status:'completed'|'failed'='completed')=>{const scope=await r.resources(actor,taskId,{versionIds:[],memoryScopes:[],expert:false});const run=await r.start(actor,taskId,randomUUID(),'持续使用中文，并根据项目要求工作。',[],scope);await r.finish(actor,run,status,[]);await transaction(db,c=>c.query("UPDATE workpivot.task_runs SET resource_scope=jsonb_set(resource_scope,'{memoryScopes}','[]'::jsonb) WHERE id=$1",[run.id]),actor);return run;};
  for(let i=0;i<8;i++)await complete(i%2?a.id:b.id);
  const short=await r.start(actor,a.id,randomUUID(),'好');await r.finish(actor,short,'completed',[]);
  await analysis.collect(actor);check((await analysis.status(actor)).batches.length===0,'周期九轮不提前分析');
@@ -28,10 +28,8 @@ export async function testMemoryAnalysis(db:Pool,actor:string,foreign:string,che
  let state=await analysis.status(actor);check(state.batches.length===2&&state.progress.every(p=>p.pending===0&&p.total===10),'并发收集仅创建个人与项目两个十轮批次');
  await Promise.all([analysis.process(actor),analysis.process(actor)]);
  check(calls===2,'每个批次只调用一次模型，租约防止重复领取');
- const pending=(await suggestions.list(actor)).filter(s=>s.analysisId);check(pending.length===2&&pending.every(s=>s.sourceContext.length===9),'跨任务十轮来源生成待确认建议');
- check((await w.listMemories(actor,'user',project.id)).memories.length===0,'周期分析不自动保存个人记忆');
- for(const entry of pending)await suggestions.decide(actor,entry.id,true);
- check((await w.listMemories(actor,'user',project.id)).memories.length===1&&(await w.listMemories(actor,'project',project.id)).memories.length===1,'确认后按个人和项目正确保存');
+ check((await suggestions.list(actor)).filter(s=>s.analysisId).length===0,'无冲突的个人与项目记忆自动保存，不产生确认项');
+ check((await w.listMemories(actor,'user',project.id)).memories.length===1&&(await w.listMemories(actor,'project',project.id)).memories.length===1,'自动保存按个人和项目正确归档');
  check((await analysis.status(foreign)).batches.length===0,'周期进度与记录按用户隔离');
  await assert.rejects(analysis.retry(foreign,state.batches[0].id));check(true,'另一用户不能重试分析');
  for(let i=0;i<10;i++)await complete(i%2?a.id:b.id);
@@ -45,14 +43,8 @@ export async function testMemoryAnalysis(db:Pool,actor:string,foreign:string,che
  state=await analysis.status(actor);check(state.batches.find(b=>b.id===failed.id)?.status==='completed','失败重试可完成，无价值信息允许零建议');
  mode='new';for(let i=0;i<10;i++)await complete(i%2?a.id:b.id);
  await analysis.collect(actor);await analysis.process(actor);await analysis.process(actor);
- const stale=(await suggestions.list(actor)).find(s=>s.analysisId&&s.scope==='project')!;check(!!stale,'新事实生成待确认建议');
- const rejected=(await suggestions.list(actor)).find(s=>s.analysisId&&s.id!==stale.id)!;await suggestions.decide(actor,rejected.id,false);
- for(let i=0;i<10;i++)await complete(c.id);await analysis.collect(actor);await analysis.process(actor);await analysis.process(actor);
- check((await suggestions.list(actor)).some(s=>s.scope===rejected.scope&&s.content===rejected.content&&s.projectId===other.id),'不同项目的个人建议不共享拒绝记录');
+ check((await w.listMemories(actor,'user',project.id)).memories.some(m=>m.content.includes('并标注来源'))&&(await w.listMemories(actor,'project',project.id)).memories.some(m=>m.content.includes('并核验日期')),'不同新事实继续自动保存');
  mode='update';for(let i=0;i<10;i++)await complete(a.id);await analysis.collect(actor);await analysis.process(actor);await analysis.process(actor);
  const update=(await suggestions.list(actor)).find(s=>s.targetId);check(!!update?.originalContent,'周期修改建议展示原内容');
  await suggestions.decide(actor,update.id,true);check((await w.readMemory(actor,update.targetId))?.revision===2,'确认周期修改沿用记忆ID并递增修订');
- const source=stale.sourceContext[0];await transaction(db,c=>c.query('UPDATE workpivot.task_runs SET context_revoked=true WHERE id=$1',[source.runId]),actor);
- await assert.rejects(suggestions.decide(actor,stale.id,true));check(true,'确认时重新验证所有跨任务来源，撤销一轮即拒绝');
- await suggestions.decide(actor,stale.id,false);check(!(await suggestions.list(actor)).some(s=>s.id===stale.id),'失效建议仍可拒绝清理');
 }

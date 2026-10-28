@@ -1,6 +1,6 @@
 import type {Tool} from '@workpivot/core';
 const read=['list_uploaded_files','read_uploaded_file','read_document_structure','list_artifacts','search_project_documents','read_document_citation','search_memory','read_memory','load_skill','search_expert_experience','list_my_skill_builds','get_skill_build','get_automation_options','list_my_schedules','get_schedule_run'];
-const write=['save_artifact','propose_skill','revise_skill_draft','validate_skill_draft','propose_schedule','propose_schedule_change','pause_schedule','cancel_schedule_run'];
+const write=['create_pdf','save_artifact','propose_skill','revise_skill_draft','validate_skill_draft','propose_schedule','propose_schedule_change','pause_schedule','cancel_schedule_run'];
 /** 注册由服务器控制；远端声明和工具名前缀均不能自行取得只读身份。 */
 export function registerDatabaseTools(tools:Tool[],external:ReadonlySet<string>):Tool[] {
   const names=new Set<string>();

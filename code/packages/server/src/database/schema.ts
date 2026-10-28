@@ -515,5 +515,31 @@ ALTER TABLE identity.users ADD COLUMN messages_used integer NOT NULL DEFAULT 0 C
 -- 只授列级权限，不放开 identity.users 的其他字段。
 GRANT USAGE ON SCHEMA identity TO workpivot_app;
 GRANT SELECT(id,platform_admin,message_quota,messages_used), UPDATE(messages_used) ON identity.users TO workpivot_app;
+`}, {version:58,sql:`
+-- 演示额度按北京时间每天12:00进入新周期；时间和计算放在数据库，避免多实例边界漂移。
+CREATE OR REPLACE FUNCTION workpivot.quota_next_reset(at_time timestamptz)
+RETURNS timestamptz LANGUAGE sql STABLE AS $$
+  SELECT CASE
+    WHEN (at_time AT TIME ZONE 'Asia/Shanghai')::time < time '12:00'
+      THEN ((at_time AT TIME ZONE 'Asia/Shanghai')::date + time '12:00') AT TIME ZONE 'Asia/Shanghai'
+    ELSE (((at_time AT TIME ZONE 'Asia/Shanghai')::date + 1) + time '12:00') AT TIME ZONE 'Asia/Shanghai'
+  END
+$$;
+ALTER TABLE identity.users ADD COLUMN quota_reset_at timestamptz;
+UPDATE identity.users SET messages_used=0,quota_reset_at=workpivot.quota_next_reset(now());
+ALTER TABLE identity.users ALTER COLUMN quota_reset_at SET DEFAULT workpivot.quota_next_reset(now());
+ALTER TABLE identity.users ALTER COLUMN quota_reset_at SET NOT NULL;
+CREATE INDEX users_quota_reset ON identity.users(quota_reset_at) WHERE NOT platform_admin AND message_quota>0;
+GRANT EXECUTE ON FUNCTION workpivot.quota_next_reset(timestamptz) TO workpivot_app;
+GRANT SELECT(id,platform_admin,message_quota,messages_used,quota_reset_at),UPDATE(messages_used,quota_reset_at) ON identity.users TO workpivot_app,workpivot_auth;
+`}, {version:59,sql:`
+-- 修复读取范围为空时记忆提取被跳过的问题：一次性重新评估此前完成但无建议的来源任务。
+UPDATE workpivot.memory_jobs j SET status='pending',attempts=0,lease_until=NULL,error=NULL
+WHERE j.status='completed'
+  AND NOT EXISTS(SELECT 1 FROM workpivot.memory_suggestions s WHERE s.source_run_id=j.run_id);
+`}, {version:60,sql:`
+-- 区分用户确认与无冲突自动保存，便于审计和后续界面说明。
+ALTER TABLE workpivot.memory_suggestions ADD COLUMN decision_source text
+  CHECK(decision_source IS NULL OR decision_source IN ('auto','user'));
 `}] as const;
 import { usageSchema } from './usage-schema.js';

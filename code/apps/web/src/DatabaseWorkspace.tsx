@@ -13,6 +13,7 @@ import { DatabaseSummary } from './DatabaseSummary';
 import { DatabaseExecutionMode } from './DatabaseExecutionMode';
 import { DatabaseModelStatus } from './DatabaseModelStatus';
 import { DatabaseExecutionStatus } from './DatabaseExecutionStatus';
+import { MemorySuggestions } from './MemorySuggestions';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { DatabaseAttachments, AttachmentLabel, type AttachmentActions } from './DatabaseAttachments';
 import ReactMarkdown from 'react-markdown';
@@ -124,6 +125,14 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
 
   const previousTop = useRef(0);
   const reloadAuth = () => { void api.authState().then(setAuth).catch(e => setError(errorText(e))); };
+  useEffect(() => {
+    const resetsAt = auth?.quota?.resetsAt;
+    if (!resetsAt) return;
+    const delay = Date.parse(resetsAt) - Date.now();
+    if (!Number.isFinite(delay)) return;
+    const timer = setTimeout(reloadAuth, Math.max(1000, delay + 500));
+    return () => clearTimeout(timer);
+  }, [auth?.quota?.resetsAt]);
   useEffect(() => { reloadAuth(); const reset = () => { clearToken(); setAuth(null); reloadAuth(); }; window.addEventListener('wp:unauthorized', reset); return () => { window.removeEventListener('wp:unauthorized', reset); for (const c of streams.current) c.abort(); }; }, []);
   const refreshTasks = async () => { const value = await jsonFetch<{ tasks: Task[] }>('/api/tasks'); setTasks(value.tasks); };
   const refreshWorkspace = async () => {
@@ -278,7 +287,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   };
   const send = async (override?: string) => {
     const text = (override ?? input).trim();
-    if (quotaBlocked) { setError('演示额度已用完（10 次提问），如需继续请联系管理员开通'); return; }
+    if (quotaBlocked) { setError('演示额度已用完，每日北京时间 12:00 刷新'); return; }
     if (!chatEnabled || !active || !resourceSelection || (!text && !attachmentIds.length) || attachmentBlocked || sending) return;
     const taskId = active, epoch = generation.current, content = text || '请查看附件。', controller = new AbortController();
     const fingerprint = JSON.stringify([taskId, content, attachmentIds,resourceSelection]);
@@ -358,6 +367,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
 
         </section>)}
         {active && <DatabaseSummary key={'summary-'+active} taskId={active} busy={busy} />}
+        <MemorySuggestions key={'memory-'+auth.user?.id} />
         {active && <DatabaseParsing key={"parse-"+active} taskId={active} />}
         {active && <DatabaseExecutionStatus key={active} taskId={active} />}
         {active && <DatabaseSkillBuilds key={'skills-'+active} taskId={active} autoOpen />}
@@ -365,7 +375,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
       </div>
       {newMessages && <button className={button} onClick={() => { follow.current = true; if (viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight; setNewMessages(false); }}>查看新消息</button>}
       {task?.status === 'interrupted' && <div className="mx-4 mb-2 flex flex-wrap items-center gap-2 text-xs text-amber-400">上一轮执行被中断，历史已补齐为合法状态，可继续完成。<button className={button} onClick={() => { void resume(); }}>继续</button></div>}
-      {quotaRemaining !== null && <p className={`mx-4 mb-1 text-xs ${quotaBlocked ? 'text-amber-400' : 'text-neutral-500'}`}>{quotaBlocked ? '演示额度已用完（10 次提问），如需继续请联系管理员开通' : `剩余 ${quotaRemaining} 次提问`}</p>}
+      {quotaRemaining !== null && <p className={`mx-4 mb-1 text-xs ${quotaBlocked ? 'text-amber-400' : 'text-neutral-500'}`}>{quotaBlocked ? `演示额度已用完（${auth.quota?.limit ?? 10} 次提问），每日北京时间 12:00 刷新` : `剩余 ${quotaRemaining} 次提问 · 每日北京时间 12:00 刷新`}</p>}
       <form className="workspace-composer mx-4 mb-4 rounded-2xl border border-neutral-700 bg-neutral-900/50 p-3" onDragOver={e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={e => { if (e.dataTransfer.files.length) { e.preventDefault(); attachmentControl.current?.addFiles(Array.from(e.dataTransfer.files)); } }} onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); attachmentControl.current?.addFiles(Array.from(e.clipboardData.files)); } }} onSubmit={e => { e.preventDefault(); void send(); }}>
         {filesEnabled && active && <DatabaseAttachments ref={attachmentControl} key={`${active}:${attachmentEpoch}`} taskId={active} disabled={busy || !ready} onChange={attachmentChange} />}
         <textarea aria-label="消息" value={input} disabled={!chatEnabled || !active || !resourceSelection || busy || !ready || quotaBlocked} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} placeholder={chatEnabled ? active ? '输入消息，Enter 发送，Shift + Enter 换行' : '请先新建/选择任务' : '后台尚未启用对话执行'} className="message-input max-h-48 min-h-[88px] w-full resize-none bg-transparent px-1 py-1 text-sm outline-none" />

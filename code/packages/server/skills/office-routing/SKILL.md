@@ -16,6 +16,7 @@ license: Proprietary. 内置技能，随 WorkPivot 发行。
 | 新建Word | 已加载docx-report → references/create.md → execute_skill生成、检查、发布 |
 | 新建Excel | 已加载xlsx-report → references/create.md → execute_skill生成、检查、发布；需要公式结果时使用convert.py进行受限重算，失败不得伪造缓存 |
 | 新建PPT | 已加载pptx-report → references/create.md → execute_skill生成、检查、发布；使用inspect.py与convert.py检查边界和生成预览，未查看预览须说明 |
+| 新建PDF | 使用 `create_pdf` 直接提交有界HTML正文和版式参数；不允许脚本、表单、外部资源或宿主路径。已有Office文件转PDF不用重建HTML，按对应专项技能的只读转换路线执行 |
 | 修改已有Office | 读取对应技能references/read-edit.md → 核对定位和支持范围 → 修改副本并读回；不能支持时说明具体缺口 |
 | PDF扫描页/图片文字 | 检查coverage和warnings；PNG/JPEG和无文字PDF页尝试有界OCR，不把少量文字或置信度当作完整识别 |
 

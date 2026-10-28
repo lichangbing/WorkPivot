@@ -1,4 +1,5 @@
 import {permissionSummarySql,clearIdleContext} from './context-retention.js';
+import {memoryEnabled} from './memory-controls.js';
 import {publicToolEvent} from './tool-events.js';
 import {selection,requireVersion,fileTaskScope,type RunResourceScope} from './resource-scope.js';
 import {authorizationDigest,currentInvocation} from './tool-authorization.js';
@@ -75,6 +76,11 @@ export class RunRepository {
       const old=previous?.resource_scope as RunResourceScope|null;
       if(input&&typeof input==='object'&&'baseRunId' in input&&(input as {baseRunId:unknown}).baseRunId!==(previous?.id??null))throw new RepositoryError(409,'读取范围已在其他页面变化，请刷新');
       const value=selection(input===undefined?(old?.version===1?old:{versionIds:[],memoryScopes:[],expert:false}):input);
+      // 自动资料范围未提供记忆层时，沿用三层中仍启用“加载”的默认集合；显式关闭仍由记忆设置控制。
+      if(value.memoryScopes.length===0){
+        for(const scope of ['user','project','task'] as const)if(await memoryEnabled(c,scope,'load'))value.memoryScopes.push(scope);
+        value.memoryScopes.sort();
+      }
       value.versionIds=selection({...value,versionIds:[...value.versionIds,...attachments]}).versionIds;
       const valid=(await c.query(`SELECT v.id FROM workpivot.document_versions v JOIN workpivot.documents d ON d.id=v.document_id WHERE ${fileTaskScope('$1')} AND v.id=ANY($2::uuid[])`,[taskId,value.versionIds])).rows.map(r=>r.id as string);
       if(input!==undefined&&valid.length!==value.versionIds.length)throw new RepositoryError(404,'所选文件已删除或不属于当前任务和项目');
@@ -195,11 +201,16 @@ export class RunRepository {
       }
       // 演示额度：只对真正新建的轮次计数（重复请求在前面已返回），与建 run 同事务。
       const quota = await c.query(
-        'UPDATE identity.users SET messages_used=messages_used+1 WHERE id=$1 AND NOT platform_admin AND message_quota>0 AND messages_used<message_quota RETURNING message_quota-messages_used AS remaining',
+        `UPDATE identity.users SET
+           messages_used=CASE WHEN quota_reset_at<=now() THEN 1 ELSE messages_used+1 END,
+           quota_reset_at=CASE WHEN quota_reset_at<=now() THEN workpivot.quota_next_reset(now()) ELSE quota_reset_at END
+         WHERE id=$1 AND NOT platform_admin AND message_quota>0
+           AND (quota_reset_at<=now() OR messages_used<message_quota)
+         RETURNING message_quota-messages_used AS remaining`,
         [actor],
       );
       if (!quota.rowCount) {
-        const me = (await c.query('SELECT platform_admin,message_quota,messages_used FROM identity.users WHERE id=$1', [actor])).rows[0];
+        const me = (await c.query('SELECT platform_admin,message_quota,messages_used,quota_reset_at FROM identity.users WHERE id=$1', [actor])).rows[0];
         if (!me) throw new RepositoryError(401, '账号不存在');
         if (!me.platform_admin && Number(me.message_quota) > 0) throw new RepositoryError(429, `演示额度已用完（${me.message_quota} 次），如需继续请联系管理员开通`);
       }

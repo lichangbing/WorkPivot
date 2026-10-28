@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { SafeHttp, publicAddress, webUrl, type WebPolicy, type WebResponse } from '../packages/server/src/web/safe-http.js';
 import { htmlContent, responseContent } from '../packages/server/src/web/content.js';
-import { BrowserEngine, browseInput } from '../packages/server/src/web/browser-engine.js';
+import { BrowserEngine, browseInput, pdfInput } from '../packages/server/src/web/browser-engine.js';
 import { browserService } from '../packages/server/src/web/browser-service.js';
 import { WebTools } from '../packages/server/src/web/tools.js';
 import { webResolver } from '../packages/server/src/web/resolver.js';
@@ -91,6 +91,12 @@ await check('浏览器输入边界', () => {
   assert.throws(() => browseInput({ url: 'https://example.com', actions: [{ kind: 'evaluate', script: 'alert(1)' }] }));
   assert.throws(() => browseInput({ url: 'https://example.com', actions: [{ kind: 'wait', milliseconds: 99999 }] }));
 });
+await check('PDF输入仅接受有界安全HTML片段', () => {
+  assert.deepEqual(pdfInput({ title: '周报', bodyHtml: '<h1>周报</h1><p>正文</p>', pageSize: 'A4', landscape: false, marginMm: 14, pageNumbers: true }).pageSize, 'A4');
+  for (const bodyHtml of ['', '<script>alert(1)</script>', '<iframe src="https://example.com"></iframe>', '<p onclick="alert(1)">x</p>', '<html><body>x</body></html>']) assert.throws(() => pdfInput({ title: '测试', bodyHtml }));
+  assert.throws(() => pdfInput({ title: '测试', bodyHtml: '<p>x</p>', marginMm: 2 }));
+  assert.throws(() => pdfInput({ title: '测试', bodyHtml: 'x'.repeat(256 * 1024 + 1) }));
+});
 let reads = 0;const sentUrls:string[]=[];
 class FixtureHttp extends SafeHttp {
   override async get(url: string, policy: WebPolicy = {}): Promise<WebResponse> {
@@ -123,6 +129,15 @@ if (process.argv.includes('--browser')) {
     await check('浏览器服务鉴权与输入边界', async () => {
       assert.equal((await fetch(base + '/v1/browse', { method: 'POST' })).status, 401);
       assert.equal((await fetch(base + '/v1/browse', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' }, body: '{"url":"http://127.0.0.1"}' })).status, 422);
+      assert.equal((await fetch(base + '/v1/pdf', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' }, body: JSON.stringify({ title: '拒绝', bodyHtml: '<script>bad()</script>' }) })).status, 422);
+    });
+    await check('真实Chromium将中文HTML打印为分页PDF', async () => {
+      const response = await fetch(base + '/v1/pdf', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' }, body: JSON.stringify({ title: 'PDF 验收', bodyHtml: '<h1>中文 PDF 验收</h1><p>第一页正文，包含表格与分页内容。</p><table><thead><tr><th>项目</th><th>结果</th></tr></thead><tbody><tr><td>中文</td><td>通过</td></tr></tbody></table><div class="page-break"></div><h2>第二页</h2><p>分页后的正文。</p><img src="https://blocked.example/image.png">', pageSize: 'A4', landscape: false, marginMm: 14, pageNumbers: true }) });
+      assert.equal(response.status, 200);
+      const result = await response.json() as { pdf: string; pageCount: number };
+      const data = Buffer.from(result.pdf, 'base64');
+      assert.equal(data.subarray(0, 5).toString('ascii'), '%PDF-');
+      assert.equal(result.pageCount, 2);
     });
     await check('真实Chromium动态渲染、点击、滚动、截图及请求拦截', async () => {
       const result = await engine.browse(browseInput({ url: 'https://fixture.example', actions: [{ kind: 'click', selector: '#expand' }, { kind: 'scroll', pixels: 600 }, { kind: 'wait', milliseconds: 100 }], screenshot: true }));

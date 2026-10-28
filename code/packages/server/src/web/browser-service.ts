@@ -57,6 +57,17 @@ export function browserService(token: string, engine = new BrowserEngine()) {
       if (!controller.signal.aborted) response.status(422).json({ error: error instanceof Error ? error.message.slice(0, 300) : '网页采集失败' });
     } finally { response.removeListener('close', cancel); }
   });
+  app.post('/v1/pdf', async (request, response) => {
+    const controller = new AbortController();
+    const cancel = () => { if (!response.writableEnded) controller.abort(); };
+    response.on('close', cancel);
+    try {
+      const result = await engine.pdf(request.body ?? {}, controller.signal);
+      response.json({ pdf: result.data.toString('base64'), pageCount: result.pageCount });
+    } catch (error) {
+      if (!controller.signal.aborted) response.status(422).json({ error: error instanceof Error ? error.message.slice(0, 300) : 'PDF生成失败' });
+    } finally { response.removeListener('close', cancel); }
+  });
   app.post('/v1/browse', async (request, response) => {
     const controller = new AbortController();
     const cancel = () => { if (!response.writableEnded) controller.abort(); };

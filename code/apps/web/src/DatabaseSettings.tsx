@@ -23,7 +23,7 @@ const field = 'block w-full rounded border border-neutral-700 bg-neutral-900 p-2
 const titles = { memory: '记忆管理', server: '服务器连接', projects: '项目管理', providers: '模型配置', mcp: 'MCP 配置', skills: 'Skill', experts: '专家', usage: '用量统计', sessions: '登录会话', personal: '个人数据' };
 
 const settingsItems: Record<SettingsSection, { icon: IconName; description: string }> = {
-  memory: { icon: 'memory', description: '查看已保存内容、确认建议与管理周期分析。' },
+  memory: { icon: 'memory', description: '查看自动保存的记忆，逐条处理冲突与管理周期分析。' },
   mcp: { icon: 'plug', description: '连接外部工具，管理智能体可使用的服务。' },
   skills: { icon: 'skill', description: '管理技能构建、发布与加载。' },
   experts: { icon: 'bot', description: '配置专家角色与工作方式。' },

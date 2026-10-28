@@ -1,5 +1,16 @@
 # 与 package.json / pnpm-lock.yaml 中的 Playwright 版本保持一致。
 FROM mcr.microsoft.com/playwright:v1.64.1-noble
+
+ARG APT_MIRROR=https://mirrors.aliyun.com/ubuntu
+# PDF打印需要稳定的中文字体；浏览器不加载网络字体。
+RUN sed -i \
+      -e "s#http://azure.archive.ubuntu.com/ubuntu#${APT_MIRROR}#g" \
+      -e "s#http://archive.ubuntu.com/ubuntu#${APT_MIRROR}#g" \
+      -e "s#http://security.ubuntu.com/ubuntu#${APT_MIRROR}#g" \
+      /etc/apt/sources.list.d/ubuntu.sources \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
 ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 WORKDIR /app
 RUN corepack enable

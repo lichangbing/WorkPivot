@@ -1,6 +1,6 @@
 # 设计文档
 
-2026-10-24新增：[子代理与多 agent 协作](architecture/多agent协作-20261024.md)。区分两者：子代理是星形工具调用（A1 并行委派、A2 续聊），多 agent 协作需要团队会话、共享黑板与轮次协议，只做 Panel 与 Review loop。**结论：不实施**——协作层在竞品中不成熟、收益未被证明、适用面窄，保留为调研参考（R008 关闭）。
+2026-10-26新增：[PDF生成与Office转换](architecture/PDF生成与Office转换-20261026.md)。从零生成使用安全 HTML→Chromium `create_pdf`，已有 Office 文件使用 LibreOffice 转换；两条路线分别校验 PDF、页数和视觉边界。
 
 2026-10-24新增：[对话记录入库（文件链路混合存储）](architecture/对话记录入库（文件链路混合存储）-20261024.md)。只把任务元数据与对话消息写入 PG（独立 `chat` schema），工作目录与文件字节仍在磁盘；分页读取、数据库取号修掉 `ordinal` 复位；未配置 DSN 时保持 JSONL（R007）。
 

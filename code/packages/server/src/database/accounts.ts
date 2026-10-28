@@ -34,10 +34,26 @@ async function audit(client: PoolClient, actor: string, target: string, action: 
   await client.query('INSERT INTO identity.audit_events(actor_id,target_id,action) VALUES($1,$2,$3)', [actor, target, action]);
 }
 
+type QuotaRow = { platform_admin: boolean; message_quota: number | string; messages_used: number | string; quota_reset_at?: Date | string | null };
+
+/** 与数据库函数保持一致：北京时间每天12:00进入下一额度周期。 */
+export function nextQuotaReset(at = new Date()): Date {
+  const shanghai = new Date(at.getTime() + 8 * 60 * 60 * 1000);
+  const todayNoon = Date.UTC(shanghai.getUTCFullYear(), shanghai.getUTCMonth(), shanghai.getUTCDate(), 12) - 8 * 60 * 60 * 1000;
+  return new Date(todayNoon > at.getTime() ? todayNoon : todayNoon + 24 * 60 * 60 * 1000);
+}
+
+/** 已过每日重置点时，旧 usage 不应继续占用新周期额度。 */
+export function quotaPeriodUsed(row: QuotaRow, now = new Date()): number {
+  if (!row.quota_reset_at) return Number(row.messages_used);
+  const resetAt = row.quota_reset_at instanceof Date ? row.quota_reset_at : new Date(row.quota_reset_at);
+  return Number.isFinite(resetAt.getTime()) && resetAt <= now ? 0 : Number(row.messages_used);
+}
+
 /** 演示额度判定（纯函数，便于单测边界）：platform_admin 或 quota=0 视为不限。 */
-export function quotaDecision(row: { platform_admin: boolean; message_quota: number | string; messages_used: number | string }): { unlimited: boolean; remaining: number | null } {
+export function quotaDecision(row: QuotaRow, now = new Date()): { unlimited: boolean; remaining: number | null } {
   const limit = Number(row.message_quota);
-  const used = Number(row.messages_used);
+  const used = quotaPeriodUsed(row, now);
   if (row.platform_admin || limit === 0) return { unlimited: true, remaining: null };
   return { unlimited: false, remaining: Math.max(0, limit - used) };
 }
@@ -66,22 +82,27 @@ export class AccountRepository {
   /** 演示额度：消费一次用户消息；返回剩余次数（null 表示不限）。 */
   async consumeMessageQuota(actor: string): Promise<number | null> {
     const updated = await this.db.query(
-      'UPDATE identity.users SET messages_used=messages_used+1 WHERE id=$1 AND NOT platform_admin AND message_quota>0 AND messages_used<message_quota RETURNING message_quota-messages_used AS remaining',
+      `UPDATE identity.users SET
+         messages_used=CASE WHEN quota_reset_at<=now() THEN 1 ELSE messages_used+1 END,
+         quota_reset_at=CASE WHEN quota_reset_at<=now() THEN workpivot.quota_next_reset(now()) ELSE quota_reset_at END
+       WHERE id=$1 AND NOT platform_admin AND message_quota>0
+         AND (quota_reset_at<=now() OR messages_used<message_quota)
+       RETURNING message_quota-messages_used AS remaining`,
       [actor],
     );
     if (updated.rowCount) return Number(updated.rows[0].remaining);
-    const row = (await this.db.query('SELECT platform_admin,message_quota,messages_used FROM identity.users WHERE id=$1', [actor])).rows[0];
+    const row = (await this.db.query('SELECT platform_admin,message_quota,messages_used,quota_reset_at FROM identity.users WHERE id=$1', [actor])).rows[0];
     if (!row) throw new RepositoryError(401, '账号不存在');
     if (row.platform_admin || Number(row.message_quota) === 0) return null;
     throw new RepositoryError(429, `演示额度已用完（${row.message_quota} 次），请联系管理员开通`);
   }
 
   /** 当前额度状态，供前端展示与禁用输入。 */
-  async quota(actor: string): Promise<{ used: number; limit: number; remaining: number | null }> {
-    const row = (await this.db.query('SELECT platform_admin,message_quota,messages_used FROM identity.users WHERE id=$1', [actor])).rows[0];
+  async quota(actor: string): Promise<{ used: number; limit: number; remaining: number | null; resetsAt: string }> {
+    const row = (await this.db.query('SELECT platform_admin,message_quota,messages_used,quota_reset_at FROM identity.users WHERE id=$1', [actor])).rows[0];
     if (!row) throw new RepositoryError(401, '账号不存在');
-    const decision = quotaDecision(row);
-    return { used: Number(row.messages_used), limit: Number(row.message_quota), remaining: decision.remaining };
+    const now = new Date(), resetAt = new Date(row.quota_reset_at), decision = quotaDecision(row, now);
+    return { used: quotaPeriodUsed(row, now), limit: Number(row.message_quota), remaining: decision.remaining, resetsAt: (resetAt <= now ? nextQuotaReset(now) : resetAt).toISOString() };
   }
 
   async registerFirst(username: string, password: string): Promise<{ token: string; user: DatabaseUser }> {

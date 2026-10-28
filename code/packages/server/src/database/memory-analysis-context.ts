@@ -11,7 +11,6 @@ export async function analysisSources(c:PoolClient,id:string){
  FROM workpivot.memory_analysis_turns a JOIN workpivot.task_runs r ON r.id=a.run_id
  JOIN workpivot.tasks t ON t.id=r.task_id JOIN workpivot.conversation_events e ON e.turn_id=r.turn_id AND e.kind='user'
  WHERE a.batch_id=$1 AND r.status='completed' AND NOT r.context_revoked AND t.deleted_at IS NULL
- AND (r.resource_scope IS NULL OR r.resource_scope->'memoryScopes' IS NULL OR r.resource_scope->'memoryScopes' ? $2)
  AND t.project_id IS NOT DISTINCT FROM $3::uuid ORDER BY a.counted_at,r.id`,[id,batch.scope,batch.scope==='user'&&batch.scope_id===batch.owner_user_id?null:batch.scope_id])).rows as (MemorySource&{taskId:string;taskName:string})[];
  if(rows.length!==10||new Set(rows.map(r=>r.runId)).size!==10)throw new RepositoryError(409,'分析来源已删除、撤销或改变归属');
  if(rows.reduce((n,r)=>n+r.evidence.length,0)>80000)throw new RepositoryError(409,'十轮原文超过80000字，未截断分析，请缩短后续输入');

@@ -58,7 +58,7 @@ try{
  const page=await launch();
  await page.getByRole('button',{name:'设置',exact:true}).click();
  await page.getByRole('button',{name:'记忆管理',exact:true}).click();
- await page.getByText('暂无已保存的个人记忆。可查看“待确认建议”，或切换到其他记忆层级。',{exact:true}).waitFor();
+ await page.getByText('暂无已保存的个人记忆。可查看“待确认冲突”，或切换到其他记忆层级。',{exact:true}).waitFor();
  await page.getByRole('button',{name:'任务记忆',exact:true}).click();
  await page.getByText('任务记忆合成正文：周五交付报告。',{exact:true}).waitFor();
  await page.screenshot({path:'/tmp/wp-memory-management.png'});
@@ -72,9 +72,9 @@ try{
  assert.equal(entries.length,1);
  await page.getByRole('button',{name:'删除',exact:true}).click();
  await page.getByRole('button',{name:'确认移入回收站',exact:true}).click();
- await page.getByText('暂无已保存的任务记忆。可查看“待确认建议”，或切换到其他记忆层级。',{exact:true}).waitFor();
+ await page.getByText('暂无已保存的任务记忆。可查看“待确认冲突”，或切换到其他记忆层级。',{exact:true}).waitFor();
  assert.equal(entries.length,0);
- await page.getByRole('button',{name:'待确认建议',exact:true}).click();
+ await page.getByRole('button',{name:'待确认冲突',exact:true}).click();
  await page.getByText('长期偏好中文报告',{exact:true}).waitFor();
  await page.getByRole('button',{name:'确认保存',exact:true}).click();
  await page.getByRole('button',{name:'已保存记忆',exact:true}).click();
@@ -92,7 +92,7 @@ try{
  await page.getByText('旧全局个人偏好',{exact:true}).waitFor();
  await page.getByLabel('旧个人记忆归属',{exact:true}).selectOption('project-a');
  await page.getByRole('button',{name:'确认归属并启用',exact:true}).click();
- await page.getByText('暂无已保存的个人记忆。可查看“待确认建议”，或切换到其他记忆层级。',{exact:true}).waitFor();
+ await page.getByText('暂无已保存的个人记忆。可查看“待确认冲突”，或切换到其他记忆层级。',{exact:true}).waitFor();
  await page.getByLabel('个人记忆项目筛选',{exact:true}).selectOption('project-a');
  await page.getByText('旧全局个人偏好',{exact:true}).waitFor();
  await page.screenshot({path:'/tmp/wp-personal-project-memory.png'});

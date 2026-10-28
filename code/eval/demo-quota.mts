@@ -3,7 +3,7 @@
  * 只测纯函数边界，真实计数由 runs.start 的事务完成。
  */
 import assert from 'node:assert/strict';
-import { quotaDecision } from '../packages/server/src/database/accounts.js';
+import { nextQuotaReset, quotaDecision, quotaPeriodUsed } from '../packages/server/src/database/accounts.js';
 
 let checks = 0;
 function check(label: string, run: () => void): void {
@@ -32,6 +32,18 @@ check('quota=0 视为关闭限制（不限次）', () => {
 
 check('数据库返回字符串数字也能正确判定', () => {
   assert.deepEqual(quotaDecision({ platform_admin: false, message_quota: '10', messages_used: '9' }), { unlimited: false, remaining: 1 });
+});
+
+check('北京时间每日12点按需重置，旧计数不占用新周期', () => {
+  const beforeNoon = new Date('2026-10-27T03:59:59.000Z');
+  const atNoon = new Date('2026-10-27T04:00:00.000Z');
+  const row = { platform_admin: false, message_quota: 10, messages_used: 10, quota_reset_at: '2026-10-27T04:00:00.000Z' };
+  assert.equal(quotaPeriodUsed(row, beforeNoon), 10);
+  assert.deepEqual(quotaDecision(row, beforeNoon), { unlimited: false, remaining: 0 });
+  assert.equal(quotaPeriodUsed(row, atNoon), 0);
+  assert.deepEqual(quotaDecision(row, atNoon), { unlimited: false, remaining: 10 });
+  assert.equal(nextQuotaReset(beforeNoon).toISOString(), '2026-10-27T04:00:00.000Z');
+  assert.equal(nextQuotaReset(atNoon).toISOString(), '2026-10-28T04:00:00.000Z');
 });
 
 console.log(`\n演示额度判定：${checks} 项通过`);
