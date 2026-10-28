@@ -6,6 +6,7 @@ import {DatabaseCitation} from './DatabaseCitation';
 import {DatabaseTurnProcess,isProcessEvent} from './DatabaseTurnProcess';
 import {DatabaseTrash} from './DatabaseTrash';
 import {DatabaseAutomations,AutomationDraftNotice} from './DatabaseAutomations';
+import { BusinessFactsPanel } from './BusinessFactsPanel';
 import { DatabaseSkillBuilds } from './DatabaseSkillBuilds';
 import {ExpertSelector,ExpertSuggestions} from './DatabaseExperts';
 import { DatabaseParsing } from './DatabaseParsing';
@@ -96,6 +97,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   const [error, setError] = useState(''), [input, setInput] = useState('');
   const [newMessages, setNewMessages] = useState(false);
   const [settings, setSettings] = useState<SettingsSection | null>(null);
+  const [businessFactsOpen, setBusinessFactsOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(() => localStorage.getItem('wp-right-panel-open') !== 'false');
   const generation = useRef(0);
   const pendingSend = useRef<{ fingerprint: string; id: string } | null>(null);
@@ -378,7 +380,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     <DatabaseWorkspaceNavigation onAutomations={()=>{location.hash='automations';}} trashActive={trashPage} onProjectSelect={id => { if (trashPage) { leaveTrash(); setActive(current => tasks.some(t => t.id === current && t.projectId === id) ? current : tasks.find(t => t.projectId === id)?.id ?? null); } }} projects={projects} tasks={tasks} active={trashPage ? null : active} username={auth.user?.username} onSelect={selectTask} onRefresh={refreshWorkspace} onSettings={section => setSettings(section)} onError={setError} onLogout={() => { void api.logout().finally(() => { for (const c of streams.current) c.abort(); clearToken(); setActive(null); setTasks([]); reloadAuth(); }); }} />
     {trashPage && <DatabaseTrash onBack={leaveTrash} onChanged={refreshWorkspace} />}
     <main style={trashPage ? { display: 'none' } : undefined} className="flex min-w-0 flex-1 flex-col">
-      <header className="flex items-center justify-between gap-3 border-b border-neutral-800 px-4 py-2 text-xs"><h1 className="min-w-0 flex-1 truncate text-left text-sm font-medium">{projects.find(p => p.id === task?.projectId)?.name ?? '临时任务'} / {task?.name ?? '选择任务'}</h1><DatabaseFloating key={auth.user?.id} user={auth.user?.id??'user'} active={active} tasks={tasks} onSelect={setActive} onSettings={()=>setSettings('mcp')} /><button className="rounded-lg p-2 text-neutral-400 hover:bg-neutral-800" aria-label={rightOpen?'隐藏右侧浏览器':'显示右侧浏览器'} onClick={()=>{setRightOpen(!rightOpen);localStorage.setItem('wp-right-panel-open',String(!rightOpen));}}><Icon name={rightOpen?'panelClose':'panelOpen'} size={19}/></button></header>
+      <header className="flex items-center justify-between gap-3 border-b border-neutral-800 px-4 py-2 text-xs"><h1 className="min-w-0 flex-1 truncate text-left text-sm font-medium">{projects.find(p => p.id === task?.projectId)?.name ?? '临时任务'} / {task?.name ?? '选择任务'}</h1><button disabled={!task?.projectId} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-800 disabled:text-neutral-600" title={task?.projectId?'查看项目对象、事实、版本、证据和冲突':'临时任务不生成业务事实'} onClick={()=>setBusinessFactsOpen(true)}><Icon name="chart" size={15}/>业务事实</button><DatabaseFloating key={auth.user?.id} user={auth.user?.id??'user'} active={active} tasks={tasks} onSelect={setActive} onSettings={()=>setSettings('mcp')} /><button className="rounded-lg p-2 text-neutral-400 hover:bg-neutral-800" aria-label={rightOpen?'隐藏右侧浏览器':'显示右侧浏览器'} onClick={()=>{setRightOpen(!rightOpen);localStorage.setItem('wp-right-panel-open',String(!rightOpen));}}><Icon name={rightOpen?'panelClose':'panelOpen'} size={19}/></button></header>
       {task && <ExpertSelector task={task} project={projects.find(p=>p.id===task.projectId)} onChanged={refreshWorkspace}/>}
       {error && <div role="alert" className="px-6 py-2 text-sm text-red-400">{error}<button className="ml-3 underline" onClick={() => { setError(''); if (!ready) { setAuth({ ...auth }); } else void loadOlder(); }}>重试</button></div>}
       <div ref={viewport} aria-label="聊天记录" className="min-h-0 flex-1 overflow-y-auto px-6 py-4" onWheel={e => { if (e.deltaY < 0 && e.currentTarget.scrollTop < 32) { follow.current = false; void loadOlder(); } }} onScroll={e => { const el = e.currentTarget; const upward = el.scrollTop < previousTop.current; previousTop.current = el.scrollTop; follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; if (upward && el.scrollTop < 32) void loadOlder(); }}>
@@ -422,5 +424,6 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     </main>
     {rightOpen && !trashPage && <DatabaseBrowser key={active??'empty'} taskId={active} onHide={()=>{setRightOpen(false);localStorage.setItem('wp-right-panel-open','false');}} />}
     {settings && <DatabaseSettings initialSection={settings} configurationEnabled={chatEnabled} onClose={() => setSettings(null)} onChanged={refreshWorkspace} />}
+    {businessFactsOpen && task?.projectId && <BusinessFactsPanel key={task.projectId} projectId={task.projectId} onClose={() => setBusinessFactsOpen(false)} />}
   </div>;
 }
