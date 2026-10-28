@@ -42,11 +42,23 @@ export class DatabaseExecution {
         const messages = await this.runs.history(actor, run);
         // O-17：确认模式下联网只在首次确认，本轮其余网络工具放行（MCP 仍逐次）。
         let networkApproved = false;
+        let networkDenied = false;
         // O-16：确认模式下首个写入/执行动作前确认一次执行计划，本轮不再逐次拦。
         let planApproved = false;
-        const baseAccess: NonNullable<RunAgentOptions['requestAccess']> = options.requestAccess ?? (async request => {
+        // 同一轮可能有多个只读工具并发。授权表只保留一个待处理请求，
+        // 因此访问判定必须串行；首个联网许可会覆盖后续同类只读调用。
+        let accessQueue: Promise<void> = Promise.resolve();
+        const serializedAccess = async <T>(action: () => Promise<T>): Promise<T> => {
+          const previous = accessQueue;
+          let release!: () => void;
+          accessQueue = new Promise<void>(resolve => { release = resolve; });
+          await previous;
+          try { return await action(); } finally { release(); }
+        };
+        const performAccess: NonNullable<RunAgentOptions['requestAccess']> = options.requestAccess ?? (async request => {
           const gate = request.tool === 'plan';
           if (!gate && (!request.external || request.paths.length || request.kind !== 'write')) return false;
+          if (!gate && networkDenied && shouldAskNetwork(request.tool, false)) return false;
           if (!gate && !shouldAskNetwork(request.tool, networkApproved)) return true;
           const permission = await this.runs.requestPermission(actor, run, request);
           // 静默执行已在登记时记为已批准并已消费，不弹卡也不等待人工决定。
@@ -58,6 +70,7 @@ export class DatabaseExecution {
               const allowed = decision === 'allow';
               // approved=false 时只有网络工具需要询问，这里正好用来判断“是不是网络工具”。
               if (allowed && !gate && shouldAskNetwork(request.tool, false)) networkApproved = true;
+              else if (!allowed && !gate && shouldAskNetwork(request.tool, false)) networkDenied = true;
               return allowed;
             }
             await new Promise<void>(resolve => {
@@ -68,6 +81,7 @@ export class DatabaseExecution {
           }
           return false;
         });
+        const baseAccess: NonNullable<RunAgentOptions['requestAccess']> = request => serializedAccess(() => performAccess(request));
         const requestAccess: NonNullable<RunAgentOptions['requestAccess']> = async request => {
           const allowed = await baseAccess(request);
           if (allowed && request.tool === 'plan') planApproved = true;

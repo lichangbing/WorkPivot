@@ -14,11 +14,13 @@ const QUESTION_ONLY = /^[^。！!？?]{0,120}[？?]$/;
 export const IDLE_NUDGE =
   '你还没有真正完成任务：不要只描述计划或征求确认，现在就用工具执行。完成后用一段话说明做了什么、产出了哪些真实文件（给出相对路径）。如果确实缺少用户才能提供的信息，请明确列出需要什么。';
 
-export function continuationPrompt(userText: string, assistantText: string): string | null {
+export function continuationPrompt(userText: string, assistantText: string, toolCalls = 0): string | null {
   const user = userText.trim();
   const assistant = assistantText.trim();
   const promised = PROMISED_ACTION.test(assistant) && assistant.length < 600;
-  const actionable = ACTION_INTENT.test(user);
+  // 已经调用过工具时，短文本更可能是阶段说明，由后续工具结果继续；
+  // 只有整轮尚未动手且回答仍像开场说明时才补一次执行追问。
+  const actionable = ACTION_INTENT.test(user) && toolCalls === 0 && assistant.length < 600;
   if (!promised && !actionable) return null;
   if (!promised && QUESTION_ONLY.test(user)) return null;
   return IDLE_NUDGE;

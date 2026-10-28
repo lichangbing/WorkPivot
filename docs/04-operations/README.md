@@ -42,7 +42,7 @@
 | --- | --- |
 | 用户端 | `https://workpivot.lichb.cc.cd/` |
 | 管理端 | `https://workpivot.lichb.cc.cd/admin` |
-| Android 内测包 | `https://workpivot.lichb.cc.cd/downloads/WorkPivot-android-1.5.apk` |
+| Android 内测包 | `https://workpivot.lichb.cc.cd/downloads/WorkPivot-android-1.6.apk` |
 | 迁移回退 | `https://115-191-1-188.sslip.io:80/` |
 
 正式域名通过 Cloudflare Tunnel 提供标准 HTTPS。`cloudflared` 从服务器主动向

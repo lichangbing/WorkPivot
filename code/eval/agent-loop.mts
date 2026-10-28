@@ -130,6 +130,7 @@ await check('edit 精确替换、歧义与 replace_all', async () => {
 await check('续跑判定只对产出型请求或已承诺动作生效', async () => {
   assert.ok(continuationPrompt('帮我生成一份周报', '好的，我先了解需求。'));
   assert.ok(continuationPrompt('继续', '接下来我会整理文件。'));
+  assert.equal(continuationPrompt('帮我生成一份周报', '我先了解一下。', 2), null);
   assert.equal(continuationPrompt('这是什么？', '这是一个文件管理器。'), null);
   assert.equal(continuationPrompt('你好', '你好，有什么可以帮你？'), null);
 });

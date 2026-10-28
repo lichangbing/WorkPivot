@@ -86,6 +86,7 @@
     "eval:limits": "node scripts/test-limits.mjs",
     "eval:limits-ui": "node eval/limits-panel-ui.mjs",
     "eval:users-ui": "node eval/users-panel-ui.mjs",
+    "eval:permission-dock": "node eval/permission-dock-ui.mjs",
     "eval:automation-capacity": "node scripts/test-automations.mjs --capacity",
     "eval:automation-capacity-ui": "node eval/automation-capacity-ui.mjs",
     "iam:lab": "node scripts/iam-lab.mjs",

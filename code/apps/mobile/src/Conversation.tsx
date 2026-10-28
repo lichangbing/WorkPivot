@@ -148,13 +148,13 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
           </article>
           : <details className="process" key={event.id}><summary>{event.kind === 'thinking' ? '思考过程' : '执行过程'}</summary><pre>{event.content}</pre></details>
       )}{details[turn.id] && <button disabled={busy} onClick={() => void expandTurn(turn.id)}>继续加载本轮内容</button>}</section>)}
-      {permissions.map(permission => <section className="approval" key={permission.id}><strong>需要你的确认</strong><p>{permission.request.tool}</p>{permission.request.command && <pre>{permission.request.command}</pre>}
-        <details><summary>操作详情</summary><pre>{JSON.stringify(permission.request, null, 2)}</pre></details>
-        <button disabled={busy} onClick={() => void action(`/api/tasks/${task.id}/permissions/${permission.id}`, { decision: 'deny', scope: 'once' })}>拒绝</button>
-        <button disabled={busy} onClick={() => void action(`/api/tasks/${task.id}/permissions/${permission.id}`, { decision: 'allow', scope: 'once' })}>本次允许</button></section>)}
       <MemoryReview client={client} taskId={task.id} onError={onError} />
       <SummaryReview client={client} taskId={task.id} onError={onError} running={running} />
     </div>
+    {permissions.map(permission => <section className="approval permission-dock" key={permission.id}><strong>需要你的确认</strong><p>{permission.request.tool}</p>{permission.request.command && <pre>{permission.request.command}</pre>}
+      <details><summary>操作详情</summary><pre>{JSON.stringify(permission.request, null, 2)}</pre></details>
+      <button disabled={busy} onClick={() => void action(`/api/tasks/${task.id}/permissions/${permission.id}`, { decision: 'deny', scope: 'once' })}>拒绝</button>
+      <button disabled={busy} onClick={() => void action(`/api/tasks/${task.id}/permissions/${permission.id}`, { decision: 'allow', scope: 'once' })}>本次允许</button></section>)}
     {error && <p className="error" role="alert">{error}</p>}
     <form className="composer" onSubmit={event => { event.preventDefault(); void send(); }}>
       <ResourceScope client={client} taskId={task.id} refresh={attachmentKey} disabled={busy || running} onChange={setResourceScope} onError={onError} />

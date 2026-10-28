@@ -12,6 +12,10 @@ import { RepositoryError, transaction, uuid } from './connection.js';
 
 export interface RunHandle { id: string; taskId: string; turnId: string; fence: string; duplicate: boolean }
 const leaseSeconds = 30;
+const permissionTtlMinutes = (() => {
+  const configured = Number(process.env['WORKPIVOT_PERMISSION_TTL_MINUTES'] ?? 10);
+  return Number.isSafeInteger(configured) && configured >= 1 && configured <= 60 ? configured : 10;
+})();
 /**
  * 静默执行的工具白名单：只有产品明确要求不弹卡的工具才自动放行，模型参数无法扩展这个集合。
  * 部署可用 WORKPIVOT_CODE_APPROVAL=confirm 恢复逐次确认；输入与产物范围仍由运行读取范围独立校验。
@@ -380,11 +384,11 @@ export class RunRepository {
       const record = JSON.stringify({...request,authorizationHash:authorizationDigest(request)});
       if (silent) {
         // 静默执行：直接登记为已批准并已消费，不进入待审批列表；发布事务仍按同一调用摘要复核。
-        await c.query("INSERT INTO workpivot.run_permissions(id,owner_user_id,task_id,run_id,request,state,decision,resolved_at,expires_at) VALUES($1,$2,$3,$4,$5,'consumed','allow',now(),now()+interval '3 minutes')", [id, actor, run.taskId, run.id, record]);
+        await c.query("INSERT INTO workpivot.run_permissions(id,owner_user_id,task_id,run_id,request,state,decision,resolved_at,expires_at) VALUES($1,$2,$3,$4,$5,'consumed','allow',now(),now()+$6*interval '1 minute')", [id, actor, run.taskId, run.id, record, permissionTtlMinutes]);
         return { id, automatic: true as const, eventId: '' };
       }
       // 任务级授权范围尚未建立，旧全局auto不能替代本次明确许可。
-      await c.query("INSERT INTO workpivot.run_permissions(id,owner_user_id,task_id,run_id,request,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '3 minutes')", [id, actor, run.taskId, run.id, record]);
+      await c.query("INSERT INTO workpivot.run_permissions(id,owner_user_id,task_id,run_id,request,expires_at) VALUES($1,$2,$3,$4,$5,now()+$6*interval '1 minute')", [id, actor, run.taskId, run.id, record, permissionTtlMinutes]);
       await c.query("UPDATE workpivot.tasks SET status='waiting',revision=revision+1 WHERE id=$1", [run.taskId]);
       const payload = { type: 'permission_request' as const, id, tool: request.tool, command: request.tool, paths: [], scope: 'once', redacted:true, reason: request.tool === 'plan' ? '确认执行计划：接下来会调用写入或执行类工具，本轮确认后不再逐次询问' : mode === 'manual' ? '确认模式：本次操作需要你确认' : request.tool === 'execute_skill' ? '本次隔离执行需要确认' : ['web_fetch','web_search','browser_visit'].includes(request.tool) ? `本次${networkActionLabel(request.tool)}需要确认` : '本次操作需要确认，请核对参数和影响' };
       const saved = await event(c, actor, run, 'meta', JSON.stringify(payload));

@@ -83,9 +83,36 @@ function AskUserDock({ payload, disabled, disabledReason, onChoose }: { payload:
   </section>;
 }
 
+function PermissionDock({ permission, busy, onDecision }: {
+  permission: Permission;
+  busy: boolean;
+  onDecision: (decision: 'allow' | 'deny') => void;
+}) {
+  const request = permission.request;
+  return <section aria-label="待确认操作" data-permission={permission.id} className="mx-4 mb-2 overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 shadow-[0_12px_32px_rgba(0,0,0,0.18)]">
+    <div className="flex items-start gap-3 px-4 pb-3 pt-4">
+      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-800/70 bg-amber-950/40 text-amber-300"><Icon name="shield" size={17} /></span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-amber-300/80">需要确认</span>
+          <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-[10px] text-neutral-400">{request.tool === 'execute_skill' ? '隔离执行' : '工具调用'}</span>
+        </div>
+        <p className="mt-1 text-sm leading-6 text-neutral-100">{request.reason || (request.tool === 'execute_skill' ? '在隔离环境处理所选文件并发布成果。' : 'Agent 请求执行一次受控操作。')}</p>
+        {request.command && <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-400">{request.command}</pre>}
+        {request.invocation && <details className="mt-2 text-xs text-neutral-500"><summary className="cursor-pointer">查看完整参数</summary><pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-neutral-950 p-3 text-[11px]">{JSON.stringify({ effects: request.effects, parameters: request.invocation.arguments, binding: request.binding }, null, 2)}</pre></details>}
+      </div>
+    </div>
+    <ul className="divide-y divide-neutral-800 border-t border-neutral-800">
+      <li><button type="button" disabled={busy} className="group flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-neutral-800/80 disabled:cursor-wait disabled:opacity-40" onClick={() => onDecision('allow')}><span className="flex h-5 w-5 items-center justify-center rounded-md border border-emerald-800 bg-emerald-950/40 text-emerald-300"><Icon name="check" size={13} /></span><span className="flex-1 text-sm text-neutral-100">允许本次</span><Icon name="arrow" size={15} style={{ opacity: 0.45 }} /></button></li>
+      <li><button type="button" disabled={busy} className="group flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-neutral-800/80 disabled:cursor-wait disabled:opacity-40" onClick={() => onDecision('deny')}><span className="flex h-5 w-5 items-center justify-center rounded-md border border-red-900 bg-red-950/30 text-red-300"><Icon name="close" size={13} /></span><span className="flex-1 text-sm text-neutral-300">拒绝本次</span><Icon name="arrow" size={15} style={{ opacity: 0.45 }} /></button></li>
+    </ul>
+    <p className="border-t border-neutral-800 bg-neutral-950/40 px-4 py-2.5 text-xs text-neutral-500">仅授权当前这一次调用，不会变成永久权限。请在 {new Date(permission.expiresAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 前处理。</p>
+  </section>;
+}
+
 interface Task { expertId?:string|null; id: string; name: string; status: string; revision: number; projectId: string | null }
 interface Project { id: string; name: string; revision: number }
-interface Permission { id: string; request: { tool: string; effects?:string[]; command?: string; binding?:Record<string,unknown>; invocation?: {arguments:Record<string,unknown>} }; expiresAt: string }
+interface Permission { id: string; request: { tool: string; reason?:string; effects?:string[]; command?: string; binding?:Record<string,unknown>; invocation?: {arguments:Record<string,unknown>} }; expiresAt: string }
 const errorText = (e: unknown) => e instanceof Error ? e.message : '操作失败，请重试';
 const button = 'rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800 disabled:opacity-40';
 const selectionKey = (userId: string) => `wp-active-task:${userId}`;
@@ -114,6 +141,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   const citationComponents=useMemo(()=>({a:({href,children}:{href?:string;children?:ReactNode})=>{const match=href?.match(/^#citation\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);return match&&active?<DatabaseCitation taskId={active} chunkId={match[1]!}>{children}</DatabaseCitation>:<a href={href}>{children}</a>;}}),[active]);
   const selectionOwner = useRef<string | null>(null);
   const [events, setEvents] = useState<StoredEvent[]>([]), [permissions, setPermissions] = useState<Permission[]>([]);
+  const [permissionBusy, setPermissionBusy] = useState<string | null>(null);
   const [older, setOlder] = useState<string | null>(null), [details, setDetails] = useState<Record<string, { after: string; snapshot: string }>>({});
   const [loading, setLoading] = useState(false), [ready, setReady] = useState(false), [sending, setSending] = useState(false);
   const [error, setError] = useState(''), [input, setInput] = useState('');
@@ -383,8 +411,10 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   };
   const decide = async (id: string, decision: 'allow' | 'deny') => {
     const taskId = active, epoch = generation.current;
+    setPermissionBusy(id);
     try { await jsonFetch(`/api/tasks/${taskId}/permissions/${id}`, { method: 'POST', body: JSON.stringify({ decision, scope: 'once' }) }); if (epoch === generation.current) setPermissions(rows => rows.filter(p => p.id !== id)); }
     catch (e) { if (epoch === generation.current) setError(errorText(e)); }
+    finally { if (epoch === generation.current) setPermissionBusy(null); }
   };
   // R006：中断后一键续跑，继承检查点与剩余步数。
   const resume = async () => {
@@ -458,8 +488,8 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
         {active && <DatabaseParsing key={"parse-"+active} taskId={active} />}
         {active && <DatabaseExecutionStatus key={active} taskId={active} />}
         {active && <DatabaseSkillBuilds key={'skills-'+active} taskId={active} autoOpen />}
-        {permissions.map(p => <div key={p.id} className="mb-3 rounded border border-neutral-700 p-4"><strong>{p.request.tool === 'execute_skill' ? '确认隔离执行' : '确认本次操作'}</strong>{p.request.tool === 'execute_skill' && <p className="mt-2 text-sm text-neutral-400">在无网络隔离环境处理所选文件，仅保存指定成果。本次允许不会变成永久授权。</p>}<pre className="my-3 whitespace-pre-wrap break-words text-sm">{p.request.command ?? p.request.tool}</pre>{p.request.invocation && <details><summary>查看本次完整参数（输入、输出及目标）</summary><pre className="my-3 max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify({effects:p.request.effects,parameters:p.request.invocation.arguments,binding:p.request.binding},null,2)}</pre></details>}<button className={button} onClick={() => { void decide(p.id, 'deny'); }}>拒绝</button><button className={button + ' ml-2'} onClick={() => { void decide(p.id, 'allow'); }}>允许本次</button></div>)}
       </div>
+      {active && permissions.map(permission => <PermissionDock key={permission.id} permission={permission} busy={permissionBusy === permission.id} onDecision={decision => { void decide(permission.id, decision); }} />)}
       {active && pendingAskUser && <AskUserDock key={pendingAskUser.eventId} payload={pendingAskUser.payload} disabled={sending || !ready || quotaBlocked} disabledReason={quotaBlocked ? '今日提问额度已用完，额度刷新后可继续回答。' : undefined} onChoose={label => { void answerQuestion(pendingAskUser!.payload.questionId, label); }} />}
       {newMessages && <button className={button} onClick={() => { follow.current = true; if (viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight; setNewMessages(false); }}>查看新消息</button>}
       {task?.status === 'interrupted' && <div className="mx-4 mb-2 flex flex-wrap items-center gap-2 text-xs text-amber-400">上一轮执行被中断，历史已补齐为合法状态，可继续完成。<button className={button} onClick={() => { void resume(); }}>继续</button></div>}
