@@ -24,6 +24,7 @@
 - Windows 便携客户端：[WorkPivot-Windows-portable.zip](https://workpivot.lichb.cc.cd/downloads/WorkPivot-Windows-portable.zip)
 - 回退入口：<https://115-191-1-188.sslip.io:80/>
 - APK 直连回退：[WorkPivot-android-1.3.apk](https://115-191-1-188.sslip.io:80/downloads/WorkPivot-android-1.3.apk)
+- Windows 直连回退：[WorkPivot-Windows-portable.zip](https://115-191-1-188.sslip.io:80/downloads/WorkPivot-Windows-portable.zip)
 
 正式域名通过 Cloudflare Tunnel 对外提供标准 HTTPS，源站只连接本机
 `127.0.0.1:8080`。旧 `sslip.io` 入口暂时保留用于迁移回退。

@@ -21,8 +21,10 @@ export function LoginView({ needsSetup, registrationEnabled = false, defaultMess
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const desktopDownload = `${location.origin}/downloads/WorkPivot-Windows-portable.zip`;
-  const androidDownload = `${location.origin}/downloads/WorkPivot-android-1.3.apk`;
+  // 大文件走已验证的直连入口，避免 Cloudflare 免费链路在中国大陆网络的吞吐瓶颈。
+  const downloadOrigin = 'https://115-191-1-188.sslip.io:80';
+  const desktopDownload = `${downloadOrigin}/downloads/WorkPivot-Windows-portable.zip`;
+  const androidDownload = `${downloadOrigin}/downloads/WorkPivot-android-1.3.apk`;
 
   const submit = async (): Promise<void> => {
     if (busy) return;
