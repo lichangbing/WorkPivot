@@ -40,11 +40,13 @@ import type { ProviderRepository, ProviderInput } from './providers.js';
 import type { McpRepository } from './mcp.js';
 import { API_PROTOCOL } from '@workpivot/shared';
 import type { FileRepository } from './files.js';
+import { DailyLimits } from './daily-limits.js';
 
 /** K01 联调接口；各服务适配完成后接入生产界面。 */
 export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken: string, execution?: DatabaseExecution, providers?: ProviderRepository, mcp?: McpRepository, webDist?: string, files?: FileRepository, skillBuilds?: SkillBuilds, automations?: Automations, embeddings?: Embeddings, browserWorkspace?: BrowserWorkspace,browserProfiles?:BrowserProfiles): Promise<Express> {
   await assertRestrictedRole(authPool, 'identity'); await assertRestrictedRole(appPool, 'workpivot');
   const accounts = new AccountRepository(authPool), workspace = new WorkspaceRepository(appPool);
+  const dailyLimits = new DailyLimits(authPool, appPool);
   const conversation = new ConversationRepository(appPool);
   const notifications = new TaskNotifications(appPool);
   const app = express();
@@ -77,7 +79,18 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   app.get('/api/auth/state', async (req, res) => {
     const user = await accounts.resolve(token(req));
     const policy = await accounts.publicAccessPolicy();
-    res.json({ needsSetup: await accounts.needsSetup(), setupTokenRequired: false, registrationEnabled: policy.registrationEnabled, defaultMessageQuota: policy.defaultMessageQuota, authenticated: !!user, user, quota: user ? await accounts.quota(user.id) : null });
+    res.json({
+      needsSetup: await accounts.needsSetup(),
+      setupTokenRequired: false,
+      registrationEnabled: policy.registrationEnabled,
+      defaultMessageQuota: policy.defaultMessageQuota,
+      defaultTokenQuota: policy.defaultTokenQuota,
+      defaultUploadQuotaBytes: policy.defaultUploadQuotaBytes,
+      defaultConcurrentTaskLimit: policy.defaultConcurrentTaskLimit,
+      authenticated: !!user,
+      user,
+      quota: user ? await accounts.quota(user.id) : null,
+    });
   });
   const throttle = authThrottle(() => {
     void authPool.query("INSERT INTO identity.audit_events(actor_id,target_id,action) VALUES(NULL,NULL,'auth_throttled')").catch(() => undefined);
@@ -162,12 +175,24 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   app.delete('/api/auth/sessions/:id', async (req, res) => { await accounts.revokeSession(token(req), req.params.id); res.json({ ok: true }); });
   app.post('/api/auth/password', async (req, res) => { const b = body(req); await accounts.changePassword(token(req), str(b.currentPassword), str(b.newPassword)); res.json({ ok: true }); });
   app.get('/api/users', async (req, res) => { res.json({ users: await accounts.listUsers(token(req)) }); });
+  app.get('/api/admin/limits', async (req, res) => { res.json(await dailyLimits.overview(token(req))); });
+  app.put('/api/admin/limits/:id', async (req, res) => { res.json(await dailyLimits.updateUser(token(req), str(req.params['id']), body(req))); });
   app.get('/api/admin/access-policy', async (req, res) => { res.json({ policy: await accounts.adminAccessPolicy(token(req)) }); });
-  app.put('/api/admin/access-policy', async (req, res) => { const b = body(req); res.json({ policy: await accounts.updateAccessPolicy(token(req), { registrationMode: b.registrationMode, defaultMessageQuota: b.defaultMessageQuota, revision: b.revision }) }); });
+  app.put('/api/admin/access-policy', async (req, res) => {
+    const b = body(req);
+    res.json({ policy: await accounts.updateAccessPolicy(token(req), {
+      registrationMode: b.registrationMode,
+      defaultMessageQuota: b.defaultMessageQuota,
+      defaultTokenQuota: b.defaultTokenQuota,
+      defaultUploadQuotaBytes: b.defaultUploadQuotaBytes,
+      defaultConcurrentTaskLimit: b.defaultConcurrentTaskLimit,
+      revision: b.revision,
+    }) });
+  });
   app.post('/api/users', async (req, res) => {
     const b = body(req), role = b.role;
     if (role !== 'member' && role !== 'admin') throw new RepositoryError(400, '角色无效');
-    res.json({ user: await accounts.createUser(token(req), str(b.username), str(b.password), role, b.email, b.messageQuota === undefined ? 10 : b.messageQuota) });
+    res.json({ user: await accounts.createUser(token(req), str(b.username), str(b.password), role, b.email) });
   });
   app.patch('/api/users/:id', async (req, res) => { res.json({ user: await accounts.updateUser(token(req), str(req.params['id']), body(req)) }); });
   app.delete('/api/users/:id/sessions', async (req, res) => { await accounts.revokeUserSessions(token(req), str(req.params['id'])); res.json({ ok: true }); });

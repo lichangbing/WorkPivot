@@ -16,6 +16,7 @@ import { memoryReviewSchema } from './memory-review.js';
 import { memoryContextSchema } from './memory-context-schema.js';
 import { expertSchema } from './expert-schema.js';
 import { businessFactSchema } from './business-fact-schema.js';
+import { dailyLimitSchema } from './daily-limit-schema.js';
 /** 采用版本化的新数据库结构，不导入旧文件系统数据。 */
 export const schemaVersion = 1;
 // v1 仅将 SQL 注释翻译为中文；保留此前已部署结构的校验值，不改变任何建表语句。
@@ -602,6 +603,6 @@ DROP TRIGGER IF EXISTS notify_workspace_tasks ON workpivot.tasks;
 CREATE TRIGGER notify_workspace_tasks
   AFTER INSERT OR UPDATE OR DELETE ON workpivot.tasks
   FOR EACH ROW EXECUTE FUNCTION workpivot.bump_workspace_revision();
-`}, {version:63,sql:businessFactSchema}
+`}, {version:63,sql:businessFactSchema}, {version:64,sql:dailyLimitSchema}
 ] as const;
 import { usageSchema } from './usage-schema.js';

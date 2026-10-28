@@ -14,6 +14,13 @@ export interface DatabaseUser {
   messageQuota: number;
   messagesUsed: number;
   quotaResetAt: string | null;
+  tokenQuota: number;
+  tokensUsed: number;
+  uploadQuotaBytes: number;
+  uploadBytesUsed: number;
+  concurrentTaskLimit: number;
+  provisioningSource: 'first_admin' | 'self' | 'admin' | 'legacy';
+  limitsRevision: number;
   createdAt: string;
   lastLoginAt: string | null;
   activeSessions: number;
@@ -21,13 +28,24 @@ export interface DatabaseUser {
 export interface AccessPolicy {
   registrationMode: 'closed' | 'open';
   defaultMessageQuota: number;
+  defaultTokenQuota: number;
+  defaultUploadQuotaBytes: number;
+  defaultConcurrentTaskLimit: number;
   revision: number;
 }
 const userColumns = `u.id,u.username,u.role,u.platform_admin AS "platformAdmin",
   c.must_change AS "mustChangePassword",u.email,u.disabled,
   u.message_quota AS "messageQuota",
   CASE WHEN u.quota_reset_at<=now() THEN 0 ELSE u.messages_used END AS "messagesUsed",
-  u.quota_reset_at AS "quotaResetAt",u.created_at AS "createdAt",
+  u.quota_reset_at AS "quotaResetAt",
+  u.token_quota::double precision AS "tokenQuota",
+  CASE WHEN u.usage_period_started_at<identity.quota_period_start(now()) THEN 0 ELSE u.tokens_used END::double precision AS "tokensUsed",
+  u.upload_quota_bytes::double precision AS "uploadQuotaBytes",
+  CASE WHEN u.usage_period_started_at<identity.quota_period_start(now()) THEN 0 ELSE u.upload_bytes_used END::double precision AS "uploadBytesUsed",
+  u.concurrent_task_limit AS "concurrentTaskLimit",
+  u.provisioning_source AS "provisioningSource",
+  u.limits_revision AS "limitsRevision",
+  u.created_at AS "createdAt",
   u.last_login_at AS "lastLoginAt",
   (SELECT count(*)::int FROM identity.sessions sx WHERE sx.user_id=u.id AND sx.revoked_at IS NULL AND sx.expires_at>now() AND sx.auth_version=c.auth_version) AS "activeSessions"`;
 const digest = (token: string): string => createHash('sha256').update(token).digest('hex');
@@ -49,9 +67,17 @@ function quotaValid(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > 100000) throw new RepositoryError(400, '每日提问额度需为0至100000的整数');
   return value;
 }
+function bigintQuotaValid(value: unknown, maximum: number, label: string): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > maximum) throw new RepositoryError(400, `${label}需为0至${maximum}的整数`);
+  return value;
+}
 async function accessPolicy(c: PoolClient): Promise<AccessPolicy> {
   const row = (await c.query(`SELECT registration_mode AS "registrationMode",
-    default_message_quota AS "defaultMessageQuota",revision
+    default_message_quota AS "defaultMessageQuota",
+    default_token_quota::double precision AS "defaultTokenQuota",
+    default_upload_quota_bytes::double precision AS "defaultUploadQuotaBytes",
+    default_concurrent_task_limit AS "defaultConcurrentTaskLimit",
+    revision
     FROM identity.access_policy WHERE singleton`)).rows[0];
   if (!row) throw new RepositoryError(503, '注册策略未初始化');
   return row as AccessPolicy;
@@ -113,11 +139,11 @@ export function quotaDecision(row: QuotaRow, now = new Date()): { unlimited: boo
 export class AccountRepository {
   constructor(private readonly db: Pool) {}
   async needsSetup(): Promise<boolean> { return !(await this.db.query('SELECT 1 FROM identity.users LIMIT 1')).rowCount; }
-  async publicAccessPolicy(): Promise<{ registrationEnabled: boolean; defaultMessageQuota: number }> {
+  async publicAccessPolicy(): Promise<AccessPolicy & { registrationEnabled: boolean }> {
     return transaction(this.db, async client => {
       const policy = await accessPolicy(client);
       const setup = !(await client.query('SELECT 1 FROM identity.users LIMIT 1')).rowCount;
-      return { registrationEnabled: setup || policy.registrationMode === 'open', defaultMessageQuota: policy.defaultMessageQuota };
+      return { ...policy, registrationEnabled: setup || policy.registrationMode === 'open' };
     });
   }
   async adminAccessPolicy(token: string): Promise<AccessPolicy> {
@@ -126,7 +152,14 @@ export class AccountRepository {
       return accessPolicy(client);
     });
   }
-  async updateAccessPolicy(token: string, input: { registrationMode: unknown; defaultMessageQuota: unknown; revision: unknown }): Promise<AccessPolicy> {
+  async updateAccessPolicy(token: string, input: {
+    registrationMode: unknown;
+    defaultMessageQuota: unknown;
+    defaultTokenQuota?: unknown;
+    defaultUploadQuotaBytes?: unknown;
+    defaultConcurrentTaskLimit?: unknown;
+    revision: unknown;
+  }): Promise<AccessPolicy> {
     if (!['closed', 'open'].includes(String(input.registrationMode))) throw new RepositoryError(400, '注册策略无效');
     const revision = Number(input.revision);
     if (!Number.isSafeInteger(revision) || revision < 1) throw new RepositoryError(400, '策略版本无效');
@@ -135,11 +168,18 @@ export class AccountRepository {
       const actor = await administrator(client, token);
       const current = await accessPolicy(client);
       if (current.revision !== revision) throw new RepositoryError(409, '注册策略已变化，请刷新');
+      const defaultTokenQuota = input.defaultTokenQuota === undefined ? current.defaultTokenQuota : bigintQuotaValid(input.defaultTokenQuota, 1000000000, '默认每日 Token 限额');
+      const defaultUploadQuotaBytes = input.defaultUploadQuotaBytes === undefined ? current.defaultUploadQuotaBytes : bigintQuotaValid(input.defaultUploadQuotaBytes, 1099511627776, '默认每日上传额度');
+      const defaultConcurrentTaskLimit = input.defaultConcurrentTaskLimit === undefined ? current.defaultConcurrentTaskLimit : bigintQuotaValid(input.defaultConcurrentTaskLimit, 100, '默认并发任务数');
       const row = (await client.query(`UPDATE identity.access_policy SET registration_mode=$1,
-        default_message_quota=$2,revision=revision+1,updated_at=now()
-        WHERE singleton AND revision=$3
-        RETURNING registration_mode AS "registrationMode",default_message_quota AS "defaultMessageQuota",revision`,
-      [input.registrationMode, defaultMessageQuota, revision])).rows[0];
+        default_message_quota=$2,default_token_quota=$3,default_upload_quota_bytes=$4,
+        default_concurrent_task_limit=$5,revision=revision+1,updated_at=now()
+        WHERE singleton AND revision=$6
+        RETURNING registration_mode AS "registrationMode",default_message_quota AS "defaultMessageQuota",
+          default_token_quota::double precision AS "defaultTokenQuota",
+          default_upload_quota_bytes::double precision AS "defaultUploadQuotaBytes",
+          default_concurrent_task_limit AS "defaultConcurrentTaskLimit",revision`,
+      [input.registrationMode, defaultMessageQuota, defaultTokenQuota, defaultUploadQuotaBytes, defaultConcurrentTaskLimit, revision])).rows[0];
       if (!row) throw new RepositoryError(409, '注册策略已变化，请刷新');
       await audit(client, actor.id, actor.id, `registration_policy_${String(input.registrationMode)}`);
       return row as AccessPolicy;
@@ -156,8 +196,14 @@ export class AccountRepository {
       if (!first && policy.registrationMode !== 'open') throw new RepositoryError(403, '自助注册已关闭，请联系管理员创建账户');
       const id = randomUUID();
       await client.query(
-        'INSERT INTO identity.users(id,username,username_key,role,platform_admin,message_quota) VALUES($1,$2,$3,$4,$5,$6)',
-        [id, name, name.toLowerCase(), first ? 'admin' : 'member', first, policy.defaultMessageQuota],
+        `INSERT INTO identity.users(
+          id,username,username_key,role,platform_admin,message_quota,token_quota,
+          upload_quota_bytes,concurrent_task_limit,provisioning_source
+        ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [id, name, name.toLowerCase(), first ? 'admin' : 'member', first,
+          first ? 0 : policy.defaultMessageQuota, first ? 0 : policy.defaultTokenQuota,
+          first ? 0 : policy.defaultUploadQuotaBytes, first ? 0 : policy.defaultConcurrentTaskLimit,
+          first ? 'first_admin' : 'self'],
       );
       await client.query('INSERT INTO identity.credentials(user_id,password_hash) VALUES($1,$2)', [id, hash]);
       await audit(client, id, id, first ? 'first_admin_created' : 'user_registered');
@@ -201,7 +247,10 @@ export class AccountRepository {
       await client.query('SELECT pg_advisory_xact_lock(937032)');
       if ((await client.query('SELECT 1 FROM identity.users LIMIT 1')).rowCount) throw new RepositoryError(409, '已有用户，注册已关闭');
       const id = randomUUID();
-      await client.query("INSERT INTO identity.users(id,username,username_key,role,platform_admin) VALUES($1,$2,$3,'admin',true)", [id, name, name.toLowerCase()]);
+      await client.query(`INSERT INTO identity.users(
+        id,username,username_key,role,platform_admin,message_quota,token_quota,
+        upload_quota_bytes,concurrent_task_limit,provisioning_source
+      ) VALUES($1,$2,$3,'admin',true,0,0,0,0,'first_admin')`, [id, name, name.toLowerCase()]);
       await client.query('INSERT INTO identity.credentials(user_id,password_hash) VALUES($1,$2)', [id, hash]);
       await audit(client, id, id, 'first_admin_created');
       const token = await issue(client, id, 1);
@@ -254,17 +303,21 @@ export class AccountRepository {
   async listUsers(token: string): Promise<DatabaseUser[]> {
     return transaction(this.db, async client => { await administrator(client, token); return (await client.query<DatabaseUser>(`SELECT ${userColumns} FROM identity.users u JOIN identity.credentials c ON c.user_id=u.id ORDER BY u.created_at,u.id`)).rows; });
   }
-  async createUser(token: string, username: string, password: string, role: 'admin' | 'member', emailInput?: unknown, quotaInput: unknown = 10): Promise<DatabaseUser> {
+  async createUser(token: string, username: string, password: string, role: 'admin' | 'member', emailInput?: unknown): Promise<DatabaseUser> {
     const name = usernameValid(username); passwordValid(password);
     if (!['admin', 'member'].includes(role)) throw new RepositoryError(400, '角色无效');
-    const email = emailValid(emailInput), messageQuota = quotaValid(quotaInput);
+    const email = emailValid(emailInput);
     const hash = await bcrypt.hash(password, 10);
     return transaction(this.db, async client => {
       const actor = await administrator(client, token), id = randomUUID();
       const exists = await client.query('SELECT 1 FROM identity.users WHERE username_key=$1', [name.toLowerCase()]);
       if (exists.rowCount) throw new RepositoryError(409, '用户名已存在');
       if (email && (await client.query('SELECT 1 FROM identity.users WHERE lower(email)=$1', [email])).rowCount) throw new RepositoryError(409, '邮箱已被使用');
-      await client.query('INSERT INTO identity.users(id,username,username_key,role,email,message_quota) VALUES($1,$2,$3,$4,$5,$6)', [id, name, name.toLowerCase(), role, email, messageQuota]);
+      // 管理员创建的账户默认不设限；后续可在独立“限额管理”中按用户开启。
+      await client.query(`INSERT INTO identity.users(
+        id,username,username_key,role,email,message_quota,token_quota,
+        upload_quota_bytes,concurrent_task_limit,provisioning_source
+      ) VALUES($1,$2,$3,$4,$5,0,0,0,0,'admin')`, [id, name, name.toLowerCase(), role, email]);
       await client.query('INSERT INTO identity.credentials(user_id,password_hash,must_change) VALUES($1,$2,true)', [id, hash]);
       await audit(client, actor.id, id, 'user_created');
       return loadUser(client, id);
@@ -319,7 +372,8 @@ export class AccountRepository {
       const target = (await client.query('SELECT platform_admin FROM identity.users WHERE id=$1 FOR UPDATE', [targetId])).rows[0];
       if (!target) throw new RepositoryError(404, '用户不存在');
       if (target.platform_admin) throw new RepositoryError(400, '平台管理员不限额度');
-      await client.query('UPDATE identity.users SET messages_used=0,quota_reset_at=$2,updated_at=now() WHERE id=$1', [targetId, nextQuotaReset()]);
+      await client.query(`UPDATE identity.users SET messages_used=0,tokens_used=0,upload_bytes_used=0,quota_reset_at=$2,
+        usage_period_started_at=now(),limits_revision=limits_revision+1,updated_at=now() WHERE id=$1`, [targetId, nextQuotaReset()]);
       await audit(client, actor.id, targetId, 'user_quota_reset');
     });
   }

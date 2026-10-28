@@ -8,6 +8,7 @@ interface Props {
   setupTokenRequired?: boolean;
   registrationEnabled?: boolean;
   defaultMessageQuota?: number;
+  defaultTokenQuota?: number;
   onAuthed: () => void;
 }
 
@@ -32,7 +33,7 @@ function DownloadArrow(): React.JSX.Element {
 }
 
 /** T2-01 登录门：无用户时展示注册（首用户=管理员），否则登录。 */
-export function LoginView({ needsSetup, registrationEnabled = false, defaultMessageQuota = 10, onAuthed }: Props): React.JSX.Element {
+export function LoginView({ needsSetup, registrationEnabled = false, defaultMessageQuota = 10, defaultTokenQuota = 200000, onAuthed }: Props): React.JSX.Element {
   const [serverUrl, setServerUrl] = useState(location.origin);
   const changingServer = Boolean(window.workpivotDesktop && serverUrl.trim().replace(/\/$/, '') !== location.origin);
   const [wantRegister, setWantRegister] = useState(false);
@@ -84,7 +85,7 @@ export function LoginView({ needsSetup, registrationEnabled = false, defaultMess
         <h1 className="mb-1 text-xl font-semibold">WorkPivot</h1>
         <p className="mb-5 text-xs text-neutral-500">
           {mode === 'register'
-            ? (needsSetup ? '首次使用：注册的第一个账户自动成为管理员' : `自助注册：默认每天 ${defaultMessageQuota === 0 ? '不限' : defaultMessageQuota + ' 次'}提问`)
+            ? (needsSetup ? '首次使用：注册的第一个账户自动成为管理员' : `自助注册：默认每天 ${defaultMessageQuota === 0 ? '不限' : defaultMessageQuota + ' 次'}对话、${defaultTokenQuota === 0 ? '不限 Token' : defaultTokenQuota.toLocaleString('zh-CN') + ' Token'}`)
             : registrationEnabled ? '登录已有账号，或注册后开始使用' : '登录以继续；账号由管理员创建'}
         </p>
 

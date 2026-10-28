@@ -51,6 +51,19 @@ export class FileRepository {
         if (retry.purpose !== purpose || retry.taskId !== taskId || retry.name !== name || retry.sha256 !== sha256 || (documentId ? retry.documentId !== documentId || retry.revision !== expected! + 1 : retry.revision !== 1)) throw new RepositoryError(409, '上传请求标识已被不同内容使用');
         const { taskId: _task, purpose: _purpose, ...version } = retry; void _task; void _purpose; return version;
       }
+      if (purpose === 'upload') {
+        const user = (await c.query(`SELECT platform_admin,upload_quota_bytes,
+          CASE WHEN usage_period_started_at<identity.quota_period_start(now()) THEN 0 ELSE upload_bytes_used END AS used,
+          identity.quota_period_start(now()) AS "periodStart"
+          FROM identity.users WHERE id=$1`, [actor])).rows[0];
+        if (!user) throw new RepositoryError(401, '账号不存在');
+        const used = BigInt(user.used), limit = BigInt(user.upload_quota_bytes), next = used + BigInt(data.length);
+        if (!user.platform_admin && limit > 0n && next > limit) {
+          const limitMb = Number(limit) / 1024 / 1024;
+          throw new RepositoryError(429, `今日上传额度已用完（上限 ${limitMb.toLocaleString('zh-CN')} MB），请等待北京时间 12:00 刷新或联系管理员`);
+        }
+        await c.query('UPDATE identity.users SET upload_bytes_used=$2,usage_period_started_at=$3 WHERE id=$1', [actor, next.toString(), user.periodStart]);
+      }
       const usage = (await c.query(`SELECT (COALESCE((SELECT sum(size) FROM workpivot.document_versions),0)+COALESCE((SELECT sum((f->>'size')::bigint) FROM workpivot.trash_entries CROSS JOIN LATERAL jsonb_array_elements(files) f),0))::bigint AS bytes`)).rows[0];
       if (BigInt(usage.bytes) + BigInt(data.length) > BigInt(quota)) throw new RepositoryError(413, '资料存储额度为100MB，请清理不再需要的资料及回收站');
       const id = documentId ?? randomUUID();

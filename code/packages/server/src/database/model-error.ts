@@ -1,6 +1,10 @@
+import { RepositoryError } from './connection.js';
+
 /** 只公开可操作的错误分类，不回显上游正文、地址或凭据。 */
 export function safeModelError(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
+  // 本地额度拒绝使用固定中文提示，可安全原样返回；上游 HTTP 429 仍走脱敏分类。
+  if (error instanceof RepositoryError && error.status === 429) return message;
   const status = /HTTP\s+(\d{3})\b/i.exec(message)?.[1];
   if (status === '401' || status === '403') return `模型服务认证失败（HTTP ${status}），请联系管理员检查模型凭据或权限`;
   if (status === '429') return '模型服务请求受限（HTTP 429），请稍后重试或联系管理员检查配额';

@@ -399,7 +399,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     finally { streams.current.delete(controller); setSending(false); void refreshTasks().catch(() => {}); void reloadAuth(); }
   };
   if (!auth) return <div className="p-6">{error || '正在连接后台…'}<button className={button} onClick={reloadAuth}>重试</button></div>;
-  if (!auth.authenticated) return <LoginView needsSetup={auth.needsSetup} setupTokenRequired={auth.setupTokenRequired} registrationEnabled={auth.registrationEnabled} defaultMessageQuota={auth.defaultMessageQuota} onAuthed={reloadAuth} />;
+  if (!auth.authenticated) return <LoginView needsSetup={auth.needsSetup} setupTokenRequired={auth.setupTokenRequired} registrationEnabled={auth.registrationEnabled} defaultMessageQuota={auth.defaultMessageQuota} defaultTokenQuota={auth.defaultTokenQuota} onAuthed={reloadAuth} />;
   if (auth.user?.mustChangePassword) return <RequiredPasswordChange onDone={reloadAuth} />;
   const quotaRemaining = auth.quota?.remaining ?? null;
   const quotaBlocked = quotaRemaining !== null && quotaRemaining <= 0;

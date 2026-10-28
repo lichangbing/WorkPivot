@@ -186,6 +186,20 @@ export class RunRepository {
         return { ...old, taskId, duplicate: true };
       }
       if (['queued', 'running', 'waiting'].includes(task.status)) throw new RepositoryError(409, '任务仍在执行，请先停止或恢复中断状态');
+      const limits = (await c.query(
+        'SELECT platform_admin,concurrent_task_limit FROM identity.users WHERE id=$1',
+        [actor],
+      )).rows[0];
+      if (!limits) throw new RepositoryError(401, '账号不存在');
+      if (!limits.platform_admin && Number(limits.concurrent_task_limit) > 0) {
+        const running = Number((await c.query(
+          "SELECT count(DISTINCT task_id)::int AS n FROM workpivot.task_runs WHERE owner_user_id=$1 AND status='running'",
+          [actor],
+        )).rows[0]?.n ?? 0);
+        if (running >= Number(limits.concurrent_task_limit)) {
+          throw new RepositoryError(429, `同时运行任务已达上限（${limits.concurrent_task_limit} 个），请等待当前任务结束或联系管理员`);
+        }
+      }
       if (attachments.length) {
         const valid = await c.query(`SELECT v.id FROM workpivot.document_versions v JOIN workpivot.documents d ON d.id=v.document_id WHERE ${fileTaskScope('$1')} AND v.id=ANY($2::uuid[])`, [taskId, attachments]);
         if (valid.rowCount !== attachments.length) throw new RepositoryError(404, '附件已删除或不属于当前任务');

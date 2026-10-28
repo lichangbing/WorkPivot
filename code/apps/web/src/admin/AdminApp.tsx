@@ -14,8 +14,9 @@ import { SkillPackagesPanel } from './SkillPackagesPanel';
 import { McpPanel } from './McpPanel';
 import { DatabaseAdminContent } from './DatabaseAdminContent';
 import { MemoryTemplatesPanel } from './MemoryTemplatesPanel';
+import { LimitsPanel } from './LimitsPanel';
 
-type Menu = 'network-targets' | 'request-audit' | 'experts' | 'users' | 'models' | 'skills' | 'mcp' | 'memory' | 'templates' | 'schedules' | 'ops' | 'permissions' | 'projects';
+type Menu = 'network-targets' | 'request-audit' | 'experts' | 'users' | 'limits' | 'models' | 'skills' | 'mcp' | 'memory' | 'templates' | 'schedules' | 'ops' | 'permissions' | 'projects';
 type Role = PublicUser['role'];
 
 type UserDialogState =
@@ -105,6 +106,7 @@ export default function AdminApp({ database = false }: { database?: boolean }): 
 
   const menus: Array<[Menu, string]> = [
     ['users', '用户管理'],
+    ...(database ? [['limits', '限额管理'] as [Menu,string]] : []),
     ['models', '模型管理'],
     ['experts', '专家模板'],
     ['skills', 'Skill 管理'],
@@ -155,6 +157,7 @@ export default function AdminApp({ database = false }: { database?: boolean }): 
       <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-5">
         {database ? <DatabaseAdminContent menu={menu} onDirty={setSkillDirty} /> : <>
         {menu === 'users' && <UsersPanel users={users} me={me} onRefresh={loadUsers} />}
+        {menu === 'limits' && <LimitsPanel />}
         {menu === 'models' && <ModelsPanel providers={providers} onRefresh={loadProviders} />}
         {menu === 'skills' && <SkillPackagesPanel onDirty={setSkillDirty} />}
         {menu === 'mcp' && <McpPanel onDirty={setSkillDirty} />}

@@ -1,7 +1,8 @@
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { randomBytes } from 'node:crypto';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 const synthetic=process.argv.includes('--synthetic-office');
 if(process.argv.slice(2).some(arg=>arg!=='--synthetic-office'))throw Error('不支持的数据库验收参数');
 const useWsl = process.platform === 'win32';
@@ -29,7 +30,7 @@ try {
   const info = JSON.parse(docker(['inspect', container]))[0];
   const port = info.NetworkSettings.Ports['5432/tcp'][0].HostPort;
   console.log('Disposable PostgreSQL ready; isolated tmpfs, no business volumes, no Docker socket mount');
-  const run = spawnSync(process.execPath, ['--import', 'tsx', synthetic?'eval/synthetic-office-acceptance.mts':'eval/W38-postgresql.mts'], { cwd: resolve(import.meta.dirname, '..'), env: { ...process.env, WORKPIVOT_TEST_PG_DISPOSABLE: '1', WORKPIVOT_TEST_PG_URL: `postgresql://postgres:${password}@127.0.0.1:${port}/workpivot_test` }, stdio: 'inherit', timeout: synthetic?600000:180000 });
+  const run = spawnSync(process.execPath, ['--import', 'tsx', synthetic?'eval/synthetic-office-acceptance.mts':'eval/W38-postgresql.mts'], { cwd: resolve(dirname(fileURLToPath(import.meta.url)), '..'), env: { ...process.env, WORKPIVOT_TEST_PG_DISPOSABLE: '1', WORKPIVOT_TEST_PG_URL: `postgresql://postgres:${password}@127.0.0.1:${port}/workpivot_test` }, stdio: 'inherit', timeout: 600000 });
   if (run.error) throw Error('数据库测试未能完成');
   process.exitCode = run.status ?? 1;
 } finally {

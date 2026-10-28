@@ -23,25 +23,51 @@ export class UsageRepository {
   return {providerId:client.providerId,model:client.model,async *streamChat(messages,tools,signal){
    signal?.throwIfAborted();
    const id=randomUUID(),input=estimate(Buffer.byteLength(JSON.stringify({messages,tools})));
-   await transaction(db,async c=>{
+   const reservation=await transaction(db,async c=>{
     if(context.taskId){uuid(context.taskId);if(!(await c.query('SELECT id FROM workpivot.tasks WHERE id=$1 AND deleted_at IS NULL',[context.taskId])).rowCount)throw new RepositoryError(404,'任务不存在');}
-    await c.query('INSERT INTO workpivot.model_usage(id,owner_user_id,provider_id,model,task_id,source,input_price,output_price,currency) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[id,actor,client.providerId,client.model,context.taskId??null,context.source??'chat',price.inputPrice,price.outputPrice,price.currency]);
+    await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['usage:'+actor]);
+    const current=(await c.query(`SELECT platform_admin,token_quota::double precision AS "tokenQuota",
+      CASE WHEN usage_period_started_at<identity.quota_period_start(now()) THEN 0 ELSE tokens_used::double precision END AS "tokensUsed",
+      identity.quota_period_start(now()) AS "periodStart"
+      FROM identity.users WHERE id=$1`,[actor])).rows[0];
+    if(!current)throw new RepositoryError(401,'账号不存在');
+    const used=Number(current.tokensUsed);
+    if(!current.platform_admin&&Number(current.tokenQuota)>0&&used+input>Number(current.tokenQuota)){
+      throw new RepositoryError(429,`今日 Token 额度已用完（上限 ${Number(current.tokenQuota).toLocaleString('zh-CN')}），请等待北京时间 12:00 刷新或联系管理员`);
+    }
+    await c.query(`UPDATE identity.users SET tokens_used=$2,usage_period_started_at=$3 WHERE id=$1`,[actor,used+input,current.periodStart]);
+    await c.query('INSERT INTO workpivot.model_usage(id,owner_user_id,provider_id,model,task_id,source,input_tokens,output_tokens,measurement,input_price,output_price,currency) VALUES($1,$2,$3,$4,$5,$6,$7,0,\'estimated\',$8,$9,$10)',[id,actor,client.providerId,client.model,context.taskId??null,context.source??'chat',input,price.inputPrice,price.outputPrice,price.currency]);
+    return {remainingOutput:Number(current.tokenQuota)>0&&!current.platform_admin?Math.max(0,Number(current.tokenQuota)-used-input):null,reservedInput:input};
    },actor);
    let usage:Extract<StreamEvent,{type:'usage'}>|undefined,outputBytes=0,status='cancelled',failure:string|null=null;
+   const outputLimit=new AbortController();
+   const streamSignal=reservation.remainingOutput===null?signal:signal?AbortSignal.any([signal,outputLimit.signal]):outputLimit.signal;
    try{
-    for await(const event of client.streamChat(messages,tools,signal)){
-     if(event.type==='usage')usage=event;
+    for await(const event of client.streamChat(messages,tools,streamSignal)){
+     if(event.type==='usage'){
+      if(reservation.remainingOutput!==null&&event.outputTokens>reservation.remainingOutput){
+       outputLimit.abort();
+       throw new RepositoryError(429,'今日 Token 额度已用完，本轮生成已停止');
+      }
+      usage=event;
+     }
      else if(event.type==='delta'||event.type==='reasoning_delta')outputBytes+=Buffer.byteLength(event.text);
      else if(event.type==='tool_calls')outputBytes+=Buffer.byteLength(JSON.stringify(event.tool_calls));
+     if(reservation.remainingOutput!==null&&estimate(outputBytes)>reservation.remainingOutput){
+      outputLimit.abort();
+      throw new RepositoryError(429,'今日 Token 额度已用完，本轮生成已停止');
+     }
      yield event;
     }
     status='completed';
-   }catch(error){status=signal?.aborted?'cancelled':'failed';const detail=modelFailureDetails(error);failure=detail.status?'HTTP '+detail.status:detail.code??(status==='cancelled'?'cancelled':'model-error');throw error;}
+   }catch(error){status=streamSignal?.aborted&&!outputLimit.signal.aborted?'cancelled':'failed';const detail=modelFailureDetails(error);failure=detail.status?'HTTP '+detail.status:detail.code??(status==='cancelled'?'cancelled':'model-error');throw error;}
    finally{
     // 部分流中的usage可能尚未最终结算，因此中断也明确标为估算。
     const exact=status==='completed'&&usage!==undefined;
+    const charged=usage?(usage.inputTokens+usage.outputTokens):input+estimate(outputBytes);
     await transaction(db,async c=>{
      await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['usage:'+actor]);
+     await c.query('UPDATE identity.users SET tokens_used=GREATEST(0,tokens_used-$2+$3) WHERE id=$1',[actor,reservation.reservedInput,charged]);
      await c.query(`UPDATE workpivot.model_usage SET status=$2,finished_at=now(),input_tokens=$3::bigint,output_tokens=$4::bigint,measurement=$5,
       cost=CASE WHEN input_price IS NOT NULL AND output_price IS NOT NULL THEN round(($3::numeric*input_price+$4::numeric*output_price)/1000000,12) END,failure=$6 WHERE id=$1 AND status='pending'`,[id,status,usage?.inputTokens??input,usage?.outputTokens??estimate(outputBytes),exact?'provider':'estimated',failure]);
     },actor);

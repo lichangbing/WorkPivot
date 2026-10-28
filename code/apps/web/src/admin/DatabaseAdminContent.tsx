@@ -6,6 +6,7 @@ import {DatabaseExperts} from '../DatabaseExperts';
 import { DatabaseMemoryTemplates } from '../DatabaseMemoryControls';
 import { SkillPackagesPanel } from './SkillPackagesPanel';
 import { DatabaseUsers } from './DatabaseUsers';
+import { LimitsPanel } from './LimitsPanel';
 import { useEffect, useState } from 'react';
 import { Registry } from '../DatabaseSettings';
 
@@ -21,6 +22,7 @@ export function DatabaseAdminContent({ menu, onDirty }: { menu: string; onDirty:
   if (menu === 'request-audit') return <RequestAudits />;
   if (menu === 'ops') return <DatabaseOperations />;
   if (menu === 'users') return <DatabaseUsers />;
+  if (menu === 'limits') return <LimitsPanel />;
   if (error) return <p role="alert">{error}</p>;
   if (!capabilities) return <p>正在读取服务状态…</p>;
   if (menu === 'models' || menu === 'mcp' || menu === 'projects') {

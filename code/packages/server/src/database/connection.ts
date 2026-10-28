@@ -77,7 +77,9 @@ export async function installSchema(db: pg.Pool, appRole: string, authRole: stri
     }
     // 业务运行角色仅能读写额度所需列，不能读取身份凭据或账户资料。
     await client.query(`GRANT USAGE ON SCHEMA identity TO ${app};
-      GRANT SELECT(id,platform_admin,message_quota,messages_used,quota_reset_at),UPDATE(messages_used,quota_reset_at) ON identity.users TO ${app}`);
+      GRANT SELECT(id,platform_admin,message_quota,messages_used,quota_reset_at,token_quota,tokens_used,upload_quota_bytes,upload_bytes_used,concurrent_task_limit,usage_period_started_at),
+        UPDATE(messages_used,quota_reset_at,tokens_used,upload_bytes_used,usage_period_started_at) ON identity.users TO ${app};
+      GRANT EXECUTE ON FUNCTION identity.quota_period_start(timestamptz) TO ${app},${auth}`);
   });
 }
 
