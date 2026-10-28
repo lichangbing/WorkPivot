@@ -47,6 +47,7 @@
 - 完成业务事实 schema v63、异步提取、Agent 工具和 Web/手机管理入口；独立 PostgreSQL/API/Worker 测试 29/29 通过。
 - 线上 schema 已迁移到 v63，服务镜像和 Web 已更新；公网 API 与真实浏览器业务事实烟测通过。
 - Android 1.3（versionCode 4）加入业务事实列表、自动提取开关和逐条冲突确认，v2 签名验证通过。
+- 正式域名 `https://workpivot.lichb.cc.cd/` 已通过 Cloudflare Tunnel 上线；首页、管理端、API、APK 和真实业务事实 UI 烟测通过。
 
 ### 2026-10-26
 

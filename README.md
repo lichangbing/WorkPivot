@@ -18,11 +18,13 @@
 
 ### 当前外部入口
 
-- 用户端：<https://115-191-1-188.sslip.io:80/>
-- 管理端：<https://115-191-1-188.sslip.io:80/admin>
-- Android 内测包：[WorkPivot-android-1.3.apk](https://115-191-1-188.sslip.io:80/downloads/WorkPivot-android-1.3.apk)
+- 用户端：<https://workpivot.lichb.cc.cd/>
+- 管理端：<https://workpivot.lichb.cc.cd/admin>
+- Android 内测包：[WorkPivot-android-1.3.apk](https://workpivot.lichb.cc.cd/downloads/WorkPivot-android-1.3.apk)
+- 回退入口：<https://115-191-1-188.sslip.io:80/>
 
-该部署所在网络对外阻断 443，因此反向代理在 80 端口提供 TLS；连接仍是加密的，但 URL 会显示 `:80`。后续接入正式域名并开放 443 后，应切换到标准 HTTPS 地址。
+正式域名通过 Cloudflare Tunnel 对外提供标准 HTTPS，源站只连接本机
+`127.0.0.1:8080`。旧 `sslip.io` 入口暂时保留用于迁移回退。
 
 APK SHA-256：`26a4168ed9483d9d124493122f0eb1c1a9ba1bdc8fcbf81c6c973adcab713672`。该包使用 WorkPivot 独立内测签名，仅用于内部测试。
 
