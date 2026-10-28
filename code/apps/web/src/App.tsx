@@ -4,7 +4,7 @@ import { ArtifactSyncController } from './ArtifactBrowser';
 import { ProjectModal } from './ProjectModal';
 import { Icon } from './Icon';
 /**
- * WorkPivot 主界面（参考 ZCode 布局模式，规范见 docs/02-design/ui-ux/主界面布局规范.md）。
+ * WorkPivot 主界面（参考 ZCode 布局模式，规范见 docs/02-设计/界面规范/主界面布局规范.md）。
  * 左栏：主按钮组（新建任务/搜索/自动化/技能市场）→ 分组 tab（项目/临时任务）→ 项目树（相对时间）→ 底部用户区；
  * 中栏：顶部会话工具条 + 消息流 + 底部输入区（附件/权限档位/模型选择——ZCode 位置）；
  * 右栏：任务侧栏（版本链/转写查看）。

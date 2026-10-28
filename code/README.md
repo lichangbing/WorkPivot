@@ -4,7 +4,7 @@
 > 运行时：Node.js 22、pnpm 11
 > 当前主链路：PostgreSQL + 服务端 Worker/浏览器/执行器
 
-本目录是 pnpm monorepo。开发前先阅读仓库根 [AGENTS.md](../AGENTS.md)、[产品总纲](../docs/02-design/product/prd/PRD-00-产品总纲.md)和[系统总览](../docs/02-design/architecture/系统总览.md)。
+本目录是 pnpm monorepo。开发前先阅读仓库根 [AGENTS.md](../AGENTS.md)、[产品总纲](../docs/02-设计/产品/产品需求/产品需求-00-产品总纲.md)和[系统总览](../docs/02-设计/架构/系统总览.md)。
 
 ## 目录
 
@@ -167,7 +167,7 @@ corepack prepare pnpm@11.22.0 --activate
 
 ### 工具没有出现
 
-缺少浏览器、Worker、搜索或 Office 转换配置时，服务端会收缩工具面。按[运行与排障](../docs/04-operations/运行与排障.md)检查对应组件，不要绕过隔离或静默回退。
+缺少浏览器、Worker、搜索或 Office 转换配置时，服务端会收缩工具面。按[运行与排障](../docs/04-运维/运行与排障.md)检查对应组件，不要绕过隔离或静默回退。
 
 ## 文档与提交
 
@@ -175,7 +175,7 @@ corepack prepare pnpm@11.22.0 --activate
 
 - 行为变化：对应 PRD。
 - 边界或组件变化：架构总览/专题/ADR。
-- 完成度变化：`docs/03-project/STATUS.md`。
+- 完成度变化：`docs/03-项目/当前状态.md`。
 - 部署变化：运维文档与部署记录。
 
 提交前检查工作区和 diff，只纳入本次范围内容，不包含生成物、真实 `.env`、业务样本和凭据。

@@ -69,27 +69,27 @@ if (failures.length) {
 }
 
 const docsRoot = resolve(root, 'docs');
-const architectureRoot = join(docsRoot, '02-design/architecture');
+const architectureRoot = join(docsRoot, '02-设计/架构');
 const allowedArchitectureRootFiles = new Set([
-  'README.md',
+  '索引.md',
   '系统总览.md',
-  '_template-architecture.md',
+  '_架构设计模板.md',
 ]);
 
 for (const name of readdirSync(architectureRoot)) {
   const path = join(architectureRoot, name);
   if (statSync(path).isFile() && name.endsWith('.md') && !allowedArchitectureRootFiles.has(name)) {
     structureFailures.push(
-      `架构专题必须归入 runtime/data/security/capabilities/delivery/archive/history：${name}`,
+      `架构专题必须归入 运行时/数据/安全/能力/交付/归档/历史：${name}`,
     );
   }
 }
 
-const architectureTopics = ['runtime', 'data', 'security', 'capabilities', 'delivery'];
+const architectureTopics = ['运行时', '数据', '安全', '能力', '交付'];
 for (const topic of architectureTopics) {
   const topicRoot = join(architectureRoot, topic);
   if (!existsSync(topicRoot)) {
-    structureFailures.push(`缺少架构分类目录：architecture/${topic}`);
+    structureFailures.push(`缺少架构分类目录：架构/${topic}`);
     continue;
   }
   for (const name of readdirSync(topicRoot)) {
@@ -103,9 +103,9 @@ for (const topic of architectureTopics) {
   }
 }
 
-const prdRoot = join(docsRoot, '02-design/product/prd');
+const prdRoot = join(docsRoot, '02-设计/产品/产品需求');
 for (const name of readdirSync(prdRoot)) {
-  if (!/^PRD-\d+.*\.md$/.test(name)) continue;
+  if (!/^产品需求-\d+.*\.md$/.test(name)) continue;
   const text = readFileSync(join(prdRoot, name), 'utf8');
   for (const [label, pattern] of [
     ['文档编号', /\|\s*文档编号\s*\|/],
@@ -118,10 +118,34 @@ for (const name of readdirSync(prdRoot)) {
   }
 }
 
-const competitorRoot = join(docsRoot, '01-research/competitors');
+const competitorRoot = join(docsRoot, '01-研究/竞品');
 for (const name of readdirSync(competitorRoot)) {
   if (/^workbuddy-.*\.(?:md|json)$/.test(name) || /^claude-code-(?:internals|loop)\.md$/.test(name)) {
     structureFailures.push(`竞品结论不得继续平铺，应合并到主卡或移入 evidence/：${name}`);
+  }
+}
+
+function walk(path) {
+  const entries = [];
+  for (const name of readdirSync(path)) {
+    const current = join(path, name);
+    entries.push(current);
+    if (statSync(current).isDirectory()) entries.push(...walk(current));
+  }
+  return entries;
+}
+
+for (const path of walk(docsRoot)) {
+  const relative = path.slice(docsRoot.length + 1);
+  if (statSync(path).isDirectory()) {
+    if (/[A-Za-z]/.test(path.split('/').at(-1))) {
+      structureFailures.push(`文档目录名应使用中文：${relative}`);
+    }
+    continue;
+  }
+  const stem = path.split('/').at(-1).replace(/\.[^.]+$/, '');
+  if (!(relative === 'README.md') && /[A-Za-z]/.test(stem)) {
+    structureFailures.push(`文档文件名应使用中文：${relative}`);
   }
 }
 

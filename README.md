@@ -7,9 +7,9 @@
 
   把自然语言任务变成可追踪、可恢复、可下载的 Word、Excel、PPT、PDF 与研究报告。
 
-  [产品设计](docs/02-design/product/prd/PRD-00-产品总纲.md) ·
-  [系统架构](docs/02-design/architecture/系统总览.md) ·
-  [快速部署](docs/04-operations/快速部署.md) ·
+  [产品设计](docs/02-设计/产品/产品需求/产品需求-00-产品总纲.md) ·
+  [系统架构](docs/02-设计/架构/系统总览.md) ·
+  [快速部署](docs/04-运维/快速部署.md) ·
   [开发说明](code/README.md) ·
   [文档导航](docs/README.md)
 </div>
@@ -114,7 +114,7 @@ flowchart LR
   P --> R[RAG / Memories / Business Facts / Runs / Audit]
 ```
 
-当前 PostgreSQL 运行链路采用“数据库保存权限、状态、版本和索引，文件卷保存原件与产物”的混合存储。详细组件、信任边界和数据流见[系统总览](docs/02-design/architecture/系统总览.md)。
+当前 PostgreSQL 运行链路采用“数据库保存权限、状态、版本和索引，文件卷保存原件与产物”的混合存储。详细组件、信任边界和数据流见[系统总览](docs/02-设计/架构/系统总览.md)。
 
 ## 快速开始
 
@@ -140,7 +140,7 @@ http://127.0.0.1:39990/
 bash releases/deploy/install-local-stack.sh --auto-admin --with-office-convert --rebuild
 ```
 
-详细参数、升级和安全边界见[快速部署](docs/04-operations/快速部署.md)。
+详细参数、升级和安全边界见[快速部署](docs/04-运维/快速部署.md)。
 
 ### 首次使用
 
@@ -180,11 +180,11 @@ WorkPivot/
 │   ├── packages/shared/      # 跨端共享类型
 │   └── eval/                 # 自动化评测与回归用例
 ├── docs/
-│   ├── 00-overview/          # 产品一页纸
-│   ├── 01-research/          # 横向格局、产品主卡、原始证据
-│   ├── 02-design/            # PRD、分层架构、ADR、原型、UI/UX
-│   ├── 03-project/           # 状态、计划、验收与历史归档
-│   └── 04-operations/        # 部署、升级与运维
+│   ├── 00-概览/              # 产品一页纸
+│   ├── 01-研究/              # 横向格局、产品主卡、原始证据
+│   ├── 02-设计/              # 产品需求、分层架构、架构决策、原型、界面规范
+│   ├── 03-项目/              # 状态、计划、验证与部署历史
+│   └── 04-运维/              # 部署、升级与运维
 ├── releases/                 # 发布说明、部署编排和版本材料
 └── scripts/                  # 仓库级辅助脚本
 ```
@@ -208,15 +208,15 @@ pnpm eval
 
 | 想了解 | 从这里开始 |
 | --- | --- |
-| 产品定位、用户、范围与验收指标 | [产品总纲 PRD](docs/02-design/product/prd/PRD-00-产品总纲.md) |
-| 模块行为与交互细节 | [PRD 分册](docs/02-design/product/README.md) |
-| 系统组件、数据流、安全边界 | [系统总览](docs/02-design/architecture/系统总览.md) |
-| 架构专题与历史归档 | [架构设计索引](docs/02-design/architecture/README.md) |
-| 竞品格局与取舍 | [竞品总览](docs/01-research/competitors/README.md) |
-| 竞品原始证据 | [证据库](docs/01-research/competitors/evidence/README.md) |
-| 当前完成度、限制和路线 | [项目状态](docs/03-project/STATUS.md) |
-| 部署、备份和故障恢复 | [运维文档](docs/04-operations/README.md) |
-| 历史里程碑与验收证据 | [项目历史](docs/03-project/HISTORY.md) |
+| 产品定位、用户、范围与验收指标 | [产品总纲 PRD](docs/02-设计/产品/产品需求/产品需求-00-产品总纲.md) |
+| 模块行为与交互细节 | [PRD 分册](docs/02-设计/产品/索引.md) |
+| 系统组件、数据流、安全边界 | [系统总览](docs/02-设计/架构/系统总览.md) |
+| 架构专题与历史归档 | [架构设计索引](docs/02-设计/架构/索引.md) |
+| 竞品格局与取舍 | [竞品总览](docs/01-研究/竞品/索引.md) |
+| 竞品原始证据 | [证据库](docs/01-研究/竞品/证据/索引.md) |
+| 当前完成度、限制和路线 | [项目状态](docs/03-项目/当前状态.md) |
+| 部署、备份和故障恢复 | [运维文档](docs/04-运维/索引.md) |
+| 历史里程碑与验收证据 | [项目历史](docs/03-项目/历史.md) |
 
 文档按“先结论、后证据；先长期设计、后日期记录”的原则维护。完整分层与写作规范见[文档中心](docs/README.md)。
 
