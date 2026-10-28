@@ -85,14 +85,19 @@ document_versions 与 extraction_runs 分开：同一原件可以重新解析，
 | table_columns | 列标识、原始表头、推断类型、单位、业务含义、人工确认状态 |
 | table_rows | 表格、行号、类型化 JSONB 值、来源定位；按行分页，避免整份工作簿一个 JSON |
 | table_cell_metadata | 有需要的单元格公式、原始文本、缓存值、合并信息、数字格式；不为所有空白格建行 |
-| entities / entity_aliases | 企业、客户、人员等实体及别名；合并操作保留可撤销记录 |
+| business_object / business_object_alias | 企业、客户、人员等已消歧业务对象及别名；合并操作保留可撤销记录 |
 | metric_definitions | 指标名称、允许单位、统计口径及定义版本 |
-| fact_series / fact_revisions | 稳定事实标识与不可变修订；主体、指标、期间、数值、维度、口径、状态 |
-| fact_sources | 事实修订到 source_refs 的多对多关系 |
+| business_fact_series / business_fact_revision | 稳定事实标识与不可变值版本；主体、指标、期间、数值、维度、口径、状态 |
+| business_fact_evidence | 事实版本到 source_refs 的多对多证据关系 |
 | decisions / decision_revisions | 项目决策、依据、适用范围、生效时间和替代关系 |
 | extraction_reviews | 人工修正、冲突、确认/驳回记录及操作者 |
 
 数值使用 numeric；原始单位和标准化单位分别保存，换算记录规则。日期使用 date/timestamptz；缺失值是 null，不当作 0。数值、文本、日期等事实值使用明确类型字段及约束，JSONB 用于灵活维度和解析细节。经常查询的通用字段必须独立列和索引；高频领域可增加发票、合同等专用关系表。
+
+表名和生命周期以[业务事实模型与项目检索](业务事实模型与项目检索-20261028.md)为准：
+`fact_series / fact_revisions` 是本节早期通用称呼，落地时分别使用
+`business_fact_series / business_fact_revision`。前者只表达稳定逻辑事实，后者保存不可变值版本；
+修改值不能覆盖原版本，也不能另起一条无关联事实。
 
 示例事实：owner/project=A用户/A公司研究；主体=A公司；指标=营业收入；期间=2026-01-01至2026-06-30；数值=1260000000；币种=CNY；合并口径；来源=半年报第2版/利润表!D12；状态=待确认。
 

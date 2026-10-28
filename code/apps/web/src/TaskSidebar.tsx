@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, getToken, type PlanStep, type Task } from './api';
 import { Icon } from './Icon';
 import { MemoryCenter } from './MemoryCenter';
+import { BusinessFactsPanel } from './BusinessFactsPanel';
 import { ArtifactBrowser } from './ArtifactBrowser';
 import type { MemoryLayer } from './memory-api';
 
@@ -11,8 +12,8 @@ export interface SidebarData {
   skills: Array<{ name: string; description: string; source: string }>;
   mcp: Array<{ name: string; enabled?: boolean; status?: string; toolCount?: number; tools?: Array<{ name: string; description: string; enabled: boolean }> }>;
 }
-export function TaskSidebar({ taskId, steps, onSelect, onTranscript, onTasks, onRetry }: {
-  taskId?: string; steps: PlanStep[]; onSelect: (task: Task) => void; onTranscript: () => void; onTasks: (tasks: Task[]) => void; onRetry: (task: Task) => void;
+export function TaskSidebar({ taskId, projectId, steps, onSelect, onTranscript, onTasks, onRetry }: {
+  taskId?: string; projectId?: string | null; steps: PlanStep[]; onSelect: (task: Task) => void; onTranscript: () => void; onTasks: (tasks: Task[]) => void; onRetry: (task: Task) => void;
 }): React.JSX.Element {
   const [data, setData] = useState<SidebarData | null>(null);
   const [error, setError] = useState('');
@@ -20,6 +21,7 @@ export function TaskSidebar({ taskId, steps, onSelect, onTranscript, onTasks, on
   const [message, setMessage] = useState('');
   const [memoryLayer, setMemoryLayer] = useState<MemoryLayer | null>(null);
   const [browseFiles, setBrowseFiles] = useState(false);
+  const [businessFactsOpen, setBusinessFactsOpen] = useState(false);
   useEffect(() => {
     let canceled = false;
     let timer: ReturnType<typeof setTimeout>;
@@ -100,7 +102,13 @@ export function TaskSidebar({ taskId, steps, onSelect, onTranscript, onTasks, on
       {([['task', '任务记忆'], ['project', '项目记忆'], ['personal', '个人记忆']] as const).map(([layer, label]) => <button key={layer} className="mb-2 flex w-full items-center gap-2 rounded p-1 text-left text-neutral-300 hover:bg-neutral-800" onClick={() => setMemoryLayer(layer)}><Icon name="memory" />{label}<span className="ml-auto"><Icon name="right" /></span></button>)}
       <p className="text-[10px] text-neutral-500">点击查看、修改和设置自动加载</p>
     </section>
+    <section aria-label="业务事实" className="border-t border-neutral-800 pt-4">
+      <h2 className="mb-3 font-medium text-neutral-100">业务事实</h2>
+      <button disabled={!projectId} className="flex w-full items-center gap-2 rounded p-1 text-left text-neutral-300 hover:bg-neutral-800 disabled:text-neutral-600" title={projectId ? '查看项目对象、事实、版本和关系' : '业务事实只属于正式项目，临时任务不生成'} onClick={() => setBusinessFactsOpen(true)}><Icon name="chart" />项目事实<span className="ml-auto"><Icon name="right" /></span></button>
+      <p className="mt-1 text-[10px] text-neutral-500">{projectId ? '当前值、历史、证据与逐条冲突确认' : '临时任务没有业务事实'}</p>
+    </section>
     {memoryLayer && <MemoryCenter key={taskId} taskId={taskId} initialLayer={memoryLayer} onClose={() => setMemoryLayer(null)} />}
+    {businessFactsOpen && projectId && <BusinessFactsPanel key={projectId} projectId={projectId} onClose={() => setBusinessFactsOpen(false)} />}
     {browseFiles && <ArtifactBrowser key={taskId} taskId={taskId} onClose={() => setBrowseFiles(false)} />}
   </div>;
 }

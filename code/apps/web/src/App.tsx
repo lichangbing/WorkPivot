@@ -1254,7 +1254,7 @@ export default function App(): React.JSX.Element {
 
         {/* 右栏：任务侧栏（B02 版本链 + 转写查看器入口）；宽度可拖拽（最小 232px） */}
         <aside id="task-results-panel" aria-label="任务侧栏" hidden={!rightPanelOpen} className={rightPanelOpen ? 'flex shrink-0 flex-col' : 'hidden'} style={{ width: rightCol.width, minWidth: 232 }}>
-          {rightPanelOpen && <TaskSidebar taskId={activeTask?.id} steps={planSteps} onSelect={(task) => { void openTask(task).catch((e: unknown) => showToast(String(e))); }} onTranscript={() => setTranscriptOpen(true)} onTasks={(rows) => setTasks(rows.filter(task => !deletedTaskIds.current.has(task.id)))} onRetry={(task) => { void openTask(task).then(() => send(task.status === 'failed' ? '请重试上次未完成的请求，先检查已有结果，避免重复已经完成的操作。' : RESUME_MESSAGE, task)).catch((e: unknown) => showToast(String(e))); }} />}
+          {rightPanelOpen && <TaskSidebar taskId={activeTask?.id} projectId={activeTask?.projectId} steps={planSteps} onSelect={(task) => { void openTask(task).catch((e: unknown) => showToast(String(e))); }} onTranscript={() => setTranscriptOpen(true)} onTasks={(rows) => setTasks(rows.filter(task => !deletedTaskIds.current.has(task.id)))} onRetry={(task) => { void openTask(task).then(() => send(task.status === 'failed' ? '请重试上次未完成的请求，先检查已有结果，避免重复已经完成的操作。' : RESUME_MESSAGE, task)).catch((e: unknown) => showToast(String(e))); }} />}
         </aside>
       </div>
 

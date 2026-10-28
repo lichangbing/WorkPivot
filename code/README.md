@@ -63,6 +63,7 @@ bash releases/deploy/install-local-stack.sh --auto-admin
 | `pnpm --filter @workpivot/web build` | 构建用户端与管理端 |
 | `pnpm eval` | 常规模拟评测 |
 | `pnpm eval:database` | 临时 PostgreSQL 集成测试 |
+| `pnpm eval:business-facts-db` | 临时 PostgreSQL 验证项目事实、版本、冲突、RLS、API 与自动提取 |
 | `pnpm eval:browser-workflow` | 一次性数据库与浏览器工作流验收 |
 | `pnpm eval:backup` | 离线备份包检查 |
 | `pnpm eval:backup-database` | 数据库与文件联合备份/恢复验收 |
@@ -95,6 +96,7 @@ bash releases/deploy/install-local-stack.sh --auto-admin
 - 文件卷和数据库版本必须配套迁移和恢复。
 - 删除采用回收站/失效关系；永久删除必须经过明确确认。
 - 记忆、知识片段和成果发布都校验来源版本与删除状态。
+- 业务事实使用项目内对象、稳定 series、不可变 revision 和证据；临时任务不生成事实。
 
 ### 代码
 

@@ -19,6 +19,7 @@ import {Experts} from './experts.js';
 import { TaskNotifications } from './task-notifications.js';
 import { taskStream } from './task-stream.js';
 import { workspaceStream } from './workspace-stream.js';
+import { businessFactRoutes } from './business-fact-routes.js';
 import { MemoryControls } from './memory-controls.js';
 import { KnowledgeRepository } from './knowledge.js';
 import { DocumentProcessing } from './document-processing.js';
@@ -173,6 +174,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   app.post('/api/users/:id/quota/reset', async (req, res) => { await accounts.resetUserQuota(token(req), str(req.params['id'])); res.json({ ok: true }); });
   app.post('/api/users/:id/reset-password', async (req, res) => { res.json(await accounts.resetPassword(token(req), str(req.params['id']))); });
   app.get('/api/projects', async (_req, res) => { res.json({ projects: await workspace.listProjects(actor(res).id) }); });
+  app.use('/api', businessFactRoutes(appPool));
   app.get('/api/workspace/stream', async (req, res) => {
     const user = actor(res).id;
     await workspaceStream(req, res, {

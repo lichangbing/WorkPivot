@@ -23,6 +23,7 @@
     "eval:automatic-memory": "tsx eval/automatic-memory.mts",
     "eval:automatic-memory-db": "tsx eval/automatic-memory-db.mts",
     "eval:workspace-sync": "tsx eval/workspace-sync.mts",
+    "eval:business-facts-db": "node scripts/test-business-facts.mjs",
     "eval:w1": "tsx eval/W1-smoke.mts",
     "eval:w2": "tsx eval/W2-smoke.mts",
     "eval:w3": "tsx eval/W3-smoke.mts",

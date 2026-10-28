@@ -92,6 +92,7 @@ export class WorkspaceRepository {
       const ids = children.map((t: { id: string }) => t.id);
       await this.eraseMemories(c, actor, ids, id);
       await this.eraseTasks(c, actor, ids);
+      await this.eraseBusinessFacts(c, id);
       await c.query('DELETE FROM workpivot.project_members WHERE project_id=$1', [id]);
       // 只保留后续文件清理所需的删除标记身份和工作区键。
       await c.query("UPDATE workpivot.projects SET name='已删除项目',deleted_at=now(),revision=revision+1,updated_at=now() WHERE id=$1", [id]);
@@ -108,6 +109,7 @@ export class WorkspaceRepository {
     await this.eraseMemories(c,actor,[],undefined,true);
     await this.eraseTasks(c,actor,tasks.map(t=>t.id));
     for(const p of projects){
+      await this.eraseBusinessFacts(c,p.id);
       await c.query('DELETE FROM workpivot.project_members WHERE project_id=$1',[p.id]);
       await c.query("UPDATE workpivot.projects SET name='已删除项目',deleted_at=now(),revision=revision+1,updated_at=now() WHERE id=$1",[p.id]);
       await this.memoryEvent(c,actor,p.id,p.revision+1,'project_deleted');
@@ -118,6 +120,22 @@ export class WorkspaceRepository {
     if (rows.some(r => ['queued', 'running', 'waiting'].includes(r.status))) throw new RepositoryError(409, '请先停止运行中的任务再删除');
   }
   private async eraseTasks(c: PoolClient, actor: string, ids: string[]): Promise<void> {
+    // 对话来源被删除后，由它提取的业务事实立即退出当前召回；其他项目与手工来源不连带删除。
+    const factRows = (await c.query(`UPDATE workpivot.business_fact_revision r SET status='forgotten',valid_to=now(),retired_at=now()
+      WHERE r.id IN (SELECT e.fact_revision_id FROM workpivot.business_fact_evidence e JOIN workpivot.conversation_events ce ON ce.id=e.source_event_id
+        WHERE ce.task_id=ANY($1::uuid[]) AND e.fact_revision_id IS NOT NULL)
+      RETURNING r.project_id,r.series_id`, [ids])).rows;
+    const relationRows = (await c.query(`UPDATE workpivot.business_relation_revision r SET status='forgotten',valid_to=now(),retired_at=now()
+      WHERE r.id IN (SELECT e.relation_revision_id FROM workpivot.business_fact_evidence e JOIN workpivot.conversation_events ce ON ce.id=e.source_event_id
+        WHERE ce.task_id=ANY($1::uuid[]) AND e.relation_revision_id IS NOT NULL)
+      RETURNING r.project_id,r.series_id`, [ids])).rows;
+    for (const row of factRows) {
+      await c.query(`UPDATE workpivot.business_fact_series SET status='forgotten',current_revision_id=NULL,updated_at=now() WHERE project_id=$1 AND id=$2`, [row.project_id, row.series_id]);
+      await c.query(`UPDATE workpivot.business_fact_conflict SET status='stale',resolved_at=now() WHERE project_id=$1 AND series_id=$2 AND status='pending'`, [row.project_id, row.series_id]);
+    }
+    for (const row of relationRows) {
+      await c.query(`UPDATE workpivot.business_relation_series SET status='forgotten',current_revision_id=NULL,updated_at=now() WHERE project_id=$1 AND id=$2`, [row.project_id, row.series_id]);
+    }
     await c.query('DELETE FROM workpivot.documents WHERE task_id=ANY($1::uuid[])', [ids]);
     await c.query('DELETE FROM workpivot.run_permissions WHERE task_id=ANY($1::uuid[])', [ids]);
     await c.query('DELETE FROM workpivot.task_runs WHERE task_id=ANY($1::uuid[])', [ids]);
@@ -126,6 +144,12 @@ export class WorkspaceRepository {
     await c.query('DELETE FROM workpivot.messages WHERE task_id=ANY($1::uuid[])', [ids]);
     const deleted = await c.query("UPDATE workpivot.tasks SET name='已删除任务',deleted_at=now(),revision=revision+1 WHERE id=ANY($1::uuid[]) RETURNING id,revision", [ids]);
     for (const row of deleted.rows) await this.memoryEvent(c, actor, row.id, row.revision, 'task_deleted');
+  }
+  private async eraseBusinessFacts(c: PoolClient, projectId: string): Promise<void> {
+    await c.query('DELETE FROM workpivot.business_object WHERE project_id=$1', [projectId]);
+    await c.query('DELETE FROM workpivot.business_fact_job WHERE project_id=$1', [projectId]);
+    await c.query('DELETE FROM workpivot.business_project_profile WHERE project_id=$1', [projectId]);
+    await c.query('DELETE FROM workpivot.business_fact_epoch WHERE project_id=$1', [projectId]);
   }
   private async eraseMemories(c: PoolClient, actor: string, taskIds: string[], projectId?: string, all = false): Promise<void> {
     await c.query("UPDATE workpivot.memory_suggestions SET status='stale',content='',evidence=NULL WHERE task_id=ANY($1::uuid[])", [taskIds]);
