@@ -128,16 +128,17 @@ cd WorkPivot
 bash releases/deploy/install-local-stack.sh --auto-admin
 ```
 
-安装器会准备数据库、服务端、浏览器、搜索、Worker、执行器镜像和内置技能。完成后打开：
+安装器默认准备完整栈：数据库、服务端、浏览器、搜索、Worker、带 OCR/PDF/LibreOffice 的执行器、
+PostgreSQL 对话存储和内置技能。完成后打开：
 
 ```text
 http://127.0.0.1:39990/
 ```
 
-需要 Office → PDF 转换时追加：
+仅需精简环境时显式使用：
 
 ```bash
-bash releases/deploy/install-local-stack.sh --auto-admin --with-office-convert --rebuild
+bash releases/deploy/install-local-stack.sh --auto-admin --minimal
 ```
 
 详细参数、升级和安全边界见[快速部署](docs/04-运维/快速部署.md)。

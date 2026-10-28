@@ -3,7 +3,8 @@
 # WorkPivot 本地一体化栈安装器（单命令、幂等）
 #
 # 一次装齐：PostgreSQL + 服务端 + Playwright 浏览器服务 + 宿主机 Skill 执行 Worker
-#          + 隔离执行器镜像 + 内置 Office 技能（含 PPT）+ 默认记忆/专家模板
+#          + 隔离执行器（OCR、PDF、LibreOffice）+ PostgreSQL 对话存储
+#          + 内置 Office 技能（含 PPT）+ 默认记忆/专家模板
 #
 # 默认部署形态与 releases/deploy/compose.local-current.yml 一致，但额外包含浏览器与 Worker，
 # 因此安装完成后工具集里同时有 web_fetch、browser_visit、execute_skill、load_skill。
@@ -13,8 +14,7 @@
 #   bash releases/deploy/install-local-stack.sh --port 39992        # 换端口
 #   bash releases/deploy/install-local-stack.sh --rebuild           # 强制重建镜像
 #   bash releases/deploy/install-local-stack.sh --auto-admin        # 自动创建管理员并打印密码
-#   bash releases/deploy/install-local-stack.sh --with-office-convert  # 额外安装 LibreOffice，支持转 PDF（镜像体积大、构建慢）
-#   bash releases/deploy/install-local-stack.sh --with-chat-store   # 对话消息入库（chat schema，R007）
+#   bash releases/deploy/install-local-stack.sh --minimal           # 精简模式，不装 LibreOffice/OCR 和 chat 存储
 #   bash releases/deploy/install-local-stack.sh --seed-only         # 只重跑技能/模板发布与加载
 #
 # 可覆盖的环境变量：STACK_PROJECT / STACK_PORT / STACK_DATA_DIR / STACK_WORKER_PORT
@@ -40,11 +40,12 @@ ADMIN_USER="${STACK_ADMIN_USER:-admin}"
 SERVER_IMAGE="${STACK_SERVER_IMAGE:-workpivot-server:local-stack}"
 BROWSER_IMAGE="${STACK_BROWSER_IMAGE:-workpivot-browser:local-stack}"
 EXECUTOR_IMAGE="${STACK_EXECUTOR_IMAGE:-workpivot-executor:local-stack}"
+APK_MIRROR="${APK_MIRROR:-https://mirrors.aliyun.com/alpine}"
 REBUILD=0
 SEED_ONLY=0
 AUTO_ADMIN=0
-OFFICE_CONVERT=0
-CHAT_STORE=0
+OFFICE_CONVERT=1
+CHAT_STORE=1
 
 NETWORK="${PROJECT}_net"
 ENV_FILE="$DATA_DIR/stack.env"
@@ -54,7 +55,7 @@ log()  { printf '\n\033[1m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "$*"; }
 info() { printf '  %s\n' "$*"; }
 die()  { printf '\n失败：%s\n' "$*" >&2; exit 1; }
 
-usage() { sed -n '3,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { awk 'NR > 2 && /^#/ { sub(/^# ?/, ""); print; next } NR > 2 { exit }' "${BASH_SOURCE[0]}"; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -65,8 +66,12 @@ while [ $# -gt 0 ]; do
     --rebuild)    REBUILD=1; shift ;;
     --seed-only)  SEED_ONLY=1; shift ;;
     --auto-admin) AUTO_ADMIN=1; shift ;;
+    # 兼容旧调用；完整能力现在已是默认值。
     --with-office-convert) OFFICE_CONVERT=1; shift ;;
     --with-chat-store) CHAT_STORE=1; shift ;;
+    --without-office-convert) OFFICE_CONVERT=0; shift ;;
+    --without-chat-store) CHAT_STORE=0; shift ;;
+    --minimal) OFFICE_CONVERT=0; CHAT_STORE=0; shift ;;
     --admin-user) ADMIN_USER="$2"; shift 2 ;;
     -h|--help)    usage; exit 0 ;;
     *) die "未知参数：$1（用 --help 查看用法）" ;;
@@ -86,6 +91,18 @@ load_env() {
 random_hex() { openssl rand -hex "$1"; }
 
 image_exists() { docker image inspect "$1" >/dev/null 2>&1; }
+
+executor_image_ready() {
+  local expected_base actual_base checks
+  expected_base="$(docker image inspect "$SERVER_IMAGE" --format '{{.Id}}')"
+  actual_base="$(docker image inspect "$EXECUTOR_IMAGE" --format '{{index .Config.Labels "org.workpivot.base-image-id"}}' 2>/dev/null || true)"
+  [ "$actual_base" = "$expected_base" ] || return 1
+  checks='command -v python3 >/dev/null && command -v pdftoppm >/dev/null && command -v tesseract >/dev/null'
+  if [ "$OFFICE_CONVERT" = 1 ]; then
+    checks="$checks && command -v libreoffice >/dev/null && command -v soffice >/dev/null"
+  fi
+  docker run --rm --entrypoint sh "$EXECUTOR_IMAGE" -lc "$checks" >/dev/null 2>&1
+}
 
 network_gateway() {
   docker network inspect "$NETWORK" --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}'
@@ -109,9 +126,14 @@ preflight() {
   command -v curl >/dev/null || die '缺少 curl'
   [ -f "$COMPOSE_FILE" ] || die "缺少编排文件：$COMPOSE_FILE"
   [ -f "$LOAD_SKILLS_SCRIPT" ] || die "缺少技能加载脚本：$LOAD_SKILLS_SCRIPT"
-  # --seed-only 只发布内容，端口被本栈占用是正常状态。
+  # 重复安装时端口被同一 Compose 项目占用是正常状态；其他进程占用仍应拒绝。
   if [ "$SEED_ONLY" != 1 ] && command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -q "127.0.0.1:$PORT "; then
-    die "端口 $PORT 已被占用；请用 --port 指定其他端口"
+    local existing_project
+    existing_project="$(docker inspect workpivot-server --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null || true)"
+    if [ "$existing_project" != "$PROJECT" ]; then
+      die "端口 $PORT 已被其他进程或项目占用；请用 --port 指定其他端口"
+    fi
+    info "检测到同一项目的运行实例，将执行增量更新"
   fi
   info "项目：$PROJECT   端口：$PORT   数据目录：$DATA_DIR"
 }
@@ -198,29 +220,25 @@ build_images() {
     info "浏览器镜像已存在：$BROWSER_IMAGE"
   fi
 
-  if [ "$REBUILD" = 1 ] || ! image_exists "$EXECUTOR_IMAGE"; then
+  if [ "$REBUILD" = 1 ] || ! executor_image_ready; then
     info "构建执行器镜像：$EXECUTOR_IMAGE（转 PDF：$([ "$OFFICE_CONVERT" = 1 ] && echo 启用 || echo 未启用)）"
-    local ctx
+    local ctx base_id
     ctx="$(mktemp -d)"
-    if ! docker build --build-arg "BASE_IMAGE=$SERVER_IMAGE" --build-arg "WITH_OFFICE_CONVERT=$OFFICE_CONVERT" \
-         -f "$SCRIPT_DIR/Dockerfile.local-stack-executor" -t "$EXECUTOR_IMAGE" "$ctx"; then
-      # 低带宽或镜像源不稳定时 apk 可能长时间无响应；退化为服务端镜像，
-      # 保证生成类能力可用，并明确告知解析/OCR/转 PDF 不可用。
-      printf '\n  警告：执行器镜像构建失败，退化为服务端镜像；本次安装缺少 PDF 解析、OCR 与 Office 转 PDF。\n' >&2
-      printf '        可稍后单独重试，或通过 STACK_EXECUTOR_IMAGE 指定已构建的执行器镜像。\n\n' >&2
-      docker tag "$SERVER_IMAGE" "$EXECUTOR_IMAGE"
-    fi
+    base_id="$(docker image inspect "$SERVER_IMAGE" --format '{{.Id}}')"
+    docker build --build-arg "BASE_IMAGE=$SERVER_IMAGE" --build-arg "BASE_IMAGE_ID=$base_id" \
+      --build-arg "WITH_OFFICE_CONVERT=$OFFICE_CONVERT" --build-arg "APK_MIRROR=$APK_MIRROR" \
+      -f "$SCRIPT_DIR/Dockerfile.local-stack-executor" -t "$EXECUTOR_IMAGE" "$ctx" \
+      || die "执行器镜像构建失败；完整安装已中止，不会用缺少文档能力的服务端镜像冒充执行器"
     rmdir "$ctx" 2>/dev/null || true
   else
-    info "执行器镜像已存在：$EXECUTOR_IMAGE"
+    info "执行器镜像已就绪：$EXECUTOR_IMAGE"
   fi
 
   # SearXNG：联网搜索的内置后端；拉不到不影响安装，只关闭 web_search。
   if ! image_exists 'searxng/searxng:latest'; then
     info '拉取 SearXNG 镜像（联网搜索）'
-    if ! docker pull searxng/searxng:latest; then
-      printf '\n  警告：SearXNG 拉取失败，本次安装不提供 web_search；可稍后重试或配置 WORKPIVOT_SEARCH_PROVIDER=brave。\n\n' >&2
-    fi
+    docker pull searxng/searxng:latest \
+      || die 'SearXNG 镜像拉取失败；完整安装已中止'
   fi
 }
 
@@ -315,9 +333,11 @@ start_stack() {
 # ---------- 5b. 可选：对话消息入库（R007） ----------
 # 应用自身不建表：这里用管理员连接创建 chat schema 与受限角色，然后把运行时连接串写进 stack.env。
 install_chat_store() {
-  log '5b/7 安装 chat 存储（R007，可选）'
+  log '5b/7 安装 chat 存储（R007）'
   local chat_pw chat_env
-  chat_pw="$(random_hex 24)"
+  chat_pw="$(printf '%s' "${WORKPIVOT_CHAT_DATABASE_URL:-}" \
+    | sed -n 's#^postgresql://workpivot_chat:\([^@]*\)@database:5432/workpivot$#\1#p')"
+  [ -n "$chat_pw" ] || chat_pw="$(random_hex 24)"
   chat_env="$(mktemp)"
   chmod 600 "$chat_env"
   printf 'WORKPIVOT_CHAT_DATABASE_ADMIN_URL=%s\nWORKPIVOT_CHAT_ROLE_PASSWORD=%s\n' \
@@ -395,6 +415,11 @@ verify() {
   check '首页可访问'     curl -sf --max-time 8 "http://127.0.0.1:$PORT/"
   check '浏览器服务健康' docker exec "$(compose ps -q server)" node -e "fetch('http://browser:39991/health',{signal:AbortSignal.timeout(5000)}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
   check '执行 Worker 健康' curl -sf --max-time 8 -H "Authorization: Bearer $WORKPIVOT_WORKER_TOKEN" "http://$STACK_GATEWAY:$WORKER_PORT/v1/health"
+  check '执行器文档能力' executor_image_ready
+  if [ "$CHAT_STORE" = 1 ]; then
+    check '对话 PostgreSQL 存储' docker exec workpivot-database psql -U workpivot_schema -d workpivot -Atc \
+      "SELECT (to_regclass('chat.tasks') IS NOT NULL AND to_regclass('chat.messages') IS NOT NULL)"
+  fi
 
   log '部署摘要'
   info "访问地址：http://127.0.0.1:$PORT/"
@@ -402,9 +427,12 @@ verify() {
   info "数据目录：$DATA_DIR（凭据 $ENV_FILE，0600）"
   info "容器：    docker compose --env-file $ENV_FILE -p $PROJECT -f $COMPOSE_FILE ps"
   info "Worker：  $WORKER_DIR/run-worker.sh（WSL 重启后重跑）"
-  local pdf_note='未安装（加 --with-office-convert 重建执行器）'
-  if [ "$OFFICE_CONVERT" = 1 ]; then pdf_note='已包含 LibreOffice'; fi
+  local pdf_note='精简模式未安装'
+  if [ "$OFFICE_CONVERT" = 1 ]; then pdf_note='已包含 OCR、PDF 与 LibreOffice'; fi
   info "Office 转 PDF：$pdf_note"
+  local chat_note='精简模式使用文件存储'
+  if [ "$CHAT_STORE" = 1 ]; then chat_note='已使用 PostgreSQL chat schema'; fi
+  info "对话存储：$chat_note"
   info "重跑安装：bash releases/deploy/install-local-stack.sh --project $PROJECT --port $PORT"
   if [ "$fail" -gt 0 ]; then
     die "验收有 $fail 项失败，请查看上面的输出"
