@@ -27,6 +27,7 @@ import { DatabaseWorkspaceNavigation } from './DatabaseWorkspaceNavigation';
 import { readChatStream } from './chat-stream';
 import { DatabaseSettings, type SettingsSection } from './DatabaseSettings';
 import { mergeEvents, groupEvents, type StoredEvent, type ConversationPage, type StoredTurn } from './database-chat-state';
+import { displayUserMessageContent } from './chat-content';
 
 type AskUserPayload = { questionId: string; question: string; options: Array<{ label: string; description?: string }>; allowFreeText: boolean };
 /** 结构化提问以 meta 事件持久化（type=ask_user），这里只解析自己认识的形状，其他 meta 仍按原样忽略。 */
@@ -444,7 +445,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
             if (askUser) return null;
             if (e.kind === 'meta') return null;
             return <div key={e.id} className={`mb-3 ${e.kind === 'user' ? 'workspace-message workspace-user-message ml-auto w-fit max-w-[75%] rounded-lg bg-neutral-800 px-3 py-2 text-sm' : 'message-body workspace-message max-w-none text-sm'}`}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={e.kind==='assistant'?citationComponents:undefined}>{e.content}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={e.kind==='assistant'?citationComponents:undefined}>{e.kind === 'user' ? displayUserMessageContent(e.content) : e.content}</ReactMarkdown>
               {e.truncated && <button className={button} onClick={() => { void expandContent(e).catch(reason => setError(errorText(reason))); }}>展开完整内容</button>}
               {!!e.attachments?.length && <div className="mt-2 flex flex-wrap gap-2">{e.attachments.map(a => <AttachmentLabel key={a.id} attachment={a} />)}</div>}
             </div>;

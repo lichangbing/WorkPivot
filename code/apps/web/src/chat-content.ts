@@ -11,6 +11,11 @@ export interface ContentItem {
   durationMs?: number;
 }
 
+/** 结构化提问的内部编号用于关联消息，不应进入用户可见正文。 */
+export function displayUserMessageContent(content: string): string {
+  return content.replace(/^\[回答提问 [0-9a-f-]{36}\]\s*/i, '');
+}
+
 /** 将回复正文与思考、工具内容分离，兼容交错输出的流。 */
 export function appendContent<T extends ContentItem>(items: T[], kind: 'assistant' | 'thought', text: string): Array<T | ContentItem> {
   if (!text) return items;

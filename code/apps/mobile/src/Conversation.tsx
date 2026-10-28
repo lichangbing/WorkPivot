@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { groupEvents, mergeEvents, type ConversationPage, type StoredEvent, type StoredTurn } from '../../web/src/database-chat-state';
+import { displayUserMessageContent } from '../../web/src/chat-content';
 import { readChatStream } from '@workpivot/shared';
 import { ApiError, MobileClient, type Task } from './client';
 import { Attachments, FileLabel } from './Attachments';
@@ -141,7 +142,7 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
       {groupEvents(events).map(turn => <section key={turn.id}>{turn.events.filter(e => e.kind !== 'meta').map(event =>
         ['user', 'assistant'].includes(event.kind)
           ? <article key={event.id} className={event.kind === 'user' ? 'message user-message' : 'message'}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.content}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.kind === 'user' ? displayUserMessageContent(event.content) : event.content}</ReactMarkdown>
             {event.truncated && <button disabled={busy} onClick={() => void expand(event)}>展开完整内容</button>}
             {event.attachments?.map(file => <FileLabel key={file.id} name={file.name ?? '附件'} />)}
           </article>

@@ -49,12 +49,12 @@ WORKPIVOT_ANDROID_KEY_PASSWORD
 
 2026-10-20 已完成首次 APK：前端生产构建、Capacitor 同步、Android `assembleDebug` 215 项任务成功；本轮使用本机 Gradle 8.14.4（官方 SHA-256 核对通过），仓库 wrapper 仍为 8.14.3。产物为测试签名的 1.0（版本号 1），4,434,816 字节，最低 API 24、目标 API 36，APK v2 签名校验通过。本地交付副本位于项目根 `local-runtime/releases/WorkPivot-android-1.0-debug.apk`，不入 Git。尚未安装到荣耀手机实测，不能视为正式发布或原生功能验收。
 
-2026-10-28 重新构建 Android 1.4：安装包默认连接
+2026-10-28 重新构建 Android 1.5：安装包默认连接
 `https://115-191-1-188.sslip.io:80`，服务器地址收在“服务器设置”中；构建和 APK v2/v3
 签名校验通过。内测下载：
-<https://115-191-1-188.sslip.io:80/downloads/WorkPivot-android-1.4.apk>。
-SHA-256：`b1f95e24acf1ad7f558dd181cd4103c776fd432b1d3b2cab218962730513e4d4`。
-这是 WorkPivot 独立内测签名包（versionCode 5），用于内部安装测试，不是应用商店或正式分发版本。
+<https://115-191-1-188.sslip.io:80/downloads/WorkPivot-android-1.5.apk>。
+SHA-256：`bbb6787fe3f16d5794094757d1eea8d204214f40a9a5815f57be91edf0d0a22c`。
+这是 WorkPivot 独立内测签名包（versionCode 6），用于内部安装测试，不是应用商店或正式分发版本。
 
 ## 当前边界
 

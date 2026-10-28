@@ -35,6 +35,7 @@ try {
 
   const task = { id: 'task-a', projectId: 'project-a', name: '合成任务', status: 'completed', revision: 1 };
   const questionId = '31546d88-7896-43c5-af51-b4f189a238eb';
+  const answeredQuestionId = '6241bf67-d647-4f49-9e36-04b06f100bb5';
   const event = (id, sequence, kind, content) => ({ id, sequence: String(sequence), turnId: 'turn-a', runId: 'run-a', kind, content });
   let messageBody;
   let scopeRequests = 0;
@@ -51,6 +52,7 @@ try {
       turns: [{
         id: 'turn-a',
         events: [
+          event('answered-user', 0, 'user', `[回答提问 ${answeredQuestionId}] 用公开网页资料做分析`),
           event('ask-user', 1, 'meta', JSON.stringify({
             type: 'ask_user',
             questionId,
@@ -93,6 +95,8 @@ try {
   assert.ok(dockBox && composerBox && dockBox.y + dockBox.height <= composerBox.y + 1, '确认列表应位于输入框上方');
   assert.equal(await dock.getByRole('listitem').count(), 2);
   assert.equal(await dock.getByRole('button', { name: /核心结论/ }).isDisabled(), false);
+  await page.getByText('用公开网页资料做分析', { exact: true }).waitFor();
+  assert.equal(await page.getByText(`[回答提问 ${answeredQuestionId}]`, { exact: false }).count(), 0, '用户消息不应显示内部提问编号');
 
   const answerRequest = page.waitForRequest('**/api/tasks/task-a/messages');
   await dock.getByRole('button', { name: /核心结论/ }).click();
