@@ -4,6 +4,8 @@
 - **日期**：2026-10-24
 - **信息来源**：本机安装包静态分析（`D:\Program Files\DeepSeek Harness\resources\app.asar`，解包 548 个 `@deepseek-ai/dsh-*` 包，v0.2.1-rc.2，MIT）；未运行实测。
 
+> 插件与长期记忆专项：[Hindsight 与 DSH 长期记忆插件](hindsight-dsh-memory-20261028.md)。该专项说明 Hindsight 官方支持 DSH、第三方插件并非 DeepSeek 官方插件，并提炼自动召回、知识页和证据化归纳的可借鉴机制。
+
 ## 1. 产品概述
 
 - **厂商与背景**：DeepSeek 官方开源的 agent 客户端（仓库 `deepseek-ai/deepseek-harness`），npm 公开发布 `@deepseek-ai/dsh-*`，MIT 许可。
@@ -23,6 +25,7 @@
 | 工具面 | 文件、bash、todo、skill、ask_user、workflow、定时、会话查询 | ✅ | 见下 |
 | 审批 | `dsh-user-approval` + 授权 seam | ✅ | 按工具声明 |
 | 上下文压缩 | 工具结果修剪（8192/4096/1024）+ 会话压缩 | ✅ | 见 §5 |
+| 长期记忆扩展 | Cordis 插件可绑定 session-start、pre-step、turn-stopping，并注册记忆工具 | 🧪 | 依赖第三方/外部服务，非 DSH 内置 |
 | 多用户/租户 | 无 | ❌ | 单机单用户 |
 
 其他工具：`ask_user_question`（多问题 + heading + options，推荐项排第一）、`workflow`（JS 编排脚本，`agent`/`parallel`/`pipeline`）、`todo`、`str_replace_editor`、`fs_search`、`session_search`、`schedule`、`goal`、`ralph`。
@@ -56,6 +59,7 @@
   4. 子代理语义：两种种子、可续聊、深度限制、完成通知（对应 R005，先收敛为单层同步）。
   5. 搜索走模型原生 `web_search`，自建引擎退为离线备选（R003 的替代方案）。
   6. 会话事件流 + 中断恢复，是长任务可靠性的根本，比事后压缩更彻底。
+  7. 记忆插件应基于宿主生命周期自动接入，但使用有限预取、超时和失败降级；不要把记忆服务加入聊天主链路的硬依赖。
 - **应当规避**：
   1. 进程内子代理（无 OS 隔离，不能用于多用户服务端）。
   2. 搜索完全依赖模型供应商，离线/隐私场景不可用。

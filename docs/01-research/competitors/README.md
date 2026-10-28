@@ -20,7 +20,7 @@
 | 直接商业竞品 | WorkBuddy、QwenWork | 任务交付、专家/技能、本地执行与企业形态 |
 | 通用 Agent 产品 | Claude Code、OpenAI Codex CLI | 工具循环、上下文工程、沙箱、审批与会话协议 |
 | 开源工作台 | MyAgents、OpenWorkBuddy | 桌面 Agent、工作区、任务与成果链路 |
-| 运行时/记忆生态 | OpenClaw、Pi Agent Harness、Hermes Agent、DeepSeek Harness | 插件、记忆、技能、会话恢复与多模型协议 |
+| 运行时/记忆生态 | OpenClaw、Hindsight、Pi Agent Harness、Hermes Agent、DeepSeek Harness | 插件、分层长期记忆、混合召回、技能、会话恢复与多模型协议 |
 | 观察名单 | 飞书智能伙伴、钉钉 AI、Coze、Microsoft 365 Copilot | 待补充公开资料和可复现实测 |
 
 ## 横向结论
@@ -30,7 +30,7 @@
 | 产品单位 | 从“聊天”转向“任务/项目” | 采用项目 → 任务 → 运行 → 成果 |
 | 工作区 | 任务绑定真实目录或受控文件空间 | 服务端任务目录 + 版本化成果，不依赖本地同步盘 |
 | 扩展 | SKILL.md、MCP、专家/插件包生态 | 支持兼容格式，但技能发布和执行权限由 WorkPivot 自己控制 |
-| 记忆 | 从单一 MEMORY.md 转向会话、项目、用户多层 | 采用 user/project/task 三层，冲突确认，来源可追溯 |
+| 记忆 | 从单一 MEMORY.md 转向作用域分层、证据化归纳和预生成知识页 | 保留 user/project/task 三层，补 Observation 与概览，冲突确认，来源可追溯 |
 | 上下文 | 按需读取、压缩、恢复，而非无限堆消息 | 预算、检索、压缩和事件恢复分离 |
 | 安全 | 工具审批、文件边界、隔离执行和密钥加密 | 任务资源绑定 + 独立执行器 + 不可信数据隔离 |
 | 部署 | 桌面免部署与私有化服务并存 | 当前优先服务端集中部署，桌面/移动作为客户端 |
@@ -81,6 +81,7 @@ Office 与证据：[Office 静态分析](workbuddy-office-static-20261017.md)、
 - [Hermes Agent](hermes.md)
 - [Pi Agent Harness](pi-agent.md)
 - [DeepSeek Harness](deepseek-harness.md)
+- [Hindsight 与 DSH 长期记忆插件](hindsight-dsh-memory-20261028.md)
 - [OpenAI Codex CLI](codex.md)
 - [Claude Code](claude-code.md)
 - [Claude Code 内核专项](claude-code-internals.md)
