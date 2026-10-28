@@ -1,77 +1,77 @@
-# 产品研究
+# 研究与决策输入
 
-2026-10-17开发交接：[Office 处理开发参考：WorkBuddy 分析](../02-design/architecture/Office处理开发参考-WorkBuddy分析-20261017.md)，将下方静态与运行证据整理为实现注意事项和验收要求，供后续功能开发使用。
+> 状态：✅ 研究主线已整理
+> 最近更新：2026-10-28
+> 使用方式：先读结论，再用专项证据复核
 
-~~项目当前阶段的工作重心。~~ **研究阶段已收官（2026-08-28）**：竞品与技术选型完成、结论汇总落盘，正式进入设计阶段（`../02-design/`）。本目录转为存档与补充调研入口。
+研究层回答“市场、竞品和技术为什么这样选”。它不是当前功能完成度清单；当前实现以 [PRD](../02-design/product/PRD-00-产品总纲.md) 和 [项目状态](../03-project/STATUS.md) 为准。
 
-## 研究计划
+## 当前结论
 
-| # | 方向 | 目录 | 核心问题 | 优先级 | 状态 |
-|---|------|------|----------|--------|------|
-| 1 | 竞品分析 | `competitors/` | WorkBuddy 等标杆产品的功能、架构、商业模式是什么？我们学什么、避什么？ | 🔴 高 | ✅ 已完成（9 个产品/项目，13 份文档；钉钉AI/Coze/Copilot 按需补充） |
-| 2 | 技术调研 | `tech/` | 后端技术栈、桌面端框架（Electron/Tauri）、LLM 编排、RAG、私有化部署方案如何选型？ | 🔴 高 | ✅ 已完成（TECH-01/02 定案；后端栈随全栈 TS 定案关闭） |
-| 2a | Cordis 动态插件架构 | `tech/` | DeepSeek Harness 实证分析；**最终结论：移出技术栈**——技能热加载自研（目录扫描），内核自研微内核；Cordis 留作 D09 二期候选 | 🟡 中 | ✅ 已闭环：[01-cordis-动态插件架构.md](tech/01-cordis-动态插件架构.md) |
-| 2b | 桌面端框架选型 | `tech/` | Electron vs Tauri v2：基于 MyAgents(Tauri/95MB) 与 WorkBuddy+OWB(Electron/500MB) 三产品实测对照 | 🔴 高 | ✅ **已定 Electron**（形态 A 起步→A' 演进）：[02-桌面端框架选型.md](tech/02-桌面端框架选型.md) |
-| 3 | 市场调研 | `market/` | 目标客群是谁？市场规模多大？私有化交付的竞争格局如何？ | 🟡 中 | ⬜ 未开始（画像假设已写入结论汇总 §3，随种子客户接触补充） |
-| 4 | 用户调研 | `users/` | 企业用户现有的办公/AI 使用场景与痛点是什么？愿意为什么付费？ | 🟡 中 | ⬜ 未开始 |
-| 5 | 结论汇总 | `conclusions/` | 汇总以上研究，形成产品定位与技术路线的初步决策建议 | 🔴 高 | ✅ [研究结论汇总.md](conclusions/研究结论汇总.md) |
+1. **产品方向**：私有化、任务式、成果交付型 AI 工作台。
+2. **主要用户**：处理敏感材料和知识工作的内部团队。
+3. **技术路线**：全栈 TypeScript/Node、自研 Agent 微内核、PostgreSQL + 文件混合存储。
+4. **差异点**：模型中立、任务级授权、证据与恢复、三层记忆纠错、Office/PDF 成果闭环。
+5. **不追的方向**：单纯堆聊天功能、厂商生态绑定、不受控的宿主命令执行、未审核的自动 Skill 发布。
 
-> 状态图例：⬜ 未开始 / 🔄 进行中 / ✅ 已完成
+完整横向对比见[2026 竞品格局](competitors/product-landscape-2026.md)。
 
-## 竞品清单（初步）
+## 竞品研究
 
-| 竞品 | 类型 | 分析文档 |
-|------|------|----------|
-| WorkBuddy（腾讯） | 企业 AI 智能体工作台，最直接对标 | 产品分析：[workbuddy.md](competitors/workbuddy.md) ✅ 初稿<br>技术拆解（本机逆向）：[workbuddy-technical-analysis.md](competitors/workbuddy-technical-analysis.md) ✅<br>扩展系统专项（专家/技能/连接器/插件动态加载）：[workbuddy-extension-system.md](competitors/workbuddy-extension-system.md) ✅<br>官方文档纪要（功能/流程/企业版定价/私有化）：[workbuddy-official-docs.md](competitors/workbuddy-official-docs.md) ✅ |
-| 千问办公 QwenWorkCN（阿里） | 大厂桌面 AI 工作台（钉钉/Qoder 团队，Electron + VM 沙箱 + AgentSkills 技能生态 + agent CLI），与钉钉 AI 助理同厂不同形态 | 本机逆向 + 工作区实测：[qwenwork.md](competitors/qwenwork.md) ✅ |
-| 钉钉 AI 助理 | IM + AI 助理生态 | ⬜ 待补充 |
-| 飞书智能伙伴 | 协同办公 + AI | ⬜ 待补充 |
-| Coze（扣子） | Agent 构建平台 | ⬜ 待补充 |
-| Microsoft 365 Copilot | 国际标杆，办公套件 + AI | ⬜ 待补充 |
-| MyAgents（开源） | **开源参考实现**：Tauri v2 + Claude Agent SDK 桌面个人 Agent 工作台（AGPL）——桌面端技术选型与架构参考 | 源码级分析：[myagents.md](competitors/myagents.md) ✅ |
-| OpenWorkBuddy（开源） | **WorkBuddy 的极简开源复刻**（纯手写 agent 循环 + 评测驱动开发）——agent 工程经验宝库；PolyForm 非商业许可，只学思想不抄码 | 源码级分析：[openworkbuddy.md](competitors/openworkbuddy.md) ✅ |
-| OpenClaw（开源） | **个人 AI 助理框架，记忆/人设/插件格式的事实标准源头**（WorkBuddy/MyAgents 均对齐）——Gateway 架构、Dreaming 记忆固化、pi 运行时；MIT | 源码级分析：[openclaw.md](competitors/openclaw.md) ✅ |
-| Hermes Agent（开源） | **自改进智能体**（Nous Research，Python/MIT）——技能自动生成四层闭环（工具策略/nudge/Curator 治理/状态机） | 源码级分析：[hermes.md](competitors/hermes.md) ✅ |
-| Pi Agent Harness（开源） | **极简自扩展内核**（7 内置工具 + jiti 动态加载 TS 扩展）——OpenClaw 运行时、OWB 压缩设计的源头；引用链终点 | 源码级分析：[pi-agent.md](competitors/pi-agent.md) ✅ |
-| OpenAI Codex CLI（开源） | **OpenAI 官方编程 agent**（Rust 160 万行，Apache-2.0）——工具面收缩/压缩工程/审批沙箱四层模型的顶配参考实现；可合法复用设计件但 Rust 代码不复用，且不收外部 PR | 源码级分析：[codex.md](competitors/codex.md) ✅ |
-| Claude Code（Anthropic） | **闭源核心 + 开源卫星**——SKILL.md 格式与内容生态的事实标准源头：headless 集成蓝图（MIT）、岗位技能包范式（Apache-2.0，212 领域技能）；⚠️ 核心 npm 与文档四件套技能 Proprietary 不可复用，H 模块必须自研。另：2026-03-31 泄露源码已做完整源码级分析（仅供研究，K05 红线） | 生态分析（四仓库实测）：[claude-code.md](competitors/claude-code.md) ✅<br>泄露源码级分析（51.2 万行 ground truth）：[claude-code-internals.md](competitors/claude-code-internals.md) ✅ |
-| DeepSeek Harness（开源） | **DeepSeek 官方 agent 客户端**（Electron + Cordis 插件，548 个 npm 包，MIT）——事件溯源会话、并行工具池、子代理编排、模型原生 web_search、持久 PTY 的参考实现；单机单用户，无多租户 | 安装包静态分析（asar 解包）：[deepseek-harness.md](competitors/deepseek-harness.md) ✅ |
+- [竞品研究入口](competitors/README.md)：阅读顺序、证据等级、专项索引。
+- [统一竞品格局](competitors/product-landscape-2026.md)：WorkBuddy、QwenWork、Codex、Claude Code、OpenClaw 等统一卡片。
+- [竞品模板](competitors/_template.md)：新增或复核产品时使用。
 
-新建竞品分析请复制 [competitors/_template.md](competitors/_template.md)。
+当前覆盖：
 
-### 2026-10-14 WorkBuddy 补充复核
+| 类别 | 产品 |
+| --- | --- |
+| 直接办公竞品 | WorkBuddy、QwenWork |
+| 通用 Agent | Claude Code、OpenAI Codex CLI |
+| 开源工作台 | MyAgents、OpenWorkBuddy |
+| 运行时/生态 | OpenClaw、Hermes Agent、Pi Agent Harness、DeepSeek Harness |
+| 观察名单 | 飞书智能伙伴、钉钉 AI、Coze、Microsoft 365 Copilot |
 
-- [REA：Agent 运行与项目记忆复核](competitors/workbuddy-rea-20261014.md)：当前安装包身份、桌面到 CLI 的进程生命周期、ACP 流式协议、会话状态、REA 覆盖限制及历史结论修正。
-- [CLI Agent 内核与记忆触发](competitors/workbuddy-agent-runtime-20261014.md)：模型/工具编排、压缩取消、子代理与记忆触发的静态证据及缺口。
-- [项目本地记忆实证](competitors/workbuddy-local-memory-20261014.md)：中新融创项目的长期文件、43 份日期日志、脱敏结构与完整文件哈希清单。
+原始长文和本机实测保留为证据，不要求读者按日期阅读。新增结论先写统一卡片，再附专项来源。
 
-本次为安装产物静态分析和项目文件快照，未执行目标程序或验证真实会话；原研究收官状态不代表这些动态问题已经验收。
+## 技术研究
 
-### 2026-10-17 WorkBuddy Office 静态复核
+| 课题 | 结论 | 文档 |
+| --- | --- | --- |
+| 桌面框架 | Electron，Web-ready 优先，客户端不承载全部服务 | [桌面端框架选型](tech/02-桌面端框架选型.md) |
+| 动态插件 | 不直接引入 Cordis；采用受控 Skill 和自研扩展边界 | [Cordis 动态插件架构](tech/01-cordis-动态插件架构.md) |
+| Agent 内核 | 自研微内核，工具、Skill、模型和持久运行分离 | [ADR-002](../02-design/decisions/ADR-002-编排内核自研微内核.md) |
+| 数据存储 | PostgreSQL 保存状态/权限/版本，文件卷保存原件与成果 | [ADR-003](../02-design/decisions/ADR-003-PostgreSQL与文件混合存储.md) |
+| 模型接入 | OpenAI 兼容 + Anthropic 双协议，优先保持供应商中立 | [系统总览](../02-design/architecture/系统总览.md) |
+| 执行安全 | 独立 Worker/容器、任务资源范围、写入审批、不回落宿主 shell | [任务授权方案](../02-design/architecture/上下文注入防护与任务授权方案-20261017.md) |
 
-- [Word、Excel、PPT 文件处理](competitors/workbuddy-office-static-20261017.md)：5.8.3 版本的读取、既有文件修改与新建流程，本地文档引擎、表格子代理、SlideDSL、质量检查与证据边界。
-- [关键文件证据清单](competitors/workbuddy-office-evidence-20261017.json)：本次原始安装文件的路径、大小与 SHA-256。仅做静态分析，未验证真实执行与格式保真。
-- 实现深入复核：[Word 解析与原生边界](competitors/workbuddy-office-deep-word-20261017.md)、[Excel 读取与 Worker 编辑链](competitors/workbuddy-office-deep-excel-20261017.md)、[PPT DSL 到引擎修订提交](competitors/workbuddy-office-deep-ppt-20261017.md)。已修正初轮 PPT 独立生成器的误判，记录 REA 实际覆盖、资源限制和原生反编译环境缺口。
-- [原生 Office 引擎分析](competitors/workbuddy-office-native-20261017.md)：独立 Ghidra/JDK 环境、原生目标身份、实际内嵌空白模板、索引与函数追踪状态。环境已补齐，功能还原程度以专项结果为准。
-- [Word 新建运行实证](competitors/workbuddy-word-runtime-20261017.md)：非敏感测试的真实短文路由、HTML 转换命令、产物结构与预览入口；区分 REA 被动快照、会话工具记录和同哈希静态代码。
-- [Word 读取运行实证](competitors/workbuddy-word-read-runtime-20261017.md)：复用编辑实例、实际结构与表格查询、UTF-16 定位和只读前后哈希。
-- [Word 局部修改运行实证](competitors/workbuddy-word-edit-runtime-20261017.md)：真实替换/表格写入/保存、源文件保护、路径形式 file_id 与保存重序列化。
-- [Excel 生成与重算运行实证](competitors/workbuddy-excel-create-runtime-20261017.md)：openpyxl 建表、LibreOffice 重算、公式缓存及实际输入差异。
-- [Excel 读取与核算运行实证](competitors/workbuddy-excel-read-runtime-20261017.md)：真实子代理调用、Windows 路径解析缺陷、数据与公式读取、只读哈希。
-- [Excel 局部修改与修复运行实证](competitors/workbuddy-excel-edit-runtime-20261017.md)：单元格 API 编辑、重算超时、公式前导等号异常、Agent XML 修补及最终公式/缓存核对。
+技术研究模板见[tech/_template.md](tech/_template.md)。
 
-## 技术调研课题（初步）
+## 研究结论
 
-1. **后端技术栈选型**：Java/Spring Boot vs Python/FastAPI vs Node.js/NestJS vs 混合架构
-2. **桌面端框架**：Electron vs Tauri（桌面端已确定为必有形态）
-3. **LLM 接入与编排**：多模型网关、Agent 编排框架（自研 vs LangGraph 等开源方案）
-4. **RAG 与企业知识库**：向量库选型、文档解析、权限隔离
-5. **私有化部署**：Docker/K8s 交付形态、离线安装、模型私有化（是否支持内网无外联环境）
+- [历史研究结论汇总](conclusions/研究结论汇总.md)：2026-08 立项阶段的定位、客群、MVP 和风险。
+- 重要修订不直接覆盖历史结论；新的产品级取舍进入 PRD/ADR，并在原文档追加“后续更新”。
 
-新建技术调研请复制 [tech/_template.md](tech/_template.md)。
+## 证据规则
 
-## 产出要求
+| 等级 | 证据 | 使用范围 |
+| --- | --- | --- |
+| A | 官方文档、公开源码、可复现实测 | 可作为产品/架构结论 |
+| B | 安装包静态分析、运行日志、源码局部推断 | 可作技术线索，需标注验证边界 |
+| C | 媒体报道、访谈摘要、第三方测评 | 只作市场观察 |
+| D | 未验证假设 | 必须进入待验证清单 |
 
-- 所有研究文档须注明信息来源（链接/访谈对象/日期），保证可追溯
-- 每完成一项研究，更新本页状态表
-- 最终在 `conclusions/` 产出《研究结论汇总》，包含：产品定位建议、目标客户画像、功能范围建议（MVP）、技术路线建议、风险清单
+要求：
+
+- 每条关键结论都应有来源、日期和证据等级。
+- 不把商业产品内部推断写成已证实事实。
+- 不复用未确认许可的代码、Skill、提示词或模板。
+- 不在研究材料中保存真实账号、密钥、私有样本和本机绝对路径。
+
+## 当前待研究
+
+- 首批种子客户的行业、团队规模与采购门槛。
+- 中文 Office 复杂样版的视觉与业务验收基线。
+- 本地模型、私有云模型和公有云模型的质量/成本路由。
+- 企业身份、组织同步、跨项目共享与撤权。
+- 多人项目协作是否进入下一版本，还是继续强化单用户完整闭环。

@@ -1,99 +1,179 @@
-# 源代码（pnpm monorepo）
+# WorkPivot 源码开发
 
-## 当前开发入口
+> 状态：✅ 当前开发入口
+> 运行时：Node.js 22、pnpm 11
+> 当前主链路：PostgreSQL + 服务端 Worker/浏览器/执行器
 
-运行环境和包管理器版本以本目录 package.json、锁文件为准。用户界面在 apps/web，桌面外壳在 apps/desktop，业务服务在 packages/server，Agent 核心在 packages/core，共享协议在 packages/shared。
+本目录是 pnpm monorepo。开发前先阅读仓库根 [AGENTS.md](../AGENTS.md)、[产品总纲](../docs/02-design/product/PRD-00-产品总纲.md)和[系统总览](../docs/02-design/architecture/系统总览.md)。
 
-当前 PostgreSQL 运行入口为 scripts/database-server.mts，业务组装在 packages/server/src/database/runtime.ts；WSL 使用 eval/wsl-database-server.mts。前端通过后台 HTTP/SSE 通信，不要求后台与客户端在同一主机。原有文件存储代码仍保留，不能与数据库链路的验收结果混用。
+## 目录
 
-### 检查方式（在 code 目录执行）
-
-| 命令 | 范围 |
-| --- | --- |
-| pnpm typecheck | 工作区类型检查 |
-| pnpm lint | 静态检查 |
-| pnpm check:deps | 前端依赖边界 |
-| pnpm check:licenses | 已安装 pnpm 依赖的许可证黑名单筛查，缺失声明单独提示；不是完整法律审查 |
-| pnpm check:licenses:strict | 在黑名单检查之外，将缺失许可证声明作为失败；用于发布前明确暴露未解决项 |
-| pnpm test:licenses | 许可证检查脚本自身的边界用例 |
-| pnpm eval:chat-state | 数据库界面事件排序、去重与分组 |
-| pnpm eval | 常规模拟评测；不包含数据库集成和真实模型验收 |
-| pnpm eval:database | 独立临时 PostgreSQL 集成测试，需 Docker；Windows 使用 WSL |
-| pnpm eval:backup | 离线备份包完整性与路径边界检查 |
-| pnpm eval:backup-database | Linux Docker 宿主上的真实 PostgreSQL 联合备份/隔离恢复验收 |
-| pnpm --filter @workpivot/web build | 用户端及管理端构建 |
-
-数据库测试默认需要 postgres:17-alpine 镜像；可通过 WORKPIVOT_TEST_PG_IMAGE 显式指定已准备的受测版本。不要用业务数据库代替临时测试库。Windows 测试入口现在自行启动隐藏的 WSL 存活辅助进程，并在完成或异常清理时终止本次辅助进程，无需另外手动保持终端；主机强制终止不保证清理。测试覆盖范围见 [eval/README.md](eval/README.md)，部署采用对应环境的最新记录。
-
-开发规范见 [AGENTS.md](../AGENTS.md)，当前计划见 [数据库与知识开发计划](../docs/03-project/tasks-postgresql-knowledge.md)。
-
-联合备份和恢复入口为 `pnpm backup:create <目录>`、`pnpm backup:verify <目录>`、`pnpm backup:restore <备份目录>`；离线停写、独立目标、安全快照、角色及密钥要求见[备份恢复操作与验收](../docs/03-project/backup-recovery-20261016.md)。
-
-## 以下为早期实现记录
-
-以下 M0 技术选择、认证设想、同进程拓扑、环境变量和任务提交约定仅用于理解历史，不覆盖当前代码、开发规范与部署记录。
-
-> 工程于 2026-09-05 建立（M0 竖切开工，T1-01）。依据：ADR-002（编排内核=自研微内核）、
-> [数据目录规范](../docs/02-design/architecture/数据目录规范.md)、plan-2026 / tasks-m0。
-
-## 历史结构（M0 · 形态 A：服务层与 Electron 主进程同进程）
-
-```
+```text
 code/
 ├── apps/
-│   ├── desktop/           # 桌面端 Electron 主进程（窗口/托盘/更新 + 挂载服务层，T1-02）
-│   └── web/               # 前端：React + Tailwind + Vite（三栏 UI，仅经 localhost HTTP/SSE 通信）
+│   ├── web/          React/Vite 用户端与管理端
+│   ├── desktop/      Electron 桌面壳
+│   └── mobile/       Capacitor 移动端
 ├── packages/
-│   ├── server/            # 服务层：HTTP/SSE、任务、审计（前端禁 import，拆分边界纪律 A01.3）
-│   ├── core/              # agent 编排内核（T1-04：循环/工具注册/事件流；ADR-002 自研）
-│   └── shared/            # 共享类型/常量/日志（浏览器入口 . 与 Node 入口 ./node 分离）
-├── eval/                  # 评测题库（K01：任务验收的机器断言脚本）
-├── scripts/               # 工程脚本（check-licenses.mjs = K05 许可黑名单）
-├── Dockerfile             # 服务端镜像（拓扑二基础，v0.2.0；docker-compose.yml 在仓库根）
-├── eslint.config.js / tsconfig.base.json / pnpm-workspace.yaml
+│   ├── core/         Agent 循环、工具协议、上下文预算
+│   ├── server/       HTTP/SSE、数据库、权限、知识与执行编排
+│   └── shared/       跨端共享类型
+├── eval/             自动化评测、集成测试与浏览器验收
+├── scripts/          数据库、部署和工程辅助脚本
+├── Dockerfile*       服务端、Worker、浏览器等镜像
+└── package.json      workspace 命令
 ```
 
-拓扑二（服务端集中部署）基础已随 v0.2.0 落地：`code/Dockerfile` 构建服务端镜像，仓库根 `docker-compose.yml` 编排
-（数据卷持久化/健康检查/时区），部署步骤与环境变量见 [releases/deploy/部署说明.md](../releases/deploy/部署说明.md)。
-`services/`（后端按域拆分）与 `deploy/`（编排源文件目录化）仍留待规模触发；`im-bot` 属 Q3 未定项。
-演进路线见 plan-2026 架构澄清节。
+当前 PostgreSQL 服务入口是 [`scripts/database-server.mts`](scripts/database-server.mts)，运行时组装在 [`packages/server/src/database/runtime.ts`](packages/server/src/database/runtime.ts)。旧文件存储代码仍用于历史兼容和专项测试，不能与数据库链路的验收结果混用。
 
-## 已定技术决策
-
-- **栈**：全栈 TypeScript/Node 22（ESM）；前端 React + Tailwind（2026-09-05 确认）；Electron 37
-- **内核**：自研微内核（ADR-002，2026-09-05 定案；pi-agent-core 仅作退化选项，触发条件见 ADR）
-- **存储**：M0 纯文件 JSONL + store 三原语（原子写/.bak/坏文件隔离，T1-08）；SQLite 见数据目录规范 §5 触发器
-- **技能**：SKILL.md 目录扫描热加载（D01）；**认证**：OAuth2/OIDC 主体 + 飞书首适配 + 管理员分配制（J07，M1）
-- **沙箱基线**：项目绑定工作目录为权限主边界，界外须授权（I08）
-
-## 工程纪律
-
-1. **前端禁 import 服务层/内核**——只走 localhost HTTP/SSE（C05，W4 进 CI）
-2. **业务持久化必经 store 层**（K02，T1-08 起强制）；日志允许直接追加
-3. **`pnpm check:licenses` 是硬门禁**（K05：AGPL/PolyForm 一票否决）；参考仓库（codex/claude-code-leak 等）只读，代码与提示词原文不进本仓库
-4. 每任务一 commit（message 带 T 编号），完成即更新 [tasks-m0.md](../docs/03-project/tasks-m0.md) 状态看板
-
-## 常用命令
+## 环境准备
 
 ```bash
-pnpm install
-pnpm typecheck         # 全 workspace 类型检查
-pnpm lint              # ESLint
-pnpm check:licenses    # K05 许可黑名单
-pnpm dev:web           # 前端 dev server（T1-02 起并入桌面壳启动链）
+node --version   # >= 22
+corepack enable
+corepack prepare pnpm@11.22.0 --activate
+docker version
 ```
 
-## 服务端环境变量（拓扑二部署，详见部署说明）
+安装依赖：
 
-| 变量 | 默认 | 说明 |
-|------|------|------|
-| `WORKPIVOT_HOST` | 0.0.0.0（镜像内已设；桌面默认 127.0.0.1） | 监听地址 |
-| `WORKPIVOT_PORT` | 39800 | 服务端口 |
-| `WORKPIVOT_MAX_PARALLEL` | 8（compose 内 16） | 同时运行的 agent 任务上限 |
-| `WORKPIVOT_HOME` | /data/workpivot | 应用数据根 |
-| `WORKPIVOT_WORKSPACE` | /data/workspace | 工作区根（任务真实文件） |
+```bash
+cd code
+pnpm install --frozen-lockfile
+```
 
-## 私有化交付注意（承占位版约定）
+运行完整私有化栈推荐使用仓库安装器：
 
-1. 所有依赖可离线获取（npm 镜像化；Electron 二进制走内网镜像，A07 自建更新源）
-2. `deploy/`（编排源文件，入库）与根 `releases/`（发布产物，大文件不入库）的关系不变
+```bash
+cd ..
+bash releases/deploy/install-local-stack.sh --auto-admin
+```
+
+## 开发命令
+
+| 命令 | 内容 |
+| --- | --- |
+| `pnpm typecheck` | 全 workspace TypeScript 检查 |
+| `pnpm lint` | ESLint |
+| `pnpm check:deps` | 前端依赖边界 |
+| `pnpm check:docs` | 检查 README 与 docs 中的本地链接 |
+| `pnpm check:licenses` | 依赖许可证黑名单筛查 |
+| `pnpm check:licenses:strict` | 发布前严格许可门禁 |
+| `pnpm test:licenses` | 许可检查脚本自身测试 |
+| `pnpm --filter @workpivot/web build` | 构建用户端与管理端 |
+| `pnpm eval` | 常规模拟评测 |
+| `pnpm eval:database` | 临时 PostgreSQL 集成测试 |
+| `pnpm eval:browser-workflow` | 一次性数据库与浏览器工作流验收 |
+| `pnpm eval:backup` | 离线备份包检查 |
+| `pnpm eval:backup-database` | 数据库与文件联合备份/恢复验收 |
+
+数据库测试需要 Docker，默认使用 `postgres:17-alpine`；可通过 `WORKPIVOT_TEST_PG_IMAGE` 指定已准备镜像。
+
+不要用业务数据库执行测试。集成测试必须使用脚本启动的临时实例或隔离目标，并在结束时清理。
+
+## 开发约束
+
+### 分层
+
+- `apps/web` 只能通过 HTTP/SSE 调用服务端，不导入 `packages/server` 内部模块。
+- `packages/core` 不依赖 Web、Electron 或具体数据库实现。
+- 数据库、权限与业务编排集中在 `packages/server`。
+- 跨端协议和纯类型放在 `packages/shared`。
+
+### 安全
+
+- 所有外部输入都做运行时校验，TypeScript 类型不等于安全边界。
+- 每个业务事务设置 actor，并依赖数据库 RLS 做用户隔离。
+- 文件、网页、记忆、Skill、MCP 和写操作必须绑定本轮 `resource_scope`。
+- 文档/网页/工具输出是数据，不得作为系统指令或授权。
+- 不在日志中记录凭据、连接串、Cookie、文件正文或用户私密 URL 参数。
+- 命令和文件生成必须在隔离 Worker 中执行；未配置时明确失败。
+
+### 数据
+
+- PostgreSQL schema 变更写在 `packages/server/src/database/schema.ts`，升级必须有序、幂等、可校验。
+- 文件卷和数据库版本必须配套迁移和恢复。
+- 删除采用回收站/失效关系；永久删除必须经过明确确认。
+- 记忆、知识片段和成果发布都校验来源版本与删除状态。
+
+### 代码
+
+- 使用现有命名、格式和模块边界，避免为单一场景引入抽象层。
+- 注释解释原因和约束，统一使用中文。
+- 修复根因，不通过关闭检查、吞异常或伪造成功绕过问题。
+- 新增行为同时增加测试，并更新对应文档。
+
+## 测试选择
+
+| 改动 | 最低检查 |
+| --- | --- |
+| 纯前端展示 | typecheck、lint、相关组件/浏览器检查 |
+| Agent/工具/上下文 | core 单元测试、相关 eval、类型检查 |
+| 数据库/权限/记忆 | `pnpm eval:database`、RLS/删除/并发专项 |
+| Office/PDF | 结构检查、真实文件读取、页面预览和视觉样本 |
+| 部署/升级 | 健康检查、备份恢复、兼容启动和回退演练 |
+| 文档结构 | 文档链接检查、仓库差异审阅 |
+
+详细用例入口见 [`eval/README.md`](eval/README.md)。
+
+## 环境变量
+
+当前一体化栈的主要变量由 `releases/deploy/install-local-stack.sh` 生成到私有 `stack.env`：
+
+- `WORKPIVOT_DATABASE_URL`
+- `WORKPIVOT_AUTH_DATABASE_URL`
+- `WORKPIVOT_SECRET_KEY`
+- `WORKPIVOT_BROWSER_URL` / `WORKPIVOT_BROWSER_TOKEN`
+- `WORKPIVOT_WORKER_URL` / `WORKPIVOT_WORKER_TOKEN`
+- `WORKPIVOT_SEARCH_PROVIDER` / `WORKPIVOT_SEARCH_URL`
+
+示例变量见仓库根 [.env.example](../.env.example)。示例只包含占位值，不能直接作为生产配置。
+
+## 本地构建
+
+服务端镜像：
+
+```bash
+cd code
+docker build -f ../releases/deploy/Dockerfile.local-stack-server \
+  -t workpivot-server:local-stack .
+```
+
+浏览器和执行器镜像由一体化安装器统一构建，避免版本不一致。
+
+## 常见问题
+
+### pnpm 找不到
+
+```bash
+corepack enable
+corepack prepare pnpm@11.22.0 --activate
+```
+
+### 数据库集成测试无法启动
+
+- 确认 Docker daemon 可访问。
+- Windows 推荐使用 WSL Ubuntu。
+- 检查端口和临时卷是否被上一次异常测试占用。
+- 不要把生产数据库连接写入测试配置。
+
+### 前端可打开但接口失败
+
+- 使用健康端点确认服务。
+- 检查服务端路由、Cookie/Token、CORS/Origin、代理 SSE 和 HTTPS。
+- 生产 IP + HTTP 仅用于受控测试，不应作为长期入口。
+
+### 工具没有出现
+
+缺少浏览器、Worker、搜索或 Office 转换配置时，服务端会收缩工具面。按[运行与排障](../docs/04-operations/运行与排障.md)检查对应组件，不要绕过隔离或静默回退。
+
+## 文档与提交
+
+功能变更至少同步：
+
+- 行为变化：对应 PRD。
+- 边界或组件变化：架构总览/专题/ADR。
+- 完成度变化：`docs/03-project/STATUS.md`。
+- 部署变化：运维文档与部署记录。
+
+提交前检查工作区和 diff，只纳入本次范围内容，不包含生成物、真实 `.env`、业务样本和凭据。

@@ -1,6 +1,13 @@
 # PostgreSQL 与项目知识库开发清单
 
-2026-10-19：当前状态以[主计划顶部](../02-design/architecture/单用户正式发布补强方案.md)及本文末尾统一收尾清单为准。schema49功能和合成环境工程验收完成，API候选镜像构建及schema38→49升级/回退16项通过。本机最近部署记录仍为schema38；真实网站、业务样本、第二设备与生产容量未验收。下方日期条目属于历史过程，不代表当前待办。
+> 文档性质：📚 长期任务台账与历史实施记录。
+> 当前完成度：[STATUS.md](STATUS.md)。
+> 当前产品边界：[PRD-00](../02-design/product/PRD-00-产品总纲.md)。
+> 当前架构：[系统总览](../02-design/architecture/系统总览.md)。
+
+2026-10-28更新：当前运行 schema 为 v60，三层记忆已改为“每轮三层识别、无冲突自动保存、修改/冲突逐条确认”。下方 2026-10 早期条目中的 schema49、schema33 等版本和“全部记忆均需确认”仅代表当时状态，不再作为当前依据。最近部署与验证见[远程部署记录](远程部署-20261026.md)，当前完成度统一维护在[STATUS](STATUS.md)。
+
+2026-10-19历史快照：当时 schema49 功能与合成环境验收完成，API候选镜像构建及 schema38→49 升级/回退16项通过；本机最近部署记录仍为 schema38，真实网站、业务样本、第二设备与生产容量未验收。下方日期条目属于历史过程，不代表当前待办。
 
 2026-10-17新增已确认计划：企业微信、通用OIDC／OAuth 2.0身份接入、组织同步及公私知识权限按[统一主计划IAM-01至06](../02-design/architecture/单用户正式发布补强方案.md)实施，衔接ADM-06/09和K09，并依赖任务授权防注入边界。仅纳入后续企业阶段，未开发、未部署；不提前改变单用户交付范围或历史资料权限，具体日期在主计划统一确定。
 
@@ -628,8 +635,8 @@ API候选`workpivot-server:local-schema49-20261019`构建完成，镜像内严�
 ### 2026-10-24：工具面路线图与 R003–R005 登记（未部署）
 
 - 对照 codex / claude-code / hermes / openclaw / pi / openworkbuddy / MyAgents 的工具面，确认差距在子任务、结构化提问、后台进程三类，而非工具数量。
-- 新增 [agent 工具面路线图](../../02-design/architecture/agent工具面路线图-20261024.md)：R003 联网搜索（已实现待部署）、R004 结构化提问（待启动）、R005 子代理（待启动），含接口、边界、验收与排期；后续候选（后台进程、apply_patch、vision、session_search、媒体）单独列出。
-- backlog 登记 R003–R005 并链接路线图；R003 设计说明见 [联网搜索能力-20261024](../../02-design/architecture/联网搜索能力-20261024.md)。
+- 新增 [agent 工具面路线图](../02-design/architecture/agent工具面路线图-20261024.md)：R003 联网搜索（已实现待部署）、R004 结构化提问（待启动）、R005 子代理（待启动），含接口、边界、验收与排期；后续候选（后台进程、apply_patch、vision、session_search、媒体）单独列出。
+- backlog 登记 R003–R005 并链接路线图；R003 设计说明见 [联网搜索能力-20261024](../02-design/architecture/联网搜索能力-20261024.md)。
 - 排期建议：先做 R003 部署验收，再做 R005（单层同步），最后 R004（依赖前端卡片）。
 
 ### 2026-10-24：优化清单建立（O-01～O-14，均未开始）
@@ -640,7 +647,7 @@ API候选`workpivot-server:local-schema49-20261019`构建完成，镜像内严�
 
 ### 2026-10-24：R004 结构化提问与 R005 子代理（已部署本地栈）
 
-- 需求：按[工具面路线图](../../02-design/architecture/agent工具面路线图-20261024.md)排期实现子代理与结构化提问，补齐与 codex / claude-code 等竞品在“子任务、结构化提问”两类能力上的差距。
+- 需求：按[工具面路线图](../02-design/architecture/agent工具面路线图-20261024.md)排期实现子代理与结构化提问，补齐与 codex / claude-code 等竞品在“子任务、结构化提问”两类能力上的差距。
 - R005：新增 `database/delegation.ts`。子循环只拿 system + 一条 user（task/context），父历史不进入；子工具集剔除 `delegate` 与 `ask_user`；`max_steps` 校验 1–50（默认 20）、时长上限 10 分钟；同一运行内队列串行；失败、超预算、取消都转成带 `stopReason` 的工具结果文本，不中断父任务。
 - R004：新增 `database/ask-user.ts`，`core` 增加 `Tool.endsTurn`（工具返回后本轮立即结束，不触发 `onIdle`）；提问以 `type=ask_user` 的 meta 事件持久化，前端渲染选项卡片，点击后以 `[回答提问 <id>] <选项>` 作为普通消息回传；同轮重复调用复用同一 `questionId`；不声明 `access`，不占用授权通道。
 - 接入：`execution.ts` 按运行动态装配 delegate/ask_user，子事件与父事件共用同一条持久化通道（`AgentEvent.delegateId` 前缀，`tool-events` 保留）；`tool-policy` 登记 `effects`/`resultSource`，避免未分类工具被拒绝注册。
@@ -653,14 +660,14 @@ API候选`workpivot-server:local-schema49-20261019`构建完成，镜像内严�
 
 - 用户确认两种模式的语义与授权矩阵：“确认模式”在进入执行前确认、联网首次确认、危险操作单独确认；“自动模式”只对危险行为（外部 MCP、取消定时任务、删除/覆盖、界外访问、高危命令）确认。
 - 实现：`RunRepository.requestPermission` 在同一事务内读取该用户 `execution.mode`，`manual` 时 `run_code` 也逐次确认，`auto` 或未设置保持静默，`WORKPIVOT_CODE_APPROVAL=confirm` 仍强制覆盖；Web 与移动端选项文案去掉“本版仍逐次确认”。
-- 文档：新增 [执行模式与授权矩阵](../../02-design/architecture/执行模式与授权矩阵-20261024.md)，含完整矩阵与已实现/待实现清单。
+- 文档：新增 [执行模式与授权矩阵](../02-design/architecture/执行模式与授权矩阵-20261024.md)，含完整矩阵与已实现/待实现清单。
 - 验证：`eval/run-code-execution.mts` 扩到 12 项通过（新增“确认模式逐次确认”“自动模式与未设置静默”）；`tsc`（core/server/web/mobile）与改动文件 ESLint 通过。
 - 未实现：计划闸门（O-16）、确认模式联网首次一次（O-17）、文件链路统一两模式（O-18）、文件链路删除保护（O-19）。
 
 ### 2026-10-24：DeepSeek Harness 源码对照（研究，未改代码）
 
 - 解包本机 `app.asar`（548 个 `@deepseek-ai/dsh-*` 包，v0.2.1-rc.2，MIT），逐项分析 agent 循环、子代理、网页搜索、终端四项能力的实现。
-- 新增竞品分析 [deepseek-harness.md](../../01-research/competitors/deepseek-harness.md) 并登记进研究索引。
+- 新增竞品分析 [deepseek-harness.md](../01-research/competitors/deepseek-harness.md) 并登记进研究索引。
 - 路线图新增「从 DeepSeek Harness 借鉴的设计」：工具结果修剪参数定为 8192/4096/1024（O-04）、并行工具默认并发 10 且写类独占（O-13）、`ask_user_question` schema 与 R004 对齐、评估“模型原生 web_search”替代自建搜索（R003）、持久 PTY 作为后台进程候选。
 - 结论：代码不可直接搬（Cordis 服务容器 + 自研 Session/LLM 抽象，与 Express + pg 不同构）；设计可借鉴。事件溯源会话与中断恢复列为长期方向。
 
@@ -669,7 +676,7 @@ API候选`workpivot-server:local-schema49-20261019`构建完成，镜像内严�
 - 现状：数据库链路已有 `conversation_events`、`task_runs.model_messages`、fence/lease、`recover()` 与启动清扫，但只做到“标记中断”，无法续跑；未闭合的 tool_call 靠 `replayableMessages` 丢弃。
 - 设计：复用现有事件表与检查点字段（不改 CHECK 约束），新增 `tool_dispatches` 对账表；恢复时对“已派发未完成”的调用补合成结果、绝不重放，保证 at-most-once；续跑从 `model_messages` 检查点开始，步数预算继承剩余值。
 - 分阶段：P1 对账 + 历史合法 + 标记中断；P2 一键续跑；P3 文件链路对齐（JSONL 检查点）；P4 有限自动续跑（默认关闭）。
-- 文档：[事件溯源会话与中断恢复](../../02-design/architecture/事件溯源会话与中断恢复-20261024.md)；backlog 登记 R006（P1，设计完成），路线图 §6/§7 同步，排期插在 R004/R005 验收之前。
+- 文档：[事件溯源会话与中断恢复](../02-design/architecture/事件溯源会话与中断恢复-20261024.md)；backlog 登记 R006（P1，设计完成），路线图 §6/§7 同步，排期插在 R004/R005 验收之前。
 
 ### 2026-10-24：O-14 收尾（执行日志区分与代码结果渲染）
 
@@ -683,7 +690,7 @@ API候选`workpivot-server:local-schema49-20261019`构建完成，镜像内严�
 - 现象：`readTranscript` 全量解析、`listTasks` 扫目录且被 `file-policy` 每次工具调用触发、删除任务时遍历全部同项目转写——消息与任务越多越慢。
 - 方案：新增独立 `chat` schema（`chat.tasks` / `chat.messages`），只承载任务元数据与对话消息；工作目录、`.workpivot`、附件字节仍留磁盘；`WORKPIVOT_CHAT_DATABASE_URL` 未配置时完全走现有 JSONL，配置后 PG 为唯一真值，故障直接报错不回落。
 - 顺带修复：`ordinal` 模块级计数器重启复位导致重复，改为任务行 `last_seq` 单调取号；转写读取改分页（首屏 50 条，模型取最近 200 条）。
-- 文档：[对话记录入库（文件链路混合存储）](../../02-design/architecture/对话记录入库（文件链路混合存储）-20261024.md)；backlog 登记 R007（P0，设计完成）。
+- 文档：[对话记录入库（文件链路混合存储）](../02-design/architecture/对话记录入库（文件链路混合存储）-20261024.md)；backlog 登记 R007（P0，设计完成）。
 
 ### 2026-10-24：R007 补充数据库角色与最小权限
 
@@ -715,7 +722,7 @@ API候选`workpivot-server:local-schema49-20261019`构建完成，镜像内严�
 - 设计三层：P1 并行委派（`delegate.tasks[]`，并发 4，失败隔离，取消传播）；P2 团队模板（`run_team`，doc/research/review 三类，编排在服务端，模型只选团队与填参数）；P3 受限 DSL 编排（不执行任意 JS）。
 - 数据模型：新增 `workpivot.agent_runs`（父子、深度、角色、预算、状态），`conversation_events` 加 `agent_id`；R006 的 `tool_dispatches` 需同时记录 `agent_id` 以对账子代理副作用。
 - 约束：默认深度 1、单次扇出 4、单任务代理总数 12、树级 token 预算为父级 3 倍、30 分钟墙钟；子代理继承工具白名单与授权，不能 `ask_user`，结论对父代理是数据不是指令。
-- 文档：[多agent协作](../../02-design/architecture/多agent协作-20261024.md)；backlog 登记 R008（P1，设计完成）。
+- 文档：[多agent协作](../02-design/architecture/多agent协作-20261024.md)；backlog 登记 R008（P1，设计完成）。
 
 ### 2026-10-24：更正——区分“子代理”与“多 agent 协作”（R008 重写）
 
@@ -743,7 +750,7 @@ API候选`workpivot-server:local-schema49-20261019`构建完成，镜像内严�
 - 用户判断该能力只适用于特定场景，决定不投入；认同理由：协作层在竞品中普遍不成熟、收益未被评估证明、适用面窄、成本与可解释性风险不对称。
 - 处理：backlog R008 标记为“❌ 不实施”，设计文档状态改为“不实施，保留为参考”，不进入排期；不新增 `team_runs`/`team_artifacts`/邮箱等机制。
 - 保留：R005 单层同步 `delegate` 继续作为上下文隔离手段，不扩展并行委派与团队协议。
-- 若将来重启：先执行 [设计文档 §11](../../02-design/architecture/多agent协作-20261024.md) 的离线评估（单 agent vs 自我检查 vs Panel，盲评 + 成本对比），证明收益后再建。
+- 若将来重启：先执行 [设计文档 §11](../02-design/architecture/多agent协作-20261024.md) 的离线评估（单 agent vs 自我检查 vs Panel，盲评 + 成本对比），证明收益后再建。
 
 ### 2026-10-24：R007 基础设施（chat schema 与访问层）
 
@@ -781,13 +788,13 @@ API候选`workpivot-server:local-schema49-20261019`构建完成，镜像内严�
 
 ### 2026-10-24：Claude Code agent loop 逆向补充
 
-- 新增 [claude-code-loop.md](../../01-research/competitors/claude-code-loop.md)：基于泄露源码分析 loop 的显式状态机（transition 原因）、五层上下文治理（200k 窗口 / 13k buffer / 20k 摘要预留）、工具按 `isConcurrencySafe(parsedInput)` 分批并发（默认 10）、停止与恢复路径（max_turns / prompt_too_long 反应式压缩 / max_output_tokens 升级 / fallback model / token 预算续跑）、子代理 fork 时过滤未闭合工具调用、parentUuid 链与先落盘。
+- 新增 [claude-code-loop.md](../01-research/competitors/claude-code-loop.md)：基于泄露源码分析 loop 的显式状态机（transition 原因）、五层上下文治理（200k 窗口 / 13k buffer / 20k 摘要预留）、工具按 `isConcurrencySafe(parsedInput)` 分批并发（默认 10）、停止与恢复路径（max_turns / prompt_too_long 反应式压缩 / max_output_tokens 升级 / fallback model / token 预算续跑）、子代理 fork 时过滤未闭合工具调用、parentUuid 链与先落盘。
 - 优化清单据此细化 O-13（并发谓词按入参判定、上下文修改按序应用），新增 O-20（输出上限升级重试）、O-21（prompt 过长反应式压缩）。
 - 不借鉴：五层压缩、流式工具执行、stop hooks（与现有核验门禁重叠）。
 
 ### 2026-10-24：循环决策显式化设计（未实现）
 
-- 在 [agent循环早停与上下文压缩](../../02-design/architecture/agent循环早停与上下文压缩-20261024.md) 增加第 5 节：L1 可解释（枚举原因）、L2 可审计（事件+计数+阈值落盘）、L3 可重放（随 R006）。
+- 在 [agent循环早停与上下文压缩](../02-design/architecture/agent循环早停与上下文压缩-20261024.md) 增加第 5 节：L1 可解释（枚举原因）、L2 可审计（事件+计数+阈值落盘）、L3 可重放（随 R006）。
 - 设计要点：`StepDecision { step, action, reason, detail }`；`decideStep()` 纯函数固定优先级（abort → 步数/时长 → 上下文超限 → 输出截断 → 流错误 → 空转 → 工具结果）；守卫计数器（idleNudged / reactiveCompactAttempted / outputEscalated / transientRetries）；阈值集中到 `limit.ts`；`decision` 事件写转写与 `conversation_events`。
 - 与 R006 的关系：`decision` 事件是恢复对账依据（判断停在采样中还是工具执行中）。
 - 迁移顺序：先加 reason（行为不变）→ 抽 `decideStep` → 接 O-20/O-21 → R006 复用。

@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "check:licenses": "node scripts/check-licenses.mjs",
     "check:licenses:strict": "node scripts/check-licenses.mjs --strict",
+    "check:docs": "node ../scripts/check-docs.mjs",
     "test:licenses": "node eval/license-check.mjs",
     "eval:chat-state": "tsx eval/W39-database-chat-state.mts",
     "dev:web": "pnpm --filter @workpivot/web dev",
