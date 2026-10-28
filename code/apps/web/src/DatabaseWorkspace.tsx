@@ -47,18 +47,39 @@ function parseAskUser(event: StoredEvent): AskUserPayload | null {
   } catch { return null; }
 }
 
-function AskUserCard({ payload, answered, disabled, onChoose }: { payload: AskUserPayload; answered: boolean; disabled: boolean; onChoose: (label: string) => void }) {
-  return <div className="mb-3 rounded-xl border border-sky-700/60 bg-sky-950/30 p-4 text-sm" data-ask-user={payload.questionId}>
-    <strong className="block text-sky-200">需要你确认</strong>
-    <p className="mt-1 text-neutral-100">{payload.question}</p>
-    {payload.options.length > 0 && <div className="mt-3 flex flex-wrap gap-2">
-      {payload.options.map(option => <button key={option.label} type="button" disabled={answered || disabled} title={option.description} className="rounded-lg border border-neutral-600 px-3 py-1.5 text-left hover:bg-neutral-800 disabled:opacity-40" onClick={() => onChoose(option.label)}>
-        <span className="block">{option.label}</span>
-        {option.description && <span className="mt-0.5 block text-xs text-neutral-400">{option.description}</span>}
-      </button>)}
-    </div>}
-    <p className="mt-2 text-xs text-neutral-400">{answered ? '已回答。' : payload.allowFreeText ? '也可以直接在输入框补充说明后发送。' : '请选择一个选项。'}</p>
-  </div>;
+function AskUserDock({ payload, disabled, disabledReason, onChoose }: { payload: AskUserPayload; disabled: boolean; disabledReason?: string; onChoose: (label: string) => void }) {
+  return <section aria-label="待确认问题" data-ask-user={payload.questionId} className="mx-4 mb-2 overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 shadow-[0_12px_32px_rgba(0,0,0,0.18)]">
+    <div className="flex items-start gap-3 px-4 pb-3 pt-4">
+      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-neutral-700 bg-neutral-800 text-neutral-300"><Icon name="bot" size={17} /></span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-neutral-500">需要确认</span>
+          <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-[10px] text-neutral-400">待回答</span>
+        </div>
+        <p className="mt-1 text-sm leading-6 text-neutral-100">{payload.question}</p>
+      </div>
+    </div>
+    {payload.options.length > 0 && <ul className="divide-y divide-neutral-800 border-t border-neutral-800">
+      {payload.options.map((option, index) => <li key={option.label}>
+        <button
+          type="button"
+          disabled={disabled}
+          className="group flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-neutral-800/80 focus-visible:bg-neutral-800/80 disabled:cursor-wait disabled:opacity-40"
+          onClick={() => onChoose(option.label)}
+        >
+          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-neutral-700 bg-neutral-950 text-[10px] text-neutral-500 group-hover:text-neutral-300">{index + 1}</span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm text-neutral-100">{option.label}</span>
+            {option.description && <span className="mt-0.5 block text-xs leading-5 text-neutral-500">{option.description}</span>}
+          </span>
+          <Icon name="arrow" size={15} style={{ marginTop: 2, opacity: 0.45 }} />
+        </button>
+      </li>)}
+    </ul>}
+    <p className="border-t border-neutral-800 bg-neutral-950/40 px-4 py-2.5 text-xs text-neutral-500">
+      {disabledReason || (payload.allowFreeText ? '也可以直接在下方输入补充说明。' : '请从上方列表选择一个选项。')}
+    </p>
+  </section>;
 }
 
 interface Task { expertId?:string|null; id: string; name: string; status: string; revision: number; projectId: string | null }
@@ -325,23 +346,39 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     } catch (e) { if (epoch === generation.current) throw e; }
     finally { expanding.current.delete(event.id); }
   };
-  const send = async (override?: string) => {
+  const send = async (override?: string, options?: { scope?: ResourceSelection; answerOnly?: boolean }) => {
     const text = (override ?? input).trim();
+    const scope = options?.scope ?? resourceSelection;
+    const attachments = options?.answerOnly ? [] : attachmentIds;
     if (quotaBlocked) { setError('演示额度已用完，每日北京时间 12:00 刷新'); return; }
-    if (!chatEnabled || !active || !resourceSelection || (!text && !attachmentIds.length) || attachmentBlocked || sending) return;
+    if (!chatEnabled || !active || !scope || (!text && !attachments.length) || (!options?.answerOnly && attachmentBlocked) || sending) return;
     const taskId = active, epoch = generation.current, content = text || '请查看附件。', controller = new AbortController();
-    const fingerprint = JSON.stringify([taskId, content, attachmentIds,resourceSelection]);
+    const fingerprint = JSON.stringify([taskId, content, attachments, scope]);
     if (pendingSend.current?.fingerprint !== fingerprint) pendingSend.current = { fingerprint, id: crypto.randomUUID() };
     const requestId = pendingSend.current.id;
     streams.current.add(controller); setSending(true); setError(''); follow.current = true;
     try {
-      const response = await fetch(`/api/tasks/${taskId}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken() ?? ''}` }, body: JSON.stringify({ content, requestId, attachments: attachmentIds,resourceScope:resourceSelection }), signal: controller.signal });
+      const response = await fetch(`/api/tasks/${taskId}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken() ?? ''}` }, body: JSON.stringify({ content, requestId, attachments, resourceScope: scope }), signal: controller.signal });
       if (!response.ok) throw new Error(((await response.json()) as { error: string }).error);
       if (pendingSend.current?.id === requestId) pendingSend.current = null;
-      if (epoch === generation.current) { setInput(''); setAttachmentIds([]); setAttachmentBlocked(false); setAttachmentEpoch(v => v + 1); }
+      if (epoch === generation.current && !options?.answerOnly) { setInput(''); setAttachmentIds([]); setAttachmentBlocked(false); setAttachmentEpoch(v => v + 1); }
       if (response.status !== 202 && response.body) await readChatStream(response.body, () => { /* 只使用持久化追赶结果展示，避免流内容重复。 */ }, controller.signal);
     } catch (e) { if (epoch === generation.current) setError(errorText(e)); }
     finally { streams.current.delete(controller); setSending(false); void refreshTasks().catch(() => {}); reloadAuth(); }
+  };
+  const answerQuestion = async (questionId: string, label: string) => {
+    if (!active || sending || !ready) return;
+    let scope = resourceSelection;
+    if (!scope) {
+      try {
+        const result = await jsonFetch<{ scope: ResourceSelection }>(`/api/tasks/${active}/resource-scope`);
+        scope = { scheduleIds: result.scope.scheduleIds ?? [], versionIds: result.scope.versionIds, memoryScopes: result.scope.memoryScopes, expert: result.scope.expert, baseRunId: result.scope.baseRunId };
+      } catch (reason) {
+        setError(`无法提交回答：${errorText(reason)}`);
+        return;
+      }
+    }
+    await send(`[回答提问 ${questionId}] ${label}`, { scope, answerOnly: true });
   };
   const decide = async (id: string, decision: 'allow' | 'deny') => {
     const taskId = active, epoch = generation.current;
@@ -373,6 +410,15 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     const match = /^\[回答提问 ([0-9a-f-]{36})\]/.exec(event.content);
     if (match) answeredQuestions.add(match[1]!);
   }
+  let pendingAskUser: { eventId: string; payload: AskUserPayload } | null = null;
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index]!;
+    const payload = parseAskUser(event);
+    if (payload && !answeredQuestions.has(payload.questionId)) {
+      pendingAskUser = { eventId: event.id, payload };
+      break;
+    }
+  }
   const leaveTrash = () => { setTrashPage(false); if (location.hash === '#trash') location.hash = ''; };
   const selectTask = (id: string) => { leaveTrash(); setActive(id); };
   if(automationPage)return <DatabaseAutomations username={auth.user?.username} onBack={()=>{location.hash='';}} onLogout={()=>{void api.logout().finally(()=>{clearToken();reloadAuth();});}}/>;
@@ -395,7 +441,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
             const process = index === firstProcess ? <DatabaseTurnProcess key={'process-'+group.id} events={group.events.filter(isProcessEvent)} cursor={details[group.id]?.after} onMore={() => expandTurn(group.id)} onContent={expandContent} onInteract={() => { follow.current = false; }} /> : null;
             if (isProcessEvent(e)) return process;
             const askUser = parseAskUser(e);
-            if (askUser) return <AskUserCard key={e.id} payload={askUser} answered={answeredQuestions.has(askUser.questionId)} disabled={busy || !ready} onChoose={label => { void send(`[回答提问 ${askUser.questionId}] ${label}`); }} />;
+            if (askUser) return null;
             if (e.kind === 'meta') return null;
             return <div key={e.id} className={`mb-3 ${e.kind === 'user' ? 'workspace-message workspace-user-message ml-auto w-fit max-w-[75%] rounded-lg bg-neutral-800 px-3 py-2 text-sm' : 'message-body workspace-message max-w-none text-sm'}`}>
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={e.kind==='assistant'?citationComponents:undefined}>{e.content}</ReactMarkdown>
@@ -413,6 +459,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
         {active && <DatabaseSkillBuilds key={'skills-'+active} taskId={active} autoOpen />}
         {permissions.map(p => <div key={p.id} className="mb-3 rounded border border-neutral-700 p-4"><strong>{p.request.tool === 'execute_skill' ? '确认隔离执行' : '确认本次操作'}</strong>{p.request.tool === 'execute_skill' && <p className="mt-2 text-sm text-neutral-400">在无网络隔离环境处理所选文件，仅保存指定成果。本次允许不会变成永久授权。</p>}<pre className="my-3 whitespace-pre-wrap break-words text-sm">{p.request.command ?? p.request.tool}</pre>{p.request.invocation && <details><summary>查看本次完整参数（输入、输出及目标）</summary><pre className="my-3 max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify({effects:p.request.effects,parameters:p.request.invocation.arguments,binding:p.request.binding},null,2)}</pre></details>}<button className={button} onClick={() => { void decide(p.id, 'deny'); }}>拒绝</button><button className={button + ' ml-2'} onClick={() => { void decide(p.id, 'allow'); }}>允许本次</button></div>)}
       </div>
+      {active && pendingAskUser && <AskUserDock key={pendingAskUser.eventId} payload={pendingAskUser.payload} disabled={sending || !ready || quotaBlocked} disabledReason={quotaBlocked ? '今日提问额度已用完，额度刷新后可继续回答。' : undefined} onChoose={label => { void answerQuestion(pendingAskUser!.payload.questionId, label); }} />}
       {newMessages && <button className={button} onClick={() => { follow.current = true; if (viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight; setNewMessages(false); }}>查看新消息</button>}
       {task?.status === 'interrupted' && <div className="mx-4 mb-2 flex flex-wrap items-center gap-2 text-xs text-amber-400">上一轮执行被中断，历史已补齐为合法状态，可继续完成。<button className={button} onClick={() => { void resume(); }}>继续</button></div>}
       {quotaRemaining !== null && <p className={`mx-4 mb-1 text-xs ${quotaBlocked ? 'text-amber-400' : 'text-neutral-500'}`}>{quotaBlocked ? `演示额度已用完（${auth.quota?.limit ?? 10} 次提问），每日北京时间 12:00 刷新` : `剩余 ${quotaRemaining} 次提问 · 每日北京时间 12:00 刷新`}</p>}

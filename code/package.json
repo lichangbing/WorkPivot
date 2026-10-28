@@ -82,6 +82,7 @@
     "eval:web-browser": "node --import tsx eval/web-tools.mts --browser",
     "eval:web-database": "node scripts/test-automations.mjs --web",
     "eval:web-quota": "node --import tsx eval/web-quota.mts",
+    "eval:ask-user-dock": "node eval/ask-user-dock-ui.mjs",
     "eval:automation-capacity": "node scripts/test-automations.mjs --capacity",
     "eval:automation-capacity-ui": "node eval/automation-capacity-ui.mjs",
     "iam:lab": "node scripts/iam-lab.mjs",
