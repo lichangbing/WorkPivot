@@ -9,7 +9,6 @@ import { Icon } from '../Icon';
 import { useCallback, useEffect, useState } from 'react';
 import { api, clearToken, getToken, setToken, type PublicProvider, type PublicUser } from '../api';
 import { PermissionsPanel } from './PermissionsPanel';
-import { ProjectsPanel } from './ProjectsPanel';
 import { SkillPackagesPanel } from './SkillPackagesPanel';
 import { McpPanel } from './McpPanel';
 import { DatabaseAdminContent } from './DatabaseAdminContent';
@@ -17,7 +16,7 @@ import { MemoryTemplatesPanel } from './MemoryTemplatesPanel';
 import { LimitsPanel } from './LimitsPanel';
 import { DatabaseIdentity } from './DatabaseIdentity';
 
-type Menu = 'network-targets' | 'request-audit' | 'experts' | 'users' | 'limits' | 'identity' | 'models' | 'skills' | 'mcp' | 'memory' | 'templates' | 'schedules' | 'ops' | 'permissions' | 'projects';
+type Menu = 'network-targets' | 'request-audit' | 'experts' | 'users' | 'limits' | 'identity' | 'models' | 'skills' | 'mcp' | 'memory' | 'templates' | 'schedules' | 'ops' | 'permissions';
 type Role = PublicUser['role'];
 
 type UserDialogState =
@@ -113,13 +112,12 @@ export default function AdminApp({ database = false }: { database?: boolean }): 
     ['experts', '专家模板'],
     ['skills', 'Skill 管理'],
     ['mcp', 'MCP 管理'],
-    ['memory', '默认记忆'],
+    ['memory', '默认角色'],
     ['templates', '我的模板'],
     ['schedules', '定时任务'],
-    ...(database ? [['request-audit', '请求安全审计'] as [Menu,string],['network-targets','内网地址授权'] as [Menu,string]] : []),
+    ...(database ? [['request-audit', '安全审计'] as [Menu,string],['network-targets','内网地址授权'] as [Menu,string]] : []),
     ['ops', database ? '运行监控与用量' : '审计与回收站'],
     ['permissions', '路径授权'],
-    ['projects', '我的项目'],
   ];
 
 
@@ -169,7 +167,6 @@ export default function AdminApp({ database = false }: { database?: boolean }): 
         {menu === 'schedules' && <SchedulesPanel />}
         {menu === 'ops' && <OpsPanel />}
         {menu === 'permissions' && <PermissionsPanel />}
-        {menu === 'projects' && <ProjectsPanel />}
         </>}
       </main>
       </div>

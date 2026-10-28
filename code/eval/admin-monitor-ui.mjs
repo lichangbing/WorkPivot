@@ -14,17 +14,20 @@ try{
  await page.addInitScript(()=>localStorage.setItem('wp_token','synthetic-ui-token'));
  const users=[{id:'owner',username:'合成管理员',role:'admin',platformAdmin:true},{id:'member',username:'合成成员',role:'member'}];let fail=false,failAttempts=false;const capacities=new Map();let approved=false,revoked=false,cleaned=false;
  await page.route('**/api/**',async route=>{const url=new URL(route.request().url());let data={};
-  if(url.pathname==='/api/health')data={ok:true,name:'workpivot',apiProtocol:1,version:'synthetic',storage:'postgresql'};
+  if(url.pathname==='/api/health')data={ok:true,name:'workpivot',apiProtocol:1,version:'synthetic',storage:'postgresql',providersEnabled:true,mcpEnabled:true};
   else if(url.pathname==='/api/auth/state')data={authenticated:true,user:users[0]};
   else if(url.pathname==='/api/users')data={users};
-  else if(url.pathname==='/api/admin/request-audits/cleanups')data={rows:cleaned?[{id:'cleanup',actorId:'owner',before:'2020-02-01',removed:1,createdAt:'2026-10-18T00:00:00Z'}]:[]};
+  else if(url.pathname==='/api/tasks')data={tasks:[]};
+  else if(url.pathname==='/api/providers')data={providers:[]};
+  else if(url.pathname==='/api/embeddings')data={spaces:[]};
+  else if(url.pathname==='/api/admin/request-audits/cleanups')data={rows:cleaned?[{id:'cleanup',actorId:'owner',actorName:'合成管理员',before:'2020-02-01',removed:1,createdAt:'2026-10-18T00:00:00Z'}]:[]};
   else if(url.pathname==='/api/admin/request-audits/cleanup-preview')data={before:'2020-02-01',count:1,fingerprint:'a'.repeat(32)};
-  else if(url.pathname==='/api/admin/request-audits/cleanup'){assert.equal(route.request().postDataJSON().confirmation,'永久清理请求审计');cleaned=true;data={removed:1};}
+  else if(url.pathname==='/api/admin/request-audits/cleanup'){assert.equal(route.request().postDataJSON().confirmation,'永久清理安全审计');cleaned=true;data={removed:1};}
   else if(url.pathname==='/api/admin/network-targets'&&route.request().method()==='POST'){approved=true;data={id:'network-grant'};}
   else if(url.pathname==='/api/admin/network-targets/network-grant/revoke'){revoked=true;data={ok:true};}
   else if(url.pathname==='/api/admin/network-targets')data={targets:approved?[{id:'network-grant',url:'https://oa.internal/report',address:'10.20.30.40',revokedAt:revoked?'2026-10-18':null}]:[],audit:[]};
   else if(url.pathname==='/api/admin/request-audits/export'){await route.fulfill({contentType:'application/x-ndjson',headers:{'content-disposition':'attachment; filename="workpivot-request-audit.jsonl"'},body:'{"id":"audit-synthetic"}\n'});return;}
-  else if(url.pathname==='/api/admin/request-audits'){const older=url.searchParams.has('before'),empty=url.searchParams.get('actor')==='member';data={rows:empty?[]:[{id:older?'audit-older':'audit-new',actorId:null,method:'POST',area:'auth',createdAt:'2026-10-18T00:00:00Z',status:401,outcome:'denied'}],next:empty||older?null:'audit-new'};}
+  else if(url.pathname==='/api/admin/request-audits'){const older=url.searchParams.has('before'),empty=url.searchParams.get('actor')==='member';data={rows:empty?[]:[{id:older?'audit-older':'audit-new',actorId:null,method:'POST',area:'auth',createdAt:'2026-10-18T00:00:00Z',status:401,outcome:'denied',description:'登录账户 · 提交（被拒绝）'}],next:empty||older?null:'audit-new'};}
   else if(url.pathname==='/api/admin/captures')data=url.searchParams.get('userId')==='member'?{counts:{sources:0,versions:0,observations:0},audit:[],next:null}:{counts:{sources:1,versions:2,observations:3,originals:2,originalBytes:'1234'},audit:[{id:'capture-event',actorId:'owner',planId:'synthetic-capture-plan',versionId:'synthetic-version',runId:'synthetic-run',action:'new_version',retryCount:2,createdAt:'2026-10-18T00:00:00Z'}],next:null};
   else if(url.pathname==='/api/admin/automation-attempts'){
    if(failAttempts){await route.fulfill({status:503,json:{error:'合成审计查询暂不可用'}});return;}
@@ -46,6 +49,9 @@ try{
   await route.fulfill({json:data});
  });
  await page.goto(`http://127.0.0.1:${server.address().port}/admin.html`);
+ assert.equal(await page.getByRole('button',{name:'我的项目',exact:true}).count(),0);await page.getByRole('button',{name:'默认角色',exact:true}).waitFor();
+ await page.getByRole('button',{name:'模型管理',exact:true}).click();await page.getByRole('button',{name:'新建模型',exact:true}).click();
+ assert.equal(await page.getByText('计价币种',{exact:true}).count(),0);assert.equal(await page.getByText('输入单价（每百万Token）',{exact:true}).count(),0);assert.equal(await page.getByText('输出单价（每百万Token）',{exact:true}).count(),0);await page.getByText('上下文容量（Token）',{exact:false}).waitFor();
  await page.getByRole('button',{name:'运行监控与用量',exact:true}).click();
  await page.getByText('采集存档 2 份（DOM 0 份）· 1234 字节',{exact:true}).waitFor();
  await page.getByText('来源 1 · 正文版本 2 · 采集记录 3',{exact:true}).waitFor();
@@ -67,14 +73,19 @@ try{
  fail=false;await page.getByRole('button',{name:'刷新',exact:true}).click();await page.getByText('本月暂无用量。',{exact:true}).waitFor();
  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);assert.deepEqual(errors,[]);assert.equal(await page.getByText('该地址未提供可用的 WorkPivot 服务',{exact:false}).count(),0);
  const output=resolve('../local-runtime/acceptance/admin-monitor-'+Date.now());await mkdir(output,{recursive:true});await page.screenshot({path:output+'/mobile.png',fullPage:true});
- await page.getByRole('button',{name:'请求安全审计',exact:true}).click();
- await page.getByText('请求：audit-new',{exact:true}).waitFor();
- await page.getByRole('button',{name:'加载更早请求',exact:true}).click();await page.getByText('请求：audit-older',{exact:true}).waitFor();
- await page.getByLabel('审计操作人').selectOption('member');await page.getByText('暂无匹配记录',{exact:true}).waitFor();assert.equal(await page.getByText('请求：audit-new',{exact:true}).count(),0);
- await page.getByLabel('审计操作人').selectOption('');await page.getByText('请求：audit-new',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'安全审计',exact:true}).click();
+ await page.getByRole('columnheader',{name:'序号',exact:true}).waitFor();
+ await page.getByRole('columnheader',{name:'时间',exact:true}).waitFor();
+ await page.getByRole('columnheader',{name:'操作人',exact:true}).waitFor();
+ await page.getByRole('columnheader',{name:'请求内容',exact:true}).waitFor();
+ await page.getByText('登录账户 · 提交（被拒绝）',{exact:true}).first().waitFor();
+ assert.equal(await page.getByText(/audit-new|audit-older/).count(),0);
+ await page.getByRole('button',{name:'加载更早请求',exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('tbody tr').length===2);assert.equal(await page.getByText('登录账户 · 提交（被拒绝）',{exact:true}).count(),2);
+ await page.getByLabel('审计操作人').selectOption('member');await page.getByText('暂无匹配记录',{exact:true}).waitFor();assert.equal(await page.getByText('登录账户 · 提交（被拒绝）',{exact:true}).count(),0);
+ await page.getByLabel('审计操作人').selectOption('');await page.getByText('登录账户 · 提交（被拒绝）',{exact:true}).first().waitFor();
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'导出筛选结果（最多10000条）',exact:true}).click();assert.equal((await download).suggestedFilename(),'workpivot-request-audit.jsonl');
  await page.getByLabel('清理截止日期').fill('2020-02-01');await page.getByRole('button',{name:'预览清理范围',exact:true}).click();await page.getByRole('dialog',{name:'确认永久清理审计'}).waitFor();
- assert.equal(await page.getByRole('button',{name:'确认永久清理',exact:true}).isDisabled(),true);await page.getByLabel('永久清理确认文字').fill('永久清理请求审计');await page.getByRole('button',{name:'确认永久清理',exact:true}).click();await page.getByText('清理 1 条',{exact:false}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'确认永久清理',exact:true}).isDisabled(),true);await page.getByLabel('永久清理确认文字').fill('永久清理安全审计');await page.getByRole('button',{name:'确认永久清理',exact:true}).click();await page.getByText('清理 1 条',{exact:false}).waitFor();
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);assert.deepEqual(errors,[]);await page.screenshot({path:output+'/audit-mobile.png',fullPage:true});
  await page.getByRole('button',{name:'内网地址授权',exact:true}).click();await page.getByText('暂无内网授权',{exact:true}).waitFor();
  await page.getByLabel('内网完整URL').fill('https://oa.internal/report');await page.getByLabel('内网固定IP').fill('10.20.30.40');await page.getByRole('button',{name:'核对并批准',exact:true}).click();await page.getByRole('dialog',{name:'确认内网授权变更'}).waitFor();assert.equal(approved,false);await page.getByRole('button',{name:'确认变更',exact:true}).click();await page.getByRole('button',{name:'撤销授权',exact:true}).waitFor();

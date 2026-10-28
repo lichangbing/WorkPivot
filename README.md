@@ -162,6 +162,8 @@ bash releases/deploy/install-local-stack.sh --auto-admin --minimal
 - 查看当前周期用量和最近登录时间。
 - 在独立“限额管理”中控制自助注册默认值和每个用户的对话、Token、上传、并发限制。
 
+后台另提供默认角色与专家模板、模型连接、企业身份、安全审计和运行监控。模型配置不再录入价格字段；安全审计以中文操作语义展示，不公开请求 ID；项目管理只在用户工作区进行。
+
 ## 技术栈
 
 - Node.js 22、TypeScript、pnpm workspace

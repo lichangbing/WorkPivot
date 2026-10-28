@@ -64,7 +64,6 @@ export function Registry({ section, onChanged }: { section: Section; onChanged: 
   const [busy, setBusy] = useState(false), [loaded, setLoaded] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
   const [contextBudget,setContextBudget]=useState('65536');
   const [capacityAudit,setCapacityAudit]=useState<Record<string,Array<{beforeTokens:number|null;afterTokens:number;source:string;createdAt:string}>>>({});
-  const [inputPrice,setInputPrice]=useState(''),[outputPrice,setOutputPrice]=useState(''),[currency,setCurrency]=useState('CNY');
   const endpoint = `/api/${section}`;
   const load = async (signal?: AbortSignal) => {
     const result = await jsonFetch<Record<string, Array<Row | Provider | Mcp>>>(endpoint, { signal });
@@ -86,11 +85,10 @@ export function Registry({ section, onChanged }: { section: Section; onChanged: 
     setUrl(row && 'baseUrl' in row ? row.baseUrl : row && 'url' in row ? row.url : '');
     setModel(row && 'modelId' in row ? row.modelId : ''); setProtocol(row && 'protocol' in row ? row.protocol : 'openai');
     setContextBudget(String(row && 'modelId' in row ? row.contextBudget ?? 65536 : 65536));
-    setInputPrice(row&&'modelId' in row?row.inputPrice??'':'');setOutputPrice(row&&'modelId' in row?row.outputPrice??'':'');setCurrency(row&&'modelId' in row?row.currency??'CNY':'CNY');
     setSecret(''); setClearSecret(false); setError(''); setNotice('');
   };
   const save = () => run(async () => {
-    const body = { name: name.trim(), ...(editing ? { revision: editing.revision } : {}), ...(section === 'providers' ? { baseUrl: url.trim(), modelId: model.trim(), protocol, contextBudget:Number(contextBudget),inputPrice:inputPrice||null,outputPrice:outputPrice||null,currency } : section === 'mcp' ? { url: url.trim() } : {}), ...(section !== 'projects' && (secret || clearSecret) ? { [section === 'mcp' ? 'token' : 'apiKey']: clearSecret ? null : secret } : {}) };
+    const body = { name: name.trim(), ...(editing ? { revision: editing.revision } : {}), ...(section === 'providers' ? { baseUrl: url.trim(), modelId: model.trim(), protocol, contextBudget:Number(contextBudget) } : section === 'mcp' ? { url: url.trim() } : {}), ...(section !== 'projects' && (secret || clearSecret) ? { [section === 'mcp' ? 'token' : 'apiKey']: clearSecret ? null : secret } : {}) };
     await jsonFetch(endpoint + (editing ? `/${editing.id}` : ''), { method: editing ? section === 'projects' ? 'PATCH' : 'PUT' : 'POST', body: JSON.stringify(body) });
     setSecret(''); setShowForm(false); setEditing(null);
   });
@@ -107,7 +105,6 @@ export function Registry({ section, onChanged }: { section: Section; onChanged: 
       <label className="block">名称<input autoFocus required maxLength={section === 'projects' ? 120 : 80} className={field} value={name} onChange={e => setName(e.target.value)} /></label>
       {section !== 'projects' && <label className="block">服务地址<input required type="url" className={field} value={url} onChange={e => setUrl(e.target.value)} placeholder="https://…" /></label>}
       {section === 'providers' && <><label className="block">模型名称<input required className={field} value={model} onChange={e => setModel(e.target.value)} /></label><label className="block">上下文容量（Token）<input required type="number" min={12000} max={2097152} step={1} className={field} value={contextBudget} onChange={e=>setContextBudget(e.target.value)} /><span className="text-xs text-neutral-400">输入与输出合计的Token窗口。保存后可从模型列表同步接口容量；接口不提供时按官方文档手动填写。系统以启发式Token估算并预留8192输出Token，另设16MiB请求限制。</span></label><label className="block">协议<select className={field} value={protocol} onChange={e => setProtocol(e.target.value)}><option value="openai">OpenAI 兼容</option><option value="anthropic">Anthropic</option></select></label></>}
-      {section === 'providers' && <div className="space-y-2"><label className="block">计价币种<select className={field} value={currency} onChange={e=>setCurrency(e.target.value)}><option>CNY</option><option>USD</option></select></label><label className="block">输入单价（每百万Token）<input type="number" min="0" step="0.000001" className={field} value={inputPrice} onChange={e=>setInputPrice(e.target.value)}/></label><label className="block">输出单价（每百万Token）<input type="number" min="0" step="0.000001" className={field} value={outputPrice} onChange={e=>setOutputPrice(e.target.value)}/></label><p className="text-xs text-neutral-400">留空表示费用未知，0表示已确认免费。按实际服务填写，费用仅估算，不含缓存折扣；修改只影响后续请求。</p></div>}
       {section !== 'projects' && <><label className="block">{section === 'providers' ? 'API 密钥' : '访问令牌'}<input type="password" autoComplete="new-password" disabled={clearSecret} className={field} value={secret} onChange={e => setSecret(e.target.value)} placeholder={editing ? '留空保留原值' : '可选'} /></label>{editing && <label className="flex gap-2"><input type="checkbox" checked={clearSecret} onChange={e => { setClearSecret(e.target.checked); setSecret(''); }} />清除已保存的凭据</label>}<p className="text-xs text-neutral-400">更换服务地址后，请重新填写凭据，或勾选清除。MCP 修改后需要重新发现工具并启用。</p></>}
       <div className="flex gap-2"><button className={button}>保存</button><button type="button" className={button} onClick={() => { setShowForm(false); setSecret(''); }}>取消</button></div>
     </fieldset></form>}

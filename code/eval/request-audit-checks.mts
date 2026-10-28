@@ -19,6 +19,7 @@ export async function auditChecks(admin:Pool,auth:Pool,db:Pool,secret:string,act
   for(let i=0;i<50;i++){if((await auth.query('SELECT count(*)::int n FROM identity.request_audit_results')).rows[0].n>=4)break;await new Promise(r=>setTimeout(r,10));}
   const entries=await audits.list(token,{});
   check(entries.rows.length===4&&entries.rows.filter(row=>row.outcome==='denied').length===3&&entries.rows.some(row=>row.status===400),'请求结束追加真实响应状态');
+  check(entries.rows.every(row=>typeof row.description==='string'&&row.description.includes('·')&&!row.description.includes(row.id)),'审计返回中文操作描述且不混入请求ID');
   check(!JSON.stringify(entries).includes('PRIVATE_'),'审计不包含查询字符串、正文或令牌');
   check((await audits.list(token,{actor:'anonymous',outcome:'denied'})).rows.length===1,'匿名和拒绝筛选生效');
   const id=randomUUID();await auth.query("INSERT INTO identity.request_audit(id,actor_id,method,area) VALUES($1,$2,'POST','tasks')",[id,actor]);
@@ -69,11 +70,11 @@ export async function auditChecks(admin:Pool,auth:Pool,db:Pool,secret:string,act
   await auth.query("INSERT INTO identity.request_audit_results(request_id,status,outcome,created_at) VALUES($1,200,'responded','2020-01-01')",[oldId]);
   const preview=await audits.cleanupPreview(token,'2020-02-01');check(preview.count===1,'清理预览只选择已结束记录');
   await assert.rejects(audits.cleanup(token,{...preview,confirmation:'wrong'}));
-  await assert.rejects(audits.cleanup(memberToken,{...preview,confirmation:'永久清理请求审计'}));
+  await assert.rejects(audits.cleanup(memberToken,{...preview,confirmation:'永久清理安全审计'}));
   await assert.rejects(audits.cleanupPreview(token,'2100-01-01'));
-  await assert.rejects(audits.cleanup(token,{...preview,fingerprint:'0'.repeat(32),confirmation:'永久清理请求审计'}));
+  await assert.rejects(audits.cleanup(token,{...preview,fingerprint:'0'.repeat(32),confirmation:'永久清理安全审计'}));
   check(true,'清理拒绝未确认、成员、30天内范围和过期预览');
-  check((await audits.cleanup(token,{...preview,confirmation:'永久清理请求审计'})).removed===1,'受限身份角色通过授权函数完成核对后的清理');
+  check((await audits.cleanup(token,{...preview,confirmation:'永久清理安全审计'})).removed===1,'受限身份角色通过授权函数完成核对后的清理');
   check((await auth.query('SELECT id FROM identity.request_audit WHERE id=$1',[pendingId])).rowCount===1&&(await auth.query('SELECT id FROM identity.request_audit WHERE id=$1',[oldId])).rowCount===0,'未确认记录保留，只删除已核对的完整请求');
   check((await audits.cleanups(token))[0].removed===1,'永久清理与清理审计在同一事务保存');
   await assert.rejects(auth.query('DELETE FROM identity.request_audit_cleanups'));

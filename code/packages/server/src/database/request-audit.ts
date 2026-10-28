@@ -11,6 +11,28 @@ const operations:Record<string,string>={
  '/api/personal-data/export':'personal-data.export','/api/personal-data/clear':'personal-data.clear',
 };
 for(const operation of Object.values(operations))areas.add(operation);
+const areaLabels:Record<string,string>={
+ 'auth.login':'登录账户','auth.password':'修改密码','personal-data.export':'导出个人数据','personal-data.clear':'清空个人数据',
+ 'admin.audit.export':'导出安全审计','admin.audit.cleanup':'永久清理安全审计','admin.audit.preview':'预览安全审计清理范围',
+ auth:'身份认证',users:'用户管理',admin:'后台管理',tasks:'任务',projects:'项目',automations:'自动化',embeddings:'向量服务',
+ 'personal-data':'个人数据',trash:'回收站','skill-builds':'技能构建','skill-packages':'技能包','skill-market':'技能市场',
+ experts:'专家模板',memory:'记忆',providers:'模型配置',mcp:'MCP 配置',usage:'用量',settings:'设置',files:'文件',documents:'文档',
+ 'browser-profiles':'浏览器配置','network-targets':'内网地址授权',identity:'企业身份',other:'其他后台能力',
+};
+function methodVerb(method:string):string{
+ if(method==='POST')return '提交';
+ if(method==='PUT'||method==='PATCH')return '修改';
+ if(method==='DELETE')return '删除';
+ if(method==='GET'||method==='HEAD')return '查看';
+ return '访问';
+}
+function outcomeText(outcome:string):string{
+ return {success:'成功',denied:'被拒绝',failed:'失败',pending:'结果未确认',disconnected:'连接中断'}[outcome]??'状态未知';
+}
+export function auditDescription(method:string,area:string,outcome:string):string{
+ const subject=areaLabels[area]??areaLabels[area.split('.')[0]??'']??areaLabels.other;
+ return `${subject} · ${methodVerb(method)}（${outcomeText(outcome)}）`;
+}
 /** 开始记录先落库，结束记录追加；崩溃或写入失败保留“未确认”，不能伪报完成。 */
 export function requestAudit(db:Pool):RequestHandler {
  const accounts=new AccountRepository(db);
@@ -52,7 +74,7 @@ export class RequestAudits {
  }
  async cleanup(token:string,input:Record<string,unknown>){
   const user=await this.administrator(token);
-  if(input.confirmation!=='永久清理请求审计'||typeof input.fingerprint!=='string'||!/^[a-f0-9]{32}$/.test(input.fingerprint))throw new RepositoryError(400,'需要核对预览并明确确认永久清理');
+  if(input.confirmation!=='永久清理安全审计'||typeof input.fingerprint!=='string'||!/^[a-f0-9]{32}$/.test(input.fingerprint))throw new RepositoryError(400,'需要核对预览并明确确认永久清理');
   const preview=await this.cleanupPreview(token,input.before);
   if(preview.fingerprint!==input.fingerprint)throw new RepositoryError(409,'清理范围已变化，请重新预览');
   return transaction(this.db,async c=>{
@@ -60,7 +82,9 @@ export class RequestAudits {
    return {removed:(await c.query('SELECT identity.cleanup_request_audit($1,$2,$3) AS removed',[user.id,preview.before,input.fingerprint])).rows[0].removed};
   });
  }
- async cleanups(token:string){await this.administrator(token);return (await this.db.query('SELECT id,actor_id AS "actorId",before_date::text AS before,removed,created_at AS "createdAt" FROM identity.request_audit_cleanups ORDER BY created_at DESC,id DESC LIMIT 50')).rows;}
+ async cleanups(token:string){await this.administrator(token);return (await this.db.query(`SELECT c.id,c.actor_id AS "actorId",u.username AS "actorName",c.before_date::text AS before,c.removed,c.created_at AS "createdAt"
+  FROM identity.request_audit_cleanups c LEFT JOIN identity.users u ON u.id=c.actor_id
+  ORDER BY c.created_at DESC,c.id DESC LIMIT 50`)).rows;}
  async list(token:string,query:Record<string,unknown>,exporting=false){
   const user=await new AccountRepository(this.db).resolve(token);
   if(!user||user.role!=='admin'||user.mustChangePassword)throw new RepositoryError(403,'需要有效管理员登录');
@@ -82,7 +106,7 @@ export class RequestAudits {
     AND ($3::date IS NULL OR a.created_at >= $3::date::timestamp AT TIME ZONE 'UTC')
     AND ($4::date IS NULL OR a.created_at < ($4::date+1)::timestamp AT TIME ZONE 'UTC')
     AND ($5::uuid IS NULL OR (a.created_at,a.id)<(SELECT created_at,id FROM identity.request_audit WHERE id=$5))
-  ) SELECT * FROM events WHERE ($6::text IS NULL OR outcome=$6) ORDER BY "createdAt" DESC,id DESC LIMIT $7`,[actor,area,from,until,before,outcome,limit+1])).rows;
+  ) SELECT * FROM events WHERE ($6::text IS NULL OR outcome=$6) ORDER BY "createdAt" DESC,id DESC LIMIT $7`,[actor,area,from,until,before,outcome,limit+1])).rows.map(row=>({...row,description:auditDescription(row.method,row.area,row.outcome)}));
   if(exporting&&rows.length>limit)throw new RepositoryError(413,'匹配记录超过10000条，请缩小日期或用户范围后导出');
   return {rows:rows.slice(0,limit),next:rows.length>limit?rows[limit-1].id:null};
  }
