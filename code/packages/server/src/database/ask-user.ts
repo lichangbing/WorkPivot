@@ -1,109 +1,158 @@
 import { randomUUID } from 'node:crypto';
 import type { Tool } from '@workpivot/core';
+import type { ClarificationQuestion, InteractionOption } from '@workpivot/shared';
 
 /**
- * R004 结构化提问：需求不明确时用带选项的卡片澄清，而不是在正文里追问一句然后停下。
- *
- * 边界：
- * - 只用于澄清需求（选格式、选范围、选模板），不能替代授权确认——权限仍由 evaluateAccess 决定；
- * - 同一轮最多一个问题：重复调用直接返回同一 questionId，不重复弹卡；
- * - 工具返回后本轮结束（endsTurn），用户的选择作为下一条用户消息进入历史，带 `[回答提问 <id>]` 前缀；
- * - 因此不需要挂起状态机，也不会触发 onIdle 追问。
+ * R004/PC-03 结构化澄清：一次最多三个相关问题，保存为持久交互后结束本轮。
+ * 澄清不是授权；权限仍由 run_permissions 单独处理。
  */
-
-export interface AskUserQuestion {
-  questionId: string;
-  question: string;
-  options: Array<{ label: string; description?: string }>;
-  allowFreeText: boolean;
+export interface AskUserBatch {
+  interactionId: string;
+  questions: ClarificationQuestion[];
 }
 
 const QUESTION_LIMIT = 200;
-const LABEL_LIMIT = 40;
-const DESCRIPTION_LIMIT = 120;
+const LABEL_LIMIT = 60;
+const DESCRIPTION_LIMIT = 240;
+const PREVIEW_LIMIT = 2000;
 const OPTION_MAX = 6;
+const QUESTION_MAX = 3;
 
 function fail(message: string): never {
   throw Error(message);
 }
 
-interface ParsedQuestion {
-  question: string;
-  options: AskUserQuestion['options'];
-  allowFreeText: boolean;
+function parseOption(entry: unknown, questionIndex: number, optionIndex: number): InteractionOption {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) fail(`第 ${questionIndex + 1} 个问题的第 ${optionIndex + 1} 个选项格式无效`);
+  const source = entry as Record<string, unknown>;
+  const label = source['label'];
+  if (typeof label !== 'string' || !label.trim()) fail(`第 ${questionIndex + 1} 个问题的第 ${optionIndex + 1} 个选项缺少 label`);
+  if (label.trim().length > LABEL_LIMIT) fail(`选项 label 不能超过 ${LABEL_LIMIT} 字`);
+  const description = source['description'];
+  if (description !== undefined && (typeof description !== 'string' || description.length > DESCRIPTION_LIMIT)) fail(`选项 description 不能超过 ${DESCRIPTION_LIMIT} 字`);
+  const preview = source['preview'];
+  if (preview !== undefined && (typeof preview !== 'string' || preview.length > PREVIEW_LIMIT)) fail(`选项 preview 不能超过 ${PREVIEW_LIMIT} 字`);
+  const recommended = source['recommended'];
+  if (recommended !== undefined && typeof recommended !== 'boolean') fail('recommended 必须是布尔值');
+  return {
+    label: label.trim(),
+    ...(description === undefined ? {} : { description: description.trim() }),
+    ...(preview === undefined ? {} : { preview }),
+    ...(recommended === true ? { recommended: true } : {}),
+  };
 }
 
-function parseQuestion(args: Record<string, unknown>): ParsedQuestion {
-  const raw = args['question'];
-  if (typeof raw !== 'string' || raw.trim().length === 0) fail('question 不能为空');
-  const question = raw.trim();
-  if (question.length > QUESTION_LIMIT) fail(`question 不能超过 ${QUESTION_LIMIT} 字`);
-
-  const allowFreeText = args['allow_free_text'] === undefined ? true : args['allow_free_text'];
+function parseQuestion(raw: unknown, index: number): ClarificationQuestion {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) fail(`第 ${index + 1} 个问题格式无效`);
+  const source = raw as Record<string, unknown>;
+  const question = source['question'];
+  if (typeof question !== 'string' || !question.trim()) fail('question 不能为空');
+  if (question.trim().length > QUESTION_LIMIT) fail(`question 不能超过 ${QUESTION_LIMIT} 字`);
+  const allowFreeText = source['allow_free_text'] === undefined ? true : source['allow_free_text'];
   if (typeof allowFreeText !== 'boolean') fail('allow_free_text 必须是布尔值');
-
-  const rawOptions = args['options'];
-  if (rawOptions === undefined) return { question, options: [], allowFreeText };
+  const multiSelect = source['multi_select'] === undefined ? false : source['multi_select'];
+  if (typeof multiSelect !== 'boolean') fail('multi_select 必须是布尔值');
+  const rawOptions = source['options'];
+  if (rawOptions === undefined) {
+    if (!allowFreeText) fail('没有选项时必须允许自由回答');
+    return { id: randomUUID(), question: question.trim(), options: [], allowFreeText, multiSelect };
+  }
   if (!Array.isArray(rawOptions)) fail('options 必须是数组');
   if (rawOptions.length < 2 || rawOptions.length > OPTION_MAX) fail(`options 需要 2-${OPTION_MAX} 项`);
-  const options = rawOptions.map((entry, index) => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) fail(`第 ${index + 1} 个选项格式无效`);
-    const source = entry as Record<string, unknown>;
-    const label = source['label'];
-    if (typeof label !== 'string' || label.trim().length === 0) fail(`第 ${index + 1} 个选项缺少 label`);
-    if (label.trim().length > LABEL_LIMIT) fail(`选项 label 不能超过 ${LABEL_LIMIT} 字`);
-    const description = source['description'];
-    if (description !== undefined && (typeof description !== 'string' || description.length > DESCRIPTION_LIMIT)) fail(`选项 description 不能超过 ${DESCRIPTION_LIMIT} 字`);
-    return description === undefined ? { label: label.trim() } : { label: label.trim(), description };
-  });
-  return { question, options, allowFreeText };
+  const options = rawOptions.map((entry, optionIndex) => parseOption(entry, index, optionIndex));
+  if (new Set(options.map((option) => option.label)).size !== options.length) fail('同一问题的选项不能重复');
+  if (options.filter((option) => option.recommended).length > 1) fail('同一问题最多一个推荐选项');
+  return { id: randomUUID(), question: question.trim(), options, allowFreeText, multiSelect };
+}
+
+function parseQuestions(args: Record<string, unknown>): ClarificationQuestion[] {
+  const raw = args['questions'];
+  if (raw !== undefined) {
+    if (!Array.isArray(raw) || raw.length < 1 || raw.length > QUESTION_MAX) fail(`questions 需要 1-${QUESTION_MAX} 项`);
+    return raw.map(parseQuestion);
+  }
+  return [parseQuestion({
+    question: args['question'],
+    options: args['options'],
+    allow_free_text: args['allow_free_text'],
+    multi_select: args['multi_select'],
+  }, 0)];
 }
 
 export interface AskUserOptions {
-  /** 把问题写成可重放的对话事件；用户回答走普通发消息接口。 */
-  emit: (question: AskUserQuestion) => void | Promise<void>;
+  emit: (batch: AskUserBatch) => void | Promise<void>;
 }
 
 export function askUserTool(options: AskUserOptions): Tool {
-  /** 同一轮只保留一个问题；重复调用返回同一 id，不重复弹卡。 */
-  let asked: AskUserQuestion | undefined;
+  let asked: AskUserBatch | undefined;
   return {
     name: 'ask_user',
     displayName: '向你确认需求',
     kind: 'read',
     endsTurn: true,
     description:
-      '当需求不明确（格式、范围、模板、口径）时，用带选项的卡片向用户确认，比在正文里追问更清楚。' +
-      `question 不超过 ${QUESTION_LIMIT} 字；options 传 2-${OPTION_MAX} 个选项，省略表示自由回答；allow_free_text 默认 true。` +
-      '一次只问一个问题，问完本轮立即结束，用户回答会作为下一条消息发来（带「[回答提问 编号]」前缀）。' +
-      '只用于澄清需求，不能替代授权确认；不要用它确认权限、执行后果或已经明确的事情。',
+      '只在真正阻塞的用户专属歧义处提问，一次可问1至3个相关问题。问题应提供2至6个互斥选项，可标记推荐项和预览。' +
+      `每题问题不超过 ${QUESTION_LIMIT} 字；支持单题多选和自由回答。` +
+      '能从当前任务、资料、知识、记忆或业务事实查到的内容不得询问；不要确认权限、执行后果或已经明确的事情。' +
+      '提问后本轮结束，回答会持久化并与 Web、桌面和手机同步。',
     parameters: {
       type: 'object',
       properties: {
-        question: { type: 'string', description: `要确认的问题，不超过 ${QUESTION_LIMIT} 字` },
-        options: {
+        questions: {
           type: 'array',
-          minItems: 2,
-          maxItems: OPTION_MAX,
+          minItems: 1,
+          maxItems: QUESTION_MAX,
+          description: '相关的1至3个澄清问题；信息应一次收齐，避免连续多轮追问',
           items: {
             type: 'object',
             properties: {
-              label: { type: 'string', description: `选项文字，不超过 ${LABEL_LIMIT} 字` },
-              description: { type: 'string', description: `选项补充说明，不超过 ${DESCRIPTION_LIMIT} 字` },
+              question: { type: 'string', description: `问题，不超过 ${QUESTION_LIMIT} 字` },
+              options: {
+                type: 'array', minItems: 2, maxItems: OPTION_MAX,
+                items: {
+                  type: 'object',
+                  properties: {
+                    label: { type: 'string', description: `选项文字，不超过 ${LABEL_LIMIT} 字` },
+                    description: { type: 'string', description: `选项说明，不超过 ${DESCRIPTION_LIMIT} 字` },
+                    recommended: { type: 'boolean', description: '是否为推荐项，每题最多一个' },
+                    preview: { type: 'string', description: '可选的短预览，例如模板结构或示例' },
+                  },
+                  required: ['label'],
+                  additionalProperties: false,
+                },
+              },
+              allow_free_text: { type: 'boolean', description: '是否允许自由输入，默认 true' },
+              multi_select: { type: 'boolean', description: '是否允许多选，默认 false' },
+            },
+            required: ['question'],
+            additionalProperties: false,
+          },
+        },
+        question: { type: 'string', description: '旧版单题字段；新调用优先使用 questions' },
+        options: {
+          type: 'array', minItems: 2, maxItems: OPTION_MAX,
+          items: {
+            type: 'object',
+            properties: {
+              label: { type: 'string' },
+              description: { type: 'string' },
+              recommended: { type: 'boolean' },
+              preview: { type: 'string' },
             },
             required: ['label'],
             additionalProperties: false,
           },
         },
-        allow_free_text: { type: 'boolean', description: '是否允许自由输入，默认 true' },
+        allow_free_text: { type: 'boolean', description: '旧版单题自由回答开关' },
+        multi_select: { type: 'boolean', description: '旧版单题多选开关' },
       },
-      required: ['question'],
+      oneOf: [{ required: ['questions'] }, { required: ['question'] }],
       additionalProperties: false,
     },
     async run(args) {
       if (!asked) {
-        const parsed = parseQuestion(args);
-        asked = { questionId: randomUUID(), ...parsed };
+        const questions = parseQuestions(args);
+        asked = { interactionId: randomUUID(), questions };
         await options.emit(asked);
       }
       return JSON.stringify({ status: 'asked', ...asked });

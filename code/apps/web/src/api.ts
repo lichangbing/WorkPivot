@@ -1,6 +1,7 @@
 /** 前端 API 客户端：只允许经 HTTP/SSE 与服务层通信（A01.3 拆分边界纪律）。 */
 import { readChatStream } from './chat-stream';
 import type { SidebarData } from './TaskSidebar';
+import type { InteractionEnvelope, InteractionResponse, PlanDocument } from '@workpivot/shared';
 
 export interface Task {
   lastStopReason?: string;
@@ -97,10 +98,12 @@ export type ChatEvent =
   | { type: 'tool_result'; toolName: string; ok?: boolean; message?: string; displayName?: string; callId?: string; durationMs?: number; status?: 'ok' | 'error' | 'denied' | 'stopped' }
   | { type: 'permission_request'; id: string; tool: string; kind: 'read' | 'write' | 'bash'; paths: Array<{ path: string; mode: string }>; command?: string; reason: string; scope: string }
   | { type: 'ask_user'; questionId: string; question: string; options?: Array<{ label: string; description?: string }>; allowFreeText?: boolean }
+  | { type: 'interaction_request'; interaction: InteractionEnvelope }
+  | { type: 'interaction_resolved'; interaction: InteractionEnvelope }
   | { type: 'risk_analysis'; id: string; analysis: string }
   | { type: 'memory_confirm'; id: string; content: string; taskId: string }
   | { type: 'memory_resolved'; id: string }
-  | { type: 'plan_update'; steps: PlanStep[] }
+  | { type: 'plan_update'; steps: PlanStep[]; plan?: PlanDocument }
   | { type: 'gate_reject'; missing: string[]; final?: boolean }
   | { type: 'error'; message: string }
   | { type: 'done'; stopReason: string; steps: number };
@@ -170,7 +173,7 @@ export const api = {
   listPathGrants: (): Promise<{ grants: Array<{ id: string; userId: string; taskId: string; path: string; mode: 'read' | 'write'; subtree: boolean; createdAt: string }> }> => jsonFetch('/api/permissions/allowdirs'),
   revokePathGrant: (id: string): Promise<{ ok: boolean }> => jsonFetch(`/api/permissions/allowdirs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   health: (): Promise<{ ok: boolean }> => jsonFetch('/api/health'),
-  authState: (): Promise<{ needsSetup: boolean; setupTokenRequired: boolean; registrationEnabled?: boolean; defaultMessageQuota?: number; defaultTokenQuota?: number; defaultUploadQuotaBytes?: number; defaultConcurrentTaskLimit?: number; oidcProviders?: Array<{ id: string; name: string; organizationName: string }>; authenticated: boolean; user: PublicUser | null; quota?: { used: number; limit: number; remaining: number | null; resetsAt?: string } | null }> =>
+  authState: (): Promise<{ needsSetup: boolean; setupTokenRequired: boolean; registrationEnabled?: boolean; defaultMessageQuota?: number; defaultTokenQuota?: number; defaultUploadQuotaBytes?: number; defaultConcurrentTaskLimit?: number; oidcProviders?: Array<{ id: string; name: string; organizationName: string }>; authenticated: boolean; user: PublicUser | null; quota?: { used: number; limit: number; remaining: number | null; resetsAt?: string } | null; interactionCapabilities?: { clarifyV2: boolean; planApproval: boolean; permissionPreview: boolean; artifactReview: boolean } }> =>
     jsonFetch('/api/auth/state'),
   register: (username: string, password: string): Promise<{ token: string; user: PublicUser }> =>
     jsonFetch('/api/auth/register', { method: 'POST', body: JSON.stringify({ username, password }) }),
@@ -231,7 +234,14 @@ export const api = {
     jsonFetch('/api/skills/toggle', { method: 'POST', body: JSON.stringify({ name, disabled }) }),
   getTask: (id: string): Promise<{ task: Task; history: HistoryMessage[]; pendingMemory?: Array<{ id: string; content: string }>; pending?: Array<{ id: string; tool: string; reason: string; paths: Array<{ path: string; mode: string }>; scope: string; command?: string }> }> => jsonFetch(`/api/tasks/${id}`),
   getTranscript: (id: string): Promise<{ rows: TranscriptRow[] }> => jsonFetch(`/api/tasks/${id}/transcript`),
-  getPlan: (id: string): Promise<{ steps: PlanStep[] }> => jsonFetch(`/api/tasks/${id}/plan`),
+  getPlan: (id: string): Promise<{ steps: PlanStep[]; plan?: PlanDocument | null }> => jsonFetch(`/api/tasks/${id}/plan`),
+  listInteractions: (taskId: string): Promise<{ interactions: InteractionEnvelope[]; blocking: number; queued: number }> => jsonFetch(`/api/tasks/${encodeURIComponent(taskId)}/interactions`),
+  respondToInteraction: (taskId: string, interactionId: string, input: { revision: number; response: InteractionResponse; requestId: string; resourceScope?: unknown }): Promise<Response> =>
+    fetch(`/api/tasks/${encodeURIComponent(taskId)}/interactions/${encodeURIComponent(interactionId)}/respond`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${getToken() ?? ''}` },
+      body: JSON.stringify(input),
+    }),
   getFiles: (id: string): Promise<{ directory: string; files: string[] }> => jsonFetch(`/api/tasks/${id}/files`),
   stop: (id: string): Promise<{ ok: boolean }> => jsonFetch(`/api/tasks/${id}/stop`, { method: 'POST' }),
   decidePermission: (taskId: string, id: string, decision: 'allow' | 'deny' | 'session' | 'forever'): Promise<{ ok: boolean }> =>

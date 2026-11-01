@@ -172,6 +172,9 @@ export class WorkspaceRepository {
       await c.query(`UPDATE workpivot.business_relation_series SET status='forgotten',current_revision_id=NULL,updated_at=now() WHERE project_id=$1 AND id=$2`, [row.project_id, row.series_id]);
     }
     await c.query('DELETE FROM workpivot.documents WHERE task_id=ANY($1::uuid[])', [ids]);
+    await c.query('DELETE FROM workpivot.run_steering_messages WHERE task_id=ANY($1::uuid[])', [ids]);
+    await c.query('DELETE FROM workpivot.interactions WHERE task_id=ANY($1::uuid[])', [ids]);
+    await c.query('DELETE FROM workpivot.task_plans WHERE task_id=ANY($1::uuid[])', [ids]);
     await c.query('DELETE FROM workpivot.run_permissions WHERE task_id=ANY($1::uuid[])', [ids]);
     await c.query('DELETE FROM workpivot.task_runs WHERE task_id=ANY($1::uuid[])', [ids]);
     await c.query('DELETE FROM workpivot.conversation_events WHERE task_id=ANY($1::uuid[])', [ids]);

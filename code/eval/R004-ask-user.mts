@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { runAgentLoop } from '../packages/core/src/loop.js';
 import type { ModelClient, StreamEvent, Tool } from '../packages/core/src/index.js';
-import { askUserTool, type AskUserQuestion } from '../packages/server/src/database/ask-user.js';
+import { askUserTool, type AskUserBatch } from '../packages/server/src/database/ask-user.js';
 
 let checks = 0;
 async function check(label: string, run: () => Promise<void>): Promise<void> {
@@ -38,27 +38,27 @@ await check('参数校验：超长问题、选项数量与 label 长度都拒绝
   await assert.rejects(() => tool.run({ question: '问'.repeat(201) }, { taskDir: '.' }), /200/);
   await assert.rejects(() => tool.run({ question: '选一个', options: [{ label: '只有一个' }] }, { taskDir: '.' }), /2-6/);
   await assert.rejects(() => tool.run({ question: '选一个', options: Array.from({ length: 7 }, (_, i) => ({ label: `选项${i}` })) }, { taskDir: '.' }), /2-6/);
-  await assert.rejects(() => tool.run({ question: '选一个', options: [{ label: '长'.repeat(41) }, { label: 'B' }] }, { taskDir: '.' }), /40/);
+  await assert.rejects(() => tool.run({ question: '选一个', options: [{ label: '长'.repeat(61) }, { label: 'B' }] }, { taskDir: '.' }), /60/);
   await assert.rejects(() => tool.run({ question: '   ' }, { taskDir: '.' }), /不能为空/);
   await assert.rejects(() => tool.run({ question: '选一个', allow_free_text: 'yes' }, { taskDir: '.' }), /allow_free_text/);
 });
 
 await check('同一轮重复调用返回同一 questionId，不重复弹卡', async () => {
-  const events: AskUserQuestion[] = [];
+  const events: AskUserBatch[] = [];
   const tool = askUserTool({ emit: (question) => { events.push(question); } });
-  const first = JSON.parse(await tool.run({ question: '要哪种格式？', options: [{ label: 'PPT' }, { label: 'Word' }] }, { taskDir: '.' })) as AskUserQuestion & { status: string };
-  const second = JSON.parse(await tool.run({ question: '换个说法再问' }, { taskDir: '.' })) as AskUserQuestion & { status: string };
+  const first = JSON.parse(await tool.run({ question: '要哪种格式？', options: [{ label: 'PPT' }, { label: 'Word' }] }, { taskDir: '.' })) as AskUserBatch & { status: string };
+  const second = JSON.parse(await tool.run({ question: '换个说法再问' }, { taskDir: '.' })) as AskUserBatch & { status: string };
   assert.equal(first.status, 'asked');
   assert.equal(second.status, 'asked');
-  assert.equal(first.questionId, second.questionId);
+  assert.equal(first.interactionId, second.interactionId);
   assert.equal(events.length, 1, '只应弹一次卡');
-  assert.equal(second.question, '要哪种格式？', '重复调用不能替换已提出的问题');
+  assert.equal(second.questions[0]?.question, '要哪种格式？', '重复调用不能替换已提出的问题');
 });
 
 await check('asked 后本轮立即结束，且不触发 idle 追问', async () => {
   let idle = 0;
   const emitted: string[] = [];
-  const tool = askUserTool({ emit: (question) => { emitted.push(question.questionId); } });
+  const tool = askUserTool({ emit: (question) => { emitted.push(question.interactionId); } });
   const client = clientWith([
     { text: '我需要先确认一下。', calls: [{ name: 'ask_user', args: JSON.stringify({ question: '要包含财务数据吗？', options: [{ label: '包含' }, { label: '不包含' }] }) }] },
     { text: '这条不应被采样' },
@@ -88,12 +88,29 @@ await check('提问不经过授权通道，授权拒绝不会变成提问卡', a
 });
 
 await check('自由回答：省略 options 时仍可提出并记录 allowFreeText', async () => {
-  const events: AskUserQuestion[] = [];
+  const events: AskUserBatch[] = [];
   const tool = askUserTool({ emit: (question) => { events.push(question); } });
-  const result = JSON.parse(await tool.run({ question: '请补充报告受众' }, { taskDir: '.' })) as AskUserQuestion;
-  assert.equal(result.options.length, 0);
-  assert.equal(result.allowFreeText, true);
-  assert.equal(events[0]?.allowFreeText, true);
+  const result = JSON.parse(await tool.run({ question: '请补充报告受众' }, { taskDir: '.' })) as AskUserBatch;
+  assert.equal(result.questions[0]?.options.length, 0);
+  assert.equal(result.questions[0]?.allowFreeText, true);
+  assert.equal(events[0]?.questions[0]?.allowFreeText, true);
+});
+
+await check('一次可收集三个相关问题，支持推荐、多选和预览', async () => {
+  const events: AskUserBatch[] = [];
+  const tool = askUserTool({ emit: (question) => { events.push(question); } });
+  const result = JSON.parse(await tool.run({
+    questions: [
+      { question: '选择模板', options: [{ label: '管理层版', recommended: true, preview: '摘要+指标' }, { label: '执行版' }] },
+      { question: '包含哪些章节', multi_select: true, options: [{ label: '预算' }, { label: '进度' }, { label: '风险' }] },
+      { question: '补充验收人' },
+    ],
+  }, { taskDir: '.' })) as AskUserBatch;
+  assert.equal(result.questions.length, 3);
+  assert.equal(result.questions[0]?.options[0]?.recommended, true);
+  assert.equal(result.questions[1]?.multiSelect, true);
+  assert.equal(result.questions[0]?.options[0]?.preview, '摘要+指标');
+  assert.equal(events.length, 1);
 });
 
 console.log(`\nR004 结构化提问：${checks} 项通过`);

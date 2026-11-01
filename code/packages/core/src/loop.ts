@@ -8,8 +8,9 @@ import { canonicalPath } from '@workpivot/shared/node';
 import { compactMessages, CONTEXT_CHAR_BUDGET } from './context.js';
 import type { ModelClient, ChatMessage, ToolCall, ToolSchema } from './model/openai.js';
 import type { Tool, ToolContext, ToolAccessRequest } from './tools.js';
+import type { InteractionEnvelope, PlanDocument, PlanStepView, SteeringMessage } from '@workpivot/shared';
 
-export type AgentEventType = 'assistant_delta' | 'reasoning_delta' | 'tool_use' | 'tool_status' | 'tool_result' | 'error' | 'ask_user' | 'usage' | 'recovery';
+export type AgentEventType = 'assistant_delta' | 'reasoning_delta' | 'tool_use' | 'tool_status' | 'tool_result' | 'error' | 'ask_user' | 'interaction_request' | 'interaction_resolved' | 'plan_update' | 'steering_applied' | 'usage' | 'recovery';
 
 export interface AgentEvent {
   displayName?: string;
@@ -35,6 +36,12 @@ export interface AgentEvent {
   /** 恢复类事件（type=recovery）：系统行为留痕，例如自动续跑。 */
   action?: string;
   from?: string;
+  /** 统一交互协议；兼容旧 ask_user/permission_request 客户端。 */
+  interaction?: InteractionEnvelope;
+  /** 数据库计划工具生成的完整计划文档。 */
+  plan?: PlanDocument;
+  steps?: PlanStepView[];
+  steering?: SteeringMessage;
 }
 
 export type StopReason = 'completed' | 'max_steps' | 'time_limit' | 'aborted' | 'error';
@@ -67,6 +74,8 @@ export interface RunAgentOptions {
   onEvent?: (event: AgentEvent) => void | Promise<void>;
   /** R006：每个 step 的工具结果全部回填后写检查点（用于中断恢复，不作为模型上下文来源）。 */
   onCheckpoint?: (messages: ChatMessage[], step: number) => void | Promise<void>;
+  /** 在模型采样或工具批次的安全边界取走持久化运行中补充要求。 */
+  consumeSteering?: (messages: ChatMessage[]) => Promise<SteeringMessage[]>;
   signal?: AbortSignal;
 }
 
@@ -125,6 +134,19 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
   let outputTokens = 0;
   const idleLimit = options.idleLimit ?? 1;
   const contextBudget = options.contextBudget ?? CONTEXT_CHAR_BUDGET;
+  const deniedCalls = new Set<string>();
+  const applySteering = async (): Promise<number> => {
+    const rows = await options.consumeSteering?.([...messages]) ?? [];
+    for (const steering of rows) {
+      messages.push({
+        role: 'user',
+        content: `[运行中补充 ${steering.createdAt}] ${steering.content}\n这是用户对当前任务的最新要求；如与旧要求冲突，以这条补充为准。`,
+      });
+      await options.onEvent?.({ type: 'steering_applied', steering });
+    }
+    if (rows.length) await options.onCheckpoint?.(messages, steps);
+    return rows.length;
+  };
 
   // 卡循环检测（T3-05/F05）：同工具+同入参+同结果 连续计数
   let lastCallFp = '';
@@ -136,6 +158,7 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
       stopReason = 'aborted';
       break;
     }
+    await applySteering();
     const overSteps = steps >= maxSteps;
     const overTime = Date.now() - startedAt > maxDurationMs;
     if ((overSteps || overTime) && !wrapAttempted) {
@@ -209,6 +232,12 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
     }
     if (stopReason === 'aborted' || stopReason === 'error') break;
 
+    // 纠正可能在本次模型流式输出期间到达；在派发工具前合并，避免按旧要求产生副作用。
+    if (await applySteering() > 0) {
+      if (assistantText) messages.push({ role: 'assistant', content: assistantText });
+      continue;
+    }
+
     if (toolCalls === null || toolCalls.length === 0) {
       // 纯文本回复：默认结束；但弱模型常“表态就停”，由 onIdle 兜底追问一次。
       const nudge = idleLimit > 0 && idleContinues < idleLimit && options.onIdle
@@ -219,6 +248,10 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
         // 空文本不能作为 assistant 消息发给供应商；有内容才保留这一轮的回答。
         if (assistantText) messages.push({ role: 'assistant', content: assistantText });
         messages.push({ role: 'user', content: nudge });
+        continue;
+      }
+      if (await applySteering() > 0) {
+        if (assistantText) messages.push({ role: 'assistant', content: assistantText });
         continue;
       }
       messages.push({ role: 'assistant', content: assistantText });
@@ -254,6 +287,10 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
         // F05：已连续 4 次相同调用与结果，第 5 次直接拦截，不再执行
         ok = false;
         resultText = '错误:已连续多次产生完全相同的调用与结果,本次执行被拦截。请必须更换思路、修改参数,或向用户说明情况。';
+      } else if (deniedCalls.has(argFp)) {
+        ok = false;
+        outcome = 'denied';
+        resultText = '用户此前已拒绝完全相同的调用。不得原样重试；必须根据拒绝原因调整参数或路线，无法调整时停止并说明。';
       } else {
         // 并行的只读调用各自持有独立上下文，避免 extraAllowedDirs 互相覆盖。
         const callCtx: ToolContext = { ...ctx, extraAllowedDirs: [] };
@@ -281,6 +318,10 @@ export async function runAgentLoop(options: RunAgentOptions): Promise<RunAgentRe
         } catch (err) {
           ok = false;
           resultText = `错误：${err instanceof Error ? err.message : String(err)}`;
+          if (/拒绝|未获授权|未确认/.test(resultText)) {
+            outcome = 'denied';
+            deniedCalls.add(argFp);
+          }
         }
       }
       return { identity, tool, argFp, ok, outcome, resultText, startedAt };

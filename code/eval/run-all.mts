@@ -35,6 +35,7 @@ const suites: Array<[string, string]> = [
   ['W37', 'eval/W37-password-reset.mts'],
   ['R005', 'eval/R005-delegate.mts'],
   ['R004', 'eval/R004-ask-user.mts'],
+  ['PC', 'eval/interaction-v2.mts'],
   ['OPT', 'eval/optimizations-p0.mts'],
   ['OPT2', 'eval/optimizations-p1.mts'],
   ['OPT3', 'eval/optimizations-p2.mts'],

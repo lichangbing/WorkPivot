@@ -32,10 +32,11 @@ try {
     localStorage.setItem('wp-right-panel-open', 'false');
   });
   const task = { id: 'task-a', projectId: 'project-a', name: '网页分析', status: 'waiting', revision: 2 };
-  const permission = {
-    id: 'permission-a',
-    request: { tool: 'web_fetch', reason: '本次读取网页需要确认', effects: ['read'], command: '读取公开网页' },
-    expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+  const interaction = {
+    id: 'permission-a', kind: 'action_permission', userId: 'owner', taskId: 'task-a', runId: 'run-a',
+    revision: 1, state: 'pending', blocking: true, risk: 'medium', reason: '本次读取网页需要确认',
+    payload: { tool: 'web_fetch', command: '读取公开网页', effects: ['read'], risk: 'medium', summary: '读取公开网页', feedbackAllowed: true },
+    createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
   };
   let decisionBody;
   await page.route('**/api/**', async route => {
@@ -48,8 +49,8 @@ try {
     else if (path === '/api/projects') data = { projects: [{ id: 'project-a', name: '合成项目', revision: 1 }] };
     else if (path === '/api/tasks/task-a/conversation') data = { turns: [], nextCursor: null, snapshotSequence: '1' };
     else if (path === '/api/tasks/task-a/conversation-changes') data = { events: [], nextSequence: '1', snapshotSequence: '1', hasMore: false };
-    else if (path === '/api/tasks/task-a/permissions' && request.method() === 'GET') data = { pending: [permission] };
-    else if (path === '/api/tasks/task-a/permissions/permission-a' && request.method() === 'POST') {
+    else if (path === '/api/tasks/task-a/interactions' && request.method() === 'GET') data = { interactions: [interaction], blocking: 1, queued: 0 };
+    else if (path === '/api/tasks/task-a/interactions/permission-a/respond' && request.method() === 'POST') {
       decisionBody = request.postDataJSON();
       data = { ok: true };
     } else if (path === '/api/tasks/task-a/resource-scope') data = { scope: { versionIds: [], memoryScopes: [], expert: false, scheduleIds: [], baseRunId: null } };
@@ -57,17 +58,18 @@ try {
   });
   await page.goto(`http://127.0.0.1:${server.address().port}/`);
   await page.getByRole('complementary', { name: '项目与任务', exact: true }).getByRole('button', { name: '网页分析', exact: true }).click();
-  const dock = page.getByRole('region', { name: '待确认操作', exact: true });
+  const dock = page.getByRole('region', { name: '动作授权', exact: true });
   await dock.waitFor();
   const dockBox = await dock.boundingBox(), composerBox = await page.locator('form.workspace-composer').boundingBox();
   assert.ok(dockBox && composerBox && dockBox.y + dockBox.height <= composerBox.y + 1, '权限确认区应位于输入框上方');
   await dock.getByText('本次读取网页需要确认', { exact: true }).waitFor();
   assert.equal(await dock.getByRole('button', { name: /允许本次/ }).isDisabled(), false);
   await page.screenshot({ path: '/tmp/workpivot-permission-dock.png' });
-  const submitted = page.waitForRequest(req => req.url().endsWith('/api/tasks/task-a/permissions/permission-a') && req.method() === 'POST');
+  const submitted = page.waitForRequest(req => req.url().endsWith('/api/tasks/task-a/interactions/permission-a/respond') && req.method() === 'POST');
   await dock.getByRole('button', { name: /允许本次/ }).click();
   await submitted;
-  assert.deepEqual(decisionBody, { decision: 'allow', scope: 'once' });
+  assert.equal(decisionBody.revision, 1);
+  assert.deepEqual(decisionBody.response, { decision: 'approve' });
   assert.deepEqual(errors, []);
   console.log('权限确认区检查通过：底部固定、操作可点击、允许本次请求正确。');
 } finally {

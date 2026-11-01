@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { canonicalPath, pathWithin } from '@workpivot/shared/node';
+import type { InteractionPayload, InteractionRisk } from '@workpivot/shared';
 import { commandEnvironment } from './command-env.js';
 
 export interface ToolContext {
@@ -28,6 +29,9 @@ export interface ToolAccessRequest {
   /** 服务端固定的单次调用；模型参数不能自行签发许可。 */
   binding?: Record<string, unknown>;
   invocation?: { id: string; definition: string; arguments: Record<string, unknown>; digest: string };
+  /** 服务端生成的统一交互内容；模型参数不能提供或覆盖。 */
+  interactionPayload?: InteractionPayload;
+  risk?: InteractionRisk;
   external?: boolean;
   /** 服务端工具声明静默放行：不弹授权卡，直接记为已批准。由工具实现固定，模型参数不能设置。 */
   auto?: boolean;

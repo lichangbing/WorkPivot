@@ -1,4 +1,4 @@
-// 合成结构化提问，验证确认列表固定在输入区上方且资料范围未加载时仍可作答。
+// 合成持久化澄清交互，验证统一确认区、批量回答和跨接口提交。
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
@@ -35,10 +35,36 @@ try {
 
   const task = { id: 'task-a', projectId: 'project-a', name: '合成任务', status: 'completed', revision: 1 };
   const questionId = '31546d88-7896-43c5-af51-b4f189a238eb';
-  const answeredQuestionId = '6241bf67-d647-4f49-9e36-04b06f100bb5';
+  const interactionId = '6241bf67-d647-4f49-9e36-04b06f100bb5';
   const event = (id, sequence, kind, content) => ({ id, sequence: String(sequence), turnId: 'turn-a', runId: 'run-a', kind, content });
-  let messageBody;
+  let responseBody;
   let scopeRequests = 0;
+  const interaction = {
+    id: interactionId,
+    kind: 'clarification',
+    userId: 'owner',
+    taskId: 'task-a',
+    runId: 'run-a',
+    revision: 1,
+    state: 'pending',
+    blocking: true,
+    risk: 'low',
+    reason: '报告需要包含哪些内容？',
+    payload: {
+      questions: [{
+        id: questionId,
+        question: '报告需要包含哪些内容？',
+        options: [
+          { label: '核心结论', description: '只保留结论与关键数据', recommended: true },
+          { label: '完整分析', description: '包含数据、过程和风险提示' },
+        ],
+        allowFreeText: true,
+        multiSelect: false,
+      }],
+    },
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 600000).toISOString(),
+  };
 
   await page.route('**/api/**', async route => {
     const request = route.request();
@@ -51,19 +77,7 @@ try {
     else if (path === '/api/tasks/task-a/conversation') data = {
       turns: [{
         id: 'turn-a',
-        events: [
-          event('answered-user', 0, 'user', `[回答提问 ${answeredQuestionId}] 用公开网页资料做分析`),
-          event('ask-user', 1, 'meta', JSON.stringify({
-            type: 'ask_user',
-            questionId,
-            question: '报告需要包含哪些内容？',
-            options: [
-              { label: '核心结论', description: '只保留结论与关键数据' },
-              { label: '完整分析', description: '包含数据、过程和风险提示' },
-            ],
-            allowFreeText: true,
-          })),
-        ],
+        events: [event('initial', 1, 'assistant', '请确认报告内容。')],
         hasMoreEvents: false,
         nextEventSequence: null,
       }],
@@ -72,14 +86,14 @@ try {
     };
     else if (path === '/api/tasks/task-a/conversation-changes') data = { events: [], nextSequence: '1', snapshotSequence: '1', hasMore: false };
     else if (path === '/api/tasks/task-a/permissions') data = { pending: [] };
+    else if (path === '/api/tasks/task-a/interactions') data = { interactions: [interaction], blocking: 1, queued: 0 };
     else if (path === '/api/tasks/task-a/resource-scope') {
       scopeRequests++;
       await new Promise(done => setTimeout(done, 800));
       data = { scope: { versionIds: [], memoryScopes: [], expert: false, scheduleIds: [], baseRunId: null } };
-    } else if (path === '/api/tasks/task-a/messages' && request.method() === 'POST') {
-      messageBody = request.postDataJSON();
-      data = {};
-      await route.fulfill({ status: 202, json: data });
+    } else if (path === `/api/tasks/task-a/interactions/${interactionId}/respond` && request.method() === 'POST') {
+      responseBody = request.postDataJSON();
+      await route.fulfill({ json: { ok: true, interaction: { ...interaction, state: 'answered' } } });
       return;
     }
     await route.fulfill({ json: data });
@@ -87,29 +101,27 @@ try {
 
   await page.goto(`http://127.0.0.1:${staticServer.address().port}/`);
   await page.getByRole('complementary', { name: '项目与任务', exact: true }).getByRole('button', { name: '合成任务', exact: true }).click();
-  const dock = page.getByRole('region', { name: '待确认问题', exact: true });
+  const dock = page.getByRole('region', { name: '需求澄清', exact: true });
   await dock.waitFor();
   const composer = page.locator('form.workspace-composer');
   const dockBox = await dock.boundingBox();
   const composerBox = await composer.boundingBox();
   assert.ok(dockBox && composerBox && dockBox.y + dockBox.height <= composerBox.y + 1, '确认列表应位于输入框上方');
-  assert.equal(await dock.getByRole('listitem').count(), 2);
+  assert.equal(await dock.getByRole('button', { name: /核心结论/ }).count(), 1);
   assert.equal(await dock.getByRole('button', { name: /核心结论/ }).isDisabled(), false);
-  await page.getByText('用公开网页资料做分析', { exact: true }).waitFor();
-  assert.equal(await page.getByText(`[回答提问 ${answeredQuestionId}]`, { exact: false }).count(), 0, '用户消息不应显示内部提问编号');
 
-  const answerRequest = page.waitForRequest('**/api/tasks/task-a/messages');
+  const answerRequest = page.waitForRequest(`**/api/tasks/task-a/interactions/${interactionId}/respond`);
   await dock.getByRole('button', { name: /核心结论/ }).click();
+  await dock.getByRole('button', { name: '提交回答' }).click();
   const submitted = await answerRequest;
-  messageBody = submitted.postDataJSON();
-  assert.ok(messageBody, '资料范围尚未加载时点击选项也必须提交答案');
-  assert.equal(messageBody.content, `[回答提问 ${questionId}] 核心结论`);
-  assert.deepEqual(messageBody.attachments, []);
-  assert.ok(Array.isArray(messageBody.resourceScope.memoryScopes));
+  responseBody = submitted.postDataJSON();
+  assert.equal(responseBody.revision, 1);
+  assert.deepEqual(responseBody.response.answers, [{ questionId, value: ['核心结论'] }]);
+  assert.ok(Array.isArray(responseBody.resourceScope.memoryScopes));
   assert.ok(scopeRequests >= 1);
   assert.deepEqual(errors, []);
   await page.screenshot({ path: '/tmp/workpivot-ask-user-dock.png' });
-  console.log('确认列表检查通过：位于输入框上方、列表展示、资料范围未就绪时可点击并提交。');
+  console.log('统一澄清区通过：位于输入框上方、推荐项可识别、批量答案和读取范围可一次提交。');
 } finally {
   await browser?.close();
   await new Promise(resolveClose => staticServer.close(resolveClose));

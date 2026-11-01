@@ -10,13 +10,14 @@ import { ComposerSettings } from './ComposerSettings';
 import { MemoryReview, SummaryReview } from './MemoryReview';
 import { ResourceScope, type ResourceSelection } from './ResourceScope';
 import { ProcessTimeline } from './ProcessTimeline';
+import { InteractionDock } from './InteractionDock';
+import type { InteractionEnvelope, InteractionResponse, SteeringMessage } from '@workpivot/shared';
 
 interface Changes { type: 'changes'; events: StoredEvent[]; nextSequence: string }
-interface Permission { id: string; request: { tool: string; command?: string } }
-interface State { type: 'state'; value: { tasks: Task[]; pending: Permission[] } }
+interface State { type: 'state'; value: { tasks: Task[]; interactions?: InteractionEnvelope[]; steering?: SteeringMessage[] } }
 
 export function Conversation({ client, task, onError }: { client: MobileClient; task: Task; onError: (error: unknown) => void }) {
-  const [events, setEvents] = useState<StoredEvent[]>([]), [permissions, setPermissions] = useState<Permission[]>([]);
+  const [events, setEvents] = useState<StoredEvent[]>([]), [interactions, setInteractions] = useState<InteractionEnvelope[]>([]), [steering, setSteering] = useState<SteeringMessage[]>([]);
   const [before, setBefore] = useState<string | null>(null), [ready, setReady] = useState(false);
   const [details, setDetails] = useState<Record<string, { after: string; snapshot: string }>>({});
   const [status, setStatus] = useState(task.status), [message, setMessage] = useState(''), [error, setError] = useState('');
@@ -50,7 +51,8 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
           if (signal.aborted) return;
           if (event.type === 'changes') { setEvents(rows => mergeEvents(rows, event.events)); watermark = event.nextSequence; }
           else if (event.type === 'state') {
-            setPermissions(event.value.pending);
+            if (event.value.interactions) setInteractions(event.value.interactions);
+            if (event.value.steering) setSteering(event.value.steering);
             setStatus(event.value.tasks.find(row => row.id === task.id)?.status ?? 'unavailable');
           } else { throw new ApiError('会话连接已失效，请重新打开任务', event.status); }
         }, signal);
@@ -83,12 +85,20 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
   const running = ['running', 'waiting', 'queued'].includes(status);
   const turns = groupEvents(events), latestTurnId = turns.at(-1)?.id;
   const send = async () => {
-    if (busy || running || uploadBlocked || !resourceScope || !ready || !message.trim()) return;
+    if (busy || uploadBlocked || !resourceScope || !ready || !message.trim()) return;
     const content = message.trim();
     const fingerprint = JSON.stringify({ content, attachments, resourceScope });
     if (!pending.current || pending.current.content !== fingerprint) pending.current = { content: fingerprint, id: crypto.randomUUID() };
-    setBusy(true); setError(''); follow.current = true; setStatus('running');
+    setBusy(true); setError(''); follow.current = true; if (!running) setStatus('running');
     try {
+      if (running) {
+        if (attachments.length) throw new Error('任务运行中暂不支持新增附件，请作为新任务发送。');
+        const value = await client.json<{ steering: SteeringMessage }>(`/api/tasks/${task.id}/steering`, {
+          method: 'POST', body: JSON.stringify({ content, requestId: pending.current.id }), signal: lifetime.current.signal,
+        });
+        pending.current = null; setMessage(''); setSteering(rows => [...rows.filter(row => row.id !== value.steering.id), value.steering]);
+        return;
+      }
       const response = await client.response(`/api/tasks/${task.id}/messages`, { method: 'POST', body: JSON.stringify({ content, attachments, resourceScope, requestId: pending.current.id }), signal: lifetime.current.signal });
       // 实际结果由持久化订阅读取，关闭发送连接不重放后台任务。
       await response.body?.cancel().catch(() => undefined); pending.current = null; setMessage(''); setAttachments([]); setUploadBlocked(false); setAttachmentKey(value => value + 1);
@@ -106,6 +116,29 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
     setBusy(true); setError('');
     try { await client.json(path, { method: 'POST', body: JSON.stringify(body ?? {}), signal: lifetime.current.signal }); }
     catch (reason) { if (!lifetime.current.signal.aborted) report(reason); }
+    finally { setBusy(false); }
+  };
+  const respondInteraction = async (interaction: InteractionEnvelope, response: InteractionResponse) => {
+    if (busy || !resourceScope) return;
+    setBusy(true); setError('');
+    try {
+      const result = await client.response(`/api/tasks/${task.id}/interactions/${interaction.id}/respond`, {
+        method: 'POST',
+        body: JSON.stringify({ revision: interaction.revision, response, requestId: crypto.randomUUID(), resourceScope }),
+        signal: lifetime.current.signal,
+      }, 30 * 60 * 1000);
+      await result.body?.cancel().catch(() => undefined);
+      setInteractions(rows => rows.filter(row => row.id !== interaction.id));
+    } catch (reason) { if (!lifetime.current.signal.aborted) report(reason); }
+    finally { setBusy(false); }
+  };
+  const cancelSteering = async (id: string) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await client.json(`/api/tasks/${task.id}/steering/${id}`, { method: 'DELETE', signal: lifetime.current.signal });
+      setSteering(rows => rows.filter(row => row.id !== id));
+    } catch (reason) { if (!lifetime.current.signal.aborted) report(reason); }
     finally { setBusy(false); }
   };
   const expand = async (event: StoredEvent) => {
@@ -158,18 +191,22 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
       <MemoryReview client={client} taskId={task.id} onError={onError} />
       <SummaryReview client={client} taskId={task.id} onError={onError} running={running} />
     </div>
-    {permissions.map(permission => <section className="approval permission-dock" key={permission.id}><strong>需要你的确认</strong><p>{permission.request.tool}</p>{permission.request.command && <pre>{permission.request.command}</pre>}
-      <details><summary>操作详情</summary><pre>{JSON.stringify(permission.request, null, 2)}</pre></details>
-      <button disabled={busy} onClick={() => void action(`/api/tasks/${task.id}/permissions/${permission.id}`, { decision: 'deny', scope: 'once' })}>拒绝</button>
-      <button disabled={busy} onClick={() => void action(`/api/tasks/${task.id}/permissions/${permission.id}`, { decision: 'allow', scope: 'once' })}>本次允许</button></section>)}
+    {(() => {
+      const pending = interactions.filter(item => item.state === 'pending');
+      const current = pending.find(item => item.blocking) ?? pending[0];
+      return current ? <InteractionDock interaction={current} busy={busy} queued={Math.max(0, pending.filter(item => item.blocking).length - 1)} onRespond={response => respondInteraction(current, response)} /> : null;
+    })()}
+    {steering.length > 0 && <section className="approval interaction-dock" aria-label="待应用的运行中补充">
+      <strong>{steering.some(item => item.status === 'deferred') ? '已区分当前任务纠正与后续请求' : `已实时收到 ${steering.length} 条运行中消息`}</strong>
+      <small>相关内容更新当前任务；无关内容排到当前任务完成后执行。不会替代当前授权。</small>
+      <ul>{steering.map(item => <li key={item.id}>{item.content}<small>{item.status === 'deferred' ? '已进入后续队列' : item.status === 'pending' ? '等待当前步骤结束后判断关联' : item.relation === 'related' ? '已更新当前任务' : '后续执行'}</small><button disabled={busy} onClick={() => void cancelSteering(item.id)}>撤销</button></li>)}</ul>
+    </section>}
     {error && <p className="error" role="alert">{error}</p>}
     <form className="composer" onSubmit={event => { event.preventDefault(); void send(); }}>
       <ResourceScope client={client} taskId={task.id} refresh={attachmentKey} disabled={busy || running} onChange={setResourceScope} onError={onError} />
       <Attachments key={attachmentKey} client={client} taskId={task.id} disabled={busy || running} onChange={attached} onError={onError} />
-      <textarea aria-label="消息" placeholder="发送消息…" rows={2} value={message} onChange={e => setMessage(e.target.value)} disabled={busy} />
-      <footer><ComposerSettings client={client} disabled={busy || running} onError={onError} />{running
-        ? <button type="button" disabled={busy} onClick={() => void action(`/api/tasks/${task.id}/stop`)}>停止</button>
-        : <button className="send" disabled={busy || uploadBlocked || !resourceScope || !ready || !connected || !message.trim()} aria-label="发送消息"><span className="send-face" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 19V5m0 0-6 6m6-6 6 6" /></svg></span></button>}</footer>
+      <textarea aria-label="消息" placeholder={running ? '输入补充或纠正，将在当前步骤完成后应用…' : '发送消息…'} rows={2} value={message} onChange={e => setMessage(e.target.value)} disabled={busy} />
+      <footer><ComposerSettings client={client} disabled={busy || running} onError={onError} />{running && <button type="button" disabled={busy} onClick={() => void action(`/api/tasks/${task.id}/stop`)}>停止</button>}<button className="send" disabled={busy || uploadBlocked || !resourceScope || !ready || !connected || !message.trim()} onClick={() => void send()} aria-label={running ? '发送补充要求' : '发送消息'}><span className="send-face" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 19V5m0 0-6 6m6-6 6 6" /></svg></span></button></footer>
     </form>
   </>;
 }

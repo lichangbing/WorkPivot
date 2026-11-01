@@ -9,14 +9,24 @@ import type { Pool } from 'pg';
 import { RepositoryError } from './connection.js';
 import { RunRepository, type RunHandle } from './runs.js';
 import type { CompactionService } from './compaction.js';
+import { InteractionRepository } from './interactions.js';
+import { PlanRepository, planForApproval } from './plans.js';
+import { interactionCapabilities, type SteeringMessage } from '@workpivot/shared';
+import { classifySteering } from './steering-router.js';
 
 /** 由可信服务器服务配置，不接受 HTTP 提供的路径、密钥或工具。 */
 export type PrepareExecution = (actor: string, taskId: string, context: { run?: RunHandle; resources?:RunResourceScope; content?: string }) => Promise<Omit<RunAgentOptions, 'messages' | 'onEvent' | 'signal'>>;
 export type DurableEvent = Omit<AgentEvent, 'type'> & { type: AgentEvent['type'] | 'permission_request' | 'permission_resolved'; id: string; sequence: string; turnId: string; runId: string; eventId?: string };
 export class DatabaseExecution {
   readonly runs: RunRepository;
+  readonly interactions: InteractionRepository;
+  readonly plans: PlanRepository;
   private readonly controllers = new Map<string, { actor: string; taskId: string; controller: AbortController }>();
-  constructor(db: Pool, private readonly prepare: PrepareExecution, private readonly onCompleted?: (actor: string, taskId: string, runId: string) => Promise<void>, readonly compaction?: CompactionService) { this.runs = new RunRepository(db); }
+  constructor(db: Pool, private readonly prepare: PrepareExecution, private readonly onCompleted?: (actor: string, taskId: string, runId: string) => Promise<void>, readonly compaction?: CompactionService) {
+    this.runs = new RunRepository(db);
+    this.interactions = new InteractionRepository(db);
+    this.plans = new PlanRepository(db);
+  }
   async begin(actor: string, taskId: string, content: string, requestId: string, attachments: string[] = [], resourceSelection?:unknown) {
     await this.runs.recover(actor, taskId);
     const resources=await this.runs.resources(actor,taskId,resourceSelection,attachments,requestId);
@@ -45,6 +55,9 @@ export class DatabaseExecution {
         let networkDenied = false;
         // O-16：确认模式下首个写入/执行动作前确认一次执行计划，本轮不再逐次拦。
         let planApproved = false;
+        let approvedPlanHash: string | null = null;
+        const interactionFlags = interactionCapabilities();
+        const completedArtifacts = new Map<string, { id: string; name: string; versionId?: string }>();
         // 同一轮可能有多个只读工具并发。授权表只保留一个待处理请求，
         // 因此访问判定必须串行；首个联网许可会覆盖后续同类只读调用。
         let accessQueue: Promise<void> = Promise.resolve();
@@ -65,12 +78,13 @@ export class DatabaseExecution {
           if (permission.automatic) return true;
           try { send(permission); } catch { /* 断线后仍可查询待处理请求。 */ }
           while (!controller.signal.aborted) {
-            const decision = await this.runs.consumePermission(actor, run, permission.id, request);
-            if (decision !== 'pending') {
-              const allowed = decision === 'allow';
+            const decision = await this.runs.consumePermissionResult(actor, run, permission.id, request);
+            if (decision.decision !== 'pending') {
+              const allowed = decision.decision === 'allow';
               // approved=false 时只有网络工具需要询问，这里正好用来判断“是不是网络工具”。
               if (allowed && !gate && shouldAskNetwork(request.tool, false)) networkApproved = true;
               else if (!allowed && !gate && shouldAskNetwork(request.tool, false)) networkDenied = true;
+              if (!allowed) throw new Error(`用户拒绝了本次操作，操作未执行。${decision.feedback ? `拒绝原因：${decision.feedback}` : '请调整方案或停止，不得原样重试。'}`);
               return allowed;
             }
             await new Promise<void>(resolve => {
@@ -90,10 +104,45 @@ export class DatabaseExecution {
         const authorized = authorizeTools(options.tools,async(tool,args)=>{
           if(resources)await this.runs.checkResources(actor,run,resources,args);
           // O-16：确认模式下，只读阶段不打扰；第一个写入/执行动作前确认一次计划，本轮随后不再拦。
+          if(planApproved&&approvedPlanHash){
+            const current=await this.plans.latest(actor,taskId);
+            if(current?.hash!==approvedPlanHash){planApproved=false;approvedPlanHash=null;}
+          }
           if(planApproved)return;
           if(!needsPlanGate(tool))return;
-          const allowed=await requestAccess({tool:'plan',kind:'write',paths:[],effects:['write'],external:true});
+          if(!interactionFlags.planApproval){planApproved=true;return;}
+          let plan=await this.plans.latest(actor,taskId);
+          let completeness=planForApproval(plan);
+          if(!plan||!completeness.complete){
+            // 简单任务可能直接进入执行；用当前目标、已选范围和真实工具补成可审阅的最小计划。
+            plan=await this.plans.save(actor,taskId,{
+              goal:content.trim().slice(0,4000),
+              assumptions:[...(plan?.assumptions??[]),'用户未另行指定模板时采用当前资料可支持的标准结构'],
+              data_scope:plan?.dataScope.length?plan.dataScope:[
+                ...(resources?.versionIds.length?[`已选文件版本 ${resources.versionIds.length} 个`]:[]),
+                ...(resources?.memoryScopes.length?[`记忆层级：${resources.memoryScopes.join('、')}`]:[]),
+                '当前任务已确认的读取范围',
+              ],
+              business_rules:plan?.businessRules??[],
+              steps:plan?.steps.length?plan.steps:[{step:`执行 ${tool.displayName??tool.name} 并核对结果`,status:'in_progress'}],
+              external_actions:plan?.externalActions??[],
+              outputs:plan?.outputs.length?plan.outputs:['用户要求的最终成果'],
+              risks:plan?.risks.length?plan.risks:['自动生成的最小计划可能未覆盖全部业务约束'],
+              verification:plan?.verification.length?plan.verification:['核对成果已登记、格式可打开且内容符合当前请求'],
+            });
+            completeness=planForApproval(plan);
+          }
+          if(!completeness.complete)throw Error(`执行计划不完整，缺少：${completeness.missing.join('、')}。请先调用 update_plan 补全后再执行。`);
+          const planRequest={
+            tool:'plan',kind:'write' as const,paths:[],effects:['write' as const],external:true,
+            risk:'medium' as const,
+            binding:{planId:plan.id,planRevision:plan.revision,planHash:plan.hash},
+            interactionPayload:{plan},
+          };
+          const allowed=await requestAccess(planRequest);
           if(!allowed)throw Error('用户未确认执行计划，本次执行已停止');
+          await this.plans.markApproved(actor,taskId,plan.id,plan.revision);
+          approvedPlanHash=plan.hash;
         },async(tool,result)=>{
           if(resources&&tool.name==='propose_schedule'){await this.runs.grantSchedule(actor,run,resources,JSON.parse(result).id);return;}
           if(!resources||!['save_artifact','execute_skill','run_code','browser_visit'].includes(tool.name))return;
@@ -103,6 +152,18 @@ export class DatabaseExecution {
         // 子代理事件与父事件共用同一条持久化通道，靠 delegateId 区分父子。
         const emit = async (value: AgentEvent) => {
           value=publicToolEvent(value);
+          if(value.type==='tool_result'&&value.ok&&['save_artifact','execute_skill','run_code','create_pdf'].includes(value.toolName??'')){
+            try{
+              const parsed=JSON.parse(value.message??'') as Record<string,unknown>;
+              const candidates=[parsed,...(Array.isArray(parsed['artifacts'])?parsed['artifacts']:[])].filter(item=>item&&typeof item==='object'&&typeof (item as Record<string,unknown>)['id']==='string') as Array<Record<string,unknown>>;
+              for(const artifact of candidates){
+                const id=String(artifact['id']);
+                completedArtifacts.set(id,{id,name:String(artifact['name']??artifact['filename']??'成果'),...(typeof artifact['versionId']==='string'?{versionId:artifact['versionId']}:{})});
+              }
+            }catch{
+              // 工具结果不是结构化成果时仍可由文件列表完成验收。
+            }
+          }
           try {
             // R006：父代理的工具派发与结束都要落库，恢复时据此判断"已派发但结果未知"。
             if (!value.delegateId && value.callId) {
@@ -115,14 +176,41 @@ export class DatabaseExecution {
           } catch (error) { persistenceFailed = true; controller.abort(); throw error; }
         };
         const asking = askUserTool({
-          // 提问本身写成可重放事件；回答走普通发消息接口，不需要挂起状态机。
-          emit: (question) => emit({
-            type: 'ask_user',
-            questionId: question.questionId,
-            question: question.question,
-            options: question.options,
-            allowFreeText: question.allowFreeText,
-          }),
+          emit: async batch => {
+            const first=batch.questions[0]!;
+            if(!interactionFlags.clarifyV2){
+              await emit({
+                type:'ask_user',
+                questionId:batch.interactionId,
+                question:first.question,
+                options:first.options,
+                allowFreeText:first.allowFreeText,
+              });
+              return;
+            }
+            const interaction=await this.interactions.create(actor,run,{
+              kind:'clarification',
+              reason:first.question,
+              risk:'low',
+              payload:{questions:batch.questions},
+            });
+            await emit({
+              type:'interaction_request',
+              interaction,
+            });
+            // 兼容尚未升级的客户端：同时写入旧 ask_user 事件。
+            await emit({
+              type:'ask_user',
+              questionId:batch.interactionId,
+              question:first.question,
+              options:first.options,
+              allowFreeText:first.allowFreeText,
+            });
+          },
+        });
+        const planning=this.plans.tool(actor,taskId,async plan=>{
+          planApproved=false;approvedPlanHash=null;
+          await emit({type:'plan_update',steps:plan.steps,plan});
         });
         const delegation = delegateTool({
           client: options.client,
@@ -135,11 +223,36 @@ export class DatabaseExecution {
           signal: controller.signal,
           emit: (event, delegateId) => emit({ ...event, delegateId }),
         });
-        const result = await runAgentLoop({ ...options, tools: [...authorized, delegation, asking], requestAccess, messages, signal: controller.signal,
+        const result = await runAgentLoop({ ...options, tools: [...authorized, delegation, asking, planning], requestAccess, messages, signal: controller.signal,
+          consumeSteering: async currentMessages => {
+            const candidates = await this.runs.unclassifiedSteering(actor, taskId);
+            const related: SteeringMessage[] = [];
+            for (const candidate of candidates) {
+              const classification = await classifySteering(options.client, currentMessages, candidate.content, controller.signal);
+              if (classification.relation === 'related') {
+                const applied = await this.runs.applyClassifiedSteering(actor, run, candidate.id, classification.reason);
+                if (applied) related.push(applied);
+              } else {
+                await this.runs.deferSteering(actor, run, candidate.id, classification.reason);
+              }
+            }
+            if (related.length) { planApproved = false; approvedPlanHash = null; }
+            return related;
+          },
           onEvent: emit,
           // R006：每个 step 结束写检查点（完整消息数组 + 步数），中断恢复以它为准。
           onCheckpoint: (checkpointMessages, step) => this.runs.checkpoint(actor, run, checkpointMessages, step, options.maxSteps ?? 0),
         });
+        if(result.stopReason==='completed'&&interactionFlags.artifactReview&&completedArtifacts.size){
+          const interaction=await this.interactions.create(actor,run,{
+            kind:'artifact_review',
+            reason:'成果已生成，请核对内容与验收要求',
+            risk:'low',
+            blocking:false,
+            payload:{artifacts:[...completedArtifacts.values()],machineVerified:true,verificationNotes:['文件已登记为当前任务成果','内容正确性与业务口径仍需用户确认']},
+          });
+          await emit({type:'interaction_request',interaction});
+        }
         reason = await this.runs.finish(actor, run, persistenceFailed ? 'error' : result.stopReason, result.messages.slice(messages.length + 1));
       } catch {
         reason = controller.signal.aborted && !persistenceFailed ? 'aborted' : 'error';
@@ -147,6 +260,16 @@ export class DatabaseExecution {
         try { reason = await this.runs.finish(actor, run, reason, []); } catch { /* 租约恢复保留中断状态。 */ }
       } finally { clearInterval(timer); this.controllers.delete(run.id); }
       if (reason === 'completed' && this.onCompleted) { try { await this.onCompleted(actor, taskId, run.id); } catch { /* 持久化恢复稍后可将已完成运行加入队列。 */ } }
+      if (reason === 'completed') {
+        const deferred = await this.runs.nextDeferredSteering(actor, taskId);
+        if (deferred) {
+          const next = await this.begin(actor, taskId, deferred.content, deferred.requestId);
+          if (next.execute) {
+            await this.runs.markDeferredApplied(actor, next.run, deferred.id);
+            await next.execute(send);
+          }
+        }
+      }
       return reason;
     } };
   }

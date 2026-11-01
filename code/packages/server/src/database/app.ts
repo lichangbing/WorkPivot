@@ -39,7 +39,7 @@ import { ConversationRepository } from './conversation.js';
 import type { DatabaseExecution } from './execution.js';
 import type { ProviderRepository, ProviderInput } from './providers.js';
 import type { McpRepository } from './mcp.js';
-import { API_PROTOCOL } from '@workpivot/shared';
+import { API_PROTOCOL, interactionCapabilities } from '@workpivot/shared';
 import type { FileRepository } from './files.js';
 import { DailyLimits } from './daily-limits.js';
 import { IamRepository, oidcBindingCookie } from './iam.js';
@@ -77,7 +77,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   const num = (value: unknown): number => { if (typeof value !== 'number') throw new RepositoryError(400, '缺少版本参数'); return value; };
   app.get('/api/health', async (_req, res) => {
     await appPool.query('SELECT 1'); await authPool.query('SELECT 1');
-    res.json({ ok: true, name: 'workpivot', version: '0.3.0-rc.1', releaseStage: 'rc', releaseScope: 'single-user', apiProtocol: API_PROTOCOL, storage: 'postgresql', productionReady: false, chatEnabled: !!execution, filesEnabled: !!files, providersEnabled: !!providers, mcpEnabled: !!mcp });
+    res.json({ ok: true, name: 'workpivot', version: '0.3.0-rc.1', releaseStage: 'rc', releaseScope: 'single-user', apiProtocol: API_PROTOCOL, storage: 'postgresql', productionReady: false, chatEnabled: !!execution, filesEnabled: !!files, providersEnabled: !!providers, mcpEnabled: !!mcp, interactionCapabilities: interactionCapabilities() });
   });
   app.get('/api/auth/state', async (req, res) => {
     const user = await accounts.resolve(token(req));
@@ -407,6 +407,14 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     },actor(res).id) });
   });
   if (execution) {
+    const streamExecution = async (res: Response, started: Awaited<ReturnType<typeof execution.begin>>): Promise<void> => {
+      if (!started.execute) { res.status(202).json({ runId: started.run.id, duplicate: true }); return; }
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' }); res.flushHeaders();
+      const send = (value: unknown) => { if (!res.destroyed && !res.writableEnded) res.write(`data: ${JSON.stringify(value)}\n\n`); };
+      const timer = setInterval(() => { if (!res.destroyed && !res.writableEnded) res.write(': ping\n\n'); }, 15000);
+      try { const stopReason = await started.execute(send); send({ type: 'done', stopReason, runId: started.run.id }); }
+      finally { clearInterval(timer); res.end(); }
+    };
     app.get('/api/tasks/:id/resource-scope',async(req,res)=>{
       const user=actor(res).id,task=str(req.params.id),scope=await execution.runs.resources(user,task);
       const options=files?[...await files.candidates(user,task),...await files.list(user,task,'upload',scope.versionIds),...await files.list(user,task,'artifact',scope.versionIds)]:[];
@@ -421,11 +429,98 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
       app.post('/api/tasks/:id/summary',async(req,res)=>{await summaries.request(actor(res).id,str(req.params['id']));res.status(202).json({ok:true});});
       app.post('/api/tasks/:id/summary/:summaryId/decision',async(req,res)=>{const b=body(req);if(typeof b.accept!=='boolean')throw new RepositoryError(400,'需要明确确认或拒绝');res.json(await summaries.decide(actor(res).id,str(req.params['id']),str(req.params['summaryId']),num(b.revision),b.accept,b.content===undefined?undefined:str(b.content)));});
     }
+    app.get('/api/tasks/:id/interactions', async (req, res) => {
+      const owner = actor(res).id, taskId = str(req.params['id']);
+      const [persisted, permissions] = await Promise.all([
+        execution.interactions.pending(owner, taskId),
+        execution.runs.pendingInteractions(owner, taskId),
+      ]);
+      const interactions = [...permissions, ...persisted].sort((left, right) => {
+        if (left.blocking !== right.blocking) return left.blocking ? -1 : 1;
+        return Date.parse(left.createdAt) - Date.parse(right.createdAt);
+      });
+      res.json({ interactions, blocking: interactions.filter(item => item.blocking).length, queued: Math.max(0, interactions.filter(item => item.blocking).length - 1) });
+    });
+    app.get('/api/tasks/:id/plan', async (req,res) => {
+      const plan = await execution.plans.latest(actor(res).id, str(req.params['id']));
+      res.json({ plan, steps: plan?.steps ?? [] });
+    });
+    app.get('/api/tasks/:id/steering', async (req,res) => {
+      res.json({ steering: await execution.runs.pendingSteering(actor(res).id, str(req.params['id'])) });
+    });
+    app.post('/api/tasks/:id/steering', async (req,res) => {
+      const b=body(req);
+      res.status(202).json({ steering: await execution.runs.queueSteering(actor(res).id,str(req.params['id']),str(b.requestId),str(b.content)) });
+    });
+    app.delete('/api/tasks/:id/steering/:steeringId', async (req,res) => {
+      await execution.runs.cancelSteering(actor(res).id,str(req.params['id']),str(req.params['steeringId']));
+      res.json({ok:true});
+    });
     app.get('/api/tasks/:id/permissions', async (req, res) => { res.json({ pending: await execution.runs.pendingPermissions(actor(res).id, str(req.params['id'])) }); });
     app.post('/api/tasks/:id/permissions/:permissionId', async (req, res) => {
       const b = body(req);
       if ((b.decision !== 'allow' && b.decision !== 'deny') || (b.scope !== undefined && b.scope !== 'once')) throw new RepositoryError(400, '仅支持本次允许或拒绝');
-      await execution.runs.decidePermission(actor(res).id, str(req.params['id']), str(req.params['permissionId']), b.decision); res.json({ ok: true });
+      await execution.runs.decidePermission(actor(res).id, str(req.params['id']), str(req.params['permissionId']), b.decision, b.feedback === undefined ? undefined : str(b.feedback)); res.json({ ok: true });
+    });
+    app.post('/api/tasks/:id/interactions/:interactionId/respond', async (req, res) => {
+      const owner=actor(res).id, taskId=str(req.params['id']), interactionId=str(req.params['interactionId']), b=body(req);
+      const revision=num(b.revision);
+      const response=b.response;
+      if(!response||typeof response!=='object'||Array.isArray(response))throw new RepositoryError(400,'缺少交互回答');
+      const pending=await execution.runs.pendingPermissions(owner,taskId);
+      const permission=pending.find(item=>item.id===interactionId);
+      if(permission){
+        const request=permission.request as import('@workpivot/core').ToolAccessRequest;
+        const value=response as Record<string,unknown>;
+        const decision=value['decision']==='approve'?'allow':value['decision']==='deny'?'deny':undefined;
+        if(!decision)throw new RepositoryError(400,'请选择确认或拒绝');
+        if(Number(permission.revision??1)!==revision)throw new RepositoryError(409,'交互内容已变化，请刷新后重试');
+        let feedback=value['feedback']===undefined?undefined:str(value['feedback']);
+        if(request.tool==='plan'&&value['plan']!==undefined){
+          const changed=value['plan'];
+          if(!changed||typeof changed!=='object'||Array.isArray(changed))throw new RepositoryError(400,'修改后的计划无效');
+          const source=changed as Record<string,unknown>;
+          const saved=await execution.plans.save(owner,taskId,{
+            goal:source['goal'],
+            assumptions:source['assumptions'],
+            data_scope:source['dataScope'],
+            business_rules:source['businessRules'],
+            steps:source['steps'],
+            external_actions:source['externalActions'],
+            outputs:source['outputs'],
+            risks:source['risks'],
+            verification:source['verification'],
+          });
+          feedback=`用户修改了计划，已保存为 revision ${saved.revision}。请按修改版重新建立计划与动作确认。修改内容：${JSON.stringify(saved).slice(0,1600)}`;
+          await execution.runs.decidePermission(owner,taskId,interactionId,'deny',feedback);
+          res.json({ok:true,decision:'deny',plan:saved});return;
+        }
+        await execution.runs.decidePermission(owner,taskId,interactionId,decision,feedback);
+        if(decision==='allow'&&request.tool==='plan'&&request.interactionPayload&&'plan' in request.interactionPayload){
+          const plan=request.interactionPayload.plan;
+          await execution.plans.markApproved(owner,taskId,plan.id,plan.revision);
+        }
+        res.json({ ok:true, decision:value['decision'] });return;
+      }
+      const interaction=await execution.interactions.get(owner,taskId,interactionId);
+      const requested=response as import('@workpivot/shared').InteractionResponse;
+      const needsContinuation=interaction.kind==='clarification'||(interaction.kind==='artifact_review'&&requested.decision==='deny');
+      if(needsContinuation){
+        const quota=await accounts.quota(owner);
+        if(quota.remaining!==null&&quota.remaining<=0)throw new RepositoryError(429,`演示额度已用完（${quota.limit} 次提问），如需继续请联系管理员开通`);
+      }
+      const result=await execution.interactions.respond(owner,taskId,interactionId,revision,response as import('@workpivot/shared').InteractionResponse);
+      if(interaction.kind==='artifact_review'&&result.interaction.state==='approved'){
+        res.json({ ok:true, interaction:result.interaction });return;
+      }
+      const answer=result.interaction.response as import('@workpivot/shared').InteractionResponse;
+      const content=interaction.kind==='artifact_review'
+        ? `[成果验收 ${interactionId}] 退回成果。原因：${answer.feedback??'未填写'}`
+        : `[回答交互 ${interactionId}] ${(answer.answers??[]).map(item=>`${item.questionId}=${Array.isArray(item.value)?item.value.join('、'):item.value}`).join('；')}`;
+      const started=await execution.begin(owner,taskId,content,str(b.requestId),[],b.resourceScope);
+      // 澄清回答保留原问题关联，即使新一轮使用了不同 run id。
+      if(result.changed)await transaction(appPool,c=>c.query("UPDATE workpivot.interactions SET reason=reason||' · 已回答' WHERE id=$1",[interactionId]),owner);
+      await streamExecution(res,started);
     });
     app.post('/api/tasks/:id/messages', async (req, res) => {
       const b = body(req);
@@ -435,31 +530,21 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
       const quota = await accounts.quota(actor(res).id);
       if (quota.remaining !== null && quota.remaining <= 0) throw new RepositoryError(429, `演示额度已用完（${quota.limit} 次提问），如需继续请联系管理员开通`);
       const started = await execution.begin(actor(res).id, str(req.params['id']), str(b.content), str(b.requestId), b.attachments as string[] | undefined,b.resourceScope);
-      if (!started.execute) { res.status(202).json({ runId: started.run.id, duplicate: true }); return; }
-      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' }); res.flushHeaders();
-      const send = (value: unknown) => { if (!res.destroyed && !res.writableEnded) res.write(`data: ${JSON.stringify(value)}\n\n`); };
-      const timer = setInterval(() => { if (!res.destroyed && !res.writableEnded) res.write(': ping\n\n'); }, 15000);
-      try { const stopReason = await started.execute(send); send({ type: 'done', stopReason, runId: started.run.id }); }
-      finally { clearInterval(timer); res.end(); }
+      await streamExecution(res, started);
     });
     app.post('/api/tasks/:id/stop', async (req, res) => { await execution.stop(actor(res).id, str(req.params['id'])); res.status(202).json({ stopping: true }); });
     // R006 P2：一键续跑——继承上一轮检查点与剩余步数；已派发的工具调用不会重放。
     app.post('/api/tasks/:id/resume', async (req, res) => {
       const b = body(req);
       const started = await execution.begin(actor(res).id, str(req.params['id']), '继续上一次中断的任务', str(b.requestId));
-      if (!started.execute) { res.status(202).json({ runId: started.run.id, duplicate: true }); return; }
-      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' }); res.flushHeaders();
-      const send = (value: unknown) => { if (!res.destroyed && !res.writableEnded) res.write(`data: ${JSON.stringify(value)}\n\n`); };
-      const timer = setInterval(() => { if (!res.destroyed && !res.writableEnded) res.write(': ping\n\n'); }, 15000);
-      try { const stopReason = await started.execute(send); send({ type: 'done', stopReason, runId: started.run.id }); }
-      finally { clearInterval(timer); res.end(); }
+      await streamExecution(res, started);
     });
   }
   app.get('/api/tasks/:id/stream', async (req,res) => {
     const user = actor(res), task = str(req.params['id']);
     await taskStream(req,res,{actor:user.id,task,after:str(req.query['after'] ?? req.headers['last-event-id'] ?? '0'),conversation,notifications,
       authorized:async()=>{const current=await accounts.resolve(token(req));return current?.id===user.id&&!current.mustChangePassword;},
-      state:async()=>({tasks:await workspace.listTasks(user.id),pending:execution?await execution.runs.pendingPermissions(user.id,task):[],expertSuggestions:await new Experts(appPool).suggestions(user.id,task)})});
+      state:async()=>({tasks:await workspace.listTasks(user.id),pending:execution?await execution.runs.pendingPermissions(user.id,task):[],interactions:execution?[...await execution.runs.pendingInteractions(user.id,task),...await execution.interactions.pending(user.id,task)]:[],steering:execution?await execution.runs.pendingSteering(user.id,task):[],expertSuggestions:await new Experts(appPool).suggestions(user.id,task)})});
   });
   app.get('/api/tasks/:id/conversation', async (req, res) => {
     const limit = req.query['before'] === undefined ? '5' : '1';

@@ -21,6 +21,23 @@ label { display:block; font-size:14px; margin:20px 0; } input,select { display:b
 .memory-card { margin:16px 0; font-size:14px; overflow-wrap:anywhere; }
 .permission-dock { margin:8px 12px 4px; border-color:#c7954a; background:var(--surface); }
 .permission-dock p { margin:6px 0; }
+.interaction-dock { margin:8px 12px 4px; background:var(--surface); overflow-wrap:anywhere; }
+.interaction-dock > header { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.interaction-dock > header small { margin-left:auto; }
+.interaction-dock .risk { border:1px solid var(--line); border-radius:999px; padding:2px 8px; font-size:11px; }
+.interaction-dock .risk.high { color:#b43d3d; border-color:#b43d3d; }
+.interaction-dock .risk.medium { color:#9a6a16; border-color:#9a6a16; }
+.approval-question { margin:14px 0; padding-top:12px; border-top:1px solid var(--line); }
+.approval-question > small { display:block; margin:4px 0 8px; }
+.approval-question > button { width:100%; margin:6px 0; padding:10px; border:1px solid var(--line); text-align:left; }
+.approval-question > button.selected { border-color:var(--fg); background:var(--bg); }
+.approval-question > button span,.approval-question > button small { display:block; }
+.approval-question > input { margin:8px 0; }
+.approval-detail { margin:14px 0; }
+.approval-detail p { margin:8px 0; }
+.approval-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+.approval-actions button { margin:0; flex:1 1 auto; border:1px solid var(--line); }
+.approval-actions .primary { flex-basis:140px; }
 .process-timeline { margin:10px 0 16px; border:1px solid var(--line); border-radius:14px; overflow:hidden; background:var(--surface); }
 .process-timeline-toggle,.process-step-toggle { width:100%; display:flex; align-items:center; gap:8px; text-align:left; border-radius:0; }
 .process-timeline-toggle small { color:var(--muted); }.process-live { margin-left:auto; display:flex; align-items:center; gap:6px; color:#2f8f62; font-size:12px; }

@@ -3,14 +3,48 @@ import {memoryEnabled} from './memory-controls.js';
 import {publicToolEvent} from './tool-events.js';
 import {selection,requireVersion,fileTaskScope,type RunResourceScope} from './resource-scope.js';
 import {authorizationDigest,currentInvocation} from './tool-authorization.js';
+import {classifyInteractionRisk, canAutoApprove} from './interaction-policy.js';
 import { compactedHistory } from './compaction.js';
 import { reconcileMessages, remainingSteps } from './recovery.js';
 import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import type { AgentEvent, ChatMessage, StopReason, ToolAccessRequest } from '@workpivot/core';
+import { interactionCapabilities, type InteractionEnvelope, type SteeringMessage } from '@workpivot/shared';
 import { RepositoryError, transaction, uuid } from './connection.js';
 
 export interface RunHandle { id: string; taskId: string; turnId: string; fence: string; duplicate: boolean }
+interface SteeringRow {
+  id: string;
+  task_id: string;
+  run_id: string;
+  request_id: string;
+  content: string;
+  mode: 'safe';
+  status: SteeringMessage['status'];
+  relation: SteeringMessage['relation'];
+  classification_reason: string | null;
+  created_at: Date;
+  applied_at: Date | null;
+  cancelled_at: Date | null;
+  event_id: string | null;
+}
+function steeringMessage(row: SteeringRow): SteeringMessage {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    runId: row.run_id,
+    requestId: row.request_id,
+    content: row.content,
+    mode: row.mode,
+    status: row.status,
+    relation: row.relation,
+    ...(row.classification_reason ? { classificationReason: row.classification_reason } : {}),
+    createdAt: row.created_at.toISOString(),
+    ...(row.applied_at ? { appliedAt: row.applied_at.toISOString() } : {}),
+    ...(row.cancelled_at ? { cancelledAt: row.cancelled_at.toISOString() } : {}),
+    ...(row.event_id ? { eventId: row.event_id } : {}),
+  };
+}
 const leaseSeconds = 30;
 const permissionTtlMinutes = (() => {
   const configured = Number(process.env['WORKPIVOT_PERMISSION_TTL_MINUTES'] ?? 10);
@@ -20,14 +54,6 @@ const permissionTtlMinutes = (() => {
  * 静默执行的工具白名单：只有产品明确要求不弹卡的工具才自动放行，模型参数无法扩展这个集合。
  * 部署可用 WORKPIVOT_CODE_APPROVAL=confirm 恢复逐次确认；输入与产物范围仍由运行读取范围独立校验。
  */
-/** 用户「执行模式」：manual 逐次确认；auto（或未设置）只对声明 auto 的工具静默。部署可用 WORKPIVOT_CODE_APPROVAL=confirm 强制覆盖。 */
-function automaticRequest(request: ToolAccessRequest, mode: unknown): boolean {
-  if (process.env['WORKPIVOT_CODE_APPROVAL'] === 'confirm') return false;
-  if (mode === 'manual') return false;
-  // 自动模式没有计划闸门；确认模式才在首个执行动作前问一次。
-  if (request.tool === 'plan') return true;
-  return request.auto === true && request.tool === 'run_code' && !request.paths.length;
-}
 /** 联网类工具的用户可见名称，避免授权卡把所有外部调用都说成 MCP。 */
 function networkActionLabel(tool: string): string {
   return tool === 'web_search' ? '联网搜索' : tool === 'web_fetch' ? '读取网页' : '浏览网页';
@@ -189,6 +215,8 @@ export class RunRepository {
         if ((resources&&authorizationDigest(selection(old.resource_scope))!==authorizationDigest(selection(resources))) || original?.content !== content || JSON.stringify(old.attachment_ids) !== JSON.stringify(attachments)) throw new RepositoryError(409, '重复请求内容不同');
         return { ...old, taskId, duplicate: true };
       }
+      // 用户直接发送下一条消息说明旧澄清/验收已被放弃；交互回答接口会先处理并写入终态，不受影响。
+      await c.query("UPDATE workpivot.interactions SET state='cancelled',resolved_at=now(),updated_at=now() WHERE task_id=$1 AND state='pending'", [taskId]);
       if (['queued', 'running', 'waiting'].includes(task.status)) throw new RepositoryError(409, '任务仍在执行，请先停止或恢复中断状态');
       const limits = (await c.query(
         'SELECT platform_admin,concurrent_task_limit FROM identity.users WHERE id=$1',
@@ -216,6 +244,7 @@ export class RunRepository {
         // 范围变化同时撤销旧派生上下文，后台整理也不能继续使用旧范围。
         await c.query("UPDATE workpivot.task_runs SET context_revoked=true,model_messages='[]' WHERE task_id=$1 AND (resource_scope->>'epoch' IS DISTINCT FROM $2) AND NOT context_revoked",[taskId,resources.epoch]);
         await c.query(`UPDATE workpivot.run_permissions SET state='cancelled',resolved_at=now(),request=${permissionSummarySql} WHERE task_id=$1 AND state IN ('pending','allowed')`,[taskId]);
+        await c.query("UPDATE workpivot.interactions SET state='cancelled',resolved_at=now(),updated_at=now() WHERE task_id=$1 AND state='pending'",[taskId]);
       }
       // 演示额度：只对真正新建的轮次计数（重复请求在前面已返回），与建 run 同事务。
       const quota = await c.query(
@@ -276,11 +305,164 @@ export class RunRepository {
     const kind = value.type === 'assistant_delta' ? 'assistant' : value.type === 'reasoning_delta' ? 'thinking' : value.type === 'tool_use' || value.type === 'tool_result' ? value.type : 'meta';
     return transaction(this.db, async c => { await this.active(c, run); return event(c, actor, run, kind, content); }, actor);
   }
+
+  /** 任务运行中使用独立接口追加要求，不会创建第二个并发 run。 */
+  async queueSteering(actor: string, taskId: string, requestId: string, content: string): Promise<SteeringMessage> {
+    uuid(taskId); uuid(requestId);
+    if (typeof content !== 'string' || !content.trim() || content.length > 20000) throw new RepositoryError(400, '运行中补充要求无效');
+    return transaction(this.db, async c => {
+      const task = await lock(c, taskId);
+      const previous = (await c.query(
+        'SELECT * FROM workpivot.run_steering_messages WHERE task_id=$1 AND request_id=$2',
+        [taskId, requestId],
+      )).rows[0] as SteeringRow | undefined;
+      if (previous) {
+        if (previous.content !== content.trim()) throw new RepositoryError(409, '重复请求的运行中补充要求不同');
+        return steeringMessage(previous);
+      }
+      if (!['running', 'waiting'].includes(task.status)) throw new RepositoryError(409, '任务当前不在运行，请使用普通消息发送');
+      const run = (await c.query(
+        "SELECT id,turn_id AS \"turnId\",fence FROM workpivot.task_runs WHERE task_id=$1 ORDER BY (status='running' AND lease_until>now()) DESC,created_at DESC,id DESC LIMIT 1",
+        [taskId],
+      )).rows[0] as { id: string; turnId: string; fence: string } | undefined;
+      if (!run) throw new RepositoryError(409, '任务运行已结束，请刷新后发送普通消息');
+      const id = randomUUID();
+      const inserted = (await c.query(
+        "INSERT INTO workpivot.run_steering_messages(id,owner_user_id,task_id,run_id,request_id,content) VALUES($1,$2,$3,$4,$5,$6) RETURNING *",
+        [id, actor, taskId, run.id, requestId, content.trim()],
+      )).rows[0] as SteeringRow;
+      const handle: RunHandle = { ...run, taskId, duplicate: false };
+      await event(c, actor, handle, 'meta', JSON.stringify({
+        type: 'steering_queued',
+        steering: steeringMessage(inserted),
+      }));
+      return steeringMessage(inserted);
+    }, actor);
+  }
+
+  async pendingSteering(actor: string, taskId: string): Promise<SteeringMessage[]> {
+    uuid(taskId);
+    return transaction(this.db, async c => {
+      await lock(c, taskId);
+      const rows = await c.query("SELECT * FROM workpivot.run_steering_messages WHERE task_id=$1 AND status IN ('pending','deferred') ORDER BY created_at,id", [taskId]);
+      return rows.rows.map(row => steeringMessage(row as SteeringRow));
+    }, actor);
+  }
+
+  async unclassifiedSteering(actor: string, taskId: string): Promise<SteeringMessage[]> {
+    uuid(taskId);
+    return transaction(this.db, async c => {
+      await lock(c, taskId);
+      const rows = await c.query("SELECT * FROM workpivot.run_steering_messages WHERE task_id=$1 AND status='pending' ORDER BY created_at,id", [taskId]);
+      return rows.rows.map(row => steeringMessage(row as SteeringRow));
+    }, actor);
+  }
+
+  async applyClassifiedSteering(actor: string, run: RunHandle, id: string, reason: string): Promise<SteeringMessage | null> {
+    uuid(id);
+    return transaction(this.db, async c => {
+      await this.active(c, run, true);
+      const row = (await c.query(
+        "UPDATE workpivot.run_steering_messages SET status='applied',relation='related',classification_reason=$3,applied_at=now(),run_id=$2 WHERE id=$1 AND task_id=$4 AND status='pending' RETURNING *",
+        [id, run.id, reason.slice(0, 1000), run.taskId],
+      )).rows[0] as SteeringRow | undefined;
+      if (!row) return null;
+      const appliedEvent = await event(c, actor, run, 'user', row.content);
+      await c.query('UPDATE workpivot.run_steering_messages SET event_id=$2 WHERE id=$1', [id, appliedEvent.id]);
+      await event(c, actor, run, 'meta', JSON.stringify({ type: 'steering_applied', steering: steeringMessage({ ...row, event_id: appliedEvent.id }) }));
+      return steeringMessage({ ...row, event_id: appliedEvent.id });
+    }, actor);
+  }
+
+  async deferSteering(actor: string, run: RunHandle, id: string, reason: string): Promise<SteeringMessage | null> {
+    uuid(id);
+    return transaction(this.db, async c => {
+      await this.active(c, run, true);
+      const row = (await c.query(
+        "UPDATE workpivot.run_steering_messages SET status='deferred',relation='unrelated',classification_reason=$3 WHERE id=$1 AND task_id=$2 AND status='pending' RETURNING *",
+        [id, run.taskId, reason.slice(0, 1000)],
+      )).rows[0] as SteeringRow | undefined;
+      if (!row) return null;
+      await event(c, actor, run, 'meta', JSON.stringify({ type: 'steering_deferred', steering: steeringMessage(row) }));
+      return steeringMessage(row);
+    }, actor);
+  }
+
+  async nextDeferredSteering(actor: string, taskId: string): Promise<SteeringMessage | null> {
+    uuid(taskId);
+    return transaction(this.db, async c => {
+      await lock(c, taskId);
+      const row = (await c.query(
+        "SELECT * FROM workpivot.run_steering_messages WHERE task_id=$1 AND status='deferred' ORDER BY created_at,id LIMIT 1",
+        [taskId],
+      )).rows[0] as SteeringRow | undefined;
+      return row ? steeringMessage(row) : null;
+    }, actor);
+  }
+
+  async markDeferredApplied(actor: string, run: RunHandle, id: string): Promise<void> {
+    uuid(id);
+    await transaction(this.db, async c => {
+      await this.active(c, run, true);
+      const userEvent = (await c.query(
+        "SELECT id FROM workpivot.conversation_events WHERE run_id=$1 AND kind='user' ORDER BY sequence LIMIT 1",
+        [run.id],
+      )).rows[0];
+      await c.query(
+        "UPDATE workpivot.run_steering_messages SET status='applied',relation='unrelated',applied_at=now(),run_id=$2,event_id=$3 WHERE id=$1 AND task_id=$4 AND status='deferred'",
+        [id, run.id, userEvent?.id ?? null, run.taskId],
+      );
+    }, actor);
+  }
+
+  /** 只在完整工具批次结束后调用，返回后由执行器作为最新用户消息加入上下文。 */
+  async takeSteering(actor: string, run: RunHandle): Promise<SteeringMessage[]> {
+    return transaction(this.db, async c => {
+      await this.active(c, run, true);
+      const rows = await c.query(
+        "SELECT * FROM workpivot.run_steering_messages WHERE task_id=$1 AND status='pending' ORDER BY created_at,id FOR UPDATE",
+        [run.taskId],
+      );
+      if (!rows.rowCount) return [];
+      const ids = rows.rows.map(row => row.id as string);
+      await c.query(
+        "UPDATE workpivot.run_steering_messages SET status='applied',applied_at=now(),run_id=$2 WHERE id=ANY($1::uuid[])",
+        [ids, run.id],
+      );
+      const applied: SteeringMessage[] = [];
+      for (const row of rows.rows as SteeringRow[]) {
+        const appliedEvent = await event(c, actor, run, 'user', row.content);
+        await c.query('UPDATE workpivot.run_steering_messages SET event_id=$2 WHERE id=$1', [row.id, appliedEvent.id]);
+        applied.push(steeringMessage({ ...row, status: 'applied', run_id: run.id, applied_at: new Date(), event_id: appliedEvent.id }));
+      }
+      return applied;
+    }, actor);
+  }
+
+  async cancelSteering(actor: string, taskId: string, id: string): Promise<void> {
+    uuid(taskId); uuid(id);
+    await transaction(this.db, async c => {
+      await lock(c, taskId);
+      const row = (await c.query(
+        "UPDATE workpivot.run_steering_messages SET status='cancelled',cancelled_at=now() WHERE id=$1 AND task_id=$2 AND status IN ('pending','deferred') RETURNING *",
+        [id, taskId],
+      )).rows[0] as SteeringRow | undefined;
+      if (!row) throw new RepositoryError(409, '运行中补充要求已应用或不存在');
+      const run = (await c.query(
+        "SELECT id,turn_id AS \"turnId\",fence FROM workpivot.task_runs WHERE id=$1",
+        [row.run_id],
+      )).rows[0] as { id: string; turnId: string; fence: string } | undefined;
+      if (run) await event(c, actor, { ...run, taskId, duplicate: false }, 'meta', JSON.stringify({ type: 'steering_cancelled', steering: steeringMessage(row) }));
+    }, actor);
+  }
+
   async stop(actor: string, taskId: string): Promise<void> {
     uuid(taskId);
     await transaction(this.db, async c => {
       await lock(c, taskId);
       await c.query(`UPDATE workpivot.run_permissions SET state='cancelled',resolved_at=now(),request=${permissionSummarySql} WHERE task_id=$1 AND state IN ('pending','allowed')`, [taskId]);
+      await c.query("UPDATE workpivot.interactions SET state='cancelled',resolved_at=now(),updated_at=now() WHERE task_id=$1 AND state='pending'", [taskId]);
+      await c.query("UPDATE workpivot.run_steering_messages SET status='cancelled',cancelled_at=now() WHERE task_id=$1 AND status IN ('pending','deferred')", [taskId]);
       await c.query("UPDATE workpivot.task_runs SET status='stopping' WHERE task_id=$1 AND status='running'", [taskId]);
     }, actor);
   }
@@ -290,10 +472,16 @@ export class RunRepository {
       const current = await this.active(c, run, true);
       await c.query(`UPDATE workpivot.run_permissions SET state='cancelled',resolved_at=now(),request=${permissionSummarySql} WHERE run_id=$1 AND state IN ('pending','allowed')`, [run.id]);
       const result = current.status === 'stopping' || current.context_revoked ? 'aborted' : reason;
+      // completed 运行可以保留澄清/成果验收；异常停止则让所有等待进入明确终态。
+      if (result !== 'completed') await c.query("UPDATE workpivot.interactions SET state='cancelled',resolved_at=now(),updated_at=now() WHERE run_id=$1 AND state='pending'", [run.id]);
+      await c.query("UPDATE workpivot.run_steering_messages SET status='cancelled',cancelled_at=now() WHERE task_id=$1 AND status='pending'", [run.taskId]);
       const status = result === 'completed' ? 'completed' : result === 'aborted' ? 'stopped' : 'failed';
       await c.query('UPDATE workpivot.task_runs SET status=$2,stop_reason=$3,model_messages=$4,finished_at=now() WHERE id=$1', [run.id, status, result, JSON.stringify(current.context_revoked ? [] : replayableMessages(messages))]);
       await event(c, actor, run, 'meta', JSON.stringify({ type: 'done', stopReason: result }));
-      await c.query('UPDATE workpivot.tasks SET status=$2,revision=revision+1 WHERE id=$1', [run.taskId, status === 'completed' ? 'idle' : status]);
+      const waiting = result === 'completed'
+        ? await c.query("SELECT 1 FROM workpivot.interactions WHERE run_id=$1 AND state='pending' AND blocking", [run.id])
+        : undefined;
+      await c.query('UPDATE workpivot.tasks SET status=$2,revision=revision+1 WHERE id=$1', [run.taskId, status === 'completed' ? waiting?.rowCount ? 'waiting' : 'idle' : status]);
       return result;
     }, actor);
   }
@@ -304,6 +492,7 @@ export class RunRepository {
       const runs = (await c.query("UPDATE workpivot.task_runs SET status='interrupted',stop_reason='lease_expired',finished_at=now() WHERE task_id=$1 AND status IN ('running','stopping') AND lease_until<=now() RETURNING id,turn_id AS \"turnId\",fence,model_messages", [taskId])).rows;
       for (const run of runs) {
         await c.query(`UPDATE workpivot.run_permissions SET state='cancelled',resolved_at=now(),request=${permissionSummarySql} WHERE run_id=$1 AND state IN ('pending','allowed')`, [run.id]);
+        await c.query("UPDATE workpivot.interactions SET state='cancelled',resolved_at=now(),updated_at=now() WHERE run_id=$1 AND state='pending'", [run.id]);
         // R006：对账未闭合的 tool_call——已派发的只补"结果未知"，绝不重放。
         const stored = Array.isArray(run.model_messages) ? run.model_messages as ChatMessage[] : [];
         const { messages, repaired } = reconcileMessages(stored);
@@ -379,18 +568,53 @@ export class RunRepository {
       await this.active(c, run);
       // 用户的执行模式：manual 时逐次确认，auto 或未设置时只有声明 auto 的工具静默。
       const mode = (await c.query("SELECT value FROM workpivot.user_settings WHERE owner_user_id=$1 AND key='execution.mode'", [actor])).rows[0]?.value;
-      const silent = automaticRequest(request, mode);
+      const risk = request.risk ?? classifyInteractionRisk(request);
+      request = { ...request, risk };
+      const interactionFlags = interactionCapabilities();
+      const silent = canAutoApprove(request, mode, risk);
       const id = randomUUID();
       const record = JSON.stringify({...request,authorizationHash:authorizationDigest(request)});
       if (silent) {
         // 静默执行：直接登记为已批准并已消费，不进入待审批列表；发布事务仍按同一调用摘要复核。
-        await c.query("INSERT INTO workpivot.run_permissions(id,owner_user_id,task_id,run_id,request,state,decision,resolved_at,expires_at) VALUES($1,$2,$3,$4,$5,'consumed','allow',now(),now()+$6*interval '1 minute')", [id, actor, run.taskId, run.id, record, permissionTtlMinutes]);
+        await c.query("INSERT INTO workpivot.run_permissions(id,owner_user_id,task_id,run_id,request,state,decision,resolved_at,expires_at,risk) VALUES($1,$2,$3,$4,$5,'consumed','allow',now(),now()+$6*interval '1 minute',$7)", [id, actor, run.taskId, run.id, record, permissionTtlMinutes, risk]);
         return { id, automatic: true as const, eventId: '' };
       }
       // 任务级授权范围尚未建立，旧全局auto不能替代本次明确许可。
-      await c.query("INSERT INTO workpivot.run_permissions(id,owner_user_id,task_id,run_id,request,expires_at) VALUES($1,$2,$3,$4,$5,now()+$6*interval '1 minute')", [id, actor, run.taskId, run.id, record, permissionTtlMinutes]);
+      await c.query("INSERT INTO workpivot.run_permissions(id,owner_user_id,task_id,run_id,request,expires_at,risk) VALUES($1,$2,$3,$4,$5,now()+$6*interval '1 minute',$7)", [id, actor, run.taskId, run.id, record, permissionTtlMinutes, risk]);
       await c.query("UPDATE workpivot.tasks SET status='waiting',revision=revision+1 WHERE id=$1", [run.taskId]);
-      const payload = { type: 'permission_request' as const, id, tool: request.tool, command: request.tool, paths: [], scope: 'once', redacted:true, reason: request.tool === 'plan' ? '确认执行计划：接下来会调用写入或执行类工具，本轮确认后不再逐次询问' : mode === 'manual' ? '确认模式：本次操作需要你确认' : request.tool === 'execute_skill' ? '本次隔离执行需要确认' : ['web_fetch','web_search','browser_visit'].includes(request.tool) ? `本次${networkActionLabel(request.tool)}需要确认` : '本次操作需要确认，请核对参数和影响' };
+      const reason = request.tool === 'plan'
+        ? '请核对目标、数据范围、步骤、风险和验收方式后确认执行计划'
+        : mode === 'manual'
+          ? '确认模式：本次操作需要你核对后执行'
+          : request.tool === 'execute_skill'
+            ? '本次隔离执行需要确认'
+            : ['web_fetch','web_search','browser_visit'].includes(request.tool)
+              ? `本次${networkActionLabel(request.tool)}需要确认`
+              : '本次操作需要确认，请核对对象、参数和影响';
+      const interaction: InteractionEnvelope = {
+        id,
+        kind: request.tool === 'plan' ? 'plan_approval' : 'action_permission',
+        userId: actor,
+        taskId: run.taskId,
+        runId: run.id,
+        revision: 1,
+        state: 'pending',
+        blocking: true,
+        risk,
+        reason,
+        payload: request.interactionPayload ?? {
+          tool: request.tool,
+          ...(request.command === undefined ? {} : { command: request.command }),
+          effects: request.effects ?? [],
+          risk,
+          summary: request.command ?? request.tool,
+          ...(interactionFlags.permissionPreview && request.invocation ? { arguments: request.invocation.arguments } : {}),
+          feedbackAllowed: true,
+        },
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + permissionTtlMinutes * 60_000).toISOString(),
+      };
+      const payload = { type: 'permission_request' as const, id, tool: request.tool, command: request.tool, paths: [], scope: 'once', redacted:true, reason, risk, revision: 1, interaction };
       const saved = await event(c, actor, run, 'meta', JSON.stringify(payload));
       return { ...saved, ...payload, automatic: false as const, eventId: saved.id };
     }, actor);
@@ -399,12 +623,48 @@ export class RunRepository {
     uuid(taskId);
     return transaction(this.db, async c => {
       await lock(c, taskId);
-      return (await c.query("SELECT p.id,p.request,p.expires_at AS \"expiresAt\" FROM workpivot.run_permissions p JOIN workpivot.task_runs r ON r.id=p.run_id WHERE p.task_id=$1 AND p.state='pending' AND p.expires_at>now() AND r.status='running' AND r.lease_until>now() ORDER BY p.created_at,p.id", [taskId])).rows;
+      return (await c.query("SELECT p.id,p.run_id AS \"runId\",p.request,p.revision,p.risk,p.created_at AS \"createdAt\",p.expires_at AS \"expiresAt\" FROM workpivot.run_permissions p JOIN workpivot.task_runs r ON r.id=p.run_id WHERE p.task_id=$1 AND p.state='pending' AND p.expires_at>now() AND r.status='running' AND r.lease_until>now() ORDER BY p.created_at,p.id", [taskId])).rows;
     }, actor);
   }
-  async decidePermission(actor: string, taskId: string, id: string, decision: 'allow' | 'deny'): Promise<void> {
+  /** 统一展示协议：动作/计划批准继续由 run_permissions 作为权威存储。 */
+  async pendingInteractions(actor: string, taskId: string): Promise<InteractionEnvelope[]> {
+    const rows = await this.pendingPermissions(actor, taskId);
+    return rows.map((row) => {
+      const request = row.request as ToolAccessRequest;
+      const kind = request.tool === 'plan' ? 'plan_approval' : 'action_permission';
+      const risk = (row.risk as InteractionEnvelope['risk'] | undefined) ?? classifyInteractionRisk(request);
+      const interactionFlags = interactionCapabilities();
+      return {
+        id: row.id as string,
+        kind,
+        userId: actor,
+        taskId,
+        runId: String(row.runId),
+        revision: Number(row.revision ?? 1),
+        state: 'pending',
+        blocking: true,
+        risk,
+        reason: request.tool === 'plan'
+          ? '请核对目标、数据范围、步骤、风险和验收方式后确认执行计划'
+          : request.command ?? request.tool,
+        payload: request.interactionPayload ?? {
+          tool: request.tool,
+          ...(request.command === undefined ? {} : { command: request.command }),
+          effects: request.effects ?? [],
+          risk,
+          summary: request.command ?? request.tool,
+          ...(interactionFlags.permissionPreview && request.invocation ? { arguments: request.invocation.arguments } : {}),
+          feedbackAllowed: true,
+        },
+        createdAt: new Date(row.createdAt as string | Date).toISOString(),
+        expiresAt: new Date(row.expiresAt as string | Date).toISOString(),
+      };
+    });
+  }
+  async decidePermission(actor: string, taskId: string, id: string, decision: 'allow' | 'deny', feedback?: string): Promise<void> {
     uuid(taskId); uuid(id);
     if (decision !== 'allow' && decision !== 'deny') throw new RepositoryError(400, '仅支持本次允许或拒绝');
+    if (feedback !== undefined && (typeof feedback !== 'string' || feedback.length > 2000)) throw new RepositoryError(400, '反馈不能超过2000字');
     await transaction(this.db, async c => {
       await lock(c, taskId);
       const row = (await c.query('SELECT *,expires_at>now() AS live FROM workpivot.run_permissions WHERE task_id=$1 AND id=$2 FOR UPDATE', [taskId, id])).rows[0];
@@ -413,19 +673,26 @@ export class RunRepository {
       if (row.state !== 'pending' || !row.live) throw new RepositoryError(409, '授权请求已失效或处理');
       const run = (await c.query("SELECT id,turn_id AS \"turnId\",fence FROM workpivot.task_runs WHERE id=$1 AND status='running' AND lease_until>now()", [row.run_id])).rows[0];
       if (!run) throw new RepositoryError(409, '任务执行已失效');
-      await c.query(`UPDATE workpivot.run_permissions SET state=$2,decision=$3,resolved_at=now(),request=CASE WHEN $3='deny' THEN ${permissionSummarySql} ELSE request END WHERE id=$1`, [id, decision === 'allow' ? 'allowed' : 'denied', decision]);
-      await event(c, actor, { ...run, taskId, duplicate: false }, 'meta', JSON.stringify({ type: 'permission_resolved', id, decision }));
+      await c.query(
+        'UPDATE workpivot.run_permissions SET state=$2,decision=$3,resolved_at=now(),feedback=$4 WHERE id=$1',
+        [id, decision === 'allow' ? 'allowed' : 'denied', decision, feedback?.trim() || null],
+      );
+      await event(c, actor, { ...run, taskId, duplicate: false }, 'meta', JSON.stringify({ type: 'permission_resolved', id, decision, ...(feedback?.trim() ? { feedback: feedback.trim() } : {}) }));
       // 等待执行器消费审批决定后再继续，避免界面提前宣称已恢复执行。
     }, actor);
   }
+  /** 旧调用方只关心三元决策；执行器使用带反馈的方法继续模型循环。 */
   async consumePermission(actor: string, run: RunHandle, id: string, expected?: ToolAccessRequest): Promise<'pending' | 'allow' | 'deny'> {
+    return (await this.consumePermissionResult(actor, run, id, expected)).decision;
+  }
+  async consumePermissionResult(actor: string, run: RunHandle, id: string, expected?: ToolAccessRequest): Promise<{ decision: 'pending' | 'allow' | 'deny'; feedback?: string }> {
     uuid(id);
     return transaction(this.db, async c => {
       await this.active(c, run);
-      const row = (await c.query('SELECT state,request,expires_at>now() AS live FROM workpivot.run_permissions WHERE id=$1 AND run_id=$2 AND task_id=$3 FOR UPDATE', [id, run.id, run.taskId])).rows[0];
+      const row = (await c.query('SELECT state,request,feedback,expires_at>now() AS live FROM workpivot.run_permissions WHERE id=$1 AND run_id=$2 AND task_id=$3 FOR UPDATE', [id, run.id, run.taskId])).rows[0];
       if (!row) throw new RepositoryError(404, '授权请求不存在');
       if (row.request.invocation && (!expected || (row.request.authorizationHash??authorizationDigest(row.request)) !== authorizationDigest(expected))) throw new RepositoryError(409, '审批与实际调用不一致');
-      if (row.state === 'pending' && row.live) return 'pending';
+      if (row.state === 'pending' && row.live) return { decision: 'pending' };
       if (!row.live && ['pending', 'allowed'].includes(row.state)) {
         await c.query(`UPDATE workpivot.run_permissions SET state='expired',resolved_at=now(),request=${permissionSummarySql} WHERE id=$1`, [id]);
         await event(c, actor, run, 'meta', JSON.stringify({ type: 'permission_resolved', id, decision: 'deny', reason: 'timeout' }));
@@ -433,7 +700,7 @@ export class RunRepository {
       const allow = row.state === 'allowed' && row.live;
       if (allow) await c.query(`UPDATE workpivot.run_permissions SET state='consumed',request=${permissionSummarySql} WHERE id=$1`, [id]);
       await c.query("UPDATE workpivot.tasks SET status='running',revision=revision+1 WHERE id=$1 AND status='waiting'", [run.taskId]);
-      return allow ? 'allow' : 'deny';
+      return { decision: allow ? 'allow' : 'deny', ...(allow || !row.feedback ? {} : { feedback: String(row.feedback) }) };
     }, actor);
   }
 }

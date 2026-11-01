@@ -28,91 +28,11 @@ import { readChatStream } from './chat-stream';
 import { DatabaseSettings, type SettingsSection } from './DatabaseSettings';
 import { mergeEvents, groupEvents, type StoredEvent, type ConversationPage, type StoredTurn } from './database-chat-state';
 import { displayUserMessageContent } from './chat-content';
-
-type AskUserPayload = { questionId: string; question: string; options: Array<{ label: string; description?: string }>; allowFreeText: boolean };
-/** 结构化提问以 meta 事件持久化（type=ask_user），这里只解析自己认识的形状，其他 meta 仍按原样忽略。 */
-function parseAskUser(event: StoredEvent): AskUserPayload | null {
-  if (event.kind !== 'meta' || !event.content) return null;
-  try {
-    const value = JSON.parse(event.content) as Record<string, unknown>;
-    if (value['type'] !== 'ask_user' || typeof value['questionId'] !== 'string' || typeof value['question'] !== 'string') return null;
-    const options = Array.isArray(value['options'])
-      ? value['options'].flatMap(entry => {
-        if (!entry || typeof entry !== 'object') return [];
-        const source = entry as Record<string, unknown>;
-        if (typeof source['label'] !== 'string') return [];
-        return [typeof source['description'] === 'string' ? { label: source['label'], description: source['description'] } : { label: source['label'] }];
-      })
-      : [];
-    return { questionId: value['questionId'], question: value['question'], options, allowFreeText: value['allowFreeText'] !== false };
-  } catch { return null; }
-}
-
-function AskUserDock({ payload, disabled, disabledReason, onChoose }: { payload: AskUserPayload; disabled: boolean; disabledReason?: string; onChoose: (label: string) => void }) {
-  return <section aria-label="待确认问题" data-ask-user={payload.questionId} className="mx-4 mb-2 overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 shadow-[0_12px_32px_rgba(0,0,0,0.18)]">
-    <div className="flex items-start gap-3 px-4 pb-3 pt-4">
-      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-neutral-700 bg-neutral-800 text-neutral-300"><Icon name="bot" size={17} /></span>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-neutral-500">需要确认</span>
-          <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-[10px] text-neutral-400">待回答</span>
-        </div>
-        <p className="mt-1 text-sm leading-6 text-neutral-100">{payload.question}</p>
-      </div>
-    </div>
-    {payload.options.length > 0 && <ul className="divide-y divide-neutral-800 border-t border-neutral-800">
-      {payload.options.map((option, index) => <li key={option.label}>
-        <button
-          type="button"
-          disabled={disabled}
-          className="group flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-neutral-800/80 focus-visible:bg-neutral-800/80 disabled:cursor-wait disabled:opacity-40"
-          onClick={() => onChoose(option.label)}
-        >
-          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-neutral-700 bg-neutral-950 text-[10px] text-neutral-500 group-hover:text-neutral-300">{index + 1}</span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm text-neutral-100">{option.label}</span>
-            {option.description && <span className="mt-0.5 block text-xs leading-5 text-neutral-500">{option.description}</span>}
-          </span>
-          <Icon name="arrow" size={15} style={{ marginTop: 2, opacity: 0.45 }} />
-        </button>
-      </li>)}
-    </ul>}
-    <p className="border-t border-neutral-800 bg-neutral-950/40 px-4 py-2.5 text-xs text-neutral-500">
-      {disabledReason || (payload.allowFreeText ? '也可以直接在下方输入补充说明。' : '请从上方列表选择一个选项。')}
-    </p>
-  </section>;
-}
-
-function PermissionDock({ permission, busy, onDecision }: {
-  permission: Permission;
-  busy: boolean;
-  onDecision: (decision: 'allow' | 'deny') => void;
-}) {
-  const request = permission.request;
-  return <section aria-label="待确认操作" data-permission={permission.id} className="mx-4 mb-2 overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 shadow-[0_12px_32px_rgba(0,0,0,0.18)]">
-    <div className="flex items-start gap-3 px-4 pb-3 pt-4">
-      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-800/70 bg-amber-950/40 text-amber-300"><Icon name="shield" size={17} /></span>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-amber-300/80">需要确认</span>
-          <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-[10px] text-neutral-400">{request.tool === 'execute_skill' ? '隔离执行' : '工具调用'}</span>
-        </div>
-        <p className="mt-1 text-sm leading-6 text-neutral-100">{request.reason || (request.tool === 'execute_skill' ? '在隔离环境处理所选文件并发布成果。' : 'Agent 请求执行一次受控操作。')}</p>
-        {request.command && <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-400">{request.command}</pre>}
-        {request.invocation && <details className="mt-2 text-xs text-neutral-500"><summary className="cursor-pointer">查看完整参数</summary><pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-neutral-950 p-3 text-[11px]">{JSON.stringify({ effects: request.effects, parameters: request.invocation.arguments, binding: request.binding }, null, 2)}</pre></details>}
-      </div>
-    </div>
-    <ul className="divide-y divide-neutral-800 border-t border-neutral-800">
-      <li><button type="button" disabled={busy} className="group flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-neutral-800/80 disabled:cursor-wait disabled:opacity-40" onClick={() => onDecision('allow')}><span className="flex h-5 w-5 items-center justify-center rounded-md border border-emerald-800 bg-emerald-950/40 text-emerald-300"><Icon name="check" size={13} /></span><span className="flex-1 text-sm text-neutral-100">允许本次</span><Icon name="arrow" size={15} style={{ opacity: 0.45 }} /></button></li>
-      <li><button type="button" disabled={busy} className="group flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-neutral-800/80 disabled:cursor-wait disabled:opacity-40" onClick={() => onDecision('deny')}><span className="flex h-5 w-5 items-center justify-center rounded-md border border-red-900 bg-red-950/30 text-red-300"><Icon name="close" size={13} /></span><span className="flex-1 text-sm text-neutral-300">拒绝本次</span><Icon name="arrow" size={15} style={{ opacity: 0.45 }} /></button></li>
-    </ul>
-    <p className="border-t border-neutral-800 bg-neutral-950/40 px-4 py-2.5 text-xs text-neutral-500">仅授权当前这一次调用，不会变成永久权限。请在 {new Date(permission.expiresAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 前处理。</p>
-  </section>;
-}
+import { InteractionDock } from './InteractionDock';
+import type { InteractionEnvelope, InteractionResponse, SteeringMessage } from '@workpivot/shared';
 
 interface Task { expertId?:string|null; id: string; name: string; status: string; revision: number; projectId: string | null }
 interface Project { id: string; name: string; revision: number }
-interface Permission { id: string; request: { tool: string; reason?:string; effects?:string[]; command?: string; binding?:Record<string,unknown>; invocation?: {arguments:Record<string,unknown>} }; expiresAt: string }
 const errorText = (e: unknown) => e instanceof Error ? e.message : '操作失败，请重试';
 const button = 'rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800 disabled:opacity-40';
 const rightPanelMinimum = 320, rightPanelMaximum = 900;
@@ -155,8 +75,8 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   // 保持渲染器身份稳定，后台事件刷新不能卸载已经打开的引用窗口。
   const citationComponents=useMemo(()=>({a:({href,children}:{href?:string;children?:ReactNode})=>{const match=href?.match(/^#citation\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);return match&&active?<DatabaseCitation taskId={active} chunkId={match[1]!}>{children}</DatabaseCitation>:<a href={href}>{children}</a>;}}),[active]);
   const selectionOwner = useRef<string | null>(null);
-  const [events, setEvents] = useState<StoredEvent[]>([]), [permissions, setPermissions] = useState<Permission[]>([]);
-  const [permissionBusy, setPermissionBusy] = useState<string | null>(null);
+  const [events, setEvents] = useState<StoredEvent[]>([]), [interactions, setInteractions] = useState<InteractionEnvelope[]>([]), [steering, setSteering] = useState<SteeringMessage[]>([]);
+  const [interactionBusy, setInteractionBusy] = useState<string | null>(null);
   const groupedEvents = useMemo(() => groupEvents(events), [events]);
   const latestTurnId = groupedEvents.at(-1)?.id;
   const [older, setOlder] = useState<string | null>(null), [details, setDetails] = useState<Record<string, { after: string; snapshot: string }>>({});
@@ -296,7 +216,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     const epoch = ++generation.current, controller = new AbortController();
     cacheLease.current=null;setCacheNotice('');
     setResourceSelection(null);setAttachmentIds([]); setAttachmentBlocked(false);
-    setEvents([]); setPermissions([]); setOlder(null); setDetails({}); setReady(false); setError(''); setNewMessages(false); setInput('');
+    setEvents([]); setInteractions([]); setSteering([]); setOlder(null); setDetails({}); setReady(false); setError(''); setNewMessages(false); setInput('');
     follow.current = true; anchor.current = null; loadingRef.current = false; setLoading(false);
     if (!active || !auth?.authenticated) return () => controller.abort();
     const current = () => generation.current === epoch && !controller.signal.aborted;
@@ -304,7 +224,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     let timer: ReturnType<typeof setTimeout>;
     let initialRetry: ReturnType<typeof setTimeout>;
     type Changes = { events: StoredEvent[]; nextSequence: string; snapshotSequence: string; hasMore: boolean };
-    type State = { pending: Permission[]; tasks: Task[]; expertSuggestions?:unknown[] };
+    type State = { tasks: Task[]; interactions?: InteractionEnvelope[]; steering?: SteeringMessage[]; expertSuggestions?:unknown[] };
     const apply = (changes: Changes) => {
       if (!current()) return;
       setEvents(rows => mergeEvents(rows, changes.events));
@@ -320,8 +240,12 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
           if (!current()) return;
           apply(changes); through = changes.snapshotSequence; more = changes.hasMore;
         }
-        const [p, t] = await Promise.all([chatEnabled ? jsonFetch<{ pending: Permission[] }>(`/api/tasks/${active}/permissions`, options) : Promise.resolve({ pending: [] }), jsonFetch<{ tasks: Task[] }>('/api/tasks', options)]);
-        if (current()) { setPermissions(p.pending); setTasks(t.tasks); }
+        const [p, t, s] = await Promise.all([
+          chatEnabled ? jsonFetch<{ interactions: InteractionEnvelope[] }>(`/api/tasks/${active}/interactions`, options) : Promise.resolve({ interactions: [] }),
+          jsonFetch<{ tasks: Task[] }>('/api/tasks', options),
+          chatEnabled ? jsonFetch<{ steering: SteeringMessage[] }>(`/api/tasks/${active}/steering`, options) : Promise.resolve({ steering: [] }),
+        ]);
+        if (current()) { setInteractions(p.interactions); setTasks(t.tasks); setSteering(s.steering ?? []); }
       } catch (e) { if (current()) setError(errorText(e)); }
     };
     let retry = 1000;
@@ -333,7 +257,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
         await readChatStream<({type:'changes'} & Changes) | {type:'state';value:State} | {type:'unavailable';status:number}>(response.body,event=>{
           if (!current()) return;
           if(event.type==='changes'){apply(event);retry=1000;}
-          else if(event.type==='state'){setPermissions(event.value.pending);setTasks(event.value.tasks);if(event.value.expertSuggestions)window.dispatchEvent(new CustomEvent('wp:expert-suggestions',{detail:{task:active,rows:event.value.expertSuggestions}}));}
+          else if(event.type==='state'){if(event.value.interactions)setInteractions(event.value.interactions);if(event.value.steering)setSteering(event.value.steering);setTasks(event.value.tasks);if(event.value.expertSuggestions)window.dispatchEvent(new CustomEvent('wp:expert-suggestions',{detail:{task:active,rows:event.value.expertSuggestions}}));}
           else {if(event.status===401)window.dispatchEvent(new Event('wp:unauthorized'));throw Error('实时连接已失效');}
         },controller.signal);
       } catch { if(current()) await catchup(); }
@@ -379,7 +303,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
       if (target) el.scrollTop += target.getBoundingClientRect().top - el.getBoundingClientRect().top - anchor.current.offset;
       anchor.current = null;
     } else if (follow.current) el.scrollTop = el.scrollHeight;
-  }, [events, permissions]);
+  }, [events, interactions]);
   const loadOlder = async () => {
     if (!active || !older || loadingRef.current || !ready) return;
     const epoch = generation.current, el = viewport.current;
@@ -422,35 +346,38 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     const text = (override ?? input).trim();
     const scope = options?.scope ?? resourceSelection;
     const attachments = options?.answerOnly ? [] : attachmentIds;
-    if (quotaBlocked) { setError('演示额度已用完，每日北京时间 12:00 刷新'); return; }
+    const currentTask = tasks.find(item => item.id === active);
+    const running = ['running', 'waiting', 'queued'].includes(currentTask?.status ?? '');
+    if (!running && quotaBlocked) { setError('演示额度已用完，每日北京时间 12:00 刷新'); return; }
     if (!chatEnabled || !active || !scope || (!text && !attachments.length) || (!options?.answerOnly && attachmentBlocked) || sending) return;
+    if (running && !text) return;
     const taskId = active, epoch = generation.current, content = text || '请查看附件。', controller = new AbortController();
     const fingerprint = JSON.stringify([taskId, content, attachments, scope]);
     if (pendingSend.current?.fingerprint !== fingerprint) pendingSend.current = { fingerprint, id: crypto.randomUUID() };
     const requestId = pendingSend.current.id;
     streams.current.add(controller); setSending(true); setError(''); follow.current = true;
     try {
+      if (running && !options?.answerOnly) {
+        if (attachments.length) throw new Error('任务运行中暂不支持新增附件，请作为新任务发送或在当前步骤结束后再补充。');
+        const steeringResponse = await fetch(`/api/tasks/${taskId}/steering`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken() ?? ''}` },
+          body: JSON.stringify({ content, requestId }),
+          signal: controller.signal,
+        });
+        if (!steeringResponse.ok) throw new Error(((await steeringResponse.json()) as { error: string }).error);
+        const result = await steeringResponse.json() as { steering: SteeringMessage };
+        pendingSend.current = null;
+        if (epoch === generation.current) { setInput(''); setSteering(rows => [...rows.filter(row => row.id !== result.steering.id), result.steering]); }
+        return;
+      }
       const response = await fetch(`/api/tasks/${taskId}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken() ?? ''}` }, body: JSON.stringify({ content, requestId, attachments, resourceScope: scope }), signal: controller.signal });
       if (!response.ok) throw new Error(((await response.json()) as { error: string }).error);
       if (pendingSend.current?.id === requestId) pendingSend.current = null;
       if (epoch === generation.current && !options?.answerOnly) { setInput(''); setAttachmentIds([]); setAttachmentBlocked(false); setAttachmentEpoch(v => v + 1); }
-      if (response.status !== 202 && response.body) await readChatStream(response.body, () => { /* 只使用持久化追赶结果展示，避免流内容重复。 */ }, controller.signal);
+      await response.body?.cancel().catch(() => undefined);
     } catch (e) { if (epoch === generation.current) setError(errorText(e)); }
     finally { streams.current.delete(controller); setSending(false); void refreshTasks().catch(() => {}); reloadAuth(); }
-  };
-  const answerQuestion = async (questionId: string, label: string) => {
-    if (!active || sending || !ready) return;
-    let scope = resourceSelection;
-    if (!scope) {
-      try {
-        const result = await jsonFetch<{ scope: ResourceSelection }>(`/api/tasks/${active}/resource-scope`);
-        scope = { scheduleIds: result.scope.scheduleIds ?? [], versionIds: result.scope.versionIds, memoryScopes: result.scope.memoryScopes, expert: result.scope.expert, baseRunId: result.scope.baseRunId };
-      } catch (reason) {
-        setError(`无法提交回答：${errorText(reason)}`);
-        return;
-      }
-    }
-    await send(`[回答提问 ${questionId}] ${label}`, { scope, answerOnly: true });
   };
   const beginRightResize = useCallback((event: {clientX:number; preventDefault:()=>void}) => {
     event.preventDefault();
@@ -472,12 +399,42 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     window.addEventListener('pointerup', stop);
     window.addEventListener('pointercancel', stop);
   }, [rightWidth]);
-  const decide = async (id: string, decision: 'allow' | 'deny') => {
+  const respondToInteraction = async (interaction: InteractionEnvelope, response: InteractionResponse) => {
+    if (!active || interactionBusy || !ready) return;
     const taskId = active, epoch = generation.current;
-    setPermissionBusy(id);
-    try { await jsonFetch(`/api/tasks/${taskId}/permissions/${id}`, { method: 'POST', body: JSON.stringify({ decision, scope: 'once' }) }); if (epoch === generation.current) setPermissions(rows => rows.filter(p => p.id !== id)); }
-    catch (e) { if (epoch === generation.current) setError(errorText(e)); }
-    finally { if (epoch === generation.current) setPermissionBusy(null); }
+    const controller = new AbortController();
+    streams.current.add(controller);
+    setInteractionBusy(interaction.id); setError('');
+    try {
+      let scope = resourceSelection;
+      if (!scope) {
+        const result = await jsonFetch<{ scope: ResourceSelection }>(`/api/tasks/${taskId}/resource-scope`);
+        scope = { scheduleIds: result.scope.scheduleIds ?? [], versionIds: result.scope.versionIds, memoryScopes: result.scope.memoryScopes, expert: result.scope.expert, baseRunId: result.scope.baseRunId };
+      }
+      const result = await api.respondToInteraction(taskId, interaction.id, { revision: interaction.revision, response, requestId: crypto.randomUUID(), resourceScope: scope });
+      if (!result.ok) throw new Error(((await result.json()) as { error?: string }).error ?? '交互提交失败');
+      if (result.headers.get('content-type')?.includes('text/event-stream') && result.body) {
+        setSending(true); follow.current = true;
+        await readChatStream(result.body, () => { /* 通过持久事件追赶展示。 */ }, controller.signal);
+      }
+      if (epoch === generation.current) {
+        setInteractions(rows => rows.filter(row => row.id !== interaction.id));
+        const latest = await api.listInteractions(taskId);
+        if (epoch === generation.current) setInteractions(latest.interactions);
+      }
+    } catch (reason) {
+      if (epoch === generation.current) setError(errorText(reason));
+    } finally {
+      streams.current.delete(controller);
+      if (epoch === generation.current) { setInteractionBusy(null); setSending(false); void refreshTasks().catch(() => {}); reloadAuth(); }
+    }
+  };
+  const cancelSteering = async (id: string) => {
+    if (!active) return;
+    try {
+      await jsonFetch(`/api/tasks/${active}/steering/${id}`, { method: 'DELETE' });
+      setSteering(rows => rows.filter(row => row.id !== id));
+    } catch (reason) { setError(errorText(reason)); }
   };
   // R006：中断后一键续跑，继承检查点与剩余步数。
   const resume = async () => {
@@ -496,23 +453,10 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   if (auth.user?.mustChangePassword) return <RequiredPasswordChange onDone={reloadAuth} />;
   const quotaRemaining = auth.quota?.remaining ?? null;
   const quotaBlocked = quotaRemaining !== null && quotaRemaining <= 0;
-  const task = tasks.find(t => t.id === active), busy = sending || ['running', 'queued', 'waiting'].includes(task?.status ?? '');
-  // 已回答的提问：用户消息带 `[回答提问 <id>]` 前缀，按前缀判断避免重复点击。
-  const answeredQuestions = new Set<string>();
-  for (const event of events) {
-    if (event.kind !== 'user' || typeof event.content !== 'string') continue;
-    const match = /^\[回答提问 ([0-9a-f-]{36})\]/.exec(event.content);
-    if (match) answeredQuestions.add(match[1]!);
-  }
-  let pendingAskUser: { eventId: string; payload: AskUserPayload } | null = null;
-  for (let index = events.length - 1; index >= 0; index--) {
-    const event = events[index]!;
-    const payload = parseAskUser(event);
-    if (payload && !answeredQuestions.has(payload.questionId)) {
-      pendingAskUser = { eventId: event.id, payload };
-      break;
-    }
-  }
+  const task = tasks.find(t => t.id === active), taskBusy = ['running', 'queued', 'waiting'].includes(task?.status ?? ''), busy = sending || taskBusy;
+  const pendingInteractions = interactions.filter(item => item.state === 'pending');
+  const activeInteraction = pendingInteractions.find(item => item.blocking) ?? pendingInteractions[0];
+  const queuedInteractions = Math.max(0, pendingInteractions.filter(item => item.blocking).length - 1);
   const leaveTrash = () => { setTrashPage(false); if (location.hash === '#trash') location.hash = ''; };
   const selectTask = (id: string) => { leaveTrash(); setActive(id); };
   if(automationPage)return <DatabaseAutomations username={auth.user?.username} onBack={()=>{location.hash='';}} onLogout={()=>{void api.logout().finally(()=>{clearToken();reloadAuth();});}}/>;
@@ -534,8 +478,6 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
             const firstProcess = group.events.findIndex(isProcessEvent);
             const process = index === firstProcess ? <DatabaseTurnProcess key={'process-'+group.id} events={group.events.filter(isProcessEvent)} cursor={details[group.id]?.after} live={busy && group.id === latestTurnId} onMore={() => expandTurn(group.id)} onContent={expandContent} onInteract={() => { follow.current = false; }} /> : null;
             if (isProcessEvent(e)) return process;
-            const askUser = parseAskUser(e);
-            if (askUser) return null;
             if (e.kind === 'meta') return null;
             return <div key={e.id} className={`mb-3 ${e.kind === 'user' ? 'workspace-message workspace-user-message ml-auto w-fit max-w-[75%] rounded-lg bg-neutral-800 px-3 py-2 text-sm' : 'message-body workspace-message max-w-none text-sm'}`}>
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={e.kind==='assistant'?citationComponents:undefined}>{e.kind === 'user' ? displayUserMessageContent(e.content) : e.content}</ReactMarkdown>
@@ -552,15 +494,18 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
         {active && <DatabaseExecutionStatus key={active} taskId={active} />}
         {active && <DatabaseSkillBuilds key={'skills-'+active} taskId={active} autoOpen />}
       </div>
-      {active && permissions.map(permission => <PermissionDock key={permission.id} permission={permission} busy={permissionBusy === permission.id} onDecision={decision => { void decide(permission.id, decision); }} />)}
-      {active && pendingAskUser && <AskUserDock key={pendingAskUser.eventId} payload={pendingAskUser.payload} disabled={sending || !ready || quotaBlocked} disabledReason={quotaBlocked ? '今日提问额度已用完，额度刷新后可继续回答。' : undefined} onChoose={label => { void answerQuestion(pendingAskUser!.payload.questionId, label); }} />}
+      {active && activeInteraction && <InteractionDock key={activeInteraction.id} interaction={activeInteraction} busy={interactionBusy === activeInteraction.id} queued={queuedInteractions} onRespond={response => respondToInteraction(activeInteraction, response)} />}
+      {active && steering.length > 0 && <section aria-label="待应用的运行中补充" className="mx-4 mb-2 rounded-xl border border-blue-900 bg-blue-950/20 px-3 py-2 text-xs">
+        <div className="flex items-center justify-between gap-3"><span className="text-blue-200">{steering.some(item => item.status === 'deferred') ? '系统已区分当前任务纠正与后续请求' : `已收到 ${steering.length} 条运行中消息，正在等待安全边界分类`}</span><span className="text-blue-300/70">不会替代当前授权</span></div>
+        <ul className="mt-2 space-y-1">{steering.map(item => <li key={item.id} className="flex items-start gap-2 text-neutral-300"><span className="min-w-0 flex-1"><span className="block">{item.content}</span><span className="text-[10px] text-blue-300/70">{item.status === 'deferred' ? '与当前任务无关，已排到当前任务完成后执行' : item.status === 'pending' ? '已实时收到，等待当前步骤结束后判断关联' : item.relation === 'related' ? '已更新当前任务' : '已进入后续队列'}</span></span><button type="button" className="shrink-0 text-blue-300 hover:underline" onClick={() => { void cancelSteering(item.id); }}>撤销</button></li>)}</ul>
+      </section>}
       {newMessages && <button className={button} onClick={() => { follow.current = true; if (viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight; setNewMessages(false); }}>查看新消息</button>}
       {task?.status === 'interrupted' && <div className="mx-4 mb-2 flex flex-wrap items-center gap-2 text-xs text-amber-400">上一轮执行被中断，历史已补齐为合法状态，可继续完成。<button className={button} onClick={() => { void resume(); }}>继续</button></div>}
       {quotaRemaining !== null && <p className={`mx-4 mb-1 text-xs ${quotaBlocked ? 'text-amber-400' : 'text-neutral-500'}`}>{quotaBlocked ? `演示额度已用完（${auth.quota?.limit ?? 10} 次提问），每日北京时间 12:00 刷新` : `剩余 ${quotaRemaining} 次提问 · 每日北京时间 12:00 刷新`}</p>}
       <form className="workspace-composer mx-4 mb-4 rounded-2xl border border-neutral-700 bg-neutral-900/50 p-3" onDragOver={e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={e => { if (e.dataTransfer.files.length) { e.preventDefault(); attachmentControl.current?.addFiles(Array.from(e.dataTransfer.files)); } }} onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); attachmentControl.current?.addFiles(Array.from(e.clipboardData.files)); } }} onSubmit={e => { e.preventDefault(); void send(); }}>
         {filesEnabled && active && <DatabaseAttachments ref={attachmentControl} key={`${active}:${attachmentEpoch}`} taskId={active} disabled={busy || !ready} onChange={attachmentChange} />}
-        <textarea aria-label="消息" value={input} disabled={!chatEnabled || !active || !resourceSelection || busy || !ready || quotaBlocked} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} placeholder={chatEnabled ? active ? '输入消息，Enter 发送，Shift + Enter 换行' : '请先新建/选择任务' : '后台尚未启用对话执行'} className="message-input max-h-48 min-h-[88px] w-full resize-none bg-transparent px-1 py-1 text-sm outline-none" />
-        {active&&<AutomaticResourceScope taskId={active} refresh={attachmentEpoch} onChange={resourceChange}/> }<div className="composer-footer"><div className="flex shrink-0 items-center gap-2">{filesEnabled && <button type="button" aria-label="添加文件" title="添加文件（最多10个，单个10MB）；也可拖拽或粘贴" disabled={!active || busy || !ready || attachmentBlocked || attachmentIds.length >= 10} className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40" onClick={() => attachmentControl.current?.open()}><Icon name="plus" size={22} /></button>}<DatabaseExecutionMode /></div><div className="composer-actions"><DatabaseModelStatus />{busy && <button type="button" className={button} onClick={() => { void jsonFetch(`/api/tasks/${active}/stop`, { method: 'POST' }).catch(e => setError(errorText(e))); }}>停止</button>}<button title="发送" aria-label="发送" className="composer-send flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-950 hover:opacity-80 disabled:opacity-40" disabled={!chatEnabled || !active || !resourceSelection || busy || !ready || attachmentBlocked || quotaBlocked || (!input.trim() && !attachmentIds.length)}><Icon name="up" size={18} /></button></div></div>
+        <textarea aria-label="消息" value={input} disabled={!chatEnabled || !active || !resourceSelection || sending || !ready || (!taskBusy && quotaBlocked)} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} placeholder={chatEnabled ? active ? taskBusy ? '任务正在执行：输入补充或纠正，将在当前步骤完成后应用' : '输入消息，Enter 发送，Shift + Enter 换行' : '请先新建/选择任务' : '后台尚未启用对话执行'} className="message-input max-h-48 min-h-[88px] w-full resize-none bg-transparent px-1 py-1 text-sm outline-none" />
+        {active&&<AutomaticResourceScope taskId={active} refresh={attachmentEpoch} onChange={resourceChange}/> }<div className="composer-footer"><div className="flex shrink-0 items-center gap-2">{filesEnabled && <button type="button" aria-label="添加文件" title="添加文件（最多10个，单个10MB）；也可拖拽或粘贴" disabled={!active || busy || !ready || attachmentBlocked || attachmentIds.length >= 10} className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40" onClick={() => attachmentControl.current?.open()}><Icon name="plus" size={22} /></button>}<DatabaseExecutionMode /></div><div className="composer-actions"><DatabaseModelStatus />{taskBusy && <button type="button" className={button} onClick={() => { void jsonFetch(`/api/tasks/${active}/stop`, { method: 'POST' }).catch(e => setError(errorText(e))); }}>停止</button>}<button title={taskBusy ? '发送补充要求' : '发送'} aria-label={taskBusy ? '发送补充要求' : '发送'} className="composer-send flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-950 hover:opacity-80 disabled:opacity-40" disabled={!chatEnabled || !active || !resourceSelection || sending || !ready || attachmentBlocked || (!taskBusy && quotaBlocked) || (taskBusy ? !input.trim() : (!input.trim() && !attachmentIds.length))}><Icon name="up" size={18} /></button></div></div>
       </form>
     </main>
     {rightOpen && !trashPage && <>
