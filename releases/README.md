@@ -1,6 +1,7 @@
 # 发布与交付
 
 > 当前产品阶段：`v0.3.0-rc.3`
+> 文档基线：2026-11-03
 > 最近更新：2026-10-28
 
 本目录保存版本说明、部署入口和历史发布材料。当前产品仍处于 RC 阶段，`v0.3.0-rc.3` 不等于任意外部环境无条件可用版本。
@@ -16,6 +17,7 @@
 | RC.1 历史发布说明 | [v0.3.0-rc.1](v0.3.0-rc.1/RELEASE-NOTES.md) |
 | RC.2 历史发布说明 | [v0.3.0-rc.2](v0.3.0-rc.2/RELEASE-NOTES.md) |
 | RC.3 当前发布说明 | [v0.3.0-rc.3](v0.3.0-rc.3/RELEASE-NOTES.md) |
+| 当前接口设计 | [HTTP 与 SSE 接口总览](../docs/02-设计/架构/接口/接口总览.md) |
 | Android 1.3 内测包 | `https://115-191-1-188.sslip.io:80/downloads/WorkPivot-android-1.3.apk` |
 | Windows 便携客户端 | `https://115-191-1-188.sslip.io:80/downloads/WorkPivot-Windows-portable.zip` |
 | 备份与恢复 | [backup-recovery](../docs/03-项目/部署记录/备份与恢复-20261016.md) |
