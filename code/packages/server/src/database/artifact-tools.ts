@@ -18,7 +18,7 @@ export class DatabaseArtifactTools {
     return this.files.upload(actor, taskId, name, Buffer.from(content), randomUUID(), documentId as string | undefined, revision as number | undefined, 'artifact', signal, this.guard ? c=>this.guard!(c,args,taskId):undefined);
   }
   tools(actor: string, taskId: string): Tool[] {
-    return [{ name: 'list_artifacts', kind: 'read', description: '列出当前任务成果及其最新版本，修改已有成果前先读取版本。', parameters: { type: 'object', properties: {}, additionalProperties: false }, run: async (_args, ctx) => { ctx.signal?.throwIfAborted(); return JSON.stringify(await this.files.list(actor, taskId, 'artifact',this.allowedVersions)); } }, {
+    return [{ name: 'list_artifacts', kind: 'read', description: '列出当前任务的全部成果及其最新版本，修改已有成果前先读取版本；列出的成果不自动扩大本轮可读取的上传资料范围。', parameters: { type: 'object', properties: {}, additionalProperties: false }, run: async (_args, ctx) => { ctx.signal?.throwIfAborted(); return JSON.stringify(await this.files.list(actor, taskId, 'artifact')); } }, {
       name: 'save_artifact', kind: 'write', description: '将最终交付内容保存为TXT、Markdown、CSV、TSV或JSON文件，出现在产物清单。修改已有产物必须传documentId和revision；不能将文本伪装成Word/PDF/Excel。仅保存结果，不执行计算。',
       parameters: { type: 'object', properties: { name: { type: 'string' }, content: { type: 'string' }, documentId: { type: 'string' }, revision: { type: 'integer', minimum: 1 } }, required: ['name','content'], additionalProperties: false },
       run: async (args, ctx) => JSON.stringify(await this.save(actor, taskId, args, ctx.signal)),

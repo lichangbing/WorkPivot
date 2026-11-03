@@ -5,7 +5,6 @@ import {MemoryAnalysis} from '../packages/server/src/database/memory-analysis.js
 import {MemorySuggestions} from '../packages/server/src/database/memory-suggestions.js';
 import {WorkspaceRepository} from '../packages/server/src/database/workspace.js';
 import {RunRepository} from '../packages/server/src/database/runs.js';
-import {transaction} from '../packages/server/src/database/connection.js';
 export async function testMemoryAnalysis(db:Pool,actor:string,foreign:string,check:(ok:unknown,label:string)=>void){
  const w=new WorkspaceRepository(db),r=new RunRepository(db),suggestions=new MemorySuggestions(db);
  const project=await w.createProject(actor,'周期项目'),other=await w.createProject(actor,'其他周期项目');
@@ -18,11 +17,12 @@ export async function testMemoryAnalysis(db:Pool,actor:string,foreign:string,che
   if(mode==='update'){const target=input.existing.find((m:{content:string})=>m.content==='长期使用中文');yield {type:'delta',text:JSON.stringify(input.scope==='user'&&target?[{action:'update',content:'长期使用中文并注明依据',reason:'补充长期格式约定',runId:source.runId,evidence:'持续使用中文',key:'user|语言|中文附依据',targetId:target.id,targetRevision:target.revision}]:[])};return;}
   yield {type:'delta',text:JSON.stringify(mode==='empty'?[]:[{action:'add',content:input.scope==='user'?'长期使用中文'+(mode==='new'?'并标注来源':''):'项目交付中文报告'+(mode==='new'?'并核验日期':''),reason:'用户多次明确表达，供后续复用',runId:source.runId,evidence:'持续使用中文',key:input.scope+'|语言|中文'+(mode==='new'?'|新增':'')}])};
  }}));
- const complete=async(taskId:string,status:'completed'|'failed'='completed')=>{const scope=await r.resources(actor,taskId,{versionIds:[],memoryScopes:[],expert:false});const run=await r.start(actor,taskId,randomUUID(),'持续使用中文，并根据项目要求工作。',[],scope);await r.finish(actor,run,status,[]);await transaction(db,c=>c.query("UPDATE workpivot.task_runs SET resource_scope=jsonb_set(resource_scope,'{memoryScopes}','[]'::jsonb) WHERE id=$1",[run.id]),actor);return run;};
+ const complete=async(taskId:string,status:'completed'|'failed'='completed')=>{const scope=await r.resources(actor,taskId,{versionIds:[],memoryScopes:[],expert:false});const run=await r.start(actor,taskId,randomUUID(),'持续使用中文，并根据项目要求工作。',[],scope);await r.finish(actor,run,status,[]);return run;};
  for(let i=0;i<8;i++)await complete(i%2?a.id:b.id);
- const short=await r.start(actor,a.id,randomUUID(),'好');await r.finish(actor,short,'completed',[]);
+ await complete(a.id);
  await analysis.collect(actor);check((await analysis.status(actor)).batches.length===0,'周期九轮不提前分析');
- check((await analysis.status(actor)).progress.every(p=>p.pending===9),'个人与项目跨任务累计九轮');
+ const nineRoundProgress=(await analysis.status(actor)).progress;
+ check(nineRoundProgress.every(p=>p.pending===9),'个人与项目跨任务累计九轮');
  await complete(a.id,'failed');await analysis.collect(actor);check((await analysis.status(actor)).batches.length===0,'失败轮次不计入周期');
  await complete(a.id);await Promise.all([analysis.collect(actor),analysis.collect(actor)]);
  let state=await analysis.status(actor);check(state.batches.length===2&&state.progress.every(p=>p.pending===0&&p.total===10),'并发收集仅创建个人与项目两个十轮批次');

@@ -92,6 +92,8 @@
     "eval:workspace-polling": "node eval/workspace-polling-ui.mjs",
     "eval:workspace-right-panel": "node eval/workspace-right-panel-ui.mjs",
     "eval:document-preview": "tsx eval/document-preview.mts",
+    "eval:rc-office-visual": "tsx eval/rc-office-visual-gate.mts",
+    "eval:rc-live-gate": "node scripts/run-rc-live-gate.mjs",
     "eval:knowledge-ui": "node eval/knowledge-ingestion-ui.mjs",
     "eval:knowledge-db": "tsx eval/knowledge-ingestion-db.mts",
     "eval:limits": "node scripts/test-limits.mjs",

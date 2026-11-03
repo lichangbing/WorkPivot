@@ -691,8 +691,15 @@ export class RunRepository {
       await this.active(c, run);
       const row = (await c.query('SELECT state,request,feedback,expires_at>now() AS live FROM workpivot.run_permissions WHERE id=$1 AND run_id=$2 AND task_id=$3 FOR UPDATE', [id, run.id, run.taskId])).rows[0];
       if (!row) throw new RepositoryError(404, '授权请求不存在');
-      if (row.request.invocation && (!expected || (row.request.authorizationHash??authorizationDigest(row.request)) !== authorizationDigest(expected))) throw new RepositoryError(409, '审批与实际调用不一致');
       if (row.state === 'pending' && row.live) return { decision: 'pending' };
+      if (row.state === 'allowed' && row.live && row.request.invocation) {
+        // risk 与 authorizationHash 是服务端派生字段，不属于模型实际调用参数；
+        // 兼容修复前持久化的待审批记录时必须剔除它们再核对。
+        const stored = { ...row.request } as ToolAccessRequest & { authorizationHash?: string };
+        delete stored.risk;
+        delete stored.authorizationHash;
+        if (!expected || authorizationDigest(stored) !== authorizationDigest(expected)) throw new RepositoryError(409, '审批与实际调用不一致');
+      }
       if (!row.live && ['pending', 'allowed'].includes(row.state)) {
         await c.query(`UPDATE workpivot.run_permissions SET state='expired',resolved_at=now(),request=${permissionSummarySql} WHERE id=$1`, [id]);
         await event(c, actor, run, 'meta', JSON.stringify({ type: 'permission_resolved', id, decision: 'deny', reason: 'timeout' }));

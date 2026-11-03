@@ -1,6 +1,6 @@
 import {SkillBuilds} from '../packages/server/src/database/skill-builds.js';
 import {Automations} from '../packages/server/src/database/automations.js';
-import {authorizeTools} from '../packages/server/src/database/tool-authorization.js';
+import {authorizeTools,authorizationDigest} from '../packages/server/src/database/tool-authorization.js';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm} from 'node:fs/promises';
@@ -88,6 +88,12 @@ export async function testResourceScope(db:Pool,actor:string,foreign:string,chec
   await runs.grantArtifacts(actor,generatedRun,generatedScope,[artifact.id]);
   await runs.checkResources(actor,generatedRun,generatedScope,{versionId:artifact.id});
   check(reference===generatedScope.versionIds&&reference.includes(artifact.id),'生成成果加入当前范围且读取工具闭包同步');
+  const emptyScopeArtifacts=JSON.parse(await new DatabaseArtifactTools(files,[]).tools(actor,task.id).find(tool=>tool.name==='list_artifacts')!.run({},{taskDir:'.'})) as Array<{id:string}>;
+  check(emptyScopeArtifacts.some(item=>item.id===artifact.id),'后续轮次未选文件时仍可列出本任务现有成果供版本更新');
+  const rawPermission={external:true,tool:'save_artifact',kind:'write' as const,paths:[],command:'save_artifact',invocation:{id:randomUUID(),definition:'fixture-definition',arguments:{name:'摘要.txt',content:'合成'},digest:authorizationDigest({name:'摘要.txt',content:'合成'})}};
+  const rawGrant=await runs.requestPermission(actor,generatedRun,rawPermission);
+  await runs.decidePermission(actor,task.id,rawGrant.id,'allow');
+  check(await runs.consumePermission(actor,generatedRun,rawGrant.id,rawPermission)==='allow','服务端派生 risk 字段不导致审批与实际调用摘要不一致');
   await assert.rejects(runs.grantArtifacts(actor,generatedRun,{...generatedScope,expert:true},[artifact.id]));check(true,'过期或篡改范围不能用于成果授权');
   const retryScope=await runs.resources(actor,task.id,undefined,[],request);
   const retry=await runs.start(actor,task.id,request,'生成成果',[],retryScope);

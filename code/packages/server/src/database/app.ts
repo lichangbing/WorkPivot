@@ -79,7 +79,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   const num = (value: unknown): number => { if (typeof value !== 'number') throw new RepositoryError(400, '缺少版本参数'); return value; };
   app.get('/api/health', async (_req, res) => {
     await appPool.query('SELECT 1'); await authPool.query('SELECT 1');
-    res.json({ ok: true, name: 'workpivot', version: '0.3.0-rc.2', releaseStage: 'rc', releaseScope: 'single-user', apiProtocol: API_PROTOCOL, storage: 'postgresql', productionReady: false, chatEnabled: !!execution, filesEnabled: !!files, providersEnabled: !!providers, mcpEnabled: !!mcp, interactionCapabilities: interactionCapabilities() });
+    res.json({ ok: true, name: 'workpivot', version: '0.3.0-rc.3', releaseStage: 'rc', releaseScope: 'single-user', apiProtocol: API_PROTOCOL, storage: 'postgresql', productionReady: false, chatEnabled: !!execution, filesEnabled: !!files, providersEnabled: !!providers, mcpEnabled: !!mcp, interactionCapabilities: interactionCapabilities() });
   });
   app.get('/api/auth/state', async (req, res) => {
     const user = await accounts.resolve(token(req));

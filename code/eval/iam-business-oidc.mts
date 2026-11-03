@@ -22,6 +22,8 @@ try{
   await admin.query(`DO $$ BEGIN
     IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='iam_test_app') THEN CREATE ROLE iam_test_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS; END IF;
     IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='iam_test_auth') THEN CREATE ROLE iam_test_auth LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS; END IF;
+    IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='workpivot_app') THEN CREATE ROLE workpivot_app NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS; END IF;
+    IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='workpivot_auth') THEN CREATE ROLE workpivot_auth NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS; END IF;
   END $$; ALTER ROLE iam_test_app PASSWORD '${password}'; ALTER ROLE iam_test_auth PASSWORD '${password}';`);
   const appUrl=new URL(url),authUrl=new URL(url);appUrl.username='iam_test_app';appUrl.password=password;authUrl.username='iam_test_auth';authUrl.password=password;
   const app=pool(appUrl.toString(),{max:2}),auth=pool(authUrl.toString(),{max:2});

@@ -17,7 +17,14 @@ const docker = args => {
   try {
     return execFileSync(windows ? 'wsl' : 'docker', windows ? ['-d', 'Ubuntu-24.04', '--', 'docker', ...args] : args,
       { encoding: 'utf8', timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-  } catch { throw Error('Disposable recovery container operation failed; credentials withheld'); }
+  } catch (error) {
+    const detail = String(error?.stderr || error?.stdout || error?.message || '')
+      .replace(/postgresql:\/\/[^\s'\"]+/gi, '<redacted-database-url>')
+      .replace(/(POSTGRES_PASSWORD=)[^\s]+/gi, '$1<redacted>')
+      .replace(/(authorization:\s*Bearer\s+)[^\s]+/gi, '$1<redacted>')
+      .slice(0, 1200);
+    throw Error('Disposable recovery container operation failed; credentials withheld' + (detail ? ': ' + detail : ''));
+  }
 };
 const linuxPath = path => windows ? execFileSync('wsl', ['-d', 'Ubuntu-24.04', '--', 'wslpath', '-a', path.replaceAll('\\', '/')], { encoding: 'utf8', timeout: 30000 }).trim() : path;
 const code = resolve(import.meta.dirname, '..');
@@ -55,12 +62,21 @@ try {
   // 用已有依赖镜像验证当前检出源码，不操作已部署服务。
   for (const folder of ['server', 'core', 'shared']) docker(['cp', linuxPath(resolve(code, `packages/${folder}/src/.`)) + '/.', `${server}:/app/packages/${folder}/src/`]);
   // 发布镜像可能不带 eval 目录；复制当前夹具目录，避免依赖历史镜像内的测试文件。
-  docker(['cp', linuxPath(resolve(code, 'eval')), `${server}:/app/`]);
+  docker(['cp', linuxPath(resolve(code, 'eval')) + '/.', `${server}:/app/eval/`]);
   docker(['start', server]);
   const probe = phase => docker(['exec', server, './node_modules/.bin/tsx', 'eval/wsl-service-recovery.mts', phase]);
   let live = false;
-  for (let i = 0; i < 30; i++) { try { console.log(probe('before')); live = true; break; } catch { await wait(500); } }
-  if (!live) throw Error('Full runtime failed initial readiness/confirmation check');
+  let lastProbeError = '';
+  for (let i = 0; i < 30; i++) {
+    try { console.log(probe('before')); live = true; break; }
+    catch (error) {
+      lastProbeError = String(error instanceof Error ? error.message : error).replace(/postgresql:\/\/[^\s]+/gi, '<redacted>').slice(0, 800);
+      try { lastProbeError += ' | ' + docker(['logs', '--tail', '80', server]).replace(/postgresql:\/\/[^\s]+/gi, '<redacted>').slice(0, 2000); } catch { /* 容器可能已被回收 */ }
+      try { lastProbeError += ' | ' + docker(['inspect', '--format', '{{json .State}}', server]); } catch { /* 状态仅用于诊断。 */ }
+      await wait(500);
+    }
+  }
+  if (!live) throw Error('Full runtime failed initial readiness/confirmation check: ' + lastProbeError);
   docker(['kill', '--signal', 'KILL', server]);
   if (JSON.parse(docker(['inspect', server]))[0].State.Running) throw Error('Server did not stop');
   console.log('Entire API container killed; waiting for real 30-second lease expiry');
@@ -98,7 +114,9 @@ try {
 
 } finally {
   // 只清理本次调用创建且名称唯一的资源。
-  try {
+  if (process.env.WORKPIVOT_TEST_KEEP === '1') {
+    console.log(JSON.stringify({ keptForDiagnostics: true, server, database, mcp, network: prefix }));
+  } else try {
     for (const [created, name] of [[apiCreated, server], [mcpCreated, mcp], [dbCreated, database]]) {
       if (created) {
         const info = JSON.parse(docker(['inspect', name]))[0];

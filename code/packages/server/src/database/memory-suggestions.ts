@@ -97,6 +97,9 @@ export class MemorySuggestions {
         else await validateMemoryContext(c, s.task_id, { runId: s.source_run_id, evidence: s.evidence }, s.source_context);
       }
       if (!accept) { await c.query(`UPDATE workpivot.memory_suggestions SET status='rejected',content='',evidence=NULL,decision_source='${decisionSource}' WHERE id=$1`, [id]); return { status: 'rejected' }; }
+      if (decisionSource === 'auto' && await c.query("SELECT 1 FROM workpivot.task_runs WHERE owner_user_id=$1 AND status IN ('running','stopping') LIMIT 1", [actor]).then(result => Boolean(result.rowCount))) {
+        throw new RepositoryError(409, '存在活动任务，延后自动保存记忆');
+      }
       await c.query('INSERT INTO workpivot.knowledge_state(owner_user_id,epoch) VALUES($1,0) ON CONFLICT DO NOTHING', [actor]);
       const epoch = (await c.query('SELECT epoch FROM workpivot.knowledge_state WHERE owner_user_id=$1 FOR UPDATE', [actor])).rows[0].epoch;
       if (String(epoch) !== String(s.epoch)) throw new RepositoryError(409, '记忆已被修改或删除，此建议已失效');

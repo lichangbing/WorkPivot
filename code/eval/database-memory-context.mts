@@ -34,15 +34,16 @@ export async function testMemoryContext(db: Pool, actor: string, check: (v: unkn
   } }));
   await worker.enqueue(actor, task.id, current.id);
   await worker.process(actor);
-  const suggestion = (await proposals.list(actor)).find(s => s.taskId === task.id)!;
-  check(suggestion?.sourceContext.length === 5, 'pending proposal exposes contextual references for review');
-  check(!(await workspace.listMemories(actor, 'task', task.id)).memories.length, 'multi-turn extraction does not publish without approval');
-  const saved = await proposals.decide(actor, suggestion.id, true, '英文报告须标注引用来源');
-  const sources = await transaction(db, async c => (await c.query('SELECT run_id FROM workpivot.memory_sources WHERE memory_id=$1', [saved.memoryId])).rows, actor);
+  const accepted = await transaction(db, async c => (await c.query("SELECT id,status,source_context FROM workpivot.memory_suggestions WHERE source_run_id=$1 AND scope='task' ORDER BY created_at DESC LIMIT 1", [current.id])).rows[0], actor);
+  check(accepted?.status === 'accepted', 'multi-turn extraction automatically saves a conflict-free task memory');
+  const savedMemory = (await workspace.listMemories(actor, 'task', task.id)).memories[0]!;
+  check(Boolean(savedMemory), 'multi-turn extracted memory is visible in task scope');
+  const sources = await transaction(db, async c => (await c.query('SELECT run_id FROM workpivot.memory_sources WHERE memory_id=$1', [savedMemory.id])).rows, actor);
   check(sources.length === 6 && sources.some(s => s.run_id === turns[2]!.id), 'accepted memory retains every contextual dependency');
-  const contextAfterAccept = await transaction(db, async c => (await c.query('SELECT source_context FROM workpivot.memory_suggestions WHERE id=$1', [suggestion.id])).rows[0], actor);
+  const contextAfterAccept = await transaction(db, async c => (await c.query('SELECT source_context FROM workpivot.memory_suggestions WHERE id=$1', [accepted.id])).rows[0], actor);
   check(contextAfterAccept.source_context.length === 0, 'acceptance clears redundant proposal excerpts');
-  check((await workspace.readMemory(actor, saved.memoryId!))?.content === '英文报告须标注引用来源', 'user edited multi-turn memory is saved');
+  await workspace.editMemory(actor, savedMemory.id, '英文报告须标注引用来源', savedMemory.revision);
+  check((await workspace.readMemory(actor, savedMemory.id))?.content === '英文报告须标注引用来源', 'user edited multi-turn memory is saved');
 
   const source = { runId: current.id, evidence: '改成英文' };
   for (const [run, evidence] of [[future, '未来轮次不可读取'], [other, '其他任务不可读取']] as const) {
@@ -66,5 +67,5 @@ export async function testMemoryContext(db: Pool, actor: string, check: (v: unkn
   check(!filtered.length, 'oversized contextual turn is omitted without partial quotations');
   const revision = await transaction(db, async c => (await c.query('SELECT revision FROM workpivot.tasks WHERE id=$1', [task.id])).rows[0].revision, actor);
   await workspace.deleteTask(actor, task.id, revision);
-  check(await workspace.readMemory(actor, saved.memoryId!) === null, 'source task deletion also erases multi-turn derived memory');
+  check(await workspace.readMemory(actor, savedMemory.id) === null, 'source task deletion also erases multi-turn derived memory');
 }

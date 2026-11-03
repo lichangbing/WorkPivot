@@ -80,7 +80,8 @@ export class MemoryAnalysis {
    await transaction(this.db,c=>c.query("UPDATE workpivot.memory_analysis_batches SET status='completed',lease_until=NULL,finished_at=now() WHERE id=$1 AND fence=$2 AND status='running'",[job.id,fence]),actor);
   }catch(error){
    const stale=error instanceof RepositoryError&&error.status===409;
-   await transaction(this.db,c=>c.query("UPDATE workpivot.memory_analysis_batches SET status=$3,error=$4,lease_until=NULL,finished_at=now() WHERE id=$1 AND fence=$2 AND status='running'",[job.id,fence,stale?'stale':'failed',stale?(error as Error).message:'模型分析失败，未自动保存记忆，可重试']),actor);
+   const message=error instanceof RepositoryError?error.message:'模型分析失败，未自动保存记忆，可重试';
+   await transaction(this.db,c=>c.query("UPDATE workpivot.memory_analysis_batches SET status=$3,error=$4,lease_until=NULL,finished_at=now() WHERE id=$1 AND fence=$2 AND status='running'",[job.id,fence,stale?'stale':'failed',message]),actor);
   }
   return true;
  }

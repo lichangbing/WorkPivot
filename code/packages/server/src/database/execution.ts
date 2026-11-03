@@ -71,8 +71,10 @@ export class DatabaseExecution {
         const performAccess: NonNullable<RunAgentOptions['requestAccess']> = options.requestAccess ?? (async request => {
           const gate = request.tool === 'plan';
           if (!gate && (!request.external || request.paths.length || request.kind !== 'write')) return false;
-          if (!gate && networkDenied && shouldAskNetwork(request.tool, false)) return false;
-          if (!gate && !shouldAskNetwork(request.tool, networkApproved)) return true;
+          const networkRequest = !gate && shouldAskNetwork(request.tool, networkApproved);
+          if (!gate && networkDenied && networkRequest) return false;
+          // 非网络写入和隔离执行也必须进入统一许可登记；不能因“不是网络工具”直接放行，
+          // 否则发布事务会找不到与本次调用摘要匹配的 consumed 记录。
           const permission = await this.runs.requestPermission(actor, run, request);
           // 静默执行已在登记时记为已批准并已消费，不弹卡也不等待人工决定。
           if (permission.automatic) return true;
@@ -82,8 +84,8 @@ export class DatabaseExecution {
             if (decision.decision !== 'pending') {
               const allowed = decision.decision === 'allow';
               // approved=false 时只有网络工具需要询问，这里正好用来判断“是不是网络工具”。
-              if (allowed && !gate && shouldAskNetwork(request.tool, false)) networkApproved = true;
-              else if (!allowed && !gate && shouldAskNetwork(request.tool, false)) networkDenied = true;
+              if (allowed && networkRequest) networkApproved = true;
+              else if (!allowed && networkRequest) networkDenied = true;
               if (!allowed) throw new Error(`用户拒绝了本次操作，操作未执行。${decision.feedback ? `拒绝原因：${decision.feedback}` : '请调整方案或停止，不得原样重试。'}`);
               return allowed;
             }

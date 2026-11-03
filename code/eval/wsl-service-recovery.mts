@@ -116,6 +116,9 @@ async function serve() {
         assert.match(parsed.username, /^wp_recovery_(app|auth)$/); assert.match(parsed.password, /^[a-f0-9]+$/);
         await admin.query(`CREATE ROLE ${parsed.username} LOGIN PASSWORD '${parsed.password}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`);
       }
+      // schema v1 的固定授权语句引用生产角色名；一次性数据库创建不可登录别名，
+      // 实际运行连接仍只使用上面的 wp_recovery_* 受限账号。
+      await admin.query('CREATE ROLE workpivot_app NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS; CREATE ROLE workpivot_auth NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS');
       await installSchema(admin, 'wp_recovery_app', 'wp_recovery_auth');
     } finally { await admin.end(); }
     const owner = await new AccountRepository(auth).registerFirst('recovery-fixture', randomBytes(24).toString('hex'), init, init);
