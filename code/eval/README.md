@@ -1,5 +1,11 @@
 # eval/ — 评测题库（K01）
 
+RC.3 发布门禁：
+
+- `pnpm eval:rc-office-visual`：生成 20 份 DOCX/XLSX/PPTX，固定 Worker 渲染 PDF/PNG，校验页数、关键文本和缩略图，并输出人工联系表。
+- `pnpm eval:rc-live-gate`：从本机受保护配置读取真实 DeepSeek 凭据，使用一次性 PostgreSQL、真实 Worker 和内部浏览器执行 20 个合成任务、5 个业务事实任务及双客户端同步；不连接业务数据库。
+- 完整证据、外部设备条件和限制见[发布门禁](../../docs/03-项目/验证/发布门禁-20261103.md)。
+
 右侧工作区与预览（2026-11-03）：
 
 - `pnpm eval:workspace-right-panel`：验证“预览 / 文件 / 浏览器”三页签、PDF/Markdown 预览、任务级版本恢复、隐藏浏览器截图暂停和切回恢复。运行前先构建 `apps/web/dist`。
