@@ -14,7 +14,7 @@
 | 一体化本地栈 | [install-local-stack.sh](deploy/install-local-stack.sh) |
 | 远程部署恢复记录 | [远程部署记录](../docs/03-项目/部署记录/远程部署-20261026.md) |
 | RC.1 历史发布说明 | [v0.3.0-rc.1](v0.3.0-rc.1/RELEASE-NOTES.md) |
-| RC.2 当前发布说明 | [v0.3.0-rc.2](v0.3.0-rc.2/RELEASE-NOTES.md) |
+| RC.2 历史发布说明 | [v0.3.0-rc.2](v0.3.0-rc.2/RELEASE-NOTES.md) |
 | RC.3 当前发布说明 | [v0.3.0-rc.3](v0.3.0-rc.3/RELEASE-NOTES.md) |
 | Android 1.3 内测包 | `https://115-191-1-188.sslip.io:80/downloads/WorkPivot-android-1.3.apk` |
 | Windows 便携客户端 | `https://115-191-1-188.sslip.io:80/downloads/WorkPivot-Windows-portable.zip` |
