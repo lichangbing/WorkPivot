@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getToken, jsonFetch } from './api';
 import { KnowledgeIngestionDialog } from './KnowledgeIngestionDialog';
+import { useVisiblePolling } from './use-visible-polling';
 
 interface Artifact {
   id: string;
@@ -28,19 +29,14 @@ export function DatabaseArtifacts({ taskId,purpose='artifact',compact=false }: {
   useEffect(()=>{historyRequest.current?.abort();setSelected(null);setRemoving(null);setVersionRemoving(null);setKnowledge(null);setVersions([]);dialog.current?.close();removal.current?.close();},[taskId,purpose]);
   useEffect(()=>{if(selected&&!dialog.current?.open)dialog.current?.showModal();},[selected]);
   useEffect(()=>{if(removing)removal.current?.showModal();else removal.current?.close();},[removing]);
-  useEffect(()=>{
-    setRows([]);setError('');if(!taskId)return;
-    const controller=new AbortController();let timer:ReturnType<typeof setTimeout>;
-    const refresh=async()=>{
-      try{
-        const result=await jsonFetch<{artifacts?:Artifact[];files?:Artifact[]}>(`/api/tasks/${taskId}/${purpose==='upload'?'files':'artifacts'}`,{signal:controller.signal});
-        if(!controller.signal.aborted){setRows(result.artifacts??result.files??[]);setError('');}
-      }catch{if(!controller.signal.aborted)setError('资料暂时无法加载');}
-      finally{if(!controller.signal.aborted)timer=setTimeout(()=>void refresh(),3000);}
-    };
-    void refresh();
-    return()=>{controller.abort();clearTimeout(timer);};
-  },[taskId,purpose,generation]);
+  useEffect(()=>{setRows([]);setError('');},[taskId,purpose,generation]);
+  useVisiblePolling(async signal=>{
+    if(!taskId)return;
+    try{
+      const result=await jsonFetch<{artifacts?:Artifact[];files?:Artifact[]}>(`/api/tasks/${taskId}/${purpose==='upload'?'files':'artifacts'}`,{signal});
+      if(!signal.aborted){setRows(result.artifacts??result.files??[]);setError('');}
+    }catch{if(!signal.aborted)setError('资料暂时无法加载');}
+  },3000,`${taskId??''}:${purpose}:${generation}`);
 
   const history=async(row:Artifact)=>{
     historyRequest.current?.abort();const controller=new AbortController();historyRequest.current=controller;

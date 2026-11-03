@@ -24,12 +24,14 @@ import { MemoryControls } from './memory-controls.js';
 import { KnowledgeRepository } from './knowledge.js';
 import { KnowledgeIngestionRepository } from './knowledge-ingestion.js';
 import { DocumentProcessing } from './document-processing.js';
+import type { DocumentPreview } from './document-preview.js';
 import { DatabaseModelService } from './model-service.js';
 import { transaction } from './connection.js';
 import { MemorySuggestions } from './memory-suggestions.js';
 import { DatabaseSkills } from './skills.js';
 import { databaseSkillRoutes } from './skill-routes.js';
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
+import { extname } from 'node:path';
 import type { Pool } from 'pg';
 import { AccountRepository, type DatabaseUser } from './accounts.js';
 import { WorkspaceRepository } from './workspace.js';
@@ -45,7 +47,7 @@ import { DailyLimits } from './daily-limits.js';
 import { IamRepository, oidcBindingCookie } from './iam.js';
 
 /** K01 联调接口；各服务适配完成后接入生产界面。 */
-export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken: string, execution?: DatabaseExecution, providers?: ProviderRepository, mcp?: McpRepository, webDist?: string, files?: FileRepository, skillBuilds?: SkillBuilds, automations?: Automations, embeddings?: Embeddings, browserWorkspace?: BrowserWorkspace,browserProfiles?:BrowserProfiles): Promise<Express> {
+export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken: string, execution?: DatabaseExecution, providers?: ProviderRepository, mcp?: McpRepository, webDist?: string, files?: FileRepository, skillBuilds?: SkillBuilds, automations?: Automations, embeddings?: Embeddings, browserWorkspace?: BrowserWorkspace,browserProfiles?:BrowserProfiles,preview?:DocumentPreview): Promise<Express> {
   await assertRestrictedRole(authPool, 'identity'); await assertRestrictedRole(appPool, 'workpivot');
   const accounts = new AccountRepository(authPool), workspace = new WorkspaceRepository(appPool);
   const iam = new IamRepository(authPool);
@@ -68,8 +70,8 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   app.use('/api', mobileCors(process.env['WORKPIVOT_MOBILE_ORIGINS']));
   app.use(requestAudit(authPool));
   app.use(express.json({ limit: '1mb' }));
-  app.get(['/admin', '/admin.html'], (_req, res) => { if (webDist) res.sendFile('admin.html', { root: webDist }); else res.status(503).send('管理页面尚未构建'); });
   app.use((_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
+  app.get(['/admin', '/admin.html'], (_req, res) => { if (webDist) res.sendFile('admin.html', { root: webDist }); else res.status(503).send('管理页面尚未构建'); });
   const token = (req: Request): string => req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : '';
   const actor = (res: Response): DatabaseUser => res.locals['user'] as DatabaseUser;
   const body = (req: Request): Record<string, unknown> => req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body as Record<string, unknown> : {};
@@ -77,7 +79,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   const num = (value: unknown): number => { if (typeof value !== 'number') throw new RepositoryError(400, '缺少版本参数'); return value; };
   app.get('/api/health', async (_req, res) => {
     await appPool.query('SELECT 1'); await authPool.query('SELECT 1');
-    res.json({ ok: true, name: 'workpivot', version: '0.3.0-rc.1', releaseStage: 'rc', releaseScope: 'single-user', apiProtocol: API_PROTOCOL, storage: 'postgresql', productionReady: false, chatEnabled: !!execution, filesEnabled: !!files, providersEnabled: !!providers, mcpEnabled: !!mcp, interactionCapabilities: interactionCapabilities() });
+    res.json({ ok: true, name: 'workpivot', version: '0.3.0-rc.2', releaseStage: 'rc', releaseScope: 'single-user', apiProtocol: API_PROTOCOL, storage: 'postgresql', productionReady: false, chatEnabled: !!execution, filesEnabled: !!files, providersEnabled: !!providers, mcpEnabled: !!mcp, interactionCapabilities: interactionCapabilities() });
   });
   app.get('/api/auth/state', async (req, res) => {
     const user = await accounts.resolve(token(req));
@@ -129,7 +131,8 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     res.json(await accounts.issueExternalSession(result.userId, 'oidc'));
   });
   app.use('/api', async (req, res, next) => {
-    const user = await accounts.resolve(token(req));
+    const cached = res.locals['user'] as DatabaseUser | null | undefined;
+    const user = cached === undefined ? await accounts.resolve(token(req)) : cached;
     if (!user) throw new RepositoryError(401, '未登录或会话失效');
     if (user.mustChangePassword && !['/auth/password', '/auth/logout'].includes(req.path)) throw new RepositoryError(403, '请先修改临时密码');
     res.locals['user'] = user; next();
@@ -146,6 +149,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   }
   if(browserWorkspace){
     app.get('/api/tasks/:id/browser',async(req,res)=>{res.json(await browserWorkspace.request(actor(res).id,str(req.params['id'])));});
+    app.get('/api/tasks/:id/browser/status',async(req,res)=>{res.json(await browserWorkspace.status(actor(res).id,str(req.params['id'])));});
     app.post('/api/tasks/:id/browser',async(req,res)=>{const controller=new AbortController();const cancel=()=>{if(!res.writableEnded)controller.abort();};res.on('close',cancel);try{res.json(await browserWorkspace.request(actor(res).id,str(req.params['id']),body(req),controller.signal));}finally{res.removeListener('close',cancel);}});
   }
   app.use('/api/automations', automationRoutes(automations ?? new Automations(appPool)));
@@ -361,6 +365,36 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     app.get('/api/tasks/:id/file-versions/:versionId', async (req, res) => {
       const result = await files.download(actor(res).id, str(req.params['id']), str(req.params['versionId']));
       res.setHeader('X-Content-Type-Options', 'nosniff'); res.attachment(result.version.name); res.type('application/octet-stream').send(result.data);
+    });
+    app.get('/api/tasks/:id/file-versions/:versionId/preview', async (req, res) => {
+      const taskId = str(req.params['id']), versionId = str(req.params['versionId']);
+      const source = await files.download(actor(res).id, taskId, versionId);
+      const extension = extname(source.version.name).toLowerCase();
+      const directTypes: Record<string, string> = {
+        '.pdf': 'application/pdf',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.svg': 'image/svg+xml',
+        '.md': 'text/markdown; charset=utf-8',
+        '.txt': 'text/plain; charset=utf-8',
+        '.csv': 'text/csv; charset=utf-8',
+        '.json': 'application/json; charset=utf-8',
+        '.html': 'text/html; charset=utf-8',
+        '.htm': 'text/html; charset=utf-8',
+      };
+      if (extension in directTypes) {
+        res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox");
+        res.type(directTypes[extension]!).send(source.data);
+        return;
+      }
+      if (!['.docx','.xlsx','.pptx'].includes(extension)) throw new RepositoryError(415, '此文件暂不支持在线预览，请下载后打开');
+      if (!preview) throw new RepositoryError(503, 'Office 预览转换服务尚未启用，可先下载文件');
+      const data = await preview.officePdf(actor(res).id, taskId, versionId, AbortSignal.timeout(145000), source);
+      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+      res.type('application/pdf').send(data);
     });
     app.delete('/api/tasks/:id/files/:documentId', async (req, res) => {
       await files.remove(actor(res).id, str(req.params['id']), str(req.params['documentId']), num(body(req).revision));
@@ -616,7 +650,11 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   app.put('/api/memories/:id', async (req, res) => { const b = body(req); res.json({ revision: await workspace.editMemory(actor(res).id, str(req.params['id']), str(b.content), num(b.revision)) }); });
   app.delete('/api/memories/:id', async (req, res) => { await workspace.deleteMemory(actor(res).id, str(req.params['id']), num(body(req).revision)); res.json({ ok: true }); });
   app.use('/api', (_req, res) => { res.status(503).json({ error: '此功能尚未接入 PostgreSQL 验证服务', code: 'DATABASE_PORT_PENDING' }); });
-  if (webDist) app.use(express.static(webDist));
+  if (webDist) app.use(express.static(webDist, { setHeaders: (res, filePath) => {
+    // Vite 产物名包含内容哈希；其他页面和文件继续禁止缓存。
+    const immutable = filePath.replaceAll('\\', '/').includes('/assets/');
+    res.setHeader('Cache-Control', immutable ? 'public, max-age=31536000, immutable' : 'no-store');
+  } }));
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     void _next; // Express 通过四参数签名识别错误处理器。
     if (error instanceof RepositoryError) { res.status(error.status).json({ error: error.message }); return; }

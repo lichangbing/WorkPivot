@@ -107,6 +107,10 @@ export function browserService(token: string, engine = new BrowserEngine()) {
     try { response.json(await sessions.snapshot(String(request.params.id))); }
     catch { response.status(422).json({ error: '浏览器画面暂不可用，请重新打开页面' }); }
   });
+  app.get('/v1/sessions/:id/status', async (request, response) => {
+    try { response.json(sessions.status(String(request.params.id))); }
+    catch { response.status(422).json({ error: '浏览器会话标识无效' }); }
+  });
   app.post('/v1/sessions/:id', async (request, response) => {
     const controller = new AbortController(); const cancel = () => { if (!response.writableEnded) controller.abort(); }; response.on('close', cancel);
     try { response.json(await sessions.command(String(request.params.id), request.body ?? {}, controller.signal)); }

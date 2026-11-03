@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { jsonFetch } from './api';
 import { Icon } from './Icon';
+import { useVisiblePolling } from './use-visible-polling';
 
 type ValueType = 'text' | 'number' | 'date' | 'boolean' | 'object';
 
@@ -267,14 +268,10 @@ export function BusinessFactsPanel({ projectId, taskId, onClose }: { projectId: 
   };
 
   useEffect(() => { dialog.current?.showModal(); return () => dialog.current?.close(); }, []);
-  useEffect(() => {
-    const controller = new AbortController();
-    void load(controller.signal).catch(reason => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '业务事实读取失败'); });
-    const timer = setInterval(() => {
-      if (!document.hidden) void load(controller.signal).catch(() => undefined);
-    }, 5000);
-    return () => { controller.abort(); clearInterval(timer); };
-  }, [endpoint, query]);
+  useVisiblePolling(async signal => {
+    try { await load(signal); }
+    catch (reason) { if (!signal.aborted) setError(reason instanceof Error ? reason.message : '业务事实读取失败'); }
+  }, 5000, `${endpoint}:${query}`);
   useEffect(() => {
     if (!importOpen) return;
     const controller = new AbortController();

@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-16T02:30:26.604Z",
+  "date": "2026-11-03T02:08:02.818Z",
   "suites": {
     "W1": "pass",
     "W3": "pass",
@@ -24,7 +24,20 @@
     "W34": "pass",
     "W35": "pass",
     "W36": "pass",
-    "W37": "pass"
+    "W37": "pass",
+    "R005": "pass",
+    "R004": "pass",
+    "PC": "pass",
+    "OPT": "pass",
+    "OPT2": "pass",
+    "OPT3": "pass",
+    "R001": "pass",
+    "OUT": "pass",
+    "R006": "pass",
+    "R007": "pass",
+    "R007b": "pass",
+    "R007c": "pass",
+    "DEMO": "pass"
   },
   "assertions": {
     "W1": [
@@ -37,7 +50,7 @@
         "pass": true
       },
       {
-        "name": "B01 建任务（工作目录已创建） —— c:\\users\\lichb\\appdata\\local\\temp\\wp-ws-lr2ytf\\.accounts\\2b1a04d6-e728-4165-84f6-cf380f0bd8af",
+        "name": "B01 建任务（工作目录已创建） —— /tmp/wp-ws-mMpizH/.accounts/c8c6db4a-052c-4bef-a882-fe4a37e5a178",
         "pass": true
       },
       {
@@ -89,7 +102,7 @@
         "pass": true
       },
       {
-        "name": "F01 转写文件存在 —— C:\\Users\\lichb\\AppData\\Local\\Temp\\wp-home-yMXaPl\\accounts\\2b1a04d6-e728-4165-84f6-cf380f0bd8af\\data\\tasks\\t-1789525788309-a480ac\\transcript.jsonl",
+        "name": "F01 转写文件存在 —— /tmp/wp-home-kLld9x/accounts/c8c6db4a-052c-4bef-a882-fe4a37e5a178/data/tasks/t-1793671635354-a078c7/transcript.jsonl",
         "pass": true
       },
       {
@@ -139,7 +152,7 @@
         "pass": true
       },
       {
-        "name": "T3-03 打回后真实写盘 —— gate 目录: [\".workpivot\",\"总结.md\",\"简介.txt\"] | 工具事件: [{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_w2u27o\",\"ok\":true,\"status\":\"ok\",\"durationMs\":2,\"message\":\"已写入 c:\\\\users\\\\lichb\\\\appdata\\\\local\\\\temp\\\\wp3-ws-isfndh\\\\.accounts\\\\21c6e775-4062-4df5-949b-74ce1dc5eb20\\\\总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_qfn08r\",\"ok\":true,\"status\":\"ok\",\"durationMs\":2,\"message\":\"已写入 c:\\\\users\\\\lichb\\\\appdata\\\\local\\\\temp\\\\wp3-ws-isfndh\\\\.accounts\\\\21c6e775-4062-4df5-949b-74ce1dc5eb20\\\\总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_4aof5c\",\"ok\":true,\"status\":\"ok\",\"durationMs\":3,\"message\":\"[系统] 注意:这是第 3 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 c:\\\\users\\\\lichb\\\\appdata\\\\local\\\\temp\\\\wp3-ws-isfndh\\\\.accounts\\\\21c6e775-4062-4df5-949b-74ce1dc5eb20\\\\总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_kujtqm\",\"ok\":true,\"status\":\"ok\",\"durationMs\":3,\"message\":\"[系统] 注意:这是第 4 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 c:\\\\users\\\\lichb\\\\appdata\\\\local\\\\temp\\\\wp3-ws-isfndh\\\\.accounts\\\\21c6e775-4062-4df5-949b-74ce1dc5eb20\\\\总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_11e867\",\"ok\":false,\"status\":\"error\",\"durationMs\":0,\"message\":\"错误:已连续多次产生完全相同的调用与结果,本次执行被拦截。请必须更换思路、修改参数,或向用户说明情况。\"}]",
+        "name": "T3-03 打回后真实写盘 —— gate 目录: [\".workpivot\",\"总结.md\",\"简介.txt\"] | 工具事件: [{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_km5vh1\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"已写入 /tmp/wp3-ws-Q71VXW/.accounts/0798cc5b-6d54-4f7b-bba2-7ea62f6f6fda/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_1t3o8p\",\"ok\":true,\"status\":\"ok\",\"durationMs\":0,\"message\":\"已写入 /tmp/wp3-ws-Q71VXW/.accounts/0798cc5b-6d54-4f7b-bba2-7ea62f6f6fda/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_gja9q9\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"[系统] 注意:这是第 3 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 /tmp/wp3-ws-Q71VXW/.accounts/0798cc5b-6d54-4f7b-bba2-7ea62f6f6fda/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_l8n6or\",\"ok\":true,\"status\":\"ok\",\"durationMs\":0,\"message\":\"[系统] 注意:这是第 4 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 /tmp/wp3-ws-Q71VXW/.accounts/0798cc5b-6d54-4f7b-bba2-7ea62f6f6fda/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_d7cql5\",\"ok\":false,\"status\":\"error\",\"durationMs\":0,\"message\":\"错误:已连续多次产生完全相同的调用与结果,本次执行被拦截。请必须更换思路、修改参数,或向用户说明情况。\"}]",
         "pass": true
       },
       {
@@ -147,11 +160,11 @@
         "pass": true
       },
       {
-        "name": "T3-06 大结果落盘（工具结果含\"已落盘\"） —— （工具结果过大已落盘:c:\\users\\lichb\\appdata\\local\\temp\\wp3-ws-isfndh\\.accounts\\21c6e775-4062-4df5-949b-74ce1dc5eb20\\.workpivot\\res",
+        "name": "T3-06 大结果落盘（工具结果含\"已落盘\"） —— （工具结果过大已落盘:/tmp/wp3-ws-Q71VXW/.accounts/0798cc5b-6d54-4f7b-bba2-7ea62f6f6fda/.workpivot/results/result-1793671638477.txt",
         "pass": true
       },
       {
-        "name": "T3-06 落盘文件真实存在（>50KB） —— resultsDir=c:\\users\\lichb\\appdata\\local\\temp\\wp3-ws-isfndh\\.accounts\\21c6e775-4062-4df5-949b-74ce1dc5eb20\\.workpivot\\results | exists=true | stashed=[\"result-1789525791217.txt\",\"result-1789525791231.txt\",\"result-1789525791244.txt\",\"result-1789525791256.txt\"]",
+        "name": "T3-06 落盘文件真实存在（>50KB） —— resultsDir=/tmp/wp3-ws-Q71VXW/.accounts/0798cc5b-6d54-4f7b-bba2-7ea62f6f6fda/.workpivot/results | exists=true | stashed=[\"result-1793671638477.txt\",\"result-1793671638480.txt\",\"result-1793671638484.txt\",\"result-1793671638488.txt\"]",
         "pass": true
       },
       {
@@ -167,7 +180,7 @@
         "pass": true
       },
       {
-        "name": "T3-01 parentUuid 链首尾相接（fork/rewind 前置） —— [[\"user_message\",null],[\"meta\",\"9c1f9f26\"],[\"meta\",\"45b34475\"]]",
+        "name": "T3-01 parentUuid 链首尾相接（fork/rewind 前置） —— [[\"user_message\",null],[\"meta\",\"0e196104\"],[\"meta\",\"5d14e321\"]]",
         "pass": true
       }
     ],
@@ -177,7 +190,7 @@
         "pass": true
       },
       {
-        "name": "E01 条目区恰有一条\"蓝色\"（幂等去重） —— [{\"id\":\"m-1789525793326-yrmr\",\"content\":\"用户最喜欢的颜色是蓝色\",\"createdAt\":\"2026-09-16T02:29:53.326Z\"}]",
+        "name": "E01 条目区恰有一条\"蓝色\"（幂等去重） —— [{\"id\":\"m-1793671640436-hnxv\",\"content\":\"用户最喜欢的颜色是蓝色\",\"createdAt\":\"2026-11-03T02:07:20.436Z\"}]",
         "pass": true
       },
       {
@@ -261,7 +274,7 @@
     ],
     "W8": [
       {
-        "name": "注册 anthropic 协议供应商（保存即验活通过） —— {\"provider\":{\"id\":\"9ab31cc3-42c9-47b8-aacf-39da684b982f\",\"name\":\"Claude模拟\",\"baseUrl\":\"http://127.0.0.1:39908\",\"modelId\":",
+        "name": "注册 anthropic 协议供应商（保存即验活通过） —— {\"provider\":{\"id\":\"418b5972-9a5c-49ea-8caf-754fe5665c97\",\"name\":\"Claude模拟\",\"baseUrl\":\"http://127.0.0.1:39908\",\"modelId\":",
         "pass": true
       },
       {
@@ -293,7 +306,7 @@
         "pass": true
       },
       {
-        "name": "write 工具经 tool_use 真实落盘 —— c:\\users\\lichb\\appdata\\local\\temp\\wp8-ws-cp3pfj\\.accounts\\22ddcde9-2039-474e-b1d4-d75de59f7eea\\w8.txt",
+        "name": "write 工具经 tool_use 真实落盘 —— /tmp/wp8-ws-hU2WbO/.accounts/62303d6e-bdae-4de4-9f3e-70b2dc8a07e9/w8.txt",
         "pass": true
       },
       {
@@ -319,7 +332,7 @@
         "pass": true
       },
       {
-        "name": "F06 创建定时任务 —— {\"schedule\":{\"id\":\"38819990-e118-475d-a68d-43bc88b2011f\",\"name\":\"W10 巡检\",\"cron\":\"* * * * *\",\"content",
+        "name": "F06 创建定时任务 —— {\"schedule\":{\"id\":\"d11501f8-1528-484c-94fe-e099b3f46c5b\",\"name\":\"W10 巡检\",\"cron\":\"* * * * *\",\"content",
         "pass": true
       },
       {
@@ -385,15 +398,11 @@
         "pass": true
       },
       {
-        "name": "RL3-02 对外首启缺初始化凭据拒绝启动",
+        "name": "RL3-02 首个注册账户免初始化凭据成为管理员",
         "pass": true
       },
       {
-        "name": "RL3-02 首管理员注册缺凭据被拒",
-        "pass": true
-      },
-      {
-        "name": "RL3-02 初始化凭据前后空白不影响首管理员注册",
+        "name": "RL3-02 后续自助注册为普通成员",
         "pass": true
       },
       {
@@ -499,7 +508,7 @@
     ],
     "W16": [
       {
-        "name": "客户端默认连接本机WSL后台",
+        "name": "客户端默认连接已配置的公网入口",
         "pass": true
       },
       {
@@ -1008,6 +1017,10 @@
       },
       {
         "name": "personal workspace root excludes siblings",
+        "pass": true
+      },
+      {
+        "name": "symlink cannot cross accounts",
         "pass": true
       },
       {
@@ -2167,6 +2180,10 @@
       {
         "name": "model run publishes only explicit final file",
         "pass": true
+      },
+      {
+        "name": "symlink destination rejected",
+        "pass": true
       }
     ],
     "W37": [
@@ -2262,8 +2279,398 @@
         "name": "repeat reset revokes renewed session",
         "pass": true
       }
+    ],
+    "R005": [
+      {
+        "name": "子代理只拿任务与背景，父对话历史不进入子请求",
+        "pass": true
+      },
+      {
+        "name": "子工具集剔除 delegate 与 ask_user，禁止递归与二次提问",
+        "pass": true
+      },
+      {
+        "name": "子循环失败不炸父任务，错误以工具结果文本返回",
+        "pass": true
+      },
+      {
+        "name": "父级取消立即传播，子循环不再采样",
+        "pass": true
+      },
+      {
+        "name": "并发两次委派串行执行，不并行叠加",
+        "pass": true
+      },
+      {
+        "name": "max_steps 越界直接拒绝，合法值收敛到子循环",
+        "pass": true
+      },
+      {
+        "name": "子代理事件带 delegateId 前缀转发",
+        "pass": true
+      }
+    ],
+    "R004": [
+      {
+        "name": "参数校验：超长问题、选项数量与 label 长度都拒绝",
+        "pass": true
+      },
+      {
+        "name": "同一轮重复调用返回同一 questionId，不重复弹卡",
+        "pass": true
+      },
+      {
+        "name": "asked 后本轮立即结束，且不触发 idle 追问",
+        "pass": true
+      },
+      {
+        "name": "提问不经过授权通道，授权拒绝不会变成提问卡",
+        "pass": true
+      },
+      {
+        "name": "自由回答：省略 options 时仍可提出并记录 allowFreeText",
+        "pass": true
+      },
+      {
+        "name": "一次可收集三个相关问题，支持推荐、多选和预览",
+        "pass": true
+      }
+    ],
+    "PC": [
+      {
+        "name": "任务内只读为低风险",
+        "pass": true
+      },
+      {
+        "name": "受控写入为中风险",
+        "pass": true
+      },
+      {
+        "name": "外部 MCP 为高风险",
+        "pass": true
+      },
+      {
+        "name": "删除命令为高风险",
+        "pass": true
+      },
+      {
+        "name": "高风险不能复用授权",
+        "pass": true
+      },
+      {
+        "name": "自动模式可静默白名单执行",
+        "pass": true
+      },
+      {
+        "name": "高风险不能自动放行",
+        "pass": true
+      },
+      {
+        "name": "完整计划可进入审批",
+        "pass": true
+      },
+      {
+        "name": "缺少验收方式不能审批",
+        "pass": true
+      },
+      {
+        "name": "没有计划不能审批",
+        "pass": true
+      },
+      {
+        "name": "稳定提示包含澄清/拒绝边界",
+        "pass": true
+      },
+      {
+        "name": "办公格式使用各自交付约束",
+        "pass": true
+      },
+      {
+        "name": "动态提示反映执行模式",
+        "pass": true
+      },
+      {
+        "name": "固定办公评测集覆盖八类高风险与多步骤任务",
+        "pass": true
+      },
+      {
+        "name": "交互能力支持环境开关回退",
+        "pass": true
+      },
+      {
+        "name": "拒绝后完全相同的调用不会再次请求授权",
+        "pass": true
+      },
+      {
+        "name": "重复调用保持拒绝状态",
+        "pass": true
+      },
+      {
+        "name": "模型收到明确的改路要求",
+        "pass": true
+      },
+      {
+        "name": "模型流期间到达的纠正会在工具派发前生效，旧工具不执行",
+        "pass": true
+      },
+      {
+        "name": "下一次模型采样看到最新用户纠正",
+        "pass": true
+      },
+      {
+        "name": "运行中消息可判定为当前任务完成后的独立请求",
+        "pass": true
+      }
+    ],
+    "OPT": [
+      {
+        "name": "O-01 外部动作文案按工具生成，未知工具回落为外部工具调用",
+        "pass": true
+      },
+      {
+        "name": "O-03 read 支持 offset/limit 并返回行号与续读提示",
+        "pass": true
+      },
+      {
+        "name": "O-03 越界 offset 报错、limit 越界拒绝、小文件保持原文",
+        "pass": true
+      },
+      {
+        "name": "O-04 命令输出超长时头尾都保留并标注省略",
+        "pass": true
+      },
+      {
+        "name": "O-08 write 原子落盘，不残留临时文件",
+        "pass": true
+      },
+      {
+        "name": "O-08 edit 同样原子写并保持内容正确",
+        "pass": true
+      },
+      {
+        "name": "O-02 同一目录的执行串行化，峰值并发为 1",
+        "pass": true
+      },
+      {
+        "name": "O-02 跨目录不互相阻塞",
+        "pass": true
+      }
+    ],
+    "OPT2": [
+      {
+        "name": "O-05 用量跨多次采样累计，并作为 usage 事件发出",
+        "pass": true
+      },
+      {
+        "name": "O-05 供应商不上报用量时为 0，不影响循环",
+        "pass": true
+      },
+      {
+        "name": "O-06 转写参数超长字段截断并标记，其余参数原样保留",
+        "pass": true
+      },
+      {
+        "name": "O-06 非对象参数原样返回",
+        "pass": true
+      },
+      {
+        "name": "O-16 计划闸门只拦写入/执行类工具",
+        "pass": true
+      },
+      {
+        "name": "O-17 联网首次确认后本轮其余网络工具放行，MCP 不共享",
+        "pass": true
+      }
+    ],
+    "OPT3": [
+      {
+        "name": "O-09 声称产出但未登记交付时提示，登记后放行",
+        "pass": true
+      },
+      {
+        "name": "O-09 缺失文件仍报 missing，扩展名白名单包含图片",
+        "pass": true
+      },
+      {
+        "name": "O-11 相同查询 5 分钟内复用缓存，只请求一次服务",
+        "pass": true
+      },
+      {
+        "name": "O-12 跨进程文件锁：另一个进程持锁时本进程等待",
+        "pass": true
+      },
+      {
+        "name": "O-18 旧档位归一化为确认/自动两档",
+        "pass": true
+      },
+      {
+        "name": "O-19 删除文件后给出清单与可恢复副本",
+        "pass": true
+      },
+      {
+        "name": "O-19 没有删除时不产生噪音",
+        "pass": true
+      },
+      {
+        "name": "O-13 同轮多个只读工具并行、写入工具串行",
+        "pass": true
+      }
+    ],
+    "R001": [
+      {
+        "name": "内置技能清单包含 Office 四项与多空辩论",
+        "pass": true
+      },
+      {
+        "name": "每个内置技能都能打包，且包含 SKILL.md 入口",
+        "pass": true
+      },
+      {
+        "name": "多空辩论技能写明：双方向 delegate、裁判评分、条件化结论",
+        "pass": true
+      }
+    ],
+    "OUT": [
+      {
+        "name": "清除 ANSI 颜色码与控制字符，保留换行与制表符",
+        "pass": true
+      },
+      {
+        "name": "脱敏 sk- / GitHub / Bearer / 密码键值 / 数据库 DSN",
+        "pass": true
+      },
+      {
+        "name": "头尾保留裁剪：短文本原样，长文本保留开头与结尾",
+        "pass": true
+      }
+    ],
+    "R006": [
+      {
+        "name": "未闭合的单个 tool_call 补一条“结果未知”，历史恢复合法",
+        "pass": true
+      },
+      {
+        "name": "部分回填：只补缺失的调用，已完成的保持不变",
+        "pass": true
+      },
+      {
+        "name": "全部闭合时不改写，且重复对账幂等",
+        "pass": true
+      },
+      {
+        "name": "续跑预算继承剩余步数，越界时至少保留 1 步",
+        "pass": true
+      },
+      {
+        "name": "判断上下文末尾是否还有未完成的调用",
+        "pass": true
+      },
+      {
+        "name": "工具结果分级修剪：头 4096 + 尾 1024，短结果不动",
+        "pass": true
+      },
+      {
+        "name": "每个 step 结束触发检查点，内容包含该步工具结果",
+        "pass": true
+      },
+      {
+        "name": "分批执行：读-写-读 不会跨写并行",
+        "pass": true
+      },
+      {
+        "name": "文件链路：过期运行补齐未闭合调用并标记中断，重复对账幂等",
+        "pass": true
+      },
+      {
+        "name": "文件链路：已完成的运行不参与对账，旧快照按份数清理",
+        "pass": true
+      },
+      {
+        "name": "自动续跑资格：有未完成派发或已尝试过都不自动跑，默认关闭",
+        "pass": true
+      }
+    ],
+    "R007": [
+      {
+        "name": "未配置时关闭整层，不创建连接池",
+        "pass": true
+      },
+      {
+        "name": "任务行映射：可空字段不输出，时间转 ISO",
+        "pass": true
+      },
+      {
+        "name": "消息行映射：seq → ordinal，uuid/parentUuid 保留链关系",
+        "pass": true
+      }
+    ],
+    "R007b": [
+      {
+        "name": "文件模式新建任务：落 JSONL、可按 id 与列表读回",
+        "pass": true
+      },
+      {
+        "name": "追加消息与分页：seq 单调、尾部默认 100 条、before 可翻页",
+        "pass": true
+      },
+      {
+        "name": "历史只取用户/助手两类消息，displayContent 优先",
+        "pass": true
+      },
+      {
+        "name": "状态更新写 meta 消息",
+        "pass": true
+      },
+      {
+        "name": "删除临时任务：文件模式走临时任务删除，记录消失",
+        "pass": true
+      }
+    ],
+    "R007c": [
+      {
+        "name": "未预载时回落 JSONL（临时目录为空）",
+        "pass": true
+      },
+      {
+        "name": "预载后 getTask/listTasks 从视图读，按创建时间倒序",
+        "pass": true
+      },
+      {
+        "name": "非法 id 直接返回 null，不查视图",
+        "pass": true
+      },
+      {
+        "name": "移除后不可见，清空视图后回落文件",
+        "pass": true
+      }
+    ],
+    "DEMO": [
+      {
+        "name": "普通成员：剩余 = 额度 - 已用",
+        "pass": true
+      },
+      {
+        "name": "用完时剩余为 0，不会出现负数",
+        "pass": true
+      },
+      {
+        "name": "平台管理员不限次",
+        "pass": true
+      },
+      {
+        "name": "quota=0 视为关闭限制（不限次）",
+        "pass": true
+      },
+      {
+        "name": "数据库返回字符串数字也能正确判定",
+        "pass": true
+      },
+      {
+        "name": "北京时间每日12点按需重置，旧计数不占用新周期",
+        "pass": true
+      }
     ]
   },
-  "assertionCount": 547,
+  "assertionCount": 639,
   "overall": "pass"
 }

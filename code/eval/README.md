@@ -1,5 +1,12 @@
 # eval/ — 评测题库（K01）
 
+右侧工作区与预览（2026-11-03）：
+
+- `pnpm eval:workspace-right-panel`：验证“预览 / 文件 / 浏览器”三页签、PDF/Markdown 预览、任务级版本恢复、隐藏浏览器截图暂停和切回恢复。运行前先构建 `apps/web/dist`。
+- `pnpm eval:panel-resize-ui`：验证右栏拖拽、键盘调整、双击复位、宽度持久化和窗口缩放边界。
+- `pnpm eval:workspace-polling`：验证标签页隐藏时暂停工作台轮询并在恢复可见后补拉。
+- `pnpm eval:document-preview`：用受控 Worker 返回合成 PDF，验证 Office 转 PDF 请求格式、PDF 校验和不可变版本缓存。
+
 网页专项：`pnpm eval:web`（URL/IP/DNS/重定向、解析和授权）；`pnpm eval:web-browser`（真实Chromium受控页面）；`pnpm eval:web-database`（临时PostgreSQL对话授权、定时采集、成果发布和撤销）。网络实测及测试浏览器路径见[部署与验收说明](../../releases/deploy/网页访问部署.md)。
 
 - 自动回归脚本使用 `W序号-主题.mts`，由run-all.mts运行并写入断言级baseline.json。

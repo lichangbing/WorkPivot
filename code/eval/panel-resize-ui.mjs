@@ -25,8 +25,10 @@ try{
   const page=await browser.newPage({viewport:{width:1440,height:900}});
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
   await page.addInitScript(()=>{
-    localStorage.setItem('wp_token','synthetic-ui-token');
-    localStorage.setItem('wp-right-panel-open','true');
+    try {
+      localStorage.setItem('wp_token','synthetic-ui-token');
+      localStorage.setItem('wp-right-panel-open','true');
+    } catch { /* about:blank 没有存储权限，页面加载后脚本会再次执行。 */ }
   });
   const task={id:'task-a',projectId:'project-a',name:'可调整宽度任务',status:'idle',revision:1};
   await page.route('**/api/**',async route=>{
@@ -40,14 +42,29 @@ try{
     else if(path==='/api/tasks/task-a/conversation-changes')data={events:[],nextSequence:'0',snapshotSequence:'0',hasMore:false};
     else if(path==='/api/tasks/task-a/permissions')data={pending:[]};
     else if(path==='/api/tasks/task-a/resource-scope')data={scope:{versionIds:[],memoryScopes:[],expert:false,scheduleIds:[],baseRunId:null}};
-    else if(path==='/api/tasks/task-a/browser')data={available:false,open:false,busy:false};
+    else if(path==='/api/tasks/task-a/browser'||path==='/api/tasks/task-a/browser/status')data={available:false,open:false,busy:false};
+    else if(path==='/api/tasks/task-a/interactions')data={interactions:[],blocking:0,queued:0};
+    else if(path==='/api/tasks/task-a/steering')data={steering:[]};
+    else if(path==='/api/tasks/task-a/parsing')data={files:[]};
+    else if(path==='/api/tasks/task-a/summary')data={checkpoints:[]};
+    else if(path==='/api/memory-suggestions'||path==='/api/expert-suggestions')data={suggestions:[]};
+    else if(path==='/api/workspace/stream'){
+      await route.fulfill({status:200,headers:{'content-type':'text/event-stream'},body:`data: ${JSON.stringify({type:'workspace',value:{tasks:[task],projects:[{id:'project-a',name:'合成项目',revision:1}],revision:'1'}})}\n\n`});
+      return;
+    }
     await route.fulfill({json:data});
   });
 
   await page.goto(`http://127.0.0.1:${server.address().port}/`);
   await page.getByRole('button',{name:'可调整宽度任务',exact:true}).click();
   const separator=page.getByRole('separator',{name:'调整对话区与右侧窗口宽度'});
-  const right=page.getByRole('complementary',{name:'共享浏览器'});
+  const right=page.locator('aside[aria-label="工作区右侧面板"]');
+  await page.waitForTimeout(500);
+  if (!(await right.count())) {
+    console.error('右侧面板未渲染:', await page.locator('body').innerText());
+    console.error('面板开关:', await page.evaluate(() => localStorage.getItem('wp-right-panel-open')));
+    console.error('页面错误:', errors);
+  }
   await separator.waitFor();await right.waitFor();
   const initialBox=await right.boundingBox(),handle=await separator.boundingBox();
   assert.ok(initialBox&&handle,'右侧窗口和分隔条应可见');

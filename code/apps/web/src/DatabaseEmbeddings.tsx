@@ -1,5 +1,6 @@
 import {useEffect,useState} from 'react';
 import {jsonFetch} from './api';
+import {useVisiblePolling} from './use-visible-polling';
 type Space={id:string;name:string;baseUrl:string;modelId:string;modelVersion:string;protocol:string;dimensions:number;revision:number;state:string;enabled:boolean;tested:boolean;total:number;completed:number;failed:number;error?:string};
 const button='rounded border border-neutral-700 px-3 py-2 disabled:opacity-40';
 const field='block w-full rounded border border-neutral-700 bg-neutral-900 p-2';
@@ -9,7 +10,8 @@ export function DatabaseEmbeddings(){
  const [name,setName]=useState('本地 BGE-M3'),[url,setUrl]=useState('http://embedding:11434'),[model,setModel]=useState('bge-m3'),[version,setVersion]=useState(''),[dimensions,setDimensions]=useState(1024),[protocol,setProtocol]=useState('ollama'),[secret,setSecret]=useState('');
  const [tasks,setTasks]=useState<{id:string;name:string}[]>([]),[task,setTask]=useState(''),[query,setQuery]=useState(''),[matches,setMatches]=useState<{chunkId:string;name:string;revision:number;location:string;content:string;similarity:number}[]>([]);
  const load=async()=>setSpaces((await jsonFetch<{spaces:Space[]}>('/api/embeddings')).spaces);
- useEffect(()=>{let disposed=false;const refresh=()=>{if(!disposed)void load().catch(e=>{if(!disposed)setError(e.message);});};refresh();void jsonFetch<{tasks:{id:string;name:string}[]}>('/api/tasks').then(r=>{if(!disposed)setTasks(r.tasks);}).catch(()=>{});const timer=setInterval(refresh,5000);return()=>{disposed=true;clearInterval(timer);};},[]);
+ useEffect(()=>{let disposed=false;void jsonFetch<{tasks:{id:string;name:string}[]}>('/api/tasks').then(r=>{if(!disposed)setTasks(r.tasks);}).catch(()=>{});return()=>{disposed=true;};},[]);
+ useVisiblePolling(async signal=>{try{const result=await jsonFetch<{spaces:Space[]}>('/api/embeddings',{signal});if(!signal.aborted)setSpaces(result.spaces);}catch(e){if(!signal.aborted)setError(e instanceof Error?e.message:'向量配置读取失败');}},5000);
  const run=async(fn:()=>Promise<unknown>)=>{if(busy)return;setBusy(true);setError('');try{await fn();await load();}catch(e){setError(e instanceof Error?e.message:'操作失败');}finally{setBusy(false);}};
  const action=(s:Space,a:string)=>run(()=>jsonFetch(`/api/embeddings/${s.id}/action`,{method:'POST',body:JSON.stringify({revision:s.revision,action:a})}));
  const rebuild=(s:Space)=>{setName(s.name);setUrl(s.baseUrl);setModel(s.modelId);setVersion(s.modelVersion);setDimensions(s.dimensions);setProtocol(s.protocol);setSecret('');setShow(true);};

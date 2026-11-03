@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { jsonFetch, getToken } from './api';
+import { useVisiblePolling } from './use-visible-polling';
 
 interface SkillFile { path:string; content:string|null; previous:string|null; size:number; change:string }
 interface Build { id:string; name:string; displayName:string; taskId:string; revision:string; draftRevision:string; hash:string; status:string; sourceInvalid:boolean; purpose:string; permissions:string; dismissed:boolean; deleted:boolean; disabled:boolean; workerAvailable:boolean; requiresTrial:boolean; published:string|null; files:SkillFile[]; removed:string[]; validation:{valid:boolean;errors:string[];warnings:string[]}|null; trial:{passed:boolean;command:string;output:string;error:string|null;previews:{path:string;size:number;content:string|null}[]}|null; versions:{id:string;label:string}[] }
@@ -17,10 +18,7 @@ export function DatabaseSkillBuilds({taskId,autoOpen=false}:{taskId?:string;auto
     const pending=result.builds.find(b=>b.status==='ready'&&!b.deleted&&!b.dismissed&&!seen.current.has(b.id+':'+b.revision));
     if(autoOpen&&pending&&!opened.current){opened.current=true;seen.current.add(pending.id+':'+pending.revision);const detail=await jsonFetch<Build>(`/api/skill-builds/${pending.id}`,{signal});if(!signal?.aborted)setCurrent(detail);}
   };
-  useEffect(()=>{const c=new AbortController();let timer:ReturnType<typeof setTimeout>;
-    const tick=async()=>{try{await load(c.signal);}catch(e){if(!c.signal.aborted)setError(e instanceof Error?e.message:'技能草稿读取失败');}finally{if(!c.signal.aborted)timer=setTimeout(()=>void tick(),3000);}};
-    void tick();return()=>{c.abort();clearTimeout(timer);};
-  },[taskId,autoOpen]);
+  useVisiblePolling(async signal=>{try{await load(signal);}catch(e){if(!signal.aborted)setError(e instanceof Error?e.message:'技能草稿读取失败');}},3000,`${taskId??''}:${autoOpen}`);
   const open=async(row:Build)=>{try{const b=await jsonFetch<Build>(`/api/skill-builds/${row.id}`);opened.current=true;setCurrent(b);}catch(e){setError(e instanceof Error?e.message:'读取失败');}};
   const close=()=>{opened.current=false;setCurrent(null);void load().catch(()=>undefined);};
   const latest=rows.filter((b,i)=>rows.findIndex(v=>v.name===b.name)===i);

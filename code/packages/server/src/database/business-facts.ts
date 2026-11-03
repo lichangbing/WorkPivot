@@ -217,15 +217,48 @@ function sourceHash(value: FactSource): string | null {
   return value.quote ? createHash('sha256').update(value.quote.normalize('NFKC')).digest('hex') : null;
 }
 
+function candidateObjectPairs<T extends { objectType: string; name: string; aliases: string[] }>(objects: T[]): Array<[number, number]> {
+  const exact = new Map<string, number[]>();
+  const bigrams = new Map<string, number[]>();
+  const add = (groups: Map<string, number[]>, key: string, index: number) => {
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(index);
+    else groups.set(key, [index]);
+  };
+  objects.forEach((object, index) => {
+    const names = new Set([object.name, ...object.aliases].map(normalize).filter(Boolean));
+    for (const name of names) {
+      add(exact, `${object.objectType}\0${name}`, index);
+      for (let offset = 0; offset + 1 < name.length; offset++) {
+        add(bigrams, `${object.objectType}\0${name.slice(offset, offset + 2)}`, index);
+      }
+    }
+  });
+  const pairs = new Set<number>();
+  const addPairs = (bucket: number[] | undefined) => {
+    if (!bucket || bucket.length < 2) return;
+    for (let left = 0; left < bucket.length; left++) {
+      for (let right = left + 1; right < bucket.length; right++) {
+        if (bucket[left] !== bucket[right]) pairs.add(bucket[left]! * objects.length + bucket[right]!);
+      }
+    }
+  };
+  for (const bucket of exact.values()) addPairs(bucket);
+  for (const bucket of bigrams.values()) addPairs(bucket);
+  return [...pairs].map(value => [Math.floor(value / objects.length), value % objects.length] as [number, number]);
+}
+
 function objectSimilarity(left: { name: string; aliases: string[] }, right: { name: string; aliases: string[] }) {
-  const leftNames = [left.name, ...left.aliases].map(normalize).filter(Boolean);
-  const rightNames = [right.name, ...right.aliases].map(normalize).filter(Boolean);
+  const leftCanonical = normalize(left.name);
+  const rightCanonical = normalize(right.name);
+  const leftNames = [leftCanonical, ...left.aliases.map(normalize)].filter(Boolean);
+  const rightNames = [rightCanonical, ...right.aliases.map(normalize)].filter(Boolean);
   const reasons: string[] = [];
   let score = 0;
   for (const a of leftNames) {
     for (const b of rightNames) {
       if (a === b) {
-        const exact = normalize(left.name) === normalize(right.name);
+        const exact = leftCanonical === rightCanonical;
         score = Math.max(score, exact ? 100 : 96);
         reasons.push(exact ? '规范名称完全相同' : '名称与别名存在完全匹配');
       } else if (Math.min(a.length, b.length) >= 2 && (a.includes(b) || b.includes(a))) {
@@ -1041,19 +1074,16 @@ export class BusinessFactsRepository {
         COALESCE((SELECT jsonb_agg(a.alias ORDER BY a.alias) FROM workpivot.business_object_alias a WHERE a.project_id=o.project_id AND a.object_id=o.id AND a.valid_to IS NULL),'[]'::jsonb) AS aliases
         FROM workpivot.business_object o WHERE o.project_id=$1 AND o.status='active' ORDER BY o.canonical_name,o.id LIMIT 500`, [projectId])).rows;
       const mergeCandidates = [];
-      for (let leftIndex = 0; leftIndex < objects.length; leftIndex++) {
-        for (let rightIndex = leftIndex + 1; rightIndex < objects.length; rightIndex++) {
-          const left = objects[leftIndex] as { id: string; objectType: string; name: string; revision: number; aliases: string[] };
-          const right = objects[rightIndex] as { id: string; objectType: string; name: string; revision: number; aliases: string[] };
-          if (left.objectType !== right.objectType) continue;
-          const match = objectSimilarity(left, right);
-          if (match.score < 65) continue;
-          mergeCandidates.push({
-            sourceId: left.id, targetId: right.id, sourceRevision: left.revision, targetRevision: right.revision,
-            sourceName: left.name, targetName: right.name, objectType: left.objectType,
-            score: match.score, reasons: match.reasons,
-          });
-        }
+      for (const [leftIndex, rightIndex] of candidateObjectPairs(objects as Array<{ id: string; objectType: string; name: string; revision: number; aliases: string[] }>)) {
+        const left = objects[leftIndex] as { id: string; objectType: string; name: string; revision: number; aliases: string[] };
+        const right = objects[rightIndex] as { id: string; objectType: string; name: string; revision: number; aliases: string[] };
+        const match = objectSimilarity(left, right);
+        if (match.score < 65) continue;
+        mergeCandidates.push({
+          sourceId: left.id, targetId: right.id, sourceRevision: left.revision, targetRevision: right.revision,
+          sourceName: left.name, targetName: right.name, objectType: left.objectType,
+          score: match.score, reasons: match.reasons,
+        });
       }
       mergeCandidates.sort((left, right) => right.score - left.score || left.sourceName.localeCompare(right.sourceName, 'zh-CN'));
       const merges = (await c.query(`SELECT m.id,m.status,m.revision,

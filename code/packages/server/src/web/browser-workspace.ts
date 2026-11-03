@@ -20,4 +20,17 @@ export class BrowserWorkspace {
     if (!response.ok) throw new RepositoryError(422, String(value.error ?? '浏览器操作失败').slice(0, 300));
     return { ...value, available: true };
   }
+  async status(actor: string, taskId: string) {
+    uuid(taskId);
+    await transaction(this.db, async c => { if (!(await c.query('SELECT id FROM workpivot.tasks WHERE id=$1 AND deleted_at IS NULL', [taskId])).rowCount) throw new RepositoryError(404, '任务不存在'); }, actor);
+    if (!this.config) return { available: false, open: false, busy: false, url: '', title: '', blockedRequests: 0 };
+    const response = await fetch(this.config.url + '/v1/sessions/' + this.key(actor, taskId) + '/status', {
+      headers: { authorization: 'Bearer ' + this.config.token },
+      redirect: 'error',
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) throw new RepositoryError(502, '浏览器状态暂不可用');
+    const value = await response.json() as Record<string, unknown>;
+    return { ...value, available: true };
+  }
 }

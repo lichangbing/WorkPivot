@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { jsonFetch } from './api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useVisiblePolling } from './use-visible-polling';
 interface Source {id:string;sequence:string;excerpt:string;truncated:boolean;messages:string;messagesTruncated:boolean;attachments:string[]}
 interface Fact {index:number;text:string;sourceIds:string[];status:string}
 interface Checkpoint {facts?:Fact[]; id:string;status:string;content:string;revision:number;through:string;turns:number;error?:string;processed?:number;total?:number }
@@ -11,7 +12,7 @@ export function DatabaseSummary({taskId,busy}:{taskId:string;busy:boolean}){
   const [selectedSources,setSelectedSources]=useState<string[]|null>(null);
   const base=`/api/tasks/${taskId}/summary`;
   useEffect(()=>{setOriginal(undefined);setSelectedSources(null);},[row?.id,row?.revision]);
-  useEffect(()=>{setOriginal(undefined);setSelectedSources(null);const c=new AbortController();let timer:ReturnType<typeof setTimeout>;const poll=async()=>{try{const r=await jsonFetch<{checkpoints:Checkpoint[]}>(base,{signal:c.signal});if(!c.signal.aborted)setRow(r.checkpoints[0]);}catch{/* 旧服务器可能未开放压缩接口。 */}finally{if(!c.signal.aborted)timer=setTimeout(()=>{void poll();},2000);}};void poll();return()=>{c.abort();clearTimeout(timer);};},[base]);
+  useVisiblePolling(async signal=>{try{const r=await jsonFetch<{checkpoints:Checkpoint[]}>(base,{signal});if(!signal.aborted)setRow(r.checkpoints[0]);}catch{/* 旧服务器可能未开放压缩接口。 */}},2000,taskId);
   const action=async(accept?:boolean)=>{if(working||busy)return;setWorking(true);setError('');try{if(accept===undefined)await jsonFetch(base,{method:'POST'});else if(row)await jsonFetch(`${base}/${row.id}/decision`,{method:'POST',body:JSON.stringify({revision:row.revision,accept,...(accept&&editing?{content:draft}:{})})});const r=await jsonFetch<{checkpoints:Checkpoint[]}>(base);setRow(r.checkpoints[0]);setEditing(false);setOriginal(undefined);}catch(e){setError(e instanceof Error?e.message:'操作失败');}finally{setWorking(false);}};
   const showSources=async(ids:string[]|null)=>{if(!row)return;setError('');try{const r=await jsonFetch<{sources:Source[]}>(`${base}/${row.id}/sources`);setOriginal(r.sources);setSelectedSources(ids);}catch(e){setOriginal(undefined);setError(e instanceof Error?e.message:'来源读取失败');}};
   if(!row&&!error)return null;

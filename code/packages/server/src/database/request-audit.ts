@@ -33,6 +33,12 @@ export function auditDescription(method:string,area:string,outcome:string):strin
  const subject=areaLabels[area]??areaLabels[area.split('.')[0]??'']??areaLabels.other;
  return `${subject} · ${methodVerb(method)}（${outcomeText(outcome)}）`;
 }
+/** UI 轮询不逐条写两行审计；认证、权限、写操作和外部调用仍完整记录。 */
+function lightweightPoll(req:{method:string;path:string}):boolean{
+ if(req.method!=='GET')return false;
+ if(['/api/memory-suggestions','/api/expert-suggestions','/api/automations','/api/workspace/stream'].includes(req.path))return true;
+ return /^\/api\/tasks\/[0-9a-f-]+\/(?:conversation-changes|stream|interactions|steering|parsing|summary|artifacts|files|browser\/status)$/i.test(req.path);
+}
 /** 开始记录先落库，结束记录追加；崩溃或写入失败保留“未确认”，不能伪报完成。 */
 export function requestAudit(db:Pool):RequestHandler {
  const accounts=new AccountRepository(db);
@@ -41,6 +47,9 @@ export function requestAudit(db:Pool):RequestHandler {
   const token=req.headers.authorization?.startsWith('Bearer ')?req.headers.authorization.slice(7):'';
   let user;
   try{user=await accounts.resolve(token);}catch{throw new RepositoryError(503,'身份与审计服务暂不可用');}
+  // 后续认证中间件直接复用本次结果，避免同一请求重复开启身份事务。
+  res.locals['user']=user;
+  if(lightweightPoll(req)){next();return;}
   const id=randomUUID();
   const part=req.path.split('/')[2]??'';
   const method=['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'].includes(req.method)?req.method:'OTHER';

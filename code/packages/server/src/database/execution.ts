@@ -6,7 +6,7 @@ import type {RunResourceScope} from './resource-scope.js';
 import {authorizeTools} from './tool-authorization.js';
 import { runAgentLoop, type AgentEvent, type RunAgentOptions, type StopReason } from '@workpivot/core';
 import type { Pool } from 'pg';
-import { RepositoryError } from './connection.js';
+import { RepositoryError, transaction } from './connection.js';
 import { RunRepository, type RunHandle } from './runs.js';
 import type { CompactionService } from './compaction.js';
 import { InteractionRepository } from './interactions.js';
@@ -22,7 +22,7 @@ export class DatabaseExecution {
   readonly interactions: InteractionRepository;
   readonly plans: PlanRepository;
   private readonly controllers = new Map<string, { actor: string; taskId: string; controller: AbortController }>();
-  constructor(db: Pool, private readonly prepare: PrepareExecution, private readonly onCompleted?: (actor: string, taskId: string, runId: string) => Promise<void>, readonly compaction?: CompactionService) {
+  constructor(private readonly db: Pool, private readonly prepare: PrepareExecution, private readonly onCompleted?: (actor: string, taskId: string, runId: string) => Promise<void>, readonly compaction?: CompactionService) {
     this.runs = new RunRepository(db);
     this.interactions = new InteractionRepository(db);
     this.plans = new PlanRepository(db);
@@ -277,5 +277,31 @@ export class DatabaseExecution {
     await this.runs.stop(actor, taskId);
     for (const local of this.controllers.values()) if (local.actor === actor && local.taskId === taskId) local.controller.abort();
     // 其他服务器进程通过持久化心跳感知停止。
+  }
+  /**
+   * 服务完成当前运行后若在启动后续队列前退出，deferred 消息会留在数据库。
+   * 恢复扫描只领取已空闲且没有活动运行的任务，保持原 requestId 与幂等语义。
+   */
+  async resumeDeferred(actor: string): Promise<number> {
+    const candidates = await transaction(this.db, async c => (await c.query(`
+      SELECT t.id
+      FROM workpivot.tasks t
+      WHERE t.owner_user_id=$1 AND t.deleted_at IS NULL AND t.status='idle'
+        AND EXISTS(SELECT 1 FROM workpivot.run_steering_messages s WHERE s.task_id=t.id AND s.status='deferred')
+        AND NOT EXISTS(SELECT 1 FROM workpivot.task_runs r WHERE r.task_id=t.id AND r.status IN ('running','stopping'))
+      ORDER BY t.updated_at,t.id LIMIT 20`, [actor])).rows.map(row => String(row.id)), actor);
+    let started = 0;
+    for (const taskId of candidates) {
+      const deferred = await this.runs.nextDeferredSteering(actor, taskId);
+      if (!deferred) continue;
+      try {
+        const next = await this.begin(actor, taskId, deferred.content, deferred.requestId);
+        if (!next.execute) continue;
+        await this.runs.markDeferredApplied(actor, next.run, deferred.id);
+        void next.execute(() => { /* 事件由持久化通道补拉。 */ }).catch(() => { /* 失败保留中断/停止状态供用户处理。 */ });
+        started += 1;
+      } catch { /* 单个任务失败不阻塞其他任务恢复。 */ }
+    }
+    return started;
   }
 }

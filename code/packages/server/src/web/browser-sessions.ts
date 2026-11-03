@@ -64,6 +64,22 @@ export class BrowserSessions {
     session.capture ??= this.frame(session).finally(()=>{session.capture=undefined;});
     return session.capture;
   }
+  /** 轻量会话状态：不生成截图，供右栏隐藏浏览器页签时轮询。 */
+  status(id: string): BrowserFrame {
+    this.key(id);
+    const session = this.sessions.get(id);
+    if (!session || session.managed.page.isClosed()) return { open: false, busy: false, url: '', title: '', width: 1280, height: 800, blockedRequests: 0 };
+    const frame = session.frame;
+    return {
+      open: true,
+      busy: session.busy,
+      url: session.managed.page.url() === 'about:blank' ? '' : session.managed.page.url(),
+      title: frame?.title ?? '',
+      width: frame?.width ?? session.managed.page.viewportSize()?.width ?? 1280,
+      height: frame?.height ?? session.managed.page.viewportSize()?.height ?? 800,
+      blockedRequests: session.managed.blocked(),
+    };
+  }
   private async exclusive<T>(id: string, operation: (session: Session) => Promise<T>, signal?: AbortSignal): Promise<T> {
     const session = await this.get(id);
     if(session.capture)await session.capture.catch(()=>undefined);

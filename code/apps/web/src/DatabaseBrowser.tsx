@@ -5,28 +5,37 @@ import { Icon } from './Icon';
 interface Frame { available: boolean; open: boolean; busy: boolean; url?: string; title?: string; image?: string; width?: number; height?: number; blockedRequests?: number;blockedUrls?:string[] }
 const button = 'rounded px-2 py-1 text-sm hover:bg-neutral-800 disabled:opacity-40';
 /** 显示真实远程浏览器画面；鼠标坐标按实际视口缩放，输入只发往当前任务。 */
-export function DatabaseBrowser({ taskId, onHide, width }: { taskId: string | null; onHide: () => void; width?: number }) {
+export function DatabaseBrowser({ taskId, onHide, width, visible = true, onOpened }: { taskId: string | null; onHide: () => void; width?: number; visible?: boolean; onOpened?: () => void }) {
   const [frame, setFrame] = useState<Frame | null>(null), [address, setAddress] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const surface = useRef<HTMLDivElement>(null), editing = useRef(false), active = useRef(taskId), current = useRef(frame);
   const chain = useRef(Promise.resolve()), pending = useRef(0), composing = useRef(false), [composition, setComposition] = useState('');
+  const openedBefore = useRef(false), openedHandler = useRef(onOpened);
   const imeValue=useRef('');
   const wheelBuffer=useRef(0),wheelTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
   const textBuffer = useRef(''), textTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   current.current = frame; active.current = taskId;
+  openedHandler.current = onOpened;
   const apply = useCallback((value: Frame) => { setFrame(old => !value.open || value.image ? value : { ...old, ...value }); if (!editing.current && value.url) setAddress(value.url); }, []);
   useEffect(() => {
-    setFrame(null); setAddress(''); setError(''); editing.current = false;
+    setFrame(null); setAddress(''); setError(''); editing.current = false; openedBefore.current = false;
     const controller = new AbortController(); let inflight = false;
     const poll = async () => {
       if (!taskId || inflight || document.hidden || pending.current) return;
       inflight = true;
-      try { const value = await jsonFetch<Frame>(`/api/tasks/${taskId}/browser`, { signal: controller.signal }); if (!controller.signal.aborted) { apply(value); setError(''); } }
+      try {
+        const value = await jsonFetch<Frame>(`/api/tasks/${taskId}/browser${visible ? '' : '/status'}`, { signal: controller.signal });
+        if (!controller.signal.aborted) {
+          apply(value); setError('');
+          if (value.open && !openedBefore.current) openedHandler.current?.();
+          openedBefore.current = value.open;
+        }
+      }
       catch (e) { if (!controller.signal.aborted) setError(e instanceof Error ? e.message : '浏览器连接失败'); }
       finally { inflight = false; }
     };
-    void poll(); const timer = setInterval(() => { void poll(); }, 1500);
+    void poll(); const timer = setInterval(() => { void poll(); }, visible ? 1500 : 2500);
     return () => { controller.abort(); clearInterval(timer); clearTimeout(textTimer.current);clearTimeout(wheelTimer.current); textBuffer.current = ''; };
-  }, [taskId, apply]);
+  }, [taskId, apply, visible]);
   const command = useCallback((value: Record<string, unknown>) => {
     const task = taskId; if (!task) return;
     pending.current++; setBusy(true);
@@ -38,7 +47,7 @@ export function DatabaseBrowser({ taskId, onHide, width }: { taskId: string | nu
   }, [taskId, apply]);
   const flush = useCallback(() => { clearTimeout(textTimer.current); if (textBuffer.current) { command({ kind: 'text', text: textBuffer.current }); textBuffer.current = ''; } }, [command]);
   useEffect(() => {
-    if (!frame?.open) return;
+    if (!visible || !frame?.open) return;
     const element = surface.current; if (!element) return;
     let timer: ReturnType<typeof setTimeout>;
     const observer = new ResizeObserver(([entry]) => { if (!entry) return; clearTimeout(timer); timer = setTimeout(() => {
@@ -46,7 +55,7 @@ export function DatabaseBrowser({ taskId, onHide, width }: { taskId: string | nu
       if (current.current?.width !== width || current.current?.height !== height) command({ kind: 'resize', width, height });
     }, 350); });
     observer.observe(element); return () => { observer.disconnect(); clearTimeout(timer); };
-  }, [frame?.open, command]);
+  }, [frame?.open, command, visible]);
   const disabled = !taskId || !frame?.available || busy || frame.busy;
   return <aside aria-label="共享浏览器" className="flex min-w-[320px] shrink-0 flex-col border-l border-neutral-800 bg-neutral-950" style={{ width: width ? `${width}px` : 'clamp(360px,42vw,760px)' }}>
     <div className="flex h-12 shrink-0 items-center justify-between border-b border-neutral-800 px-3"><strong className="truncate text-sm">{frame?.title || '浏览器'}</strong><div className="flex items-center gap-1"><span className="text-xs text-neutral-500">{busy || frame?.busy ? '正在操作…' : '与 AI 共享'}</span><button className={button} title="关闭当前网页会话" aria-label="关闭当前网页会话" disabled={!frame?.open || busy} onClick={() => { flush(); command({ kind: 'close' }); }}>×</button><button className={button} aria-label="隐藏浏览器" onClick={onHide}><Icon name="panelClose" size={17} /></button></div></div>

@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { jsonFetch } from './api';
+import { useVisiblePolling } from './use-visible-polling';
 interface Row {id:string;name:string;status:string;error?:string;indexed?:boolean;stale?:boolean;coverage?:string;warnings?:string[]}
 export function DatabaseParsing({taskId}:{taskId:string}) {
   const [rows,setRows]=useState<Row[]>([]),[error,setError]=useState('');
-  useEffect(()=>{
-    const c=new AbortController();let timer:ReturnType<typeof setTimeout>;
-    const refresh=async()=>{try {const r=await jsonFetch<{files:Row[]}>(`/api/tasks/${taskId}/parsing`,{signal:c.signal});if(!c.signal.aborted)setRows(r.files);}catch{/* 下次刷新时重试。 */}finally{if(!c.signal.aborted)timer=setTimeout(()=>{void refresh();},3000);}};
-    setRows([]);void refresh();return()=>{c.abort();clearTimeout(timer);};
-  },[taskId]);
+  useVisiblePolling(async signal=>{
+    try {const r=await jsonFetch<{files:Row[]}>(`/api/tasks/${taskId}/parsing`,{signal});if(!signal.aborted)setRows(r.files);}catch{/* 下次刷新时重试。 */}
+  },3000,taskId);
+  useEffect(()=>{setRows([]);},[taskId]);
   if(!rows.length)return null;
   const labels:Record<string,string>={pending:'等待解析',running:'解析中',completed:'解析完成',failed:'解析失败'};
   const retry=async(id:string)=>{try{setError('');await jsonFetch(`/api/tasks/${taskId}/parsing/${id}/retry`,{method:'POST'});setRows(old=>old.map(r=>r.id===id?{...r,status:'pending',error:undefined,stale:false,coverage:undefined,warnings:[]}:r));}catch(e){setError(e instanceof Error?e.message:'重试失败');}};

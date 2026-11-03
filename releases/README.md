@@ -1,9 +1,9 @@
 # 发布与交付
 
-> 当前产品阶段：`v0.3.0-rc.1`
+> 当前产品阶段：`v0.3.0-rc.2`
 > 最近更新：2026-10-28
 
-本目录保存版本说明、部署入口和历史发布材料。当前产品仍处于 RC 阶段，`v0.3.0-rc.1` 不等于无条件生产可用版本。
+本目录保存版本说明、部署入口和历史发布材料。当前产品仍处于 RC 阶段，`v0.3.0-rc.2` 不等于无条件生产可用版本。
 
 ## 当前入口
 
@@ -14,12 +14,13 @@
 | 一体化本地栈 | [install-local-stack.sh](deploy/install-local-stack.sh) |
 | 远程部署恢复记录 | [远程部署记录](../docs/03-项目/部署记录/远程部署-20261026.md) |
 | RC.1 历史发布说明 | [v0.3.0-rc.1](v0.3.0-rc.1/RELEASE-NOTES.md) |
+| RC.2 当前发布说明 | [v0.3.0-rc.2](v0.3.0-rc.2/RELEASE-NOTES.md) |
 | Android 1.3 内测包 | `https://115-191-1-188.sslip.io:80/downloads/WorkPivot-android-1.3.apk` |
 | Windows 便携客户端 | `https://115-191-1-188.sslip.io:80/downloads/WorkPivot-Windows-portable.zip` |
 | 备份与恢复 | [backup-recovery](../docs/03-项目/部署记录/备份与恢复-20261016.md) |
 | 全量变更日志 | [CHANGELOG](CHANGELOG.md) |
 
-`v0.3.0-rc.1/RELEASE-NOTES.md` 记录 RC 初始交付时点；后续增量已部署到私有环境但未重新打 tag 的能力，以 `当前状态.md` 和远程部署记录为准。
+`v0.3.0-rc.1/RELEASE-NOTES.md` 记录 RC 初始交付时点；`v0.3.0-rc.2` 汇总 schema v70 之后的交互恢复、右侧统一工作区与文件预览增量。
 
 ## 版本阶段
 

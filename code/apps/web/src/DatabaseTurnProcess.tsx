@@ -30,7 +30,11 @@ export function DatabaseTurnProcess({ events, cursor, live, onMore, onContent, o
   const inflight = useRef(false), mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const steps = useMemo(() => groupProcessSteps(events), [events]);
+  const steps = useMemo(() => groupProcessSteps(events).map(step => ({
+    ...step,
+    thinkingChars: step.events.filter(event => event.kind === 'thinking').reduce((sum, event) => sum + event.content.length, 0),
+    toolCount: step.events.filter(event => event.kind === 'tool_use').length,
+  })), [events]);
   const currentStepId = steps.at(-1)?.id ?? '';
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(() => new Set());
   const truncated = events.find(event => event.truncated);
@@ -82,8 +86,6 @@ export function DatabaseTurnProcess({ events, cursor, live, onMore, onContent, o
       <ol className="space-y-2">
         {steps.map((step, index) => {
           const expanded = expandedSteps.has(step.id);
-          const thinkingChars = step.events.filter(event => event.kind === 'thinking').reduce((sum, event) => sum + event.content.length, 0);
-          const toolCount = step.events.filter(event => event.kind === 'tool_use').length;
           const isCurrent = live && step.id === currentStepId;
           const bodyId = `${regionId}-step-${index}`;
           return <li key={step.id} className={'overflow-hidden rounded-lg border ' + (isCurrent ? 'border-emerald-900/70 bg-neutral-950/60' : 'border-neutral-800 bg-neutral-950/20')}>
@@ -91,12 +93,13 @@ export function DatabaseTurnProcess({ events, cursor, live, onMore, onContent, o
               <Icon name={expanded ? 'down' : 'right'} size={14}/>
               <span className="font-medium text-neutral-300">步骤 {index + 1}</span>
               <span className={isCurrent ? 'text-emerald-300' : 'text-neutral-500'}>{isCurrent ? '进行中' : '已完成'}</span>
-              <span className="ml-auto text-neutral-500">{toolCount ? `${toolCount} 个工具` : `${thinkingChars.toLocaleString('zh-CN')} 字`}</span>
+              <span className="ml-auto text-neutral-500">{step.toolCount ? `${step.toolCount} 个工具` : `${step.thinkingChars.toLocaleString('zh-CN')} 字`}</span>
             </button>
             <div hidden={!expanded} id={bodyId} className="border-t border-neutral-800/80 px-3 py-2">
               {step.events.map(event => {
                 const meta = event.kind.startsWith('tool_') ? processToolMeta(event) : null;
                 const parsed = event.kind === 'tool_result' ? codeResult(event.content) : null;
+                const retrieval = event.kind === 'tool_result' ? retrievalStatus(event.content) : null;
                 return <div key={event.id} className="mb-3 min-w-0 last:mb-0">
                   <div className="mb-1 flex items-center gap-2 text-[11px] text-neutral-500">
                     {event.kind === 'thinking'
@@ -108,7 +111,7 @@ export function DatabaseTurnProcess({ events, cursor, live, onMore, onContent, o
                     : parsed
                       ? <><pre className="whitespace-pre-wrap text-xs text-neutral-400 [overflow-wrap:anywhere]">{parsed.output || '（无输出）'}</pre>{parsed.artifacts.length > 0 && <ul className="mt-1 space-y-0.5 text-xs text-neutral-400">{parsed.artifacts.map((artifact, artifactIndex) => <li key={`${artifact.name ?? 'artifact'}-${artifactIndex}`}>产物：{artifact.name ?? `#${artifactIndex + 1}`}</li>)}</ul>}</>
                       : <pre className="whitespace-pre-wrap text-xs leading-5 text-neutral-400 [overflow-wrap:anywhere]">{processToolText(event)}</pre>}
-                  {event.kind === 'tool_result' && retrievalStatus(event.content) && <p className="my-1 text-xs text-neutral-400">{retrievalStatus(event.content)}</p>}
+                  {retrieval && <p className="my-1 text-xs text-neutral-400">{retrieval}</p>}
                 </div>;
               })}
             </div>

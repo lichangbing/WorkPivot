@@ -858,6 +858,7 @@ ${capped}
 
     // T3-03/F02：带核验闸门的执行——声称产出但文件缺失 → 打回重做（≤2 次）
     const runWithGate = async (attempt: number, baseMessages: ChatMessage[]): Promise<{ stopReason: string; steps: number }> => {
+      const initialMessageCount = baseMessages.length;
       const result = await runAgentLoop({
         client,
         tools: availableTools([...BUILTIN_TOOLS, runCodeTool({ container: commandMode === 'worker' || commandMode === 'docker', execute: executeShell }), ...webTools, ...skillTools, ...memoryTools, deliveryTool(task), planTool, ...mcpTools()], commandMode),
@@ -908,12 +909,19 @@ ${capped}
       const finalText = [...result.messages]
         .reverse()
         .find((m) => m.role === 'assistant' && typeof m.content === 'string' && m.content.length > 0)?.content;
+      // 早停追问可能让模型在第二次回复中不再重复文件名；核验必须覆盖本轮所有新增回复，
+      // 否则第一次谎报会被后续“默认回复”覆盖，直接绕过成果闸门。
+      const claimText = result.messages
+        .slice(initialMessageCount)
+        .filter((m) => m.role === 'assistant' && typeof m.content === 'string')
+        .map((m) => m.content as string)
+        .join('\n');
       if (typeof finalText === 'string' && finalText.length > 0) {
         await recordMessage(task.id, 'assistant_message', { content: finalText });
       }
 
-      if (result.stopReason === 'completed' && typeof finalText === 'string' && finalText.length > 0) {
-        const { missing, undelivered } = verifyClaimedFiles(finalText, task.directory, { delivered: deliveredThisTurn });
+      if (result.stopReason === 'completed' && claimText.length > 0) {
+        const { missing, undelivered } = verifyClaimedFiles(claimText, task.directory, { delivered: deliveredThisTurn });
         const problems = [
           ...missing.map((name) => `${name}（文件不存在或为空）`),
           ...undelivered.map((name) => `${name}（未登记交付，用户拿不到）`),

@@ -41,9 +41,18 @@ export class Automations {
   if(inputs.reduce((n,r)=>n+Number(r.size),0)>16*1024*1024)throw new RepositoryError(413,'输入文件合计超过16MB');return inputs;
  }
  async list(actor:string,ids?:readonly string[]){return transaction(this.db,async c=>{
-  const rows=(await c.query<AutomationPlan>(`SELECT ${planColumns} FROM workpivot.automations WHERE state<>'deleted' AND ($1::uuid[] IS NULL OR id=ANY($1::uuid[])) ORDER BY created_at DESC LIMIT 200`,[ids??null])).rows;
-  for(const p of rows)p.lastRun=(await c.query<AutomationRun>(`SELECT ${automationRunColumns} FROM workpivot.automation_runs WHERE plan_id=$1 ORDER BY created_at DESC LIMIT 1`,[p.id])).rows[0]??null;
-  return rows;
+  return (await c.query<AutomationPlan>(`SELECT ${planColumns},latest.run AS "lastRun"
+   FROM workpivot.automations a
+   LEFT JOIN LATERAL (
+    SELECT row_to_json(run) AS run
+    FROM (
+     SELECT ${automationRunColumns}
+     FROM workpivot.automation_runs
+     WHERE plan_id=a.id ORDER BY created_at DESC LIMIT 1
+    ) run
+   ) latest ON true
+   WHERE a.state<>'deleted' AND ($1::uuid[] IS NULL OR a.id=ANY($1::uuid[]))
+   ORDER BY a.created_at DESC LIMIT 200`,[ids??null])).rows;
  },actor);}
  async detail(actor:string,id:string){return transaction(this.db,async c=>{const p=await this.get(c,id);const cfg=p.draft??p.config;return {...p,preview:cfg?automationPreview(cfg):[],runs:(await c.query<AutomationRun>(`SELECT ${automationRunColumns} FROM workpivot.automation_runs WHERE plan_id=$1 ORDER BY created_at DESC LIMIT 100`,[id])).rows};},actor);}
  async source(c:PoolClient,taskId:string,run:{id:string;fence:string}){uuid(taskId);if(!(await c.query(`SELECT r.id FROM workpivot.task_runs r JOIN workpivot.tasks t ON t.id=r.task_id WHERE t.id=$1 AND t.deleted_at IS NULL AND r.id=$2 AND r.fence=$3 AND r.status='running' AND NOT r.context_revoked AND r.lease_until>now()`,[taskId,run.id,run.fence])).rowCount)throw new RepositoryError(409,'来源对话运行已失效');}

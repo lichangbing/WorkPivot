@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { jsonFetch } from './api';
+import { useVisiblePolling } from './use-visible-polling';
 
 interface Suggestion {
   analysisId?: string;
@@ -26,26 +27,18 @@ export function MemorySuggestions({ onChanged, showEmpty = false }: { onChanged?
   const [rows, setRows] = useState<Suggestion[]>([]), [error, setError] = useState('');
   const [editing, setEditing] = useState<string | null>(null), [draft, setDraft] = useState(''), [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      try {
-        const result = await jsonFetch<{ suggestions: Suggestion[] }>('/api/memory-suggestions', { signal: controller.signal });
-        if (!controller.signal.aborted) {
-          setRows(result.suggestions);
-          setLoaded(true);
-          setError('');
-        }
-      } catch (reason) {
-        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '记忆建议读取失败');
-      } finally {
-        if (!controller.signal.aborted) timer = setTimeout(() => { void poll(); }, 3000);
+  useVisiblePolling(async signal => {
+    try {
+      const result = await jsonFetch<{ suggestions: Suggestion[] }>('/api/memory-suggestions', { signal });
+      if (!signal.aborted) {
+        setRows(result.suggestions);
+        setLoaded(true);
+        setError('');
       }
-    };
-    void poll();
-    return () => { controller.abort(); clearTimeout(timer); };
-  }, []);
+    } catch (reason) {
+      if (!signal.aborted) setError(reason instanceof Error ? reason.message : '记忆建议读取失败');
+    }
+  }, 3000);
 
   const decide = async (suggestion: Suggestion, accept: boolean) => {
     setBusy(true);
