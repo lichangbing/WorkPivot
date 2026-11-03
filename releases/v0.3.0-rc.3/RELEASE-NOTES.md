@@ -41,6 +41,13 @@
 - 本次文档更新不改运行镜像、数据库 schema 或已验收功能；生产运行版本仍是 RC.3。
 - 文档提交 `d7d3b35` 已推送 GitHub；本地与生产均完成健康复核，schema 保持 v70。
 
+## 2026-11-03 PDF 预览补丁
+
+- 修复右侧工作区 PDF/Office 转 PDF 在 Chrome 中显示“This page has been blocked by Chrome”。
+- 根因是 Chrome 内置 PDF 阅读器不能在 sandbox iframe 内启动；PDF iframe 已移除 sandbox，HTML 预览继续保留独立 sandbox。
+- 工作区自动化改为生成真实 PDF 并验证 iframe 渲染，覆盖此前的假通过。
+- 本地和正式环境均已更新；schema v70 与业务代码语义不变，正式回退镜像为 `workpivot-server:pre-preview-fix-20261103`。
+
 ## 升级与回退
 
 本次无数据库迁移。升级需重建 API 服务端；浏览器仅在有前端变化时重建。旧镜像可继续读取 v70 数据库。运行中的授权、记忆和成果数据不删除。

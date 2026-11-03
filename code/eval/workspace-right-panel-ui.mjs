@@ -29,6 +29,10 @@ await new Promise(done => server.listen(0, '127.0.0.1', done));
 let browser;
 try {
   browser = await chromium.launch({ headless: true, executablePath: '/usr/bin/google-chrome' });
+  const pdfPage = await browser.newPage();
+  await pdfPage.setContent('<!doctype html><meta charset="utf-8"><h1>PDF 预览验收</h1><p>这段文字必须由 Chrome PDF 阅读器渲染。</p>');
+  const pdf = await pdfPage.pdf({ format: 'A4' });
+  await pdfPage.close();
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const errors = [];
   let statusRequests = 0, screenshotRequests = 0;
@@ -67,7 +71,7 @@ try {
     else if (pathname === '/api/tasks/task-right/files/document-pdf/versions') data = { versions: [artifact] };
     else if (pathname === '/api/tasks/task-right/files/document-md/versions') data = { versions: [upload] };
     else if (pathname === '/api/tasks/task-right/file-versions/version-pdf/preview') {
-      await route.fulfill({ status: 200, headers: { 'content-type': 'application/pdf' }, body: '%PDF-1.4\n%%EOF' });
+      await route.fulfill({ status: 200, headers: { 'content-type': 'application/pdf' }, body: pdf });
       return;
     } else if (pathname === '/api/tasks/task-right/file-versions/version-md/preview') {
       await route.fulfill({ status: 200, headers: { 'content-type': 'text/markdown; charset=utf-8' }, body: '# 已加载文件预览\n\n这是任务资料。' });
@@ -93,6 +97,11 @@ try {
     await panel.getByRole('tab', { name: '预览', exact: true }).waitFor();
     await panel.getByRole('tabpanel', { name: '预览' }).getByText('分析报告.pdf', { exact: true }).waitFor();
     await panel.locator('iframe[title="分析报告.pdf 预览"]').waitFor();
+    const pdfFrame = panel.locator('iframe[title="分析报告.pdf 预览"]');
+    assert.equal(await pdfFrame.getAttribute('sandbox'), null, 'Chrome PDF 阅读器不能被 sandbox 拦截');
+    await page.waitForTimeout(1000);
+    const pdfFrameText = await page.frameLocator('iframe[title="分析报告.pdf 预览"]').locator('body').innerText().catch(() => '');
+    assert.ok(!pdfFrameText.includes('This page has been blocked by Chrome'), 'PDF 预览必须通过 Chrome 阅读器真实渲染');
     assert.equal(await panel.getByRole('tab', { name: '预览', exact: true }).getAttribute('aria-selected'), 'true');
     assert.ok(statusRequests >= 1, '隐藏浏览器页签应通过轻量接口探测会话');
     assert.equal(screenshotRequests, 0, '隐藏浏览器页签不应拉取截图');

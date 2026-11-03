@@ -115,7 +115,9 @@ function PreviewSurface({ taskId, file }: { taskId: string | null; file: Artifac
   if (kind === 'loading') return <div className="workspace-preview-empty"><span className="workspace-preview-spinner" />{['docx','xlsx','pptx'].includes(extension(file?.name ?? '')) ? '正在转换为 PDF，首次打开可能需要一些时间…' : '正在加载预览…'}</div>;
   if (kind === 'error') return <div role="alert" className="workspace-preview-empty"><Icon name="warning" size={26} /><p>{error}</p><button className={control} onClick={() => setGeneration(value => value + 1)}>重试</button></div>;
   if (kind === 'image' && objectUrl) return <div className="workspace-preview-image"><img src={objectUrl} alt={file?.name ?? '图片预览'} /></div>;
-  if (kind === 'pdf' && objectUrl) return <iframe className="workspace-preview-pdf" src={objectUrl} title={`${file?.name ?? '文件'} 预览`} sandbox="" />;
+  // Chrome 内置 PDF 阅读器在任意 sandbox 属性下都会显示“This page has been blocked by Chrome”。
+  // PDF 内容来自已认证接口并按 blob 隔离，HTML 预览仍单独使用 sandbox。
+  if (kind === 'pdf' && objectUrl) return <iframe className="workspace-preview-pdf" src={objectUrl} title={`${file?.name ?? '文件'} 预览`} referrerPolicy="no-referrer" />;
   if (kind === 'html') return <iframe className="workspace-preview-html" title={`${file?.name ?? 'HTML'} 预览`} sandbox="" srcDoc={sanitizedHtml(text)} />;
   if (kind === 'csv') return <CsvPreview text={text} />;
   return <article className="message-body workspace-preview-text">{extension(file?.name ?? '') === 'md' ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown> : <pre>{text}</pre>}</article>;
