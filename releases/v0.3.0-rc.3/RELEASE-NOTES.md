@@ -39,6 +39,7 @@
 - 产品总纲升级到 v1.1，项目介绍、PRD、系统总览、数据架构和当前状态统一到 RC.3 / schema v70。
 - 新增[HTTP 与 SSE 接口总览](../../docs/02-设计/架构/接口/接口总览.md)，说明 Bearer 鉴权、`requestId` 幂等、`revision` 乐观锁、`resourceScope`、SSE 事件和工作区/任务恢复顺序。
 - 本次文档更新不改运行镜像、数据库 schema 或已验收功能；生产运行版本仍是 RC.3。
+- 文档提交 `d7d3b35` 已推送 GitHub；本地与生产均完成健康复核，schema 保持 v70。
 
 ## 升级与回退
 
