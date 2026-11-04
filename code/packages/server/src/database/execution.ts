@@ -230,7 +230,9 @@ export class DatabaseExecution {
             const candidates = await this.runs.unclassifiedSteering(actor, taskId);
             const related: SteeringMessage[] = [];
             for (const candidate of candidates) {
-              const classification = await classifySteering(options.client, currentMessages, candidate.content, controller.signal);
+              const classification = candidate.relation === 'related'
+                ? { relation: 'related' as const, reason: candidate.classificationReason ?? '用户确认的资源范围变更' }
+                : await classifySteering(options.client, currentMessages, candidate.content, controller.signal);
               if (classification.relation === 'related') {
                 const applied = await this.runs.applyClassifiedSteering(actor, run, candidate.id, classification.reason);
                 if (applied) related.push(applied);

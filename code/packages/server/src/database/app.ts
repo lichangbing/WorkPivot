@@ -81,7 +81,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   const num = (value: unknown): number => { if (typeof value !== 'number') throw new RepositoryError(400, '缺少版本参数'); return value; };
   app.get('/api/health', async (_req, res) => {
     await appPool.query('SELECT 1'); await authPool.query('SELECT 1');
-    res.json({ ok: true, name: 'workpivot', version: '0.3.0-rc.4', releaseStage: 'rc', releaseScope: 'single-user', apiProtocol: API_PROTOCOL, storage: 'postgresql', productionReady: false, chatEnabled: !!execution, filesEnabled: !!files, providersEnabled: !!providers, mcpEnabled: !!mcp, interactionCapabilities: interactionCapabilities() });
+    res.json({ ok: true, name: 'workpivot', version: '0.3.0-rc.5', releaseStage: 'rc', releaseScope: 'single-user', apiProtocol: API_PROTOCOL, storage: 'postgresql', productionReady: false, chatEnabled: !!execution, filesEnabled: !!files, providersEnabled: !!providers, mcpEnabled: !!mcp, interactionCapabilities: interactionCapabilities() });
   });
   app.get('/api/auth/state', async (req, res) => {
     const user = await accounts.resolve(token(req));
@@ -509,7 +509,18 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
       const user=actor(res).id,task=str(req.params.id),scope=await execution.runs.resources(user,task);
       const options=files?[...await files.candidates(user,task),...await files.list(user,task,'upload',scope.versionIds),...await files.list(user,task,'artifact',scope.versionIds)]:[];
       const schedules=await transaction(appPool,async c=>(await c.query("SELECT id,COALESCE(draft->>'name',config->>'name','未命名自动化') AS name FROM workpivot.automations WHERE state<>'deleted' ORDER BY created_at DESC LIMIT 100")).rows,user);
-      res.json({scope,schedules,files:[...new Map(options.map(f=>[f.id,f])).values()]});
+      const activeRun=await execution.runs.activeResources(user,task);
+      res.json({scope,schedules,activeRun,files:[...new Map(options.map(f=>[f.id,f])).values()]});
+    });
+    app.post('/api/tasks/:id/scope-changes',async(req,res)=>{
+      const b=body(req),addVersions=b.addVersionIds,addMemory=b.addMemoryScopes;
+      if(addVersions!==undefined&&(!Array.isArray(addVersions)||addVersions.some(value=>typeof value!=='string')))throw new RepositoryError(400,'新增文件列表无效');
+      if(addMemory!==undefined&&(!Array.isArray(addMemory)||addMemory.some(value=>typeof value!=='string')))throw new RepositoryError(400,'新增记忆层无效');
+      res.json(await execution.runs.expandResources(actor(res).id,str(req.params['id']),{
+        requestId:str(b.requestId),baseRunId:str(b.baseRunId),baseEpoch:str(b.baseEpoch),
+        addVersionIds:addVersions as string[]|undefined,
+        addMemoryScopes:addMemory as string[]|undefined,
+      }));
     });
 
     if(execution.compaction){

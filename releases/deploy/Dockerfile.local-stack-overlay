@@ -1,0 +1,27 @@
+# 仅在依赖锁文件未变化时使用：沿用已验证服务端镜像的 Alpine 依赖层，只覆盖源码和 Web 产物。
+# 适合包镜像不可达但本机已完成 typecheck、lint、许可检查和 Web 构建的本地发布。
+ARG BASE_IMAGE=workpivot-server:local-stack
+FROM ${BASE_IMAGE}
+
+ARG BASE_IMAGE=workpivot-server:local-stack
+LABEL org.opencontainers.image.base.name="${BASE_IMAGE}" \
+      org.opencontainers.image.description="WorkPivot source overlay for an unchanged dependency set"
+
+USER root
+WORKDIR /app
+RUN rm -rf /app/scripts \
+    && find /app/packages -type d -name node_modules -prune -o ! -type d -exec rm -f {} + \
+    && find /app/apps/web -mindepth 1 -maxdepth 1 ! -name node_modules -exec rm -rf {} +
+
+COPY --chown=node:node packages/ /app/packages/
+COPY --chown=node:node scripts/ /app/scripts/
+COPY --chown=node:node apps/web/ /app/apps/web/
+COPY --chown=node:node package.json pnpm-lock.yaml pnpm-workspace.yaml /app/
+
+RUN pnpm --filter @workpivot/web build
+RUN node scripts/check-licenses.mjs --strict
+RUN mkdir -p /data/files && chown node:node /data/files
+
+USER node
+EXPOSE 39800
+CMD ["./node_modules/.bin/tsx", "scripts/database-server.mts"]

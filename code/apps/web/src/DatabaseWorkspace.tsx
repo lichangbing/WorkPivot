@@ -1,4 +1,4 @@
-import {AutomaticResourceScope,type ResourceSelection} from './DatabaseResourceScope';
+import {AutomaticResourceScope,RunningResourceScope,type ResourceSelection} from './DatabaseResourceScope';
 import { WorkspaceRightPanel } from './WorkspaceRightPanel';
 import { DatabaseFloating } from './DatabaseFloating';
 import type {ReactNode} from 'react';
@@ -353,7 +353,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     const running = ['running', 'waiting', 'queued'].includes(currentTask?.status ?? '');
     if (!running && quotaBlocked) { setError('演示额度已用完，每日北京时间 12:00 刷新'); return; }
     if (!chatEnabled || !active || !scope || (!text && !attachments.length) || (!options?.answerOnly && attachmentBlocked) || sending) return;
-    if (running && !text) return;
+    if (running && !text && !attachments.length) return;
     const taskId = active, epoch = generation.current, content = text || '请查看附件。', controller = new AbortController();
     const fingerprint = JSON.stringify([taskId, content, attachments, scope]);
     if (pendingSend.current?.fingerprint !== fingerprint) pendingSend.current = { fingerprint, id: crypto.randomUUID() };
@@ -361,7 +361,20 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     streams.current.add(controller); setSending(true); setError(''); follow.current = true;
     try {
       if (running && !options?.answerOnly) {
-        if (attachments.length) throw new Error('任务运行中暂不支持新增附件，请作为新任务发送或在当前步骤结束后再补充。');
+        if (attachments.length) {
+          const snapshot = await jsonFetch<{activeRun: {runId: string; scope: {epoch: string}} | null}>(`/api/tasks/${taskId}/resource-scope`, {signal: controller.signal});
+          if (!snapshot.activeRun) throw new Error('当前运行已结束，请刷新后重新发送');
+          await jsonFetch(`/api/tasks/${taskId}/scope-changes`, {
+            method: 'POST', signal: controller.signal,
+            body: JSON.stringify({
+              requestId: crypto.randomUUID(), baseRunId: snapshot.activeRun.runId,
+              baseEpoch: snapshot.activeRun.scope.epoch, addVersionIds: attachments,
+              addMemoryScopes: [],
+            }),
+          });
+          if (epoch === generation.current) { setAttachmentIds([]); setAttachmentBlocked(false); setAttachmentEpoch(value => value + 1); }
+        }
+        if (!text) { pendingSend.current = null; return; }
         const steeringResponse = await fetch(`/api/tasks/${taskId}/steering`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken() ?? ''}` },
@@ -511,9 +524,11 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
       {task?.status === 'interrupted' && <div className="mx-4 mb-2 flex flex-wrap items-center gap-2 text-xs text-amber-400">上一轮执行被中断，历史已补齐为合法状态，可继续完成。<button className={button} onClick={() => { void resume(); }}>继续</button></div>}
       {quotaRemaining !== null && <p className={`mx-4 mb-1 text-xs ${quotaBlocked ? 'text-amber-400' : 'text-neutral-500'}`}>{quotaBlocked ? `演示额度已用完（${auth.quota?.limit ?? 10} 次提问），每日北京时间 12:00 刷新` : `剩余 ${quotaRemaining} 次提问 · 每日北京时间 12:00 刷新`}</p>}
       <form className="workspace-composer mx-4 mb-4 rounded-2xl border border-neutral-700 bg-neutral-900/50 p-3" onDragOver={e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); }} onDrop={e => { if (e.dataTransfer.files.length) { e.preventDefault(); attachmentControl.current?.addFiles(Array.from(e.dataTransfer.files)); } }} onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); attachmentControl.current?.addFiles(Array.from(e.clipboardData.files)); } }} onSubmit={e => { e.preventDefault(); void send(); }}>
-        {filesEnabled && active && <DatabaseAttachments ref={attachmentControl} key={`${active}:${attachmentEpoch}`} taskId={active} disabled={busy || !ready} onChange={attachmentChange} />}
+        {filesEnabled && active && <DatabaseAttachments ref={attachmentControl} key={`${active}:${attachmentEpoch}`} taskId={active} disabled={sending || !ready} onChange={attachmentChange} />}
         <textarea aria-label="消息" value={input} disabled={!chatEnabled || !active || !resourceSelection || sending || !ready || (!taskBusy && quotaBlocked)} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} placeholder={chatEnabled ? active ? taskBusy ? '任务正在执行：输入补充或纠正，将在当前步骤完成后应用' : '输入消息，Enter 发送，Shift + Enter 换行' : '请先新建/选择任务' : '后台尚未启用对话执行'} className="message-input max-h-48 min-h-[88px] w-full resize-none bg-transparent px-1 py-1 text-sm outline-none" />
-        {active&&<AutomaticResourceScope taskId={active} refresh={attachmentEpoch} onChange={resourceChange}/> }<div className="composer-footer"><div className="flex shrink-0 items-center gap-2">{filesEnabled && <button type="button" aria-label="添加文件" title="添加文件（最多10个，单个10MB）；也可拖拽或粘贴" disabled={!active || busy || !ready || attachmentBlocked || attachmentIds.length >= 10} className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40" onClick={() => attachmentControl.current?.open()}><Icon name="plus" size={22} /></button>}<DatabaseExecutionMode /></div><div className="composer-actions"><DatabaseModelStatus />{taskBusy && <button type="button" className={button} onClick={() => { void jsonFetch(`/api/tasks/${active}/stop`, { method: 'POST' }).catch(e => setError(errorText(e))); }}>停止</button>}<button title={taskBusy ? '发送补充要求' : '发送'} aria-label={taskBusy ? '发送补充要求' : '发送'} className="composer-send flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-950 hover:opacity-80 disabled:opacity-40" disabled={!chatEnabled || !active || !resourceSelection || sending || !ready || attachmentBlocked || (!taskBusy && quotaBlocked) || (taskBusy ? !input.trim() : (!input.trim() && !attachmentIds.length))}><Icon name="up" size={18} /></button></div></div>
+        {active&&!taskBusy&&<AutomaticResourceScope taskId={active} refresh={attachmentEpoch} onChange={resourceChange}/>}
+        {active&&taskBusy&&<RunningResourceScope taskId={active} attachmentIds={attachmentIds} onScope={resourceChange} onApplied={()=>setAttachmentEpoch(value=>value+1)} onError={reason=>setError(errorText(reason))}/>}
+        <div className="composer-footer"><div className="flex shrink-0 items-center gap-2">{filesEnabled && <button type="button" aria-label="添加文件" title="添加文件（最多10个，单个10MB）；也可拖拽或粘贴" disabled={!active || sending || !ready || attachmentBlocked || attachmentIds.length >= 10} className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40" onClick={() => attachmentControl.current?.open()}><Icon name="plus" size={22} /></button>}<DatabaseExecutionMode /></div><div className="composer-actions"><DatabaseModelStatus />{taskBusy && <button type="button" className={button} onClick={() => { void jsonFetch(`/api/tasks/${active}/stop`, { method: 'POST' }).catch(e => setError(errorText(e))); }}>停止</button>}<button title={taskBusy ? '发送补充要求' : '发送'} aria-label={taskBusy ? '发送补充要求' : '发送'} className="composer-send flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-950 hover:opacity-80 disabled:opacity-40" disabled={!chatEnabled || !active || !resourceSelection || sending || !ready || attachmentBlocked || (!taskBusy && quotaBlocked) || (taskBusy ? !input.trim() && !attachmentIds.length : (!input.trim() && !attachmentIds.length))}><Icon name="up" size={18} /></button></div></div>
       </form>
     </main>
     {rightOpen && !trashPage && <>

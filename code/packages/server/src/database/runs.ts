@@ -1,7 +1,7 @@
 import {permissionSummarySql,clearIdleContext} from './context-retention.js';
 import {memoryEnabled} from './memory-controls.js';
 import {publicToolEvent} from './tool-events.js';
-import {selection,requireVersion,fileTaskScope,type RunResourceScope} from './resource-scope.js';
+import {selection,requireVersion,fileTaskScope,syncExpandedScope,type RunResourceScope,type RuntimeScopeExpansionInput} from './resource-scope.js';
 import {authorizationDigest,currentInvocation} from './tool-authorization.js';
 import {classifyInteractionRisk, canAutoApprove} from './interaction-policy.js';
 import { compactedHistory } from './compaction.js';
@@ -13,6 +13,16 @@ import { interactionCapabilities, type InteractionEnvelope, type SteeringMessage
 import { RepositoryError, transaction, uuid } from './connection.js';
 
 export interface RunHandle { id: string; taskId: string; turnId: string; fence: string; duplicate: boolean }
+export interface ScopeChangeView {
+  id: string;
+  taskId: string;
+  runId: string;
+  requestId: string;
+  baseEpoch: string;
+  addedVersionIds: string[];
+  addedMemoryScopes: string[];
+  createdAt: string;
+}
 interface SteeringRow {
   id: string;
   task_id: string;
@@ -44,6 +54,27 @@ function steeringMessage(row: SteeringRow): SteeringMessage {
     ...(row.cancelled_at ? { cancelledAt: row.cancelled_at.toISOString() } : {}),
     ...(row.event_id ? { eventId: row.event_id } : {}),
   };
+}
+interface ScopeChangeRow {
+  id: string; task_id: string; run_id: string; request_id: string; base_epoch: string;
+  added_version_ids: string[]; added_memory_scopes: string[];
+  created_at: Date; previous_scope: RunResourceScope; next_scope: RunResourceScope;
+}
+function scopeChangeMessage(row: ScopeChangeRow): ScopeChangeView {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    runId: row.run_id,
+    requestId: row.request_id,
+    baseEpoch: row.base_epoch,
+    addedVersionIds: [...row.added_version_ids].sort(),
+    addedMemoryScopes: [...row.added_memory_scopes].sort(),
+    createdAt: row.created_at.toISOString(),
+  };
+}
+function sameValues(left: readonly string[], right: readonly string[]): boolean {
+  const normalize = (values: readonly string[]) => [...new Set(values.map(value => value.toLowerCase()))].sort();
+  return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right));
 }
 const leaseSeconds = 30;
 const permissionTtlMinutes = (() => {
@@ -122,6 +153,93 @@ export class RunRepository {
       return {...value,initial:structuredClone(value),version:1,epoch:same?old!.epoch:randomUUID(),baseRunId:previous?.id??null};
     },actor);
   }
+
+  async activeResources(actor:string,taskId:string):Promise<{runId:string;turnId:string;scope:RunResourceScope}|null> {
+    uuid(taskId);
+    return transaction(this.db,async c=>{
+      await lock(c,taskId);
+      const row=(await c.query(`SELECT id,turn_id AS "turnId",resource_scope
+        FROM workpivot.task_runs WHERE task_id=$1 AND status='running' AND lease_until>now()
+        ORDER BY created_at DESC,id DESC LIMIT 1`,[taskId])).rows[0];
+      if(!row||!row.resource_scope)return null;
+      return {runId:String(row.id),turnId:String(row.turnId),scope:row.resource_scope as RunResourceScope};
+    },actor);
+  }
+
+  /** 在当前运行的安全检查点前持久化一个“只增不减”的范围变更。 */
+  async expandResources(actor:string,taskId:string,input:RuntimeScopeExpansionInput):Promise<{change:ScopeChangeView;scope:RunResourceScope}> {
+    if(!interactionCapabilities().runtimeScopeExpansion)throw new RepositoryError(503,'运行中资源范围扩展尚未启用','RUNTIME_SCOPE_DISABLED');
+    uuid(taskId);uuid(input.requestId);uuid(input.baseRunId);uuid(input.baseEpoch);
+    const requestedVersions=selection({versionIds:input.addVersionIds??[],memoryScopes:[],expert:false}).versionIds;
+    const requestedMemory=[...new Set(input.addMemoryScopes??[])].sort() as ('user'|'project'|'task')[];
+    if(requestedMemory.some(scope=>!['user','project','task'].includes(scope)))throw new RepositoryError(400,'记忆层级无效');
+    if(requestedVersions.length>100)throw new RepositoryError(413,'运行中新增文件范围超过100个');
+    return transaction(this.db,async c=>{
+      const task=await lock(c,taskId);
+      const duplicate=(await c.query<ScopeChangeRow>('SELECT * FROM workpivot.run_scope_changes WHERE owner_user_id=$1 AND task_id=$2 AND request_id=$3',[actor,taskId,input.requestId])).rows[0];
+      if(duplicate){
+        // 同请求可以重复选择原范围中已有的层级；幂等比较的是本次实际可增加的范围。
+        const requestedAddedVersions=requestedVersions.filter(id=>!duplicate.previous_scope.versionIds.includes(id));
+        const requestedAddedMemory=requestedMemory.filter(scope=>!duplicate.previous_scope.memoryScopes.includes(scope));
+        if(String(duplicate.base_epoch).toLowerCase()!==input.baseEpoch.toLowerCase()||
+          String(duplicate.run_id).toLowerCase()!==input.baseRunId.toLowerCase()||
+          !sameValues(duplicate.added_version_ids,requestedAddedVersions)||
+          !sameValues(duplicate.added_memory_scopes,requestedAddedMemory))throw new RepositoryError(409,'重复请求的运行中范围变更不同');
+        return {change:scopeChangeMessage(duplicate),scope:duplicate.next_scope};
+      }
+      if(!['running','waiting'].includes(task.status))throw new RepositoryError(409,'任务当前不在运行，请使用普通消息调整范围');
+      const run=(await c.query(`SELECT id,turn_id AS "turnId",resource_scope
+        FROM workpivot.task_runs WHERE id=$1 AND task_id=$2 AND status='running' AND lease_until>now()
+        FOR UPDATE`,[input.baseRunId,taskId])).rows[0];
+      if(!run?.resource_scope)throw new RepositoryError(409,'当前运行已结束，请刷新后重新发送');
+      const previous=run.resource_scope as RunResourceScope;
+      if(previous.epoch!==input.baseEpoch)throw new RepositoryError(409,'运行资源范围已被其他页面修改，请刷新后重试');
+      const nextAddedVersions=requestedVersions.filter(id=>!previous.versionIds.includes(id));
+      const nextAddedMemory=requestedMemory.filter(scope=>!previous.memoryScopes.includes(scope)) as ('user'|'project'|'task')[];
+      if(!nextAddedVersions.length&&!nextAddedMemory.length)throw new RepositoryError(400,'没有需要加入当前运行的新资料');
+      const valid=nextAddedVersions.length
+        ? (await c.query(`SELECT v.id,v.name FROM workpivot.document_versions v JOIN workpivot.documents d ON d.id=v.document_id WHERE ${fileTaskScope('$1')} AND v.id=ANY($2::uuid[])`,[taskId,nextAddedVersions])).rows
+        : [];
+      if(valid.length!==nextAddedVersions.length)throw new RepositoryError(404,'新增文件已删除或不属于当前任务和项目');
+      const current=selection(previous);
+      const next:RunResourceScope={
+        ...current,
+        versionIds:[...new Set([...previous.versionIds,...nextAddedVersions])].sort(),
+        memoryScopes:[...new Set([...previous.memoryScopes,...nextAddedMemory])].sort() as RunResourceScope['memoryScopes'],
+        expert:previous.expert,
+        version:1,
+        epoch:randomUUID(),
+        baseRunId:previous.baseRunId??null,
+        initial:previous.initial??structuredClone(current),
+      };
+      await c.query('UPDATE workpivot.task_runs SET resource_scope=$2 WHERE id=$1',[run.id,JSON.stringify(next)]);
+      await c.query(`UPDATE workpivot.run_permissions SET state='cancelled',resolved_at=now(),request=${permissionSummarySql} WHERE run_id=$1 AND state IN ('pending','allowed')`,[run.id]);
+      await c.query("UPDATE workpivot.interactions SET state='cancelled',resolved_at=now(),updated_at=now() WHERE run_id=$1 AND state='pending'",[run.id]);
+      await c.query("UPDATE workpivot.task_plans SET status='superseded',updated_at=now() WHERE task_id=$1 AND status IN ('draft','approved')",[taskId]);
+      const id=randomUUID();
+      const inserted=(await c.query<ScopeChangeRow>(`INSERT INTO workpivot.run_scope_changes(
+        id,owner_user_id,task_id,run_id,request_id,base_epoch,added_version_ids,added_memory_scopes,previous_scope,next_scope
+      ) VALUES($1,$2,$3,$4,$5,$6,$7::uuid[],$8::text[],$9,$10) RETURNING *`,[
+        id,actor,taskId,run.id,input.requestId,input.baseEpoch,nextAddedVersions,nextAddedMemory,
+        JSON.stringify(previous),JSON.stringify(next),
+      ])).rows[0]!;
+      const memoryLabels={user:'个人记忆',project:'项目记忆',task:'任务记忆'} as const;
+      const description=[
+        nextAddedVersions.length?`新增文件版本：${valid.map(row=>String(row.name)).join('、')}`:'',
+        nextAddedMemory.length?`新增记忆层：${nextAddedMemory.map(scope=>memoryLabels[scope]).join('、')}`:'',
+      ].filter(Boolean).join('；');
+      await c.query(`INSERT INTO workpivot.run_steering_messages(
+        id,owner_user_id,task_id,run_id,request_id,content,mode,status,relation,classification_reason
+      ) VALUES($1,$2,$3,$4,$5,$6,'safe','pending','related',$7)`,[
+        randomUUID(),actor,taskId,run.id,randomUUID(),
+        `用户已确认将新资料加入当前运行：${description}。请在下一个安全步骤重新读取相关资料，并核对现有计划和已有结论是否仍然成立；资料改变任务范围时应重新规划，不得忽略新增内容。`,
+        '用户明确确认的运行中资源范围增量扩展',
+      ]);
+      await event(c,actor,{id:String(run.id),taskId,turnId:String(run.turnId),fence:'',duplicate:false},'meta',JSON.stringify({type:'scope_changed',change:scopeChangeMessage(inserted),scope:next}));
+      return {change:scopeChangeMessage(inserted),scope:next};
+    },actor);
+  }
+
   /** 与发布共用事务，复核已消费的许可；其他工具或迟到异步工作不能借用许可。 */
   async checkToolPermission(c:PoolClient,run:RunHandle,expected:string[],args?:Record<string,unknown>) {
     await this.active(c,run);
@@ -150,13 +268,27 @@ export class RunRepository {
   async checkResources(actor:string,run:RunHandle,scope:RunResourceScope,args:Record<string,unknown>={}) {
     await transaction(this.db,c=>this.checkResourcesInTransaction(c,run,scope,args),actor);
   }
+  private async hasScopeChange(c:PoolClient,run:RunHandle,target:RunResourceScope,saved:unknown):Promise<boolean> {
+    if(!saved||typeof saved!=='object'||Array.isArray(saved)||typeof (saved as Record<string,unknown>)['epoch']!=='string')return false;
+    const epoch=(saved as Record<string,unknown>)['epoch'];
+    const rows=(await c.query<{previous_scope:RunResourceScope;next_scope:RunResourceScope}>(
+      "SELECT previous_scope,next_scope FROM workpivot.run_scope_changes WHERE run_id=$1 AND next_scope->>'epoch'=$2",
+      [run.id,epoch],
+    )).rows;
+    // 只接受“当前闭包恰为该变更前快照”的受控转换；旧闭包不能跳过多个代次直接借新记录升级。
+    return rows.some(row=>authorizationDigest(row.previous_scope)===authorizationDigest(target)&&authorizationDigest(row.next_scope)===authorizationDigest(saved));
+  }
   /** 发布事务已持有任务锁，在同一事务复核范围，避免入口检查与落库之间失效。 */
   async checkResourcesInTransaction(c:PoolClient,run:RunHandle,scope:RunResourceScope,args:Record<string,unknown>={}) {
-    if(typeof args.versionId==='string')requireVersion(scope.versionIds,args.versionId);
-    if(args.inputs!==undefined){if(!Array.isArray(args.inputs))throw new RepositoryError(400,'输入列表无效');for(const id of args.inputs)requireVersion(scope.versionIds,id);}
     await this.active(c,run);
     const saved=(await c.query('SELECT resource_scope FROM workpivot.task_runs WHERE id=$1',[run.id])).rows[0]?.resource_scope;
-    if(authorizationDigest(saved)!==authorizationDigest(scope))throw new RepositoryError(409,'运行读取范围已撤销或变化');
+    if(authorizationDigest(saved)!==authorizationDigest(scope)){
+      if(!await this.hasScopeChange(c,run,scope,saved))throw new RepositoryError(409,'运行读取范围已撤销或变化');
+      syncExpandedScope(scope,saved);
+    }
+    // 先同步数据库里已审计的新增范围，再校验本次工具参数；否则新文件第一次读取会被旧闭包拒绝。
+    if(typeof args.versionId==='string')requireVersion(scope.versionIds,args.versionId);
+    if(args.inputs!==undefined){if(!Array.isArray(args.inputs))throw new RepositoryError(400,'输入列表无效');for(const id of args.inputs)requireVersion(scope.versionIds,id);}
     const remaining=await c.query(`SELECT v.id FROM workpivot.document_versions v JOIN workpivot.documents d ON d.id=v.document_id WHERE ${fileTaskScope('$1')} AND v.id=ANY($2::uuid[])`,[run.taskId,scope.versionIds]);
     if(remaining.rowCount!==scope.versionIds.length)throw new RepositoryError(409,'授权文件已删除，请重新发送');
     const plans=await c.query("SELECT id FROM workpivot.automations WHERE id=ANY($1::uuid[]) AND state<>'deleted'",[scope.scheduleIds??[]]);
@@ -193,7 +325,10 @@ export class RunRepository {
     await transaction(this.db,async c=>{
       await this.active(c,run);
       const saved=(await c.query('SELECT resource_scope FROM workpivot.task_runs WHERE id=$1',[run.id])).rows[0]?.resource_scope;
-      if(authorizationDigest(saved)!==authorizationDigest(scope))throw new RepositoryError(409,'运行读取范围已撤销或变化');
+      if(authorizationDigest(saved)!==authorizationDigest(scope)){
+        if(!await this.hasScopeChange(c,run,scope,saved))throw new RepositoryError(409,'运行读取范围已撤销或变化');
+        syncExpandedScope(scope,saved);
+      }
       const valid=await c.query("SELECT v.id FROM workpivot.document_versions v JOIN workpivot.documents d ON d.id=v.document_id WHERE d.task_id=$1 AND d.purpose='artifact' AND v.id=ANY($2::uuid[])",[run.taskId,ids]);
       if(valid.rowCount!==new Set(ids).size)throw new RepositoryError(409,'新成果不属于当前任务');
       await c.query('UPDATE workpivot.task_runs SET resource_scope=$2 WHERE id=$1',[run.id,JSON.stringify({...scope,versionIds:next})]);

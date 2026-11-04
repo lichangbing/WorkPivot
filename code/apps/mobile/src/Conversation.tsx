@@ -8,7 +8,7 @@ import { ApiError, MobileClient, type Task } from './client';
 import { Attachments, FileLabel } from './Attachments';
 import { ComposerSettings } from './ComposerSettings';
 import { MemoryReview, SummaryReview } from './MemoryReview';
-import { ResourceScope, type ResourceSelection } from './ResourceScope';
+import { ResourceScope, RuntimeResourceScope, type ResourceSelection } from './ResourceScope';
 import { ProcessTimeline } from './ProcessTimeline';
 import { InteractionDock } from './InteractionDock';
 import { RequestDeliveryStatus } from '../../web/src/RequestDeliveryStatus';
@@ -223,8 +223,10 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
     </section>}
     {error && <p className="error" role="alert">{error}</p>}
     <form className="composer" onSubmit={event => { event.preventDefault(); void send(); }}>
-      <ResourceScope client={client} taskId={task.id} refresh={attachmentKey} disabled={busy || running} onChange={setResourceScope} onError={onError} />
-      <Attachments key={attachmentKey} client={client} taskId={task.id} disabled={busy || running} onChange={attached} onError={onError} />
+      {running
+        ? <RuntimeResourceScope client={client} taskId={task.id} attachmentIds={attachments} onScope={setResourceScope} onApplied={()=>{setAttachmentKey(value=>value+1);setAttachments([]);}} onError={onError}/>
+        : <ResourceScope client={client} taskId={task.id} refresh={attachmentKey} disabled={busy} onChange={setResourceScope} onError={onError} />}
+      <Attachments key={attachmentKey} client={client} taskId={task.id} disabled={busy} onChange={attached} onError={onError} />
       <textarea aria-label="消息" placeholder={running ? '输入补充或纠正，将在当前步骤完成后应用…' : '发送消息…'} rows={2} value={message} onChange={e => setMessage(e.target.value)} disabled={busy} />
       <footer><ComposerSettings client={client} disabled={busy || running} onError={onError} />{running && <button type="button" disabled={busy} onClick={() => void action(`/api/tasks/${task.id}/stop`)}>停止</button>}<button className="send" disabled={busy || uploadBlocked || !resourceScope || !ready || !connected || !message.trim()} onClick={() => void send()} aria-label={running ? '发送补充要求' : '发送消息'}><span className="send-face" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 19V5m0 0-6 6m6-6 6 6" /></svg></span></button></footer>
     </form>

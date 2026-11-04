@@ -39,6 +39,7 @@ const suites: Array<[string, string]> = [
   ['DELIVERY', 'eval/delivery-state.mts'],
   ['DELIVERY-RECOVERY', 'eval/delivery-recovery.mts'],
   ['DELIVERY-UI', 'eval/delivery-ui.tsx'],
+  ['RUNTIME-SCOPE-UI', 'eval/runtime-scope-ui.mjs'],
   ['OPT', 'eval/optimizations-p0.mts'],
   ['OPT2', 'eval/optimizations-p1.mts'],
   ['OPT3', 'eval/optimizations-p2.mts'],

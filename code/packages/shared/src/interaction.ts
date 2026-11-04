@@ -109,6 +109,7 @@ export interface InteractionCapabilities {
   artifactReview: boolean;
   deliveryState: boolean;
   noFeedbackRecovery: boolean;
+  runtimeScopeExpansion: boolean;
 }
 
 export function interactionCapabilities(env: NodeJS.ProcessEnv = process.env): InteractionCapabilities {
@@ -120,5 +121,6 @@ export function interactionCapabilities(env: NodeJS.ProcessEnv = process.env): I
     artifactReview: enabled('WORKPIVOT_INTERACTION_ARTIFACT_REVIEW'),
     deliveryState: enabled('WORKPIVOT_INTERACTION_DELIVERY_STATE_V1'),
     noFeedbackRecovery: enabled('WORKPIVOT_INTERACTION_NO_FEEDBACK_RECOVERY'),
+    runtimeScopeExpansion: enabled('WORKPIVOT_RUNTIME_SCOPE_EXPANSION'),
   };
 }

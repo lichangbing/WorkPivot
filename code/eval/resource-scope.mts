@@ -127,6 +127,42 @@ export async function testResourceScope(db:Pool,actor:string,foreign:string,chec
   gateCalls=0;
   await assert.rejects(files.uploadArtifacts(actor,task.id,[{name:'一.txt',data:Buffer.from('一')},{name:'二.txt',data:Buffer.from('二')}],undefined,async()=>{if(++gateCalls===2)throw Error('模拟提交前失效');}));
   check(gateCalls===2&&(await files.list(actor,task.id,'artifact')).length===before,'多成果最终校验失败，整批发布回滚');
+  const runtimeApproval={...rawPermission,tool:'save_artifact',invocation:{id:randomUUID(),definition:'runtime-expansion-approval',arguments:{name:'范围变更前审批.txt',content:'不应执行'},digest:authorizationDigest({name:'范围变更前审批.txt',content:'不应执行'})}};
+  const stalePermission=await runs.requestPermission(actor,generatedRun,runtimeApproval);
+  const staleRuntimeScope={...generatedScope,versionIds:[...generatedScope.versionIds],memoryScopes:[...generatedScope.memoryScopes]};
+  const runtimeFile=await files.upload(actor,task.id,'运行中新增.txt',Buffer.from('运行中新增资料'),randomUUID());
+  const runtimeRequest=randomUUID(),runtimeEpoch=generatedScope.epoch;
+  const expanded=await runs.expandResources(actor,task.id,{
+    requestId:runtimeRequest,baseRunId:generatedRun.id,baseEpoch:runtimeEpoch,
+    addVersionIds:[runtimeFile.id],addMemoryScopes:['user'],
+  });
+  check(expanded.scope.versionIds.includes(runtimeFile.id)&&expanded.scope.memoryScopes.includes('user')&&expanded.scope.epoch!==runtimeEpoch,'运行中可原子加入文件与记忆层并生成新代次');
+  const scopeRow=await transaction(db,c=>c.query('SELECT resource_scope FROM workpivot.task_runs WHERE id=$1',[generatedRun.id]),actor);
+  check(scopeRow.rows[0].resource_scope.versionIds.includes(runtimeFile.id),'增量范围持久化到当前运行检查点');
+  const runtimeSteering=await runs.pendingSteering(actor,task.id);
+  check(runtimeSteering.some(row=>row.relation==='related'&&row.content.includes('运行中新增.txt')),'范围变更生成强制相关的安全点消息');
+  const duplicateExpand=await runs.expandResources(actor,task.id,{
+    requestId:runtimeRequest,baseRunId:generatedRun.id,baseEpoch:runtimeEpoch,
+    addVersionIds:[runtimeFile.id],addMemoryScopes:['user'],
+  });
+  check(duplicateExpand.change.id===expanded.change.id,'范围扩展重复请求保持幂等');
+  await assert.rejects(runs.expandResources(actor,task.id,{
+    requestId:randomUUID(),baseRunId:generatedRun.id,baseEpoch:runtimeEpoch,
+    addVersionIds:[runtimeFile.id],addMemoryScopes:[],
+  }),error=>error instanceof Error&&'status'in error&&error.status===409);
+  check(true,'旧范围代次不能覆盖新的运行范围');
+  await runs.checkResources(actor,generatedRun,generatedScope,{versionId:runtimeFile.id});
+  check(generatedScope.versionIds.includes(runtimeFile.id)&&generatedScope.epoch===expanded.scope.epoch,'当前运行工具闭包同步获得已确认新增文件');
+  const secondRuntimeFile=await files.upload(actor,task.id,'运行中再次新增.txt',Buffer.from('第二次新增资料'),randomUUID());
+  await runs.expandResources(actor,task.id,{
+    requestId:randomUUID(),baseRunId:generatedRun.id,baseEpoch:expanded.scope.epoch,
+    addVersionIds:[secondRuntimeFile.id],addMemoryScopes:[],
+  });
+  await assert.rejects(runs.checkResources(actor,generatedRun,staleRuntimeScope,{versionId:secondRuntimeFile.id}),error=>error instanceof Error&&'status'in error&&error.status===409);
+  check(true,'旧工具闭包不能跳过多个范围代次直接借新审计记录升级');
+  await runs.checkResources(actor,generatedRun,generatedScope,{versionId:secondRuntimeFile.id});
+  check(generatedScope.versionIds.includes(secondRuntimeFile.id),'相邻范围代次可在下一安全步骤同步');
+  check(await runs.consumePermission(actor,generatedRun,stalePermission.id,runtimeApproval)==='deny','范围扩展撤销变更前已批准的待消费动作');
   await runs.stop(actor,task.id);
   await assert.rejects(saver.save(actor,task.id,{name:'迟到成果.txt',content:'拒绝'}));
   check((await files.list(actor,task.id,'artifact')).length===before,'停止后直接调用成果服务也不能迟到发布');
@@ -140,6 +176,10 @@ export async function testResourceScope(db:Pool,actor:string,foreign:string,chec
   check((await transaction(db,c=>c.query("SELECT 1 FROM workpivot.conversation_events WHERE task_id=$1 AND kind='user'",[task.id]),actor)).rowCount!>0,'上下文过期不删除用户聊天记录');
   const empty=await runs.resources(actor,task.id,{versionIds:[],memoryScopes:[],expert:false});check(empty.versionIds.length===0&&empty.epoch!==narrow.epoch,'撤销全部范围不会自动继承旧附件');
  }finally{
+  await transaction(db,async c=>{
+    await c.query("UPDATE workpivot.task_runs SET status=CASE WHEN status='stopping' THEN 'stopped' ELSE 'interrupted' END,finished_at=COALESCE(finished_at,now()) WHERE task_id=ANY($1::uuid[]) AND status IN ('running','stopping')",[[task.id,other.id]]);
+    await c.query("UPDATE workpivot.tasks SET status='idle' WHERE id=ANY($1::uuid[]) AND status IN ('running','waiting','stopping')",[[task.id,other.id]]);
+  },actor);
   for(const id of [task.id,other.id]){const row=(await tasks.listTasks(actor)).find(t=>t.id===id);if(row)await tasks.deleteTask(actor,id,row.revision);}
   await tasks.deleteProject(actor,project.id,project.revision);
   await rm(root,{recursive:true,force:true});

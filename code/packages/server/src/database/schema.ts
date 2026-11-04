@@ -634,6 +634,35 @@ ALTER TABLE workpivot.document_versions ADD CONSTRAINT document_preview_metadata
 );
 COMMENT ON COLUMN workpivot.document_processing.has_text_layer IS 'PDF是否含原生文本层；NULL表示不适用或旧解析未记录';
 COMMENT ON COLUMN workpivot.document_versions.preview_sha256 IS '派生预览PDF哈希；仅元数据，不代表原件或可读取内容';
+`},
+{version:72,sql:`
+-- 运行中资源范围只允许增量扩展；完整前后快照用于审计、幂等和恢复。
+CREATE TABLE workpivot.run_scope_changes (
+  id uuid PRIMARY KEY,
+  owner_user_id uuid NOT NULL REFERENCES identity.users(id),
+  task_id uuid NOT NULL,
+  run_id uuid NOT NULL REFERENCES workpivot.task_runs(id) ON DELETE CASCADE,
+  request_id uuid NOT NULL,
+  base_epoch uuid NOT NULL,
+  added_version_ids uuid[] NOT NULL DEFAULT '{}',
+  added_memory_scopes text[] NOT NULL DEFAULT '{}',
+  previous_scope jsonb NOT NULL CHECK(jsonb_typeof(previous_scope)='object'),
+  next_scope jsonb NOT NULL CHECK(jsonb_typeof(next_scope)='object'),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(owner_user_id,task_id,request_id),
+  FOREIGN KEY(owner_user_id,task_id) REFERENCES workpivot.tasks(owner_user_id,id) ON DELETE CASCADE,
+  CHECK(cardinality(added_version_ids)<=100),
+  CHECK(added_memory_scopes <@ ARRAY['user','project','task']::text[])
+);
+CREATE INDEX run_scope_changes_task ON workpivot.run_scope_changes(task_id,created_at,id);
+ALTER TABLE workpivot.run_scope_changes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workpivot.run_scope_changes FORCE ROW LEVEL SECURITY;
+CREATE POLICY personal_scope ON workpivot.run_scope_changes
+  USING(owner_user_id=workpivot.actor_id())
+  WITH CHECK(owner_user_id=workpivot.actor_id());
+CREATE TRIGGER notify_run_scope_changes
+  AFTER INSERT ON workpivot.run_scope_changes
+  FOR EACH ROW EXECUTE FUNCTION workpivot.notify_task_event();
 `}
 ] as const;
 import { usageSchema } from './usage-schema.js';
