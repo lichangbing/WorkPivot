@@ -34,7 +34,7 @@ export class DocumentProcessing {
       await transaction(this.db,async c=>{
         // 删除锁定同一任务后级联清理作业；迟到结果无法重建记录。
         await c.query('SELECT id FROM workpivot.tasks WHERE id=$1 FOR UPDATE',[job.task_id]);
-        await c.query("UPDATE workpivot.document_processing SET status='completed',parts=$3::jsonb,coverage=$4,warnings=$5::jsonb,error=NULL,fence=NULL,lease_until=NULL WHERE version_id=$1 AND fence=$2 AND status='running' AND lease_until>now()",[job.version_id,fence,JSON.stringify(result.parts),result.coverage,JSON.stringify(result.warnings)]);
+        await c.query("UPDATE workpivot.document_processing SET status='completed',parts=$3::jsonb,coverage=$4,warnings=$5::jsonb,has_text_layer=$6,error=NULL,fence=NULL,lease_until=NULL WHERE version_id=$1 AND fence=$2 AND status='running' AND lease_until>now()",[job.version_id,fence,JSON.stringify(result.parts),result.coverage,JSON.stringify(result.warnings),result.hasTextLayer??null]);
         await c.query(`INSERT INTO workpivot.knowledge_ingestions(
           version_id,owner_user_id,status,revision,parser_fingerprint
         )
@@ -55,7 +55,7 @@ export class DocumentProcessing {
     return transaction(this.db,async c=>{
       if(!(await c.query('SELECT id FROM workpivot.tasks WHERE id=$1',[taskId])).rowCount)throw new RepositoryError(404,'任务不存在');
       const rows=(await c.query(`SELECT p.version_id AS id,v.name,p.status,p.error,
-        p.parser_fingerprint AS "parserFingerprint",p.coverage,p.warnings,
+        p.parser_fingerprint AS "parserFingerprint",p.coverage,p.warnings,p.has_text_layer AS "hasTextLayer",
         EXISTS(SELECT 1 FROM workpivot.knowledge_versions k WHERE k.version_id=p.version_id) AS indexed,
         COALESCE(i.status,'none') AS "knowledgeStatus",COALESCE(i.revision,0) AS "knowledgeRevision",
         COALESCE(jsonb_array_length(i.excluded),0) AS "excludedCount"
@@ -80,16 +80,18 @@ export class DocumentProcessing {
       await c.query("UPDATE workpivot.task_runs SET context_revoked=true,model_messages='[]' WHERE owner_user_id=$1",[actor]);
     },actor);
   }
-  async read(actor:string,taskId:string,versionId:string,offset:number): Promise<ReturnType<typeof readParsedPage> & {versionId:string;revision:number;latestRevision:number;parserStatus:string;parserFingerprint:string;coverage:string;warnings:string[]}>;
-  async read(actor:string,taskId:string,versionId:string,offset:number,structure:StructureQuery): Promise<ReturnType<typeof readStructurePage> & {versionId:string;revision:number;latestRevision:number;parserStatus:string;parserFingerprint:string;coverage:string;warnings:string[]}>;
+  async read(actor:string,taskId:string,versionId:string,offset:number): Promise<ReturnType<typeof readParsedPage> & {versionId:string;revision:number;latestRevision:number;parserStatus:string;parserFingerprint:string;coverage:string;warnings:string[];hasTextLayer:boolean|null}>;
+  async read(actor:string,taskId:string,versionId:string,offset:number,structure:StructureQuery): Promise<ReturnType<typeof readStructurePage> & {versionId:string;revision:number;latestRevision:number;parserStatus:string;parserFingerprint:string;coverage:string;warnings:string[];hasTextLayer:boolean|null}>;
   async read(actor:string,taskId:string,versionId:string,offset:number, structure?:StructureQuery) {
     uuid(versionId);uuid(taskId);
     return transaction(this.db,async c=>{
-      const row=(await c.query('SELECT p.status,p.parts,p.parser_fingerprint,p.coverage,p.warnings,v.name,v.revision,d.revision AS latest_revision FROM workpivot.document_processing p JOIN workpivot.document_versions v ON v.id=p.version_id JOIN workpivot.documents d ON d.id=v.document_id WHERE v.id=$1 AND d.task_id=$2',[versionId,taskId])).rows[0];
+      const row=(await c.query('SELECT p.status,p.parts,p.parser_fingerprint,p.coverage,p.warnings,p.has_text_layer AS has_text_layer,v.name,v.revision,d.revision AS latest_revision FROM workpivot.document_processing p JOIN workpivot.document_versions v ON v.id=p.version_id JOIN workpivot.documents d ON d.id=v.document_id WHERE v.id=$1 AND d.task_id=$2',[versionId,taskId])).rows[0];
       if(!row)throw new RepositoryError(404,'解析内容不存在');
       if(row.status==='completed'&&row.parser_fingerprint!==this.fingerprint)throw new RepositoryError(409,'解析版本已过期，等待后台重建或手动重试');
       if(row.status!=='completed')throw new RepositoryError(409,'文件解析尚未完成，请查看解析状态后重试');
-      return { ...(structure ? readStructurePage(row.parts, structure) : readParsedPage(row.parts, offset)), versionId, revision: row.revision, latestRevision: row.latest_revision, parserStatus: row.status, parserFingerprint:row.parser_fingerprint, coverage:row.coverage, warnings:[...parsingLimitations(extname(row.name)),...row.warnings] };
+      const hasTextLayer=row.has_text_layer===null||row.has_text_layer===undefined?null:Boolean(row.has_text_layer);
+      const limitation=hasTextLayer===false?'该PDF没有原生文本层；当前内容来自OCR或为空，必须核对原件，不能把OCR结果当作PDF原始文字。':null;
+      return { ...(structure ? readStructurePage(row.parts, structure) : readParsedPage(row.parts, offset)), versionId, revision: row.revision, latestRevision: row.latest_revision, parserStatus: row.status, parserFingerprint:row.parser_fingerprint, coverage:row.coverage, hasTextLayer, warnings:[...(limitation?[limitation]:[]),...parsingLimitations(extname(row.name)),...row.warnings] };
     },actor);
   }
 }

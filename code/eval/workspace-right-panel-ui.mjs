@@ -46,6 +46,7 @@ try {
   const now = new Date().toISOString();
   const task = { id: 'task-right', projectId: 'project-right', name: '右侧工作区测试', status: 'idle', revision: 1, createdAt: now };
   const artifact = { id: 'version-pdf', documentId: 'document-pdf', name: '分析报告.pdf', revision: 1, current: true };
+  const unavailableOffice = { id: 'version-docx', documentId: 'document-docx', name: '转换暂不可用.docx', revision: 1, current: true };
   const upload = { id: 'version-md', documentId: 'document-md', name: '说明.md', revision: 1, current: true, knowledgeStatus: 'pending' };
   await page.route('**/api/**', async route => {
     const request = route.request(), pathname = new URL(request.url()).pathname;
@@ -67,14 +68,18 @@ try {
       return;
     }
     else if (pathname === '/api/tasks/task-right/files') data = { files: [upload] };
-    else if (pathname === '/api/tasks/task-right/artifacts') data = { artifacts: [artifact] };
+    else if (pathname === '/api/tasks/task-right/artifacts') data = { artifacts: [unavailableOffice, artifact] };
     else if (pathname === '/api/tasks/task-right/files/document-pdf/versions') data = { versions: [artifact] };
+    else if (pathname === '/api/tasks/task-right/files/document-docx/versions') data = { versions: [unavailableOffice] };
     else if (pathname === '/api/tasks/task-right/files/document-md/versions') data = { versions: [upload] };
     else if (pathname === '/api/tasks/task-right/file-versions/version-pdf/preview') {
       await route.fulfill({ status: 200, headers: { 'content-type': 'application/pdf' }, body: pdf });
       return;
     } else if (pathname === '/api/tasks/task-right/file-versions/version-md/preview') {
       await route.fulfill({ status: 200, headers: { 'content-type': 'text/markdown; charset=utf-8' }, body: '# 已加载文件预览\n\n这是任务资料。' });
+      return;
+    } else if (pathname === '/api/tasks/task-right/file-versions/version-docx/preview') {
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Office 预览转换服务尚未启用', code: 'PREVIEW_CAPABILITY_UNAVAILABLE' }) });
       return;
     } else if (pathname === '/api/tasks/task-right/browser/status') {
       statusRequests++;
@@ -106,6 +111,11 @@ try {
     assert.ok(statusRequests >= 1, '隐藏浏览器页签应通过轻量接口探测会话');
     assert.equal(screenshotRequests, 0, '隐藏浏览器页签不应拉取截图');
 
+    await panel.getByRole('tab', { name: '文件', exact: true }).click();
+    await panel.getByTitle('预览 转换暂不可用.docx').click();
+    await panel.getByText('Office 预览转换服务尚未启用', { exact: true }).waitFor();
+    await panel.getByRole('button', { name: '下载原件', exact: true }).waitFor();
+    assert.equal(await panel.getByRole('button', { name: '重试', exact: true }).count(), 0, '能力不可用时应引导下载而不是无意义重试');
     await panel.getByRole('tab', { name: '文件', exact: true }).click();
     await panel.getByTitle('预览 说明.md').waitFor();
     await panel.getByTitle('预览 说明.md').click();

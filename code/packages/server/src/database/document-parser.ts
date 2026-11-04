@@ -6,7 +6,7 @@ export type { ParsedPart } from './parsed-content.js';
 // 固定程序，不执行文档提供的命令；仅在隔离执行器中运行。
 export const parserProgram = String.raw`
 import sys,json,zipfile,xml.etree.ElementTree as ET,subprocess,pathlib,datetime,math,re,posixpath,io,csv
-path=pathlib.Path('/workspace/source'+sys.argv[1]); parts=[]; total=0; warnings=[]
+path=pathlib.Path('/workspace/source'+sys.argv[1]); parts=[]; total=0; warnings=[]; has_text_layer=None
 def add(location,text,object=None):
  global total
  if not text.strip() and object is None: return
@@ -53,6 +53,7 @@ if ext=='.pdf':
  if pathlib.Path('/workspace/plain.txt').stat().st_size>4000000: raise ValueError('PDF text exceeds limit')
  pages=pathlib.Path('/workspace/plain.txt').read_text().split('\f')
  if pages and not pages[-1].strip(): pages.pop()
+ has_text_layer=any(page.strip() for page in pages)
  missing=[i+1 for i,page in enumerate(pages) if not page.strip()]; missing_order={page:index for index,page in enumerate(missing)}
  if missing: warnings.append('以下页面没有可提取文字，可能为空白或扫描页，扫描页，进入有界OCR尝试：'+','.join(map(str,missing[:100])))
  for i,page in enumerate(pages):
@@ -313,17 +314,17 @@ if not parts: raise ValueError('no extractable text after bounded OCR')
 # 多图表文档仍可返回有界警告；明确提示省略数量，不将省略伪装为完整解析。
 if len(warnings)>100: warnings=warnings[:99]+['另有'+str(len(warnings)-99)+'条解析警告未逐项展示，请按原件核对；不代表完整识别。']
 path.unlink()
-pathlib.Path('/workspace/parsed.json').write_text(json.dumps({'parts':parts,'coverage':'partial' if warnings else 'text-only','warnings':warnings},ensure_ascii=False))
+pathlib.Path('/workspace/parsed.json').write_text(json.dumps({'parts':parts,'coverage':'partial' if warnings else 'text-only','warnings':warnings,'hasTextLayer':has_text_layer},ensure_ascii=False))
 `;
 
 // 指纹只包含固定程序和解析契约，不含地址或凭据；升级程序会使旧结果失效。
 export const parserFingerprint = createHash('sha256').update('structured-extraction-v4-table-rows\n' + parserProgram).digest('hex');
-export interface ParsedDocument { parts: ParsedPart[]; coverage: 'unknown' | 'text-only' | 'partial'; warnings: string[] }
+export interface ParsedDocument { parts: ParsedPart[]; coverage: 'unknown' | 'text-only' | 'partial'; warnings: string[]; hasTextLayer?: boolean | null }
 export function validateParsedDocument(value: unknown): ParsedDocument {
-  if (Array.isArray(value)) return { parts: validateParsedParts(value), coverage: 'unknown', warnings: ['旧解析结果缺少覆盖范围信息，请重建后核对。'] };
+  if (Array.isArray(value)) return { parts: validateParsedParts(value), coverage: 'unknown', warnings: ['旧解析结果缺少覆盖范围信息，请重建后核对。'], hasTextLayer: null };
   const v = value as Partial<ParsedDocument> | null;
-  if (!v || !['text-only','partial'].includes(v.coverage ?? '') || !Array.isArray(v.warnings) || v.warnings.length > 100 || v.warnings.some(w => typeof w !== 'string' || w.length > 2000) || (v.coverage === 'partial' && !v.warnings.length)) throw Error('解析状态无效');
-  return { parts: validateParsedParts(v.parts), coverage: v.coverage!, warnings: v.warnings };
+  if (!v || !['text-only','partial'].includes(v.coverage ?? '') || !Array.isArray(v.warnings) || v.warnings.length > 100 || v.warnings.some(w => typeof w !== 'string' || w.length > 2000) || (v.coverage === 'partial' && !v.warnings.length) || (v.hasTextLayer !== undefined && v.hasTextLayer !== null && typeof v.hasTextLayer !== 'boolean')) throw Error('解析状态无效');
+  return { parts: validateParsedParts(v.parts), coverage: v.coverage!, warnings: v.warnings, hasTextLayer: v.hasTextLayer ?? null };
 }
 export async function parseDocument(config: WorkerConfiguration, extension: string, data: Buffer): Promise<ParsedPart[]> {
   return (await parseDocumentResult(config, extension, data)).parts;

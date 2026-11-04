@@ -1,5 +1,5 @@
 {
-  "date": "2026-11-03T05:04:55.550Z",
+  "date": "2026-11-04T05:08:17.692Z",
   "suites": {
     "W1": "pass",
     "W3": "pass",
@@ -50,7 +50,7 @@
         "pass": true
       },
       {
-        "name": "B01 建任务（工作目录已创建） —— /tmp/wp-ws-juna4P/.accounts/944fd57a-e225-472e-9596-e584009c7eff",
+        "name": "B01 建任务（工作目录已创建） —— /tmp/wp-ws-HWHURb/.accounts/2994788a-f2e3-4142-86c7-6147ea9394a6",
         "pass": true
       },
       {
@@ -102,7 +102,7 @@
         "pass": true
       },
       {
-        "name": "F01 转写文件存在 —— /tmp/wp-home-dNcys2/accounts/944fd57a-e225-472e-9596-e584009c7eff/data/tasks/t-1793682246825-408114/transcript.jsonl",
+        "name": "F01 转写文件存在 —— /tmp/wp-home-Zmj1bn/accounts/2994788a-f2e3-4142-86c7-6147ea9394a6/data/tasks/t-1793768840276-43c4f6/transcript.jsonl",
         "pass": true
       },
       {
@@ -152,7 +152,7 @@
         "pass": true
       },
       {
-        "name": "T3-03 打回后真实写盘 —— gate 目录: [\".workpivot\",\"总结.md\",\"简介.txt\"] | 工具事件: [{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_2x6gfv\",\"ok\":true,\"status\":\"ok\",\"durationMs\":0,\"message\":\"已写入 /tmp/wp3-ws-TS0DT5/.accounts/e38e6c36-d2ae-40ca-9cba-5d8998934f7f/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_2clfvt\",\"ok\":true,\"status\":\"ok\",\"durationMs\":0,\"message\":\"已写入 /tmp/wp3-ws-TS0DT5/.accounts/e38e6c36-d2ae-40ca-9cba-5d8998934f7f/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_70l0um\",\"ok\":true,\"status\":\"ok\",\"durationMs\":0,\"message\":\"[系统] 注意:这是第 3 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 /tmp/wp3-ws-TS0DT5/.accounts/e38e6c36-d2ae-40ca-9cba-5d8998934f7f/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_7274s7\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"[系统] 注意:这是第 4 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 /tmp/wp3-ws-TS0DT5/.accounts/e38e6c36-d2ae-40ca-9cba-5d8998934f7f/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_phnlaz\",\"ok\":false,\"status\":\"error\",\"durationMs\":0,\"message\":\"错误:已连续多次产生完全相同的调用与结果,本次执行被拦截。请必须更换思路、修改参数,或向用户说明情况。\"}]",
+        "name": "T3-03 打回后真实写盘 —— gate 目录: [\".workpivot\",\"总结.md\",\"简介.txt\"] | 工具事件: [{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_6m1qn5\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"已写入 /tmp/wp3-ws-5MjNCj/.accounts/c54e9e56-3092-41d4-82b5-9a196492138d/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_36gdhu\",\"ok\":true,\"status\":\"ok\",\"durationMs\":0,\"message\":\"已写入 /tmp/wp3-ws-5MjNCj/.accounts/c54e9e56-3092-41d4-82b5-9a196492138d/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_ql71nw\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"[系统] 注意:这是第 3 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 /tmp/wp3-ws-5MjNCj/.accounts/c54e9e56-3092-41d4-82b5-9a196492138d/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_jvoirf\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"[系统] 注意:这是第 4 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 /tmp/wp3-ws-5MjNCj/.accounts/c54e9e56-3092-41d4-82b5-9a196492138d/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_ivqlc2\",\"ok\":false,\"status\":\"error\",\"durationMs\":0,\"message\":\"错误:已连续多次产生完全相同的调用与结果,本次执行被拦截。请必须更换思路、修改参数,或向用户说明情况。\"}]",
         "pass": true
       },
       {
@@ -160,11 +160,11 @@
         "pass": true
       },
       {
-        "name": "T3-06 大结果落盘（工具结果含\"已落盘\"） —— （工具结果过大已落盘:/tmp/wp3-ws-TS0DT5/.accounts/e38e6c36-d2ae-40ca-9cba-5d8998934f7f/.workpivot/results/result-1793682249966.txt",
+        "name": "T3-06 大结果落盘（工具结果含\"已落盘\"） —— （工具结果过大已落盘:/tmp/wp3-ws-5MjNCj/.accounts/c54e9e56-3092-41d4-82b5-9a196492138d/.workpivot/results/result-1793768844231.txt",
         "pass": true
       },
       {
-        "name": "T3-06 落盘文件真实存在（>50KB） —— resultsDir=/tmp/wp3-ws-TS0DT5/.accounts/e38e6c36-d2ae-40ca-9cba-5d8998934f7f/.workpivot/results | exists=true | stashed=[\"result-1793682249966.txt\",\"result-1793682249970.txt\",\"result-1793682249974.txt\",\"result-1793682249979.txt\"]",
+        "name": "T3-06 落盘文件真实存在（>50KB） —— resultsDir=/tmp/wp3-ws-5MjNCj/.accounts/c54e9e56-3092-41d4-82b5-9a196492138d/.workpivot/results | exists=true | stashed=[\"result-1793768844231.txt\",\"result-1793768844236.txt\",\"result-1793768844242.txt\",\"result-1793768844246.txt\"]",
         "pass": true
       },
       {
@@ -180,7 +180,7 @@
         "pass": true
       },
       {
-        "name": "T3-01 parentUuid 链首尾相接（fork/rewind 前置） —— [[\"user_message\",null],[\"meta\",\"7d0942cb\"],[\"meta\",\"42f81c94\"]]",
+        "name": "T3-01 parentUuid 链首尾相接（fork/rewind 前置） —— [[\"user_message\",null],[\"meta\",\"de2ffa27\"],[\"meta\",\"98b037de\"]]",
         "pass": true
       }
     ],
@@ -190,7 +190,7 @@
         "pass": true
       },
       {
-        "name": "E01 条目区恰有一条\"蓝色\"（幂等去重） —— [{\"id\":\"m-1793682251951-tck3\",\"content\":\"用户最喜欢的颜色是蓝色\",\"createdAt\":\"2026-11-03T05:04:11.951Z\"}]",
+        "name": "E01 条目区恰有一条\"蓝色\"（幂等去重） —— [{\"id\":\"m-1793768846690-bssx\",\"content\":\"用户最喜欢的颜色是蓝色\",\"createdAt\":\"2026-11-04T05:07:26.690Z\"}]",
         "pass": true
       },
       {
@@ -274,7 +274,7 @@
     ],
     "W8": [
       {
-        "name": "注册 anthropic 协议供应商（保存即验活通过） —— {\"provider\":{\"id\":\"ac86b3c5-0e1c-46e6-813f-1dd2969b61ab\",\"name\":\"Claude模拟\",\"baseUrl\":\"http://127.0.0.1:39908\",\"modelId\":",
+        "name": "注册 anthropic 协议供应商（保存即验活通过） —— {\"provider\":{\"id\":\"a70d9aeb-c574-40f5-a3f3-3dce4dff56bf\",\"name\":\"Claude模拟\",\"baseUrl\":\"http://127.0.0.1:39908\",\"modelId\":",
         "pass": true
       },
       {
@@ -306,7 +306,7 @@
         "pass": true
       },
       {
-        "name": "write 工具经 tool_use 真实落盘 —— /tmp/wp8-ws-FBmARN/.accounts/f7a65ea6-18db-4de0-a908-a63328cb2385/w8.txt",
+        "name": "write 工具经 tool_use 真实落盘 —— /tmp/wp8-ws-T6M6WL/.accounts/a48f3c75-eb3d-4a9a-b242-e18df688a38a/w8.txt",
         "pass": true
       },
       {
@@ -332,7 +332,7 @@
         "pass": true
       },
       {
-        "name": "F06 创建定时任务 —— {\"schedule\":{\"id\":\"9310cddf-7b1b-4a52-8aa0-c9cc3316e7a5\",\"name\":\"W10 巡检\",\"cron\":\"* * * * *\",\"content",
+        "name": "F06 创建定时任务 —— {\"schedule\":{\"id\":\"7e7dc634-687e-44c3-a16c-8f0ae59d87a7\",\"name\":\"W10 巡检\",\"cron\":\"* * * * *\",\"content",
         "pass": true
       },
       {

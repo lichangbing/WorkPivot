@@ -34,10 +34,11 @@ try {
   const xref = Buffer.byteLength(pdf);
   pdf += `xref\n0 7\n0000000000 65535 f \n${offsets.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('')}trailer\n<< /Size 7 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
   const mixed = await parse('.pdf', Buffer.from(pdf));
-  check(mixed.coverage === 'partial' && mixed.warnings.some(w => w.includes('：2')) && mixed.parts[0]?.location === 'page:1', 'PDF空文字页保留原页号并提示可能为空白或扫描');
+  check(mixed.coverage === 'partial' && mixed.warnings.some(w => w.includes('：2')) && mixed.parts[0]?.location === 'page:1' && mixed.hasTextLayer === true, 'PDF原生文本层状态与空文字页位置同时保留');
+  check(plain.hasTextLayer === null, '非PDF格式不伪造原生PDF文本层状态');
   check(validateParsedDocument(plain.parts).coverage === 'unknown', '旧数组契约不伪造覆盖范围');
   check(/^[a-f0-9]{64}$/.test(parserFingerprint), '程序和契约产生固定指纹');
-  for (const invalid of [{ ...plain, coverage: 'complete' }, { ...plain, warnings: [12] }, { ...plain, coverage: 'partial', warnings: [] }]) { assert.throws(() => validateParsedDocument(invalid)); count++; }
+  for (const invalid of [{ ...plain, coverage: 'complete' }, { ...plain, warnings: [12] }, { ...plain, coverage: 'partial', warnings: [] }, { ...plain, hasTextLayer: 'yes' }]) { assert.throws(() => validateParsedDocument(invalid)); count++; }
   const word = new Zip();
   word.addFile('word/document.xml', Buffer.from('<document><body><p><t>标题</t></p><tbl><tr><trPr><gridBefore val="1"/></trPr><tc><tcPr><gridSpan val="2"/><vMerge val="restart"/></tcPr><p><t>合并内容</t></p><tbl><tr><tc><p><t>内嵌表</t></p></tc></tr></tbl></tc></tr><tr><tc><tcPr><vMerge/></tcPr><p/></tc></tr></tbl></body></document>'));
   const structured = await parse('.docx', word.toBuffer());

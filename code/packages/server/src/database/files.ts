@@ -10,11 +10,18 @@ const maximum = 10 * 1024 * 1024, quota = 100 * 1024 * 1024;
 interface Version {
   sourceTaskId?:string; id: string; documentId: string; revision: number; name: string; size: number; sha256: string;
   current?: boolean; knowledgeStatus?: string; knowledgeRevision?: number;
+  previewSha256?: string | null; previewConverterVersion?: string | null;
+  previewGeneratedAt?: string | null; previewFontSha256?: string | null;
+  previewHasTextLayer?: boolean | null; hasTextLayer?: boolean | null;
 }
-const columns = 'v.id,v.document_id AS "documentId",v.revision,v.name,v.size,v.sha256';
+const columns = `v.id,v.document_id AS "documentId",v.revision,v.name,v.size,v.sha256,
+  v.preview_sha256 AS "previewSha256",v.preview_converter_version AS "previewConverterVersion",
+  v.preview_generated_at AS "previewGeneratedAt",v.preview_font_sha256 AS "previewFontSha256",
+  v.preview_has_text_layer AS "previewHasTextLayer"`;
 const displayColumns = `${columns},v.revision=d.revision AS current,
   COALESCE((SELECT i.status FROM workpivot.knowledge_ingestions i WHERE i.version_id=v.id),'none') AS "knowledgeStatus",
-  COALESCE((SELECT i.revision FROM workpivot.knowledge_ingestions i WHERE i.version_id=v.id),0) AS "knowledgeRevision"`;
+  COALESCE((SELECT i.revision FROM workpivot.knowledge_ingestions i WHERE i.version_id=v.id),0) AS "knowledgeRevision",
+  (SELECT p.has_text_layer FROM workpivot.document_processing p WHERE p.version_id=v.id) AS "hasTextLayer"`;
 /** 磁盘原件不可变；归属、版本和发布在 PostgreSQL 事务中维护。 */
 export class FileRepository {
   private readonly root: string;

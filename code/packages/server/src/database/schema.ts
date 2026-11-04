@@ -615,6 +615,25 @@ CREATE TRIGGER notify_workspace_tasks
 {version:67,sql:projectSharingSchema},
 {version:68,sql:interactionSchema},
 {version:69,sql:steeringSchema},
-{version:70,sql:steeringClassificationSchema}
+{version:70,sql:steeringClassificationSchema},
+{version:71,sql:`
+-- PRD RO-5/RO-6：记录解析结果是否来自 PDF 原生文本层，以及派生预览的转换契约。
+ALTER TABLE workpivot.document_processing ADD COLUMN has_text_layer boolean;
+ALTER TABLE workpivot.document_versions
+  ADD COLUMN preview_sha256 char(64),
+  ADD COLUMN preview_converter_version text,
+  ADD COLUMN preview_generated_at timestamptz,
+  ADD COLUMN preview_font_sha256 char(64),
+  ADD COLUMN preview_has_text_layer boolean;
+ALTER TABLE workpivot.document_versions ADD CONSTRAINT document_preview_metadata_complete CHECK (
+  (preview_sha256 IS NULL AND preview_converter_version IS NULL AND preview_generated_at IS NULL AND preview_font_sha256 IS NULL AND preview_has_text_layer IS NULL)
+  OR
+  (preview_sha256 IS NOT NULL AND preview_converter_version IS NOT NULL AND length(preview_converter_version) BETWEEN 1 AND 160
+    AND preview_generated_at IS NOT NULL AND preview_font_sha256 IS NOT NULL AND preview_font_sha256 ~ '^[a-f0-9]{64}$'
+    AND preview_has_text_layer IS NOT NULL)
+);
+COMMENT ON COLUMN workpivot.document_processing.has_text_layer IS 'PDF是否含原生文本层；NULL表示不适用或旧解析未记录';
+COMMENT ON COLUMN workpivot.document_versions.preview_sha256 IS '派生预览PDF哈希；仅元数据，不代表原件或可读取内容';
+`}
 ] as const;
 import { usageSchema } from './usage-schema.js';

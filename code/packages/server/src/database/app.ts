@@ -79,7 +79,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   const num = (value: unknown): number => { if (typeof value !== 'number') throw new RepositoryError(400, '缺少版本参数'); return value; };
   app.get('/api/health', async (_req, res) => {
     await appPool.query('SELECT 1'); await authPool.query('SELECT 1');
-    res.json({ ok: true, name: 'workpivot', version: '0.3.0-rc.3', releaseStage: 'rc', releaseScope: 'single-user', apiProtocol: API_PROTOCOL, storage: 'postgresql', productionReady: false, chatEnabled: !!execution, filesEnabled: !!files, providersEnabled: !!providers, mcpEnabled: !!mcp, interactionCapabilities: interactionCapabilities() });
+    res.json({ ok: true, name: 'workpivot', version: '0.3.0-rc.4', releaseStage: 'rc', releaseScope: 'single-user', apiProtocol: API_PROTOCOL, storage: 'postgresql', productionReady: false, chatEnabled: !!execution, filesEnabled: !!files, providersEnabled: !!providers, mcpEnabled: !!mcp, interactionCapabilities: interactionCapabilities() });
   });
   app.get('/api/auth/state', async (req, res) => {
     const user = await accounts.resolve(token(req));
@@ -390,11 +390,65 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
         res.type(directTypes[extension]!).send(source.data);
         return;
       }
-      if (!['.docx','.xlsx','.pptx'].includes(extension)) throw new RepositoryError(415, '此文件暂不支持在线预览，请下载后打开');
-      if (!preview) throw new RepositoryError(503, 'Office 预览转换服务尚未启用，可先下载文件');
-      const data = await preview.officePdf(actor(res).id, taskId, versionId, AbortSignal.timeout(145000), source);
+      if (!['.docx','.xlsx','.pptx'].includes(extension)) throw new RepositoryError(415, '此文件暂不支持在线预览，请下载后打开', 'PREVIEW_UNSUPPORTED');
+      if (!preview) throw new RepositoryError(503, 'Office 预览转换服务尚未启用，可先下载文件', 'PREVIEW_CAPABILITY_UNAVAILABLE');
+      const result = await preview.preview(actor(res).id, taskId, versionId, AbortSignal.timeout(145000), source);
+      res.setHeader('X-WorkPivot-Preview-Derived', '1');
+      res.setHeader('X-WorkPivot-Preview-Source-Sha256', result.sourceSha256);
+      res.setHeader('X-WorkPivot-Preview-Pdf-Sha256', result.pdfSha256);
+      res.setHeader('X-WorkPivot-Preview-Converter-Version', result.converterVersion);
+      res.setHeader('X-WorkPivot-Preview-Stage', result.stage);
+      res.setHeader('X-WorkPivot-Preview-Elapsed-Ms', String(result.elapsedMs));
+      res.setHeader('X-WorkPivot-Preview-Generated-At', result.generatedAt);
+      res.setHeader('X-WorkPivot-Preview-Font-Sha256', result.fontPackSha256);
+      res.setHeader('X-WorkPivot-Preview-Has-Text-Layer', result.hasTextLayer ? 'true' : 'false');
       res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
-      res.type('application/pdf').send(data);
+      res.type('application/pdf').send(result.data);
+    });
+    app.get('/api/tasks/:id/file-versions/:versionId/preview-metadata', async (req, res) => {
+      if (!preview) throw new RepositoryError(503, 'Office 预览转换服务尚未启用，可先下载文件', 'PREVIEW_CAPABILITY_UNAVAILABLE');
+      const taskId = str(req.params['id']), versionId = str(req.params['versionId']);
+      const source = await files.download(actor(res).id, taskId, versionId);
+      const result = await preview.preview(actor(res).id, taskId, versionId, AbortSignal.timeout(145000), source);
+      res.json({
+        versionId,
+        derived: result.derived,
+        cached: result.cached,
+        sourceSha256: result.sourceSha256,
+        pdfSha256: result.pdfSha256,
+        converterVersion: result.converterVersion,
+        stage: result.stage,
+        elapsedMs: result.elapsedMs,
+        generatedAt: result.generatedAt,
+        fontPackSha256: result.fontPackSha256,
+        hasTextLayer: result.hasTextLayer,
+      });
+    });
+    app.get('/api/tasks/:id/file-versions/:versionId/structure', async (req, res) => {
+      const taskId = str(req.params['id']), versionId = str(req.params['versionId']);
+      const source = await files.download(actor(res).id, taskId, versionId);
+      const extension = extname(source.version.name).toLowerCase();
+      if (!['.docx','.xlsx','.pptx'].includes(extension)) throw new RepositoryError(415, '结构化读取仅支持DOCX、XLSX和PPTX', 'STRUCTURE_UNSUPPORTED');
+      const integerQuery = (name: string): number | undefined => {
+        const value = req.query[name];
+        if (value === undefined) return undefined;
+        if (typeof value !== 'string' || !/^(0|[1-9][0-9]{0,8})$/.test(value)) throw new RepositoryError(400, `${name}参数无效`, 'STRUCTURE_INVALID');
+        return Number(value);
+      };
+      const stringQuery = (name: string): string | undefined => {
+        const value = req.query[name];
+        if (value === undefined) return undefined;
+        if (typeof value !== 'string' || !value.trim() || value.length > 500) throw new RepositoryError(400, `${name}参数无效`, 'STRUCTURE_INVALID');
+        return value;
+      };
+      const result = await processing.read(actor(res).id, taskId, versionId, 0, {
+        offset: integerQuery('offset'),
+        textOffset: integerQuery('textOffset'),
+        parent: stringQuery('parent'),
+        sheet: stringQuery('sheet'),
+        range: stringQuery('range'),
+      });
+      res.json({ name: source.version.name, ...result });
     });
     app.delete('/api/tasks/:id/files/:documentId', async (req, res) => {
       await files.remove(actor(res).id, str(req.params['id']), str(req.params['documentId']), num(body(req).revision));
@@ -657,7 +711,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   } }));
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     void _next; // Express 通过四参数签名识别错误处理器。
-    if (error instanceof RepositoryError) { res.status(error.status).json({ error: error.message }); return; }
+    if (error instanceof RepositoryError) { res.status(error.status).json({ error: error.message, ...(error.code ? { code: error.code } : {}) }); return; }
     const code = (error as { code?: string })?.code;
     if (code === '23505') { res.status(409).json({ error: '记录已存在或操作冲突' }); return; }
     if ((error as { type?: string })?.type === 'entity.parse.failed') { res.status(400).json({ error: '请求内容无效' }); return; }

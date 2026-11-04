@@ -18,6 +18,7 @@ import { testCompaction } from './database-compaction.mts';
 import { testMemoryControls } from './database-memory-controls.mts';
 import { testKnowledge } from './database-knowledge.mts';
 import { testParsing } from './database-parsing.mts';
+import { testDocumentPreviewMetadata } from './database-document-preview.mts';
 import { DatabaseModelService } from '../packages/server/src/database/model-service.js';
 import { testSkillExecution } from './database-skill-execution.mts';
 import { testMemoryWorker } from './database-memory-worker.mts';
@@ -63,7 +64,7 @@ let server: ReturnType<Awaited<ReturnType<typeof createDatabaseApp>>['listen']> 
 try {
   await installSchema(admin, 'wp_test_app', 'wp_test_auth');
   await installSchema(admin, 'wp_test_app', 'wp_test_auth');
-  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 70, 'schema installation idempotent');
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 71, 'schema installation idempotent');
   // 重建准确的空 v1 结构，独立验证增量升级。
   await admin.query(`DROP TRIGGER IF EXISTS review_sources_before_version_delete ON workpivot.document_versions;
     DROP FUNCTION IF EXISTS workpivot.mark_deleted_version_sources();
@@ -88,7 +89,7 @@ try {
     CREATE POLICY personal_members ON workpivot.project_members USING(user_id=workpivot.actor_id())
       WITH CHECK(user_id=workpivot.actor_id() AND role='owner' AND EXISTS(SELECT 1 FROM workpivot.projects p WHERE p.id=project_id AND p.owner_user_id=workpivot.actor_id()))`);
   await installSchema(admin, 'wp_test_app', 'wp_test_auth');
-  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 70, 'existing v1 database upgrades to latest schema');
+  check((await admin.query('SELECT count(*)::int AS n FROM workpivot_meta.schema_versions')).rows[0].n === 71, 'existing v1 database upgrades to latest schema');
   await assertRestrictedRole(business, 'workpivot'); await assertRestrictedRole(identity, 'identity');
   await rejects(() => assertRestrictedRole(admin, 'workpivot'), 'superuser runtime rejected');
   await rejects(() => business.query('SELECT * FROM identity.credentials'), 'business pool cannot read password hashes');
@@ -609,6 +610,7 @@ try {
   await testMemoryReview(business, owner.user.id, check);
   await testSkillExecution(business, owner.user.id, member.id, check);
   await testParsing(business, owner.user.id, member.id, check);
+  await testDocumentPreviewMetadata(business, owner.user.id, check);
   await testUsage(business, owner.user.id, member.id, check);
 
   await testResourceScope(business,owner.user.id,member.id,check);

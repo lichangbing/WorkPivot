@@ -1,5 +1,5 @@
 import copy
-import argparse,json,pathlib,subprocess,tempfile,zipfile,re,sys,shutil
+import argparse,json,pathlib,subprocess,tempfile,zipfile,re,sys,shutil,hashlib
 import xml.etree.ElementTree as ET
 
 def inspect(path,recalculate=False):
@@ -46,6 +46,7 @@ def run(source,output,mode):
  if mode=='recalculate' and not before: raise ValueError('文件没有待重算公式')
  if not shutil.which('libreoffice'): raise ValueError('缺少LibreOffice转换依赖')
  available=subprocess.run(['fc-list',':','family'],capture_output=True,text=True,check=True,timeout=10).stdout.casefold()
+ font_pack_hash=hashlib.sha256(available.encode('utf-8')).hexdigest()
  missing=sorted(f for f in fonts if f.casefold() not in available)
  if mode=='render' and missing: raise ValueError('缺少指定字体：'+','.join(missing[:20]))
  with tempfile.TemporaryDirectory(prefix='wp-office-') as directory:
@@ -82,8 +83,11 @@ def run(source,output,mode):
   else:
    payload=result.read_bytes()
    if not payload.startswith(b'%PDF-'): raise ValueError('渲染输出不是PDF')
+   text_layer=subprocess.run(['pdftotext','-layout',str(result),'-'],capture_output=True,text=True,timeout=30)
+   if text_layer.returncode!=0: raise ValueError('无法检查PDF文本层')
+   has_text_layer=bool(text_layer.stdout.strip())
   with output.open('xb') as target:target.write(payload)
- return {'mode':mode,'structure':'passed','recalculation':'passed' if mode=='recalculate' else 'not-performed','formulas':len(before),'render':'passed' if mode=='render' else 'not-performed','visual':'not-performed','missingFonts':missing}
+ return {'mode':mode,'structure':'passed','recalculation':'passed' if mode=='recalculate' else 'not-performed','formulas':len(before),'render':'passed' if mode=='render' else 'not-performed','visual':'not-performed','missingFonts':missing,'fontPackHash':font_pack_hash,**({'hasTextLayer':has_text_layer} if mode=='render' else {})}
 if __name__=='__main__':
  parser=argparse.ArgumentParser();parser.add_argument('--source',required=True);parser.add_argument('--output',required=True);parser.add_argument('--mode',choices=['render','recalculate'],required=True);args=parser.parse_args()
  try:print(json.dumps(run(pathlib.Path(args.source),pathlib.Path(args.output),args.mode),ensure_ascii=False))

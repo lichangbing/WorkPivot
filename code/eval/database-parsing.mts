@@ -95,8 +95,14 @@ export async function testParsing(db:Pool,actor:string,foreign:string,check:(ok:
  await processor.process(actor);
  await files.remove(actor,task.id,structured.documentId,1);
  await assert.rejects(reader.readStructure(actor,task.id,structured.id));check(true,'删除文件后结构读取失效');
+ const scannedPdf=await files.upload(actor,task.id,'扫描合同.pdf',Buffer.from('%PDF-synthetic-scan'),randomUUID());
+ const scannedProcessor=new DocumentProcessing(db,files,async()=>({parts:[{location:'page:1',text:'OCR合同金额',recognition:{method:'ocr',language:'chi_sim+eng',confidence:75,rotation:0}}],coverage:'partial',warnings:['扫描页使用OCR。'],hasTextLayer:false}));
+ await scannedProcessor.process(actor);
+ const scannedRead=await scannedProcessor.read(actor,task.id,scannedPdf.id,0);
+ check(scannedRead.hasTextLayer===false&&scannedRead.warnings.some(w=>w.includes('没有原生文本层')),'扫描PDF明确标记无原生文本层且不得冒充原文');
+ await files.remove(actor,task.id,scannedPdf.documentId,1);
  const imageFile=await files.upload(actor,task.id,'scan.jpg',Buffer.from('synthetic-image'),randomUUID());
- check((await processor.list(actor,task.id)).some(p=>p.id===imageFile.id&&p.status==='pending'),'图片上传进入共用解析队列');
+ check((await processor.list(actor,task.id)).some(p=>p.id===imageFile.id&&p.status==='pending'&&p.hasTextLayer===null),'图片上传进入共用解析队列且不伪造PDF文本层状态');
  const ocrProcessor=new DocumentProcessing(db,files,async()=>({parts:[{location:'image:1',text:'扫描验收金额三十',recognition:{method:'ocr',language:'chi_sim+eng',confidence:82,rotation:90}}],coverage:'partial',warnings:['OCR结果需要核对。']}));
  await ocrProcessor.process(actor);
  const ocrRead=await ocrProcessor.read(actor,task.id,imageFile.id,0);

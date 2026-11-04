@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { schemaSql, schemaVersion, personalTables, schemaUpgrades, matchesV1Checksum } from './schema.js';
 
 export class RepositoryError extends Error {
-  constructor(public readonly status: number, message: string) { super(message); }
+  constructor(public readonly status: number, message: string, public readonly code?: string) { super(message); }
 }
 export function uuid(value: string): void {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) throw new RepositoryError(400, '标识无效');

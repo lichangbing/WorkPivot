@@ -16,7 +16,14 @@ interface Artifact {
   revision: number;
   current?: boolean;
   knowledgeStatus?: 'none' | 'pending' | 'confirmed' | 'rejected';
+  hasTextLayer?: boolean | null;
+  previewSha256?: string | null;
+  previewConverterVersion?: string | null;
+  previewGeneratedAt?: string | null;
+  previewFontSha256?: string | null;
+  previewHasTextLayer?: boolean | null;
 }
+interface PreviewProblem { message: string; code?: string }
 const tabs: Array<{ id: Tab; label: string }> = [
   { id: 'preview', label: '预览' },
   { id: 'files', label: '文件' },
@@ -72,16 +79,16 @@ function CsvPreview({ text }: { text: string }) {
   return <div className="workspace-preview-table-wrap"><table className="workspace-preview-table"><tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => rowIndex === 0 ? <th key={cellIndex}>{cell}</th> : <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div>;
 }
 
-function PreviewSurface({ taskId, file }: { taskId: string | null; file: Artifact | null }) {
+function PreviewSurface({ taskId, file, onDownload }: { taskId: string | null; file: Artifact | null; onDownload: () => void }) {
   const [kind, setKind] = useState<'empty'|'loading'|'error'|'image'|'pdf'|'text'|'html'|'csv'>('empty');
-  const [text, setText] = useState(''), [error, setError] = useState(''), [objectUrl, setObjectUrl] = useState('');
+  const [text, setText] = useState(''), [error, setError] = useState<PreviewProblem | null>(null), [objectUrl, setObjectUrl] = useState('');
   const [generation, setGeneration] = useState(0);
   useEffect(() => {
     let object: string | null = null;
     const controller = new AbortController();
-    if (!taskId || !file) { setKind('empty'); setText(''); setError(''); setObjectUrl(''); return () => controller.abort(); }
+    if (!taskId || !file) { setKind('empty'); setText(''); setError(null); setObjectUrl(''); return () => controller.abort(); }
     const type = extension(file.name);
-    setKind('loading'); setText(''); setError(''); setObjectUrl('');
+    setKind('loading'); setText(''); setError(null); setObjectUrl('');
     void (async () => {
       try {
         const response = await fetch(`/api/tasks/${taskId}/file-versions/${file.id}/preview`, {
@@ -89,8 +96,8 @@ function PreviewSurface({ taskId, file }: { taskId: string | null; file: Artifac
           signal: controller.signal,
         });
         if (!response.ok) {
-          const value = await response.json().catch(() => ({ error: `预览失败（HTTP ${response.status}）` })) as { error?: string };
-          throw Error(value.error ?? `预览失败（HTTP ${response.status}）`);
+          const value = await response.json().catch(() => ({ error: `预览失败（HTTP ${response.status}）` })) as { error?: string; code?: string };
+          throw Object.assign(Error(value.error ?? `预览失败（HTTP ${response.status}）`), { code: value.code });
         }
         const blob = await response.blob();
         if (controller.signal.aborted) return;
@@ -106,14 +113,23 @@ function PreviewSurface({ taskId, file }: { taskId: string | null; file: Artifac
           setKind(type === 'pdf' || ['docx','xlsx','pptx'].includes(type) ? 'pdf' : 'image');
         }
       } catch (reason) {
-        if (!controller.signal.aborted) { setError(reason instanceof Error ? reason.message : '文件预览失败'); setKind('error'); }
+        if (!controller.signal.aborted) {
+          setError({
+            message: reason instanceof Error ? reason.message : '文件预览失败',
+            code: reason && typeof reason === 'object' && 'code' in reason && typeof reason.code === 'string' ? reason.code : undefined,
+          });
+          setKind('error');
+        }
       }
     })();
     return () => { controller.abort(); if (object) URL.revokeObjectURL(object); };
   }, [taskId, file?.id, file?.revision, file?.name, generation]);
   if (kind === 'empty') return <div className="workspace-preview-empty"><Icon name="file" size={28} /><p>{taskId ? '从“文件”页签选择资料或成果进行预览' : '选择任务后查看文件'}</p></div>;
   if (kind === 'loading') return <div className="workspace-preview-empty"><span className="workspace-preview-spinner" />{['docx','xlsx','pptx'].includes(extension(file?.name ?? '')) ? '正在转换为 PDF，首次打开可能需要一些时间…' : '正在加载预览…'}</div>;
-  if (kind === 'error') return <div role="alert" className="workspace-preview-empty"><Icon name="warning" size={26} /><p>{error}</p><button className={control} onClick={() => setGeneration(value => value + 1)}>重试</button></div>;
+  if (kind === 'error' && error) {
+    const capability = error.code === 'PREVIEW_UNSUPPORTED' || error.code === 'PREVIEW_CAPABILITY_UNAVAILABLE';
+    return <div role="alert" className="workspace-preview-empty"><Icon name="warning" size={26} /><p>{error.message}</p><div className="flex gap-2">{capability && <button className={control} onClick={onDownload}>下载原件</button>}{!capability && <button className={control} onClick={() => setGeneration(value => value + 1)}>重试</button>}</div></div>;
+  }
   if (kind === 'image' && objectUrl) return <div className="workspace-preview-image"><img src={objectUrl} alt={file?.name ?? '图片预览'} /></div>;
   // Chrome 内置 PDF 阅读器在任意 sandbox 属性下都会显示“This page has been blocked by Chrome”。
   // PDF 内容来自已认证接口并按 blob 隔离，HTML 预览仍单独使用 sandbox。
@@ -221,10 +237,10 @@ export function WorkspaceRightPanel({ taskId, owner, width, onHide }: { taskId: 
     <div className="workspace-right-body">
       <section role="tabpanel" aria-label="预览" hidden={tab !== 'preview'} className="workspace-right-pane workspace-preview-pane">
         {selected && <header className="workspace-preview-header">
-          <div><strong>{selected.name}</strong><small>{loading ? '正在读取版本…' : `共 ${versions.length} 个版本`}</small></div>
+          <div><strong>{selected.name}</strong><small>{loading ? '正在读取版本…' : `共 ${versions.length} 个版本`}</small>{selected.hasTextLayer === false && <small className="text-amber-600">无原生文本层，内容可能来自 OCR</small>}{selected.previewGeneratedAt && <small title={`字体包 ${selected.previewFontSha256 ?? ''}`}>派生预览 · 转换器 {selected.previewConverterVersion?.slice(0, 8)} · {new Date(selected.previewGeneratedAt).toLocaleString()}</small>}</div>
           <div><select aria-label="预览版本" value={selected.id} onChange={event => chooseVersion(event.target.value)}>{versions.map(file => <option value={file.id} key={file.id}>版本 {file.revision}{file.current ? '（当前）' : ''}</option>)}</select><button className={control} onClick={() => void download(selected)}>下载</button></div>
         </header>}
-        <PreviewSurface taskId={taskId} file={selected} />
+        <PreviewSurface taskId={taskId} file={selected} onDownload={() => { if (selected) void download(selected); }} />
       </section>
       <section role="tabpanel" aria-label="文件" hidden={tab !== 'files'} className="workspace-right-pane workspace-files-pane">
         {!taskId && <div className="workspace-preview-empty"><Icon name="folder" size={28} /><p>选择任务后查看资料和成果</p></div>}

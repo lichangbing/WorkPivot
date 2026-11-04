@@ -13,6 +13,7 @@ import { RunRepository } from '../packages/server/src/database/runs.js';
 import { ConversationRepository } from '../packages/server/src/database/conversation.js';
 import {MemorySuggestions} from '../packages/server/src/database/memory-suggestions.js';
 import {transaction} from '../packages/server/src/database/connection.js';
+import {parserFingerprint} from '../packages/server/src/database/document-parser.js';
 
 export async function testFiles(db: Pool, identity: Pool, owner: string, foreign: string, token: string, init: string, check: (ok: unknown, name: string) => void) {
   const root = await mkdtemp(join(tmpdir(), 'workpivot-files-'));
@@ -58,11 +59,29 @@ export async function testFiles(db: Pool, identity: Pool, owner: string, foreign
     check(first.content.length === 8000 && first.nextOffset === 8000 && (await reader.read(owner, task.id, long.id, first.nextOffset)).content === '文', 'file reader exposes bounded continuation without silent truncation');
     const unsupported = await files.upload(owner, task.id, 'report.pdf', Buffer.from('not a PDF'), randomUUID());
     await fail(() => reader.read(owner, task.id, unsupported.id), 415, 'unsupported file cannot masquerade as parsed text');
+    const archive = await files.upload(owner, task.id, 'bundle.zip', Buffer.from('synthetic-archive'), randomUUID());
+    const unsupportedPreview = await fetch(base + '/file-versions/' + archive.id + '/preview', { headers: { Authorization: 'Bearer ' + token } });
+    check(unsupportedPreview.status === 415 && (await unsupportedPreview.json() as { code?: string }).code === 'PREVIEW_UNSUPPORTED', 'HTTP预览用稳定错误码区分不支持格式');
+    const structured = await files.upload(owner, task.id, '结构接口.xlsx', Buffer.from('synthetic-xlsx'), randomUUID());
+    await transaction(db, c => c.query("UPDATE workpivot.document_processing SET status='completed',parts=$2::jsonb,parser_fingerprint=$3,coverage='text-only',warnings='[]',has_text_layer=NULL WHERE version_id=$1", [
+      structured.id,
+      JSON.stringify([
+        { location: 'sheet:收入', text: '', object: { kind: 'sheet', sheet: '收入', state: 'visible', dateSystem: '1900' } },
+        { location: 'sheet:收入!B2', text: '结构金额', object: { kind: 'cell', parent: 'sheet:收入', sheet: '收入', address: 'B2', valueType: 'inlineStr' } },
+      ]),
+      parserFingerprint,
+    ]), owner);
+    const structureResponse = await fetch(base + '/file-versions/' + structured.id + '/structure?sheet=' + encodeURIComponent('收入') + '&range=B2', { headers: { Authorization: 'Bearer ' + token } });
+    const structureBody = await structureResponse.json() as { items?: { text?: string; id?: string }[]; hasTextLayer?: boolean | null; offsetUnit?: string; scope?: string };
+    check(structureResponse.ok && structureBody.items?.[0]?.text === '结构金额' && structureBody.items?.[0]?.id === 'sheet:收入!B2' && structureBody.offsetUnit === 'utf16' && structureBody.scope === 'stored-document-objects' && structureBody.hasTextLayer === null, 'HTTP结构化读取返回固定版本对象坐标与文本层状态');
+    check((await fetch(base + '/file-versions/' + structured.id + '/structure?range=B2', { headers: { Authorization: 'Bearer ' + token } })).status === 400, 'HTTP结构化读取拒绝缺少工作表的区域');
     const invalidText = await files.upload(owner, task.id, 'binary.txt', Buffer.from([255,254,0]), randomUUID());
     await fail(() => reader.read(owner, task.id, invalidText.id), 415, 'file reader rejects invalid text encoding');
     await files.remove(owner, task.id, long.documentId, 1);
     await fail(() => reader.read(owner, task.id, long.id), 404, 'deleted upload no longer readable by model');
     await files.remove(owner, task.id, unsupported.documentId, 1);
+    await files.removeVersion(owner, task.id, archive.documentId, archive.id, '删除此版本');
+    await files.removeVersion(owner, task.id, structured.documentId, structured.id, '删除此版本');
     await files.remove(owner, task.id, invalidText.documentId, 1);
     await files.collect(owner);
 
