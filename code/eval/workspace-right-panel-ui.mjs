@@ -102,6 +102,12 @@ try {
     await panel.getByRole('tab', { name: '预览', exact: true }).waitFor();
     await panel.getByRole('tabpanel', { name: '预览' }).getByText('分析报告.pdf', { exact: true }).waitFor();
     await panel.locator('iframe[title="分析报告.pdf 预览"]').waitFor();
+    const panelBox = await panel.boundingBox();
+    const previewPaneBox = await panel.getByRole('tabpanel', { name: '预览' }).boundingBox();
+    const pdfFrameBox = await panel.locator('iframe[title="分析报告.pdf 预览"]').boundingBox();
+    assert.ok(panelBox && panelBox.height >= 850, '右侧工作区应占满应用纵向空间');
+    assert.ok(previewPaneBox && previewPaneBox.height >= 800, '预览页面应占满页签以下的纵向空间');
+    assert.ok(pdfFrameBox && pdfFrameBox.height >= 700, 'PDF iframe 不应按内容高度收缩');
     const pdfFrame = panel.locator('iframe[title="分析报告.pdf 预览"]');
     assert.equal(await pdfFrame.getAttribute('sandbox'), null, 'Chrome PDF 阅读器不能被 sandbox 拦截');
     await page.waitForTimeout(1000);
@@ -125,6 +131,10 @@ try {
 
     await panel.getByRole('tab', { name: '浏览器', exact: true }).click();
     await page.waitForTimeout(200);
+    const browserPaneBox = await panel.getByRole('tabpanel', { name: '浏览器' }).boundingBox();
+    const browserSurfaceBox = await panel.getByLabel('网页画面').boundingBox();
+    assert.ok(browserPaneBox && browserPaneBox.height >= 800, '浏览器页签应占满纵向空间');
+    assert.ok(browserSurfaceBox && browserSurfaceBox.height >= 550, '浏览器网页画面不应退化为小窗口');
     assert.ok(screenshotRequests >= 1, '切换到浏览器页签后应恢复截图');
     assert.deepEqual(errors, []);
     console.log('右侧工作区检查通过：三页签、PDF/Markdown 预览、选择恢复和隐藏截图暂停。');

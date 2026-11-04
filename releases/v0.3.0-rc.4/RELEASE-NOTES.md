@@ -28,6 +28,7 @@ RC.4 完成文档预览 RO-1～RO-6，不增加应用内编辑。预览只负责
 - 预览缓存 key 从仅 `versionId` 扩展为 `versionId + sourceSha256 + converterVersion + fontPackSha256`。
 - `document_versions` 增加派生预览元数据；`document_processing` 增加 `has_text_layer`。
 - 只读预览和结构化读取接口只接受固定原始文件版本，不接受当前路径或派生预览 ID。
+- 修复右侧工作区纵向高度链：预览页签、PDF iframe 和共享浏览器画面均占满页签以下空间。
 
 ## 验证
 
@@ -35,6 +36,7 @@ RC.4 完成文档预览 RO-1～RO-6，不增加应用内编辑。预览只负责
 - `eval:document-preview`：转换契约、复合缓存、派生隔离和错误分级通过。
 - `eval:parser-metadata`：37/37，包含 PDF 文本层和结构化对象。
 - `eval:workspace-right-panel`：真实 PDF 阅读器、Markdown、错误分级、三页签和状态恢复通过。
+- 1440×900 实际布局断言：面板 900px、预览区 852px、PDF 约 825px、浏览器画面约 722px。
 - TypeScript、ESLint、Web 生产构建、严格许可和依赖边界通过。
 
 ## 未包含
