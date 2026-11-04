@@ -42,13 +42,16 @@ import { RequestDeliveryRepository } from './request-delivery.js';
 import type { DatabaseExecution } from './execution.js';
 import type { ProviderRepository, ProviderInput } from './providers.js';
 import type { McpRepository } from './mcp.js';
-import { API_PROTOCOL, interactionCapabilities } from '@workpivot/shared';
+import { API_PROTOCOL, SERVICE_VERSION, interactionCapabilities } from '@workpivot/shared';
 import type { FileRepository } from './files.js';
 import { DailyLimits } from './daily-limits.js';
 import { IamRepository, oidcBindingCookie } from './iam.js';
+import {MetricsRegistry,requestId,requestObservability} from './observability.js';
+import {SystemStatusService,type OperationsConfiguration} from './system-status.js';
+import {timingSafeEqual} from 'node:crypto';
 
 /** K01 联调接口；各服务适配完成后接入生产界面。 */
-export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken: string, execution?: DatabaseExecution, providers?: ProviderRepository, mcp?: McpRepository, webDist?: string, files?: FileRepository, skillBuilds?: SkillBuilds, automations?: Automations, embeddings?: Embeddings, browserWorkspace?: BrowserWorkspace,browserProfiles?:BrowserProfiles,preview?:DocumentPreview): Promise<Express> {
+export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken: string, execution?: DatabaseExecution, providers?: ProviderRepository, mcp?: McpRepository, webDist?: string, files?: FileRepository, skillBuilds?: SkillBuilds, automations?: Automations, embeddings?: Embeddings, browserWorkspace?: BrowserWorkspace,browserProfiles?:BrowserProfiles,preview?:DocumentPreview,operations?:OperationsConfiguration): Promise<Express> {
   await assertRestrictedRole(authPool, 'identity'); await assertRestrictedRole(appPool, 'workpivot');
   const accounts = new AccountRepository(authPool), workspace = new WorkspaceRepository(appPool);
   const iam = new IamRepository(authPool);
@@ -56,6 +59,8 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   const conversation = new ConversationRepository(appPool);
   const requestDeliveries = new RequestDeliveryRepository(appPool);
   const notifications = new TaskNotifications(appPool);
+  const metrics = new MetricsRegistry();
+  const systemStatus = new SystemStatusService(appPool,authPool,metrics,SERVICE_VERSION,operations);
   const app = express();
   app.disable('x-powered-by');
   // 仅在受控反向代理后读取真实客户端地址，用于登录限流与访问审计。
@@ -69,6 +74,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     if (req.secure || req.headers['x-forwarded-proto'] === 'https') res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     next();
   });
+  app.use(requestObservability(metrics));
   app.use('/api', mobileCors(process.env['WORKPIVOT_MOBILE_ORIGINS']));
   app.use(requestAudit(authPool));
   app.use(express.json({ limit: '1mb' }));
@@ -79,9 +85,34 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   const body = (req: Request): Record<string, unknown> => req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body as Record<string, unknown> : {};
   const str = (value: unknown): string => { if (typeof value !== 'string') throw new RepositoryError(400, '缺少文本参数'); return value; };
   const num = (value: unknown): number => { if (typeof value !== 'number') throw new RepositoryError(400, '缺少版本参数'); return value; };
-  app.get('/api/health', async (_req, res) => {
-    await appPool.query('SELECT 1'); await authPool.query('SELECT 1');
-    res.json({ ok: true, name: 'workpivot', version: '0.3.0-rc.5', releaseStage: 'rc', releaseScope: 'single-user', apiProtocol: API_PROTOCOL, storage: 'postgresql', productionReady: false, chatEnabled: !!execution, filesEnabled: !!files, providersEnabled: !!providers, mcpEnabled: !!mcp, interactionCapabilities: interactionCapabilities() });
+  app.get('/api/health', (_req, res) => {
+    res.json({ ok: true, name: 'workpivot', version: SERVICE_VERSION, releaseStage: 'rc', releaseScope: 'single-user', apiProtocol: API_PROTOCOL, storage: 'postgresql', productionReady: false, chatEnabled: !!execution, filesEnabled: !!files, providersEnabled: !!providers, mcpEnabled: !!mcp, interactionCapabilities: interactionCapabilities() });
+  });
+  app.get('/api/ready', async (_req,res) => {
+    const readiness=await systemStatus.readiness();
+    res.status(readiness.ready?200:503).json({
+      ok:readiness.ready,
+      ready:readiness.ready,
+      name:'workpivot',
+      version:SERVICE_VERSION,
+      status:readiness.status,
+      database:readiness.database,
+      storage:readiness.storage,
+      ts:Date.now(),
+    });
+  });
+  app.get('/api/metrics', async(req,res)=>{
+    const expected=process.env['WORKPIVOT_METRICS_TOKEN']??'';
+    if(expected){
+      const supplied=req.headers.authorization?.startsWith('Bearer ')?req.headers.authorization.slice(7):'';
+      const left=Buffer.from(supplied),right=Buffer.from(expected);
+      if(left.length!==right.length||!timingSafeEqual(left,right))throw new RepositoryError(401,'监控令牌无效');
+    }else{
+      const cached=res.locals['user'] as DatabaseUser|null|undefined;
+      const user=cached===undefined?await accounts.resolve(token(req)):cached;
+      if(!user||user.role!=='admin'||user.mustChangePassword)throw new RepositoryError(403,'需要管理员会话或监控令牌');
+    }
+    res.type('text/plain; version=0.0.4; charset=utf-8').send(await systemStatus.prometheus());
   });
   app.get('/api/auth/state', async (req, res) => {
     const user = await accounts.resolve(token(req));
@@ -189,6 +220,10 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   app.get('/api/admin/automation-attempts',async(req,res)=>res.json(await adminOperations.attempts(token(req),str(req.query['userId']),req.query['category']===undefined?undefined:str(req.query['category']),req.query['at']===undefined?undefined:str(req.query['at']),req.query['id']===undefined?undefined:str(req.query['id']))));
   app.put('/api/admin/automation-capacity',async(req,res)=>{const value=body(req);res.json(await adminOperations.setCapacity(token(req),value.userId,value));});
   app.get('/api/admin/operations',async(req,res)=>{res.json(await adminOperations.overview(token(req),str(req.query['userId']),str(req.query['month'])));});
+  app.get('/api/admin/system-status',async(_req,res)=>{
+    if(actor(res).role!=='admin')throw new RepositoryError(403,'仅管理员可查看系统状态');
+    res.json(await systemStatus.snapshot());
+  });
   const usage=new UsageRepository(appPool);
   // 旧客户端仍可读取空提醒，预算写入明确停用；历史数据留存用于备份兼容。
   app.get('/api/usage/alerts',async(_req,res)=>{res.json({alerts:[]});});
@@ -735,7 +770,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     if ((error as { type?: string })?.type === 'entity.parse.failed') { res.status(400).json({ error: '请求内容无效' }); return; }
     if ((error as { type?: string })?.type === 'entity.too.large') { res.status(413).json({ error: '上传内容超出大小限制' }); return; }
     // 未归类的异常必须落到日志，否则线上只能看到笼统的 503。
-    console.error('[request]', _req.method, _req.originalUrl, error);
+    console.error(JSON.stringify({level:'error',event:'request_failed',requestId:requestId(res),method:_req.method,route:_req.route?.path??_req.path.slice(0,200),errorCode:(error as {code?:unknown})?.code??'unhandled'}));
     res.status(503).json({ error: '数据库操作暂不可用，请稍后重试' });
   });
   return app;

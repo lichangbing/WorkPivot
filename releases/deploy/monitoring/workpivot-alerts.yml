@@ -1,0 +1,62 @@
+groups:
+  - name: workpivot-availability
+    rules:
+      - alert: WorkPivotMetricsMissing
+        expr: absent(workpivot_ready)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: WorkPivot 指标采集中断
+      - alert: WorkPivotNotReady
+        expr: workpivot_ready == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: WorkPivot 关键依赖未就绪
+      - alert: WorkPivotDatabaseUnavailable
+        expr: workpivot_database_ready == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: WorkPivot 数据库不可用
+      - alert: WorkPivotBackupNotReady
+        expr: absent(workpivot_backup_ready) or workpivot_backup_ready{state!="ready"} == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: WorkPivot 最近备份缺失、过期或失败
+
+  - name: workpivot-capacity
+    rules:
+      - alert: WorkPivotDiskWarning
+        expr: workpivot_storage_used_ratio >= 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: WorkPivot 文件存储使用率超过 80%
+      - alert: WorkPivotDiskCritical
+        expr: workpivot_storage_used_ratio >= 0.9
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: WorkPivot 文件存储使用率超过 90%
+      - alert: WorkPivotTaskLeaseExpired
+        expr: workpivot_task_runs{status="expired_lease"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: WorkPivot 存在未恢复的过期任务租约
+      - alert: WorkPivotDatabasePoolWaiting
+        expr: workpivot_database_pool_connections{state="waiting"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: WorkPivot 数据库连接池持续等待

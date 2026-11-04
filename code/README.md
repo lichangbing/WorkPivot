@@ -128,6 +128,8 @@ bash releases/deploy/install-local-stack.sh --auto-admin
 - `WORKPIVOT_BROWSER_URL` / `WORKPIVOT_BROWSER_TOKEN`
 - `WORKPIVOT_WORKER_URL` / `WORKPIVOT_WORKER_TOKEN`
 - `WORKPIVOT_SEARCH_PROVIDER` / `WORKPIVOT_SEARCH_URL`
+- `WORKPIVOT_METRICS_TOKEN`：Prometheus 只读指标令牌，至少 32 位
+- `WORKPIVOT_BACKUP_STATUS_FILE`：最近备份状态只读路径
 
 示例变量见仓库根 [.env.example](../.env.example)。示例只包含占位值，不能直接作为生产配置。
 
@@ -140,6 +142,9 @@ cd code
 docker build -f ../releases/deploy/Dockerfile.local-stack-server \
   -t workpivot-server:local-stack .
 ```
+
+若 Docker 内 DNS 只能通过宿主网络解析，可使用
+`docker build --network host ...`；容器运行时网络边界不受构建参数影响。
 
 浏览器和执行器镜像由一体化安装器统一构建，避免版本不一致。
 

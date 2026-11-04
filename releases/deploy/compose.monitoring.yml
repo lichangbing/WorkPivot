@@ -1,0 +1,35 @@
+# 可选监控叠加文件。与本地/生产 Compose 使用同一 stack 网络。
+services:
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    container_name: workpivot-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.listen-address=0.0.0.0:9090
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/workpivot-alerts.yml:/etc/prometheus/workpivot-alerts.yml:ro
+      - prometheus-data:/prometheus
+    secrets:
+      - workpivot-metrics-token
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:rw,nosuid,nodev,size=64m"]
+    networks: [stack]
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+
+secrets:
+  workpivot-metrics-token:
+    file: ${WORKPIVOT_METRICS_TOKEN_FILE:?需要指标令牌文件}
+
+networks:
+  stack:
+    external: true
+    name: ${STACK_NETWORK:?需要外部网络名}

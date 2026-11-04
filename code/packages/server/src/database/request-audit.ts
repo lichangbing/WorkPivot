@@ -43,7 +43,7 @@ function lightweightPoll(req:{method:string;path:string}):boolean{
 export function requestAudit(db:Pool):RequestHandler {
  const accounts=new AccountRepository(db);
  return async(req,res,next)=>{
-  if(!req.path.startsWith('/api/')||['/api/health','/api/auth/state'].includes(req.path)){next();return;}
+  if(!req.path.startsWith('/api/')||['/api/health','/api/ready','/api/auth/state'].includes(req.path)){next();return;}
   const token=req.headers.authorization?.startsWith('Bearer ')?req.headers.authorization.slice(7):'';
   let user;
   try{user=await accounts.resolve(token);}catch{throw new RepositoryError(503,'身份与审计服务暂不可用');}

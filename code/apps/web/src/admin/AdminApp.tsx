@@ -16,7 +16,7 @@ import { MemoryTemplatesPanel } from './MemoryTemplatesPanel';
 import { LimitsPanel } from './LimitsPanel';
 import { DatabaseIdentity } from './DatabaseIdentity';
 
-type Menu = 'network-targets' | 'request-audit' | 'experts' | 'users' | 'limits' | 'identity' | 'models' | 'skills' | 'mcp' | 'memory' | 'templates' | 'schedules' | 'ops' | 'permissions';
+type Menu = 'system-status' | 'network-targets' | 'request-audit' | 'experts' | 'users' | 'limits' | 'identity' | 'models' | 'skills' | 'mcp' | 'memory' | 'templates' | 'schedules' | 'ops' | 'permissions';
 type Role = PublicUser['role'];
 
 type UserDialogState =
@@ -108,6 +108,7 @@ export default function AdminApp({ database = false }: { database?: boolean }): 
     ['users', '用户管理'],
     ...(database ? [['limits', '限额管理'] as [Menu,string]] : []),
     ...(database ? [['identity', '企业与身份源'] as [Menu,string]] : []),
+    ...(database ? [['system-status','系统状态'] as [Menu,string]] : []),
     ['models', '模型管理'],
     ['experts', '专家模板'],
     ['skills', 'Skill 管理'],

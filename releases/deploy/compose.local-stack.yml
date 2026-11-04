@@ -45,6 +45,9 @@ services:
       WORKPIVOT_SEARCH_PROVIDER: ${WORKPIVOT_SEARCH_PROVIDER:-searxng}
       WORKPIVOT_SEARCH_URL: ${WORKPIVOT_SEARCH_URL:-http://searxng:8080}
       WORKPIVOT_PERMISSION_TTL_MINUTES: ${WORKPIVOT_PERMISSION_TTL_MINUTES:-10}
+      # Prometheus 使用独立只读指标令牌；留空时仅管理员会话可读取指标。
+      WORKPIVOT_METRICS_TOKEN: ${WORKPIVOT_METRICS_TOKEN:-}
+      WORKPIVOT_BACKUP_STATUS_FILE: ${WORKPIVOT_BACKUP_STATUS_FILE:-/var/lib/workpivot-backups/status.json}
       WORKPIVOT_AGENT_MAX_STEPS: ${WORKPIVOT_AGENT_MAX_STEPS:-200}
       WORKPIVOT_AGENT_MAX_DURATION_MINUTES: ${WORKPIVOT_AGENT_MAX_DURATION_MINUTES:-30}
       WORKPIVOT_CONTEXT_CHARS: ${WORKPIVOT_CONTEXT_CHARS:-120000}
@@ -53,6 +56,7 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - files:/data/files
+      - ${WORKPIVOT_BACKUP_STATUS_DIR:-./backup-status}:/var/lib/workpivot-backups:ro
     networks: [stack]
     init: true
     read_only: true
@@ -60,7 +64,7 @@ services:
     security_opt: ["no-new-privileges:true"]
     tmpfs: ["/tmp:rw,nosuid,nodev,size=256m"]
     healthcheck:
-      test: [CMD, node, -e, "fetch('http://127.0.0.1:39800/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:39800/api/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 10

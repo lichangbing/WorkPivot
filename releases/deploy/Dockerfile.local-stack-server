@@ -3,10 +3,12 @@
 # 依赖在镜像内按锁文件安装；并且不走 corepack（它会从 registry.npmjs.org 拉 pnpm）。
 FROM node:22-alpine
 
+ARG NPM_REGISTRY=https://registry.npmjs.org/
+
 RUN apk add --no-cache libc6-compat
 
-RUN npm install -g pnpm@11.22.0 --registry=https://registry.npmmirror.com \
-    && pnpm config set registry https://registry.npmmirror.com
+RUN npm install -g pnpm@11.22.0 --registry=${NPM_REGISTRY} \
+    && pnpm config set registry ${NPM_REGISTRY}
 
 ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1 \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \

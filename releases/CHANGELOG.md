@@ -32,6 +32,33 @@
 - 修复数据库模式公开自助注册未受管理员策略控制的问题。
 - 修复右侧工作区 PDF iframe 因 Chrome 禁止 sandbox 内 PDF 阅读器而显示“This page has been blocked by Chrome”的问题。
 
+## [v0.3.0-rc.6] - 2026-11-04
+
+### 新增
+
+- 新增 `/api/ready` 就绪检查和 `/api/metrics` Prometheus 指标接口。
+- 新增请求关联 ID、结构化脱敏访问日志和备份状态文件。
+- 管理后台新增只读“系统状态”，展示依赖、连接池、磁盘、队列、备份和告警。
+- 新增 Prometheus 抓取配置和 WorkPivot 告警规则。
+
+### 安全
+
+- Express 升级到 5.3.0，修复 critical 的代理地址欺骗依赖。
+- adm-zip、pptxgenjs、body-parser、proxy-addr、image-size 和 brace-expansion 升级或受控覆盖。
+- 生产依赖审计从 1 critical / 10 high 降至 0 critical / 0 high。
+- 完成 RC.6 权限、路径、SSRF、密钥、工具授权、审计和恢复门禁复核。
+
+### 发布工程
+
+- 新增发布支持矩阵、发布准备清单生成器和 Windows RC.6 便携包。
+- 本地与正式服务器均部署 schema v72 和 RC.6；正式服务器保留旧镜像与联合备份。
+- 新增 RC.6 发布门禁和本地/远程部署记录。
+
+### 未完成
+
+- Android 1.8 APK 因缺少 SDK、JDK 和发布签名环境未构建。
+- 第二物理设备、24 小时真实负载和真实业务样本仍未验收。
+
 ## [v0.3.0-rc.5] - 2026-11-04
 
 ### 新增

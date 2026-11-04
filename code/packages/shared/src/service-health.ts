@@ -1,4 +1,4 @@
-export const SERVICE_VERSION = '0.3.0-rc.5';
+export const SERVICE_VERSION = '0.3.0-rc.6';
 export const API_PROTOCOL = 1;
 
 export class CompatibilityError extends Error {}

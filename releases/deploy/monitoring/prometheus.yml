@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/workpivot-alerts.yml
+
+scrape_configs:
+  - job_name: workpivot
+    metrics_path: /api/metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/workpivot-metrics-token
+    static_configs:
+      - targets:
+          - server:39800

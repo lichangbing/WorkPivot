@@ -1,6 +1,17 @@
 import { BackupError } from './backup-error.mjs';
 import { schemaUpgrades, schemaVersion } from '../packages/server/src/database/schema.js';
 import { createBackup, restoreBackup, verifyBackup } from './backup-lib.mjs';
+import {mkdir,rename,writeFile} from 'node:fs/promises';
+import {dirname} from 'node:path';
+
+async function writeBackupStatus(value:Record<string,unknown>):Promise<void>{
+  const target=process.env.WORKPIVOT_BACKUP_STATUS_FILE;
+  if(!target)return;
+  await mkdir(dirname(target),{recursive:true,mode:0o700});
+  const temporary=`${target}.${process.pid}.tmp`;
+  await writeFile(temporary,JSON.stringify({version:1,...value},null,2)+'\n',{mode:0o600});
+  await rename(temporary,target);
+}
 
 async function main() {
   const [command, path] = process.argv.slice(2);
@@ -11,9 +22,11 @@ async function main() {
     const filesRoot = process.env.WORKPIVOT_DATABASE_FILES_ROOT;
     if (!databaseUrl || !filesRoot) throw new BackupError('创建备份需要 WORKPIVOT_DATABASE_ADMIN_URL 和 WORKPIVOT_DATABASE_FILES_ROOT');
     const manifest = await createBackup({ target: path, databaseUrl, filesRoot, schemaVersion: schemaUpgrades.at(-1)?.version ?? schemaVersion });
+    await writeBackupStatus({status:'success',finishedAt:new Date().toISOString(),schemaVersion:manifest.schemaVersion,databaseBytes:manifest.database.bytes,filesBytes:manifest.files.reduce((sum,file)=>sum+file.bytes,0)});
     console.log(`联合备份已创建：${manifest.totals.files} 个文件，${manifest.totals.bytes} 字节，schema v${manifest.schemaVersion}`);
   } else if (command === 'verify') {
     const manifest = await verifyBackup(path);
+    await writeBackupStatus({status:'success',finishedAt:new Date().toISOString(),schemaVersion:manifest.schemaVersion,databaseBytes:manifest.database.bytes,filesBytes:manifest.files.reduce((sum,file)=>sum+file.bytes,0)});
     console.log(`备份校验通过：${manifest.totals.files} 个文件，${manifest.totals.bytes} 字节，schema v${manifest.schemaVersion}`);
   } else {
     const databaseUrl = process.env.WORKPIVOT_DATABASE_ADMIN_URL;
@@ -30,6 +43,7 @@ async function main() {
 }
 
 try { await main(); } catch (error) {
+  try{await writeBackupStatus({status:'failed',finishedAt:new Date().toISOString(),errorCode:error instanceof BackupError?'backup_operation_failed':'internal_error'});}catch{/* 状态文件不可写不能覆盖真正错误。 */}
   console.error(error instanceof BackupError ? error.message : '备份或恢复未完成，请检查离线配置、数据库连接和文件权限；底层诊断未回显。');
   process.exitCode = 1;
 }
