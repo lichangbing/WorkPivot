@@ -11,13 +11,14 @@ import { MemoryReview, SummaryReview } from './MemoryReview';
 import { ResourceScope, type ResourceSelection } from './ResourceScope';
 import { ProcessTimeline } from './ProcessTimeline';
 import { InteractionDock } from './InteractionDock';
-import type { InteractionEnvelope, InteractionResponse, SteeringMessage } from '@workpivot/shared';
+import { RequestDeliveryStatus } from '../../web/src/RequestDeliveryStatus';
+import type { InteractionEnvelope, InteractionResponse, RequestDeliveryView, SteeringMessage } from '@workpivot/shared';
 
 interface Changes { type: 'changes'; events: StoredEvent[]; nextSequence: string }
-interface State { type: 'state'; value: { tasks: Task[]; interactions?: InteractionEnvelope[]; steering?: SteeringMessage[] } }
+interface State { type: 'state'; value: { tasks: Task[]; interactions?: InteractionEnvelope[]; steering?: SteeringMessage[]; deliveries?: RequestDeliveryView[] } }
 
 export function Conversation({ client, task, onError }: { client: MobileClient; task: Task; onError: (error: unknown) => void }) {
-  const [events, setEvents] = useState<StoredEvent[]>([]), [interactions, setInteractions] = useState<InteractionEnvelope[]>([]), [steering, setSteering] = useState<SteeringMessage[]>([]);
+  const [events, setEvents] = useState<StoredEvent[]>([]), [interactions, setInteractions] = useState<InteractionEnvelope[]>([]), [steering, setSteering] = useState<SteeringMessage[]>([]), [deliveries, setDeliveries] = useState<RequestDeliveryView[]>([]);
   const [before, setBefore] = useState<string | null>(null), [ready, setReady] = useState(false);
   const [details, setDetails] = useState<Record<string, { after: string; snapshot: string }>>({});
   const [status, setStatus] = useState(task.status), [message, setMessage] = useState(''), [error, setError] = useState('');
@@ -40,7 +41,7 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
         if (!initialized) {
           const page = await client.json<ConversationPage>(`/api/tasks/${task.id}/conversation`, { signal });
           if (signal.aborted) return;
-          setEvents(page.turns.flatMap(turn => turn.events)); setBefore(page.nextCursor);
+          setEvents(page.turns.flatMap(turn => turn.events)); setBefore(page.nextCursor); if (page.deliveries) setDeliveries(page.deliveries);
           setDetails(Object.fromEntries(page.turns.filter(turn => turn.hasMoreEvents).map(turn => [turn.id, { after: turn.nextEventSequence!, snapshot: page.snapshotSequence }])));
           watermark = page.snapshotSequence; initialized = true; setReady(true);
         }
@@ -53,6 +54,7 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
           else if (event.type === 'state') {
             if (event.value.interactions) setInteractions(event.value.interactions);
             if (event.value.steering) setSteering(event.value.steering);
+            if (event.value.deliveries) setDeliveries(event.value.deliveries);
             setStatus(event.value.tasks.find(row => row.id === task.id)?.status ?? 'unavailable');
           } else { throw new ApiError('会话连接已失效，请重新打开任务', event.status); }
         }, signal);
@@ -84,6 +86,9 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
   };
   const running = ['running', 'waiting', 'queued'].includes(status);
   const turns = groupEvents(events), latestTurnId = turns.at(-1)?.id;
+  const deliveryByTurn = new Map(deliveries.map(item => [item.turnId, item]));
+  const latestDelivery = deliveries[0];
+  const latestDeliveryInView = latestDelivery && turns.some(turn => turn.id === latestDelivery.turnId);
   const send = async () => {
     if (busy || uploadBlocked || !resourceScope || !ready || !message.trim()) return;
     const content = message.trim();
@@ -116,6 +121,19 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
     setBusy(true); setError('');
     try { await client.json(path, { method: 'POST', body: JSON.stringify(body ?? {}), signal: lifetime.current.signal }); }
     catch (reason) { if (!lifetime.current.signal.aborted) report(reason); }
+    finally { setBusy(false); }
+  };
+  const resume = async () => {
+    if (busy) return;
+    setBusy(true); setError('');
+    try {
+      const response = await client.response(`/api/tasks/${task.id}/resume`, {
+        method: 'POST', body: JSON.stringify({ requestId: crypto.randomUUID() }), signal: lifetime.current.signal,
+      });
+      if (!response.ok) throw new Error((await response.json() as { error?: string }).error ?? '继续任务失败');
+      await response.body?.cancel().catch(() => undefined);
+      setStatus('running');
+    } catch (reason) { if (!lifetime.current.signal.aborted) report(reason); }
     finally { setBusy(false); }
   };
   const respondInteraction = async (interaction: InteractionEnvelope, response: InteractionResponse) => {
@@ -173,6 +191,7 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
       if (node.scrollTop < 30 && !follow.current) void older();
     }}>
       {before && <button className="load-more" onClick={() => void older()}>查看更早一轮</button>}
+      {latestDelivery && !latestDeliveryInView && <RequestDeliveryStatus view={latestDelivery} onResume={() => { void resume(); }} />}
       {ready && !events.length && <div className="empty"><h2>开始这个项目的工作</h2><p>输入你的问题，继续整理想法。</p></div>}
       {turns.map(turn => {
         const processEvents = turn.events.filter(event => event.kind === 'thinking' || event.kind.startsWith('tool_'));
@@ -184,6 +203,7 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.kind === 'user' ? displayUserMessageContent(event.content) : event.content}</ReactMarkdown>
             {event.truncated && <button disabled={busy} onClick={() => void expand(event)}>展开完整内容</button>}
             {event.attachments?.map(file => <FileLabel key={file.id} name={file.name ?? '附件'} />)}
+            {event.kind === 'user' && deliveryByTurn.get(turn.id) && <RequestDeliveryStatus view={deliveryByTurn.get(turn.id)!} onResume={() => { void resume(); }} />}
           </article>
           : null
       )}{details[turn.id] && <button disabled={busy} onClick={() => void expandTurn(turn.id)}>继续加载本轮内容</button>}</section>;

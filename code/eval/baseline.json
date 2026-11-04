@@ -1,5 +1,5 @@
 {
-  "date": "2026-11-04T05:08:17.692Z",
+  "date": "2026-11-04T08:07:17.226Z",
   "suites": {
     "W1": "pass",
     "W3": "pass",
@@ -28,6 +28,9 @@
     "R005": "pass",
     "R004": "pass",
     "PC": "pass",
+    "DELIVERY": "pass",
+    "DELIVERY-RECOVERY": "pass",
+    "DELIVERY-UI": "pass",
     "OPT": "pass",
     "OPT2": "pass",
     "OPT3": "pass",
@@ -50,7 +53,7 @@
         "pass": true
       },
       {
-        "name": "B01 建任务（工作目录已创建） —— /tmp/wp-ws-HWHURb/.accounts/2994788a-f2e3-4142-86c7-6147ea9394a6",
+        "name": "B01 建任务（工作目录已创建） —— /tmp/wp-ws-pwsQEa/.accounts/84498d97-6360-4688-aad2-6b3f9e13be82",
         "pass": true
       },
       {
@@ -102,7 +105,7 @@
         "pass": true
       },
       {
-        "name": "F01 转写文件存在 —— /tmp/wp-home-Zmj1bn/accounts/2994788a-f2e3-4142-86c7-6147ea9394a6/data/tasks/t-1793768840276-43c4f6/transcript.jsonl",
+        "name": "F01 转写文件存在 —— /tmp/wp-home-9kK7G8/accounts/84498d97-6360-4688-aad2-6b3f9e13be82/data/tasks/t-1793779585313-34df00/transcript.jsonl",
         "pass": true
       },
       {
@@ -152,7 +155,7 @@
         "pass": true
       },
       {
-        "name": "T3-03 打回后真实写盘 —— gate 目录: [\".workpivot\",\"总结.md\",\"简介.txt\"] | 工具事件: [{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_6m1qn5\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"已写入 /tmp/wp3-ws-5MjNCj/.accounts/c54e9e56-3092-41d4-82b5-9a196492138d/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_36gdhu\",\"ok\":true,\"status\":\"ok\",\"durationMs\":0,\"message\":\"已写入 /tmp/wp3-ws-5MjNCj/.accounts/c54e9e56-3092-41d4-82b5-9a196492138d/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_ql71nw\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"[系统] 注意:这是第 3 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 /tmp/wp3-ws-5MjNCj/.accounts/c54e9e56-3092-41d4-82b5-9a196492138d/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_jvoirf\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"[系统] 注意:这是第 4 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 /tmp/wp3-ws-5MjNCj/.accounts/c54e9e56-3092-41d4-82b5-9a196492138d/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_ivqlc2\",\"ok\":false,\"status\":\"error\",\"durationMs\":0,\"message\":\"错误:已连续多次产生完全相同的调用与结果,本次执行被拦截。请必须更换思路、修改参数,或向用户说明情况。\"}]",
+        "name": "T3-03 打回后真实写盘 —— gate 目录: [\".workpivot\",\"总结.md\",\"简介.txt\"] | 工具事件: [{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_0gbsq1\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"已写入 /tmp/wp3-ws-3jqo0e/.accounts/db5a1fb9-03fb-46a2-bc80-5ad1d5365fc2/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_s4prvm\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"已写入 /tmp/wp3-ws-3jqo0e/.accounts/db5a1fb9-03fb-46a2-bc80-5ad1d5365fc2/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_rzy6k3\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"[系统] 注意:这是第 3 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 /tmp/wp3-ws-3jqo0e/.accounts/db5a1fb9-03fb-46a2-bc80-5ad1d5365fc2/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_3qpapr\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"[系统] 注意:这是第 4 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 /tmp/wp3-ws-3jqo0e/.accounts/db5a1fb9-03fb-46a2-bc80-5ad1d5365fc2/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_b7flto\",\"ok\":false,\"status\":\"error\",\"durationMs\":0,\"message\":\"错误:已连续多次产生完全相同的调用与结果,本次执行被拦截。请必须更换思路、修改参数,或向用户说明情况。\"}]",
         "pass": true
       },
       {
@@ -160,11 +163,11 @@
         "pass": true
       },
       {
-        "name": "T3-06 大结果落盘（工具结果含\"已落盘\"） —— （工具结果过大已落盘:/tmp/wp3-ws-5MjNCj/.accounts/c54e9e56-3092-41d4-82b5-9a196492138d/.workpivot/results/result-1793768844231.txt",
+        "name": "T3-06 大结果落盘（工具结果含\"已落盘\"） —— （工具结果过大已落盘:/tmp/wp3-ws-3jqo0e/.accounts/db5a1fb9-03fb-46a2-bc80-5ad1d5365fc2/.workpivot/results/result-1793779589158.txt",
         "pass": true
       },
       {
-        "name": "T3-06 落盘文件真实存在（>50KB） —— resultsDir=/tmp/wp3-ws-5MjNCj/.accounts/c54e9e56-3092-41d4-82b5-9a196492138d/.workpivot/results | exists=true | stashed=[\"result-1793768844231.txt\",\"result-1793768844236.txt\",\"result-1793768844242.txt\",\"result-1793768844246.txt\"]",
+        "name": "T3-06 落盘文件真实存在（>50KB） —— resultsDir=/tmp/wp3-ws-3jqo0e/.accounts/db5a1fb9-03fb-46a2-bc80-5ad1d5365fc2/.workpivot/results | exists=true | stashed=[\"result-1793779589158.txt\",\"result-1793779589162.txt\",\"result-1793779589165.txt\",\"result-1793779589168.txt\"]",
         "pass": true
       },
       {
@@ -180,7 +183,7 @@
         "pass": true
       },
       {
-        "name": "T3-01 parentUuid 链首尾相接（fork/rewind 前置） —— [[\"user_message\",null],[\"meta\",\"de2ffa27\"],[\"meta\",\"98b037de\"]]",
+        "name": "T3-01 parentUuid 链首尾相接（fork/rewind 前置） —— [[\"user_message\",null],[\"meta\",\"e8e83aa2\"],[\"meta\",\"bac63db3\"]]",
         "pass": true
       }
     ],
@@ -190,7 +193,7 @@
         "pass": true
       },
       {
-        "name": "E01 条目区恰有一条\"蓝色\"（幂等去重） —— [{\"id\":\"m-1793768846690-bssx\",\"content\":\"用户最喜欢的颜色是蓝色\",\"createdAt\":\"2026-11-04T05:07:26.690Z\"}]",
+        "name": "E01 条目区恰有一条\"蓝色\"（幂等去重） —— [{\"id\":\"m-1793779591162-ep5g\",\"content\":\"用户最喜欢的颜色是蓝色\",\"createdAt\":\"2026-11-04T08:06:31.162Z\"}]",
         "pass": true
       },
       {
@@ -274,7 +277,7 @@
     ],
     "W8": [
       {
-        "name": "注册 anthropic 协议供应商（保存即验活通过） —— {\"provider\":{\"id\":\"a70d9aeb-c574-40f5-a3f3-3dce4dff56bf\",\"name\":\"Claude模拟\",\"baseUrl\":\"http://127.0.0.1:39908\",\"modelId\":",
+        "name": "注册 anthropic 协议供应商（保存即验活通过） —— {\"provider\":{\"id\":\"aad7f7e7-733c-471d-8926-ec446c050a69\",\"name\":\"Claude模拟\",\"baseUrl\":\"http://127.0.0.1:39908\",\"modelId\":",
         "pass": true
       },
       {
@@ -306,7 +309,7 @@
         "pass": true
       },
       {
-        "name": "write 工具经 tool_use 真实落盘 —— /tmp/wp8-ws-T6M6WL/.accounts/a48f3c75-eb3d-4a9a-b242-e18df688a38a/w8.txt",
+        "name": "write 工具经 tool_use 真实落盘 —— /tmp/wp8-ws-rkPWlR/.accounts/62670c41-762d-4bac-b41b-4611ecb0e7b7/w8.txt",
         "pass": true
       },
       {
@@ -332,7 +335,7 @@
         "pass": true
       },
       {
-        "name": "F06 创建定时任务 —— {\"schedule\":{\"id\":\"7e7dc634-687e-44c3-a16c-8f0ae59d87a7\",\"name\":\"W10 巡检\",\"cron\":\"* * * * *\",\"content",
+        "name": "F06 创建定时任务 —— {\"schedule\":{\"id\":\"25b8c608-a7b9-4516-91e7-dc6196db1c8f\",\"name\":\"W10 巡检\",\"cron\":\"* * * * *\",\"content",
         "pass": true
       },
       {
@@ -2422,6 +2425,140 @@
         "pass": true
       }
     ],
+    "DELIVERY": [
+      {
+        "name": "运行但没有可见正文时显示已接收",
+        "pass": true
+      },
+      {
+        "name": "已接收状态有明确用户文案",
+        "pass": true
+      },
+      {
+        "name": "可见助手正文推进为处理中",
+        "pass": true
+      },
+      {
+        "name": "处理中与已交付使用不同标签",
+        "pass": true
+      },
+      {
+        "name": "完成且有可见正文才记为已交付",
+        "pass": true
+      },
+      {
+        "name": "完成但没有可见正文时不得误报已交付",
+        "pass": true
+      },
+      {
+        "name": "缺少回复显示明确恢复说明",
+        "pass": true
+      },
+      {
+        "name": "首字前中断进入可继续状态",
+        "pass": true
+      },
+      {
+        "name": "等待交互显示为用户处理阻塞而非失败",
+        "pass": true
+      },
+      {
+        "name": "失败运行有明确终态",
+        "pass": true
+      },
+      {
+        "name": "停止过程中显示真实过渡状态",
+        "pass": true
+      },
+      {
+        "name": "带继续消息的续跑仍归属于原始用户请求",
+        "pass": true
+      },
+      {
+        "name": "续跑产生可见结果后原始请求进入已交付",
+        "pass": true
+      },
+      {
+        "name": "会话分页按根 turn 过滤交付状态",
+        "pass": true
+      },
+      {
+        "name": "交付状态支持环境开关回退",
+        "pass": true
+      },
+      {
+        "name": "无反馈恢复支持独立开关",
+        "pass": true
+      }
+    ],
+    "DELIVERY-RECOVERY": [
+      {
+        "name": "首字前崩溃保留中断终态",
+        "pass": true
+      },
+      {
+        "name": "中断不会伪造可见回复",
+        "pass": true
+      },
+      {
+        "name": "部分正文后崩溃保留已交付片段",
+        "pass": true
+      },
+      {
+        "name": "部分正文不能把中断任务标为完成",
+        "pass": true
+      },
+      {
+        "name": "继续运行重新进入已接收状态",
+        "pass": true
+      },
+      {
+        "name": "续跑结束但无可见正文仍要求用户处理",
+        "pass": true
+      },
+      {
+        "name": "存在已派发工具时无反馈恢复不会自动重放",
+        "pass": true
+      },
+      {
+        "name": "没有未决副作用时仍受既有自动续跑策略约束",
+        "pass": true
+      },
+      {
+        "name": "自动续跑次数上限保持不变",
+        "pass": true
+      },
+      {
+        "name": "异常循环续跑链不会重复输出或导致死循环",
+        "pass": true
+      }
+    ],
+    "DELIVERY-UI": [
+      {
+        "name": "UI 显示已接收和准备状态",
+        "pass": true
+      },
+      {
+        "name": "交付状态可被辅助技术播报",
+        "pass": true
+      },
+      {
+        "name": "过程更新不会显示为最终交付",
+        "pass": true
+      },
+      {
+        "name": "中断状态提供明确继续操作",
+        "pass": true
+      },
+      {
+        "name": "完成但无正文时不显示正常完成",
+        "pass": true
+      },
+      {
+        "name": "已交付状态不再显示恢复操作",
+        "pass": true
+      }
+    ],
     "OPT": [
       {
         "name": "O-01 外部动作文案按工具生成，未知工具回落为外部工具调用",
@@ -2671,6 +2808,6 @@
       }
     ]
   },
-  "assertionCount": 639,
+  "assertionCount": 671,
   "overall": "pass"
 }

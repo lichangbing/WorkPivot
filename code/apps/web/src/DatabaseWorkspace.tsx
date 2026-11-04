@@ -29,7 +29,8 @@ import { DatabaseSettings, type SettingsSection } from './DatabaseSettings';
 import { mergeEvents, groupEvents, type StoredEvent, type ConversationPage, type StoredTurn } from './database-chat-state';
 import { displayUserMessageContent } from './chat-content';
 import { InteractionDock } from './InteractionDock';
-import type { InteractionEnvelope, InteractionResponse, SteeringMessage } from '@workpivot/shared';
+import { RequestDeliveryStatus } from './RequestDeliveryStatus';
+import type { InteractionEnvelope, InteractionResponse, RequestDeliveryView, SteeringMessage } from '@workpivot/shared';
 
 interface Task { expertId?:string|null; id: string; name: string; status: string; revision: number; projectId: string | null }
 interface Project { id: string; name: string; revision: number }
@@ -75,7 +76,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   // 保持渲染器身份稳定，后台事件刷新不能卸载已经打开的引用窗口。
   const citationComponents=useMemo(()=>({a:({href,children}:{href?:string;children?:ReactNode})=>{const match=href?.match(/^#citation\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);return match&&active?<DatabaseCitation taskId={active} chunkId={match[1]!}>{children}</DatabaseCitation>:<a href={href}>{children}</a>;}}),[active]);
   const selectionOwner = useRef<string | null>(null);
-  const [events, setEvents] = useState<StoredEvent[]>([]), [interactions, setInteractions] = useState<InteractionEnvelope[]>([]), [steering, setSteering] = useState<SteeringMessage[]>([]);
+  const [events, setEvents] = useState<StoredEvent[]>([]), [interactions, setInteractions] = useState<InteractionEnvelope[]>([]), [steering, setSteering] = useState<SteeringMessage[]>([]), [deliveries, setDeliveries] = useState<RequestDeliveryView[]>([]);
   const [interactionBusy, setInteractionBusy] = useState<string | null>(null);
   const groupedEvents = useMemo(() => groupEvents(events), [events]);
   const latestTurnId = groupedEvents.at(-1)?.id;
@@ -216,7 +217,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     const epoch = ++generation.current, controller = new AbortController();
     cacheLease.current=null;setCacheNotice('');
     setResourceSelection(null);setAttachmentIds([]); setAttachmentBlocked(false);
-    setEvents([]); setInteractions([]); setSteering([]); setOlder(null); setDetails({}); setReady(false); setError(''); setNewMessages(false); setInput('');
+    setEvents([]); setInteractions([]); setSteering([]); setDeliveries([]); setOlder(null); setDetails({}); setReady(false); setError(''); setNewMessages(false); setInput('');
     follow.current = true; anchor.current = null; loadingRef.current = false; setLoading(false);
     if (!active || !auth?.authenticated) return () => controller.abort();
     const current = () => generation.current === epoch && !controller.signal.aborted;
@@ -224,7 +225,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
     let timer: ReturnType<typeof setTimeout>;
     let initialRetry: ReturnType<typeof setTimeout>;
     type Changes = { events: StoredEvent[]; nextSequence: string; snapshotSequence: string; hasMore: boolean };
-    type State = { tasks: Task[]; interactions?: InteractionEnvelope[]; steering?: SteeringMessage[]; expertSuggestions?:unknown[] };
+    type State = { tasks: Task[]; interactions?: InteractionEnvelope[]; steering?: SteeringMessage[]; deliveries?: RequestDeliveryView[]; expertSuggestions?:unknown[] };
     const apply = (changes: Changes) => {
       if (!current()) return;
       setEvents(rows => mergeEvents(rows, changes.events));
@@ -240,12 +241,13 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
           if (!current()) return;
           apply(changes); through = changes.snapshotSequence; more = changes.hasMore;
         }
-        const [p, t, s] = await Promise.all([
+        const [p, t, s, d] = await Promise.all([
           chatEnabled ? jsonFetch<{ interactions: InteractionEnvelope[] }>(`/api/tasks/${active}/interactions`, options) : Promise.resolve({ interactions: [] }),
           jsonFetch<{ tasks: Task[] }>('/api/tasks', options),
           chatEnabled ? jsonFetch<{ steering: SteeringMessage[] }>(`/api/tasks/${active}/steering`, options) : Promise.resolve({ steering: [] }),
+          jsonFetch<{ deliveries: RequestDeliveryView[] }>(`/api/tasks/${active}/deliveries`, options),
         ]);
-        if (current()) { setInteractions(p.interactions); setTasks(t.tasks); setSteering(s.steering ?? []); }
+        if (current()) { setInteractions(p.interactions); setTasks(t.tasks); setSteering(s.steering ?? []); setDeliveries(d.deliveries ?? []); }
       } catch (e) { if (current()) setError(errorText(e)); }
     };
     let retry = 1000;
@@ -257,7 +259,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
         await readChatStream<({type:'changes'} & Changes) | {type:'state';value:State} | {type:'unavailable';status:number}>(response.body,event=>{
           if (!current()) return;
           if(event.type==='changes'){apply(event);retry=1000;}
-          else if(event.type==='state'){if(event.value.interactions)setInteractions(event.value.interactions);if(event.value.steering)setSteering(event.value.steering);setTasks(event.value.tasks);if(event.value.expertSuggestions)window.dispatchEvent(new CustomEvent('wp:expert-suggestions',{detail:{task:active,rows:event.value.expertSuggestions}}));}
+          else if(event.type==='state'){if(event.value.interactions)setInteractions(event.value.interactions);if(event.value.steering)setSteering(event.value.steering);if(event.value.deliveries)setDeliveries(event.value.deliveries);setTasks(event.value.tasks);if(event.value.expertSuggestions)window.dispatchEvent(new CustomEvent('wp:expert-suggestions',{detail:{task:active,rows:event.value.expertSuggestions}}));}
           else {if(event.status===401)window.dispatchEvent(new Event('wp:unauthorized'));throw Error('实时连接已失效');}
         },controller.signal);
       } catch { if(current()) await catchup(); }
@@ -278,6 +280,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
         if(cached&&!retain&&bridge&&cacheLease.current){const lease=cacheLease.current;await bridge.discard(lease.handle,active);const local=await bridge.read(lease.handle,active);if(!current())return;cacheLease.current={...lease,epoch:local.epoch};}
 
         setEvents(mergeEvents(retain?.events??[],page.turns.flatMap(t=>t.events)));
+        if(page.deliveries)setDeliveries(page.deliveries);
         setOlder(retain?retain.older:page.nextCursor);
         setDetails({...retain?.details,...Object.fromEntries(page.turns.filter(t=>t.hasMoreEvents).map(t=>[t.id,{after:t.nextEventSequence!,snapshot:page.snapshotSequence}]))});
         watermark.current=retain?.sequence??page.snapshotSequence;
@@ -457,6 +460,9 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
   const pendingInteractions = interactions.filter(item => item.state === 'pending');
   const activeInteraction = pendingInteractions.find(item => item.blocking) ?? pendingInteractions[0];
   const queuedInteractions = Math.max(0, pendingInteractions.filter(item => item.blocking).length - 1);
+  const deliveryByTurn = new Map(deliveries.map(item => [item.turnId, item]));
+  const latestDelivery = deliveries[0];
+  const latestDeliveryInView = latestDelivery && groupedEvents.some(group => group.id === latestDelivery.turnId);
   const leaveTrash = () => { setTrashPage(false); if (location.hash === '#trash') location.hash = ''; };
   const selectTask = (id: string) => { leaveTrash(); setActive(id); };
   if(automationPage)return <DatabaseAutomations username={auth.user?.username} onBack={()=>{location.hash='';}} onLogout={()=>{void api.logout().finally(()=>{clearToken();reloadAuth();});}}/>;
@@ -472,6 +478,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
         {!active && <p className="mt-10 text-center text-sm text-neutral-500">选择或新建一个任务，发送第一条消息开始工作</p>}
         {active && <AutomationDraftNotice taskId={active}/>}
         {active && <p className="mb-3 text-center text-xs text-neutral-500">{loading ? '正在加载…' : !ready ? '正在读取对话…' : older ? '向上滚动查看更早对话' : '已到最早消息'}</p>}
+        {latestDelivery && !latestDeliveryInView && <RequestDeliveryStatus view={latestDelivery} onResume={() => { void resume(); }} />}
         {active && <ExpertSuggestions key={"expert-"+active} task={active}/>} 
         {groupedEvents.map(group => <section key={group.id} data-turn={group.id} className="mb-6">
           {group.events.map((e, index) => {
@@ -483,6 +490,7 @@ export function DatabaseWorkspace({ chatEnabled, filesEnabled = false }: { chatE
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={e.kind==='assistant'?citationComponents:undefined}>{e.kind === 'user' ? displayUserMessageContent(e.content) : e.content}</ReactMarkdown>
               {e.truncated && <button className={button} onClick={() => { void expandContent(e).catch(reason => setError(errorText(reason))); }}>展开完整内容</button>}
               {!!e.attachments?.length && <div className="mt-2 flex flex-wrap gap-2">{e.attachments.map(a => <AttachmentLabel key={a.id} attachment={a} />)}</div>}
+              {e.kind === 'user' && deliveryByTurn.get(group.id) && <RequestDeliveryStatus view={deliveryByTurn.get(group.id)!} onResume={() => { void resume(); }} />}
             </div>;
           })}
           {details[group.id] && !group.events.some(isProcessEvent) && <DatabaseTurnProcess key={'process-'+group.id} events={[]} cursor={details[group.id]?.after} live={busy && group.id === latestTurnId} onMore={() => expandTurn(group.id)} onContent={expandContent} onInteract={() => { follow.current = false; }} />}

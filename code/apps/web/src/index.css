@@ -110,3 +110,14 @@ button.bg-blue-600, button.bg-blue-500, button.bg-emerald-600 { color: white; }
 /* 桌面标题栏由预加载脚本提供，浏览器保留完整视口。 */
 html.workpivot-desktop .h-screen { height: calc(100vh - var(--desktop-titlebar-height)); }
 html.workpivot-desktop .min-h-screen { min-height: calc(100vh - var(--desktop-titlebar-height)); }
+
+/* 请求交付状态：只表达可见反馈和终态，不展开工具细节。 */
+.delivery-status { display:flex; align-items:center; flex-wrap:wrap; gap:6px 8px; margin-top:10px; padding-top:8px; border-top:1px solid var(--color-neutral-700); color:var(--color-neutral-400); font-size:12px; line-height:1.5; }
+.delivery-status-label { border:1px solid currentColor; border-radius:999px; padding:1px 7px; font-weight:600; white-space:nowrap; }
+.delivery-status-description { min-width:0; flex:1 1 160px; }
+.delivery-status-action { flex-shrink:0; border:1px solid currentColor; border-radius:7px; padding:2px 9px; }
+.delivery-status.accepted { color:var(--color-neutral-400); }
+.delivery-status.active { color:var(--color-blue-400); }
+.delivery-status.waiting { color:var(--color-amber-400); }
+.delivery-status.done { color:var(--color-emerald-400); }
+.delivery-status.blocked { color:var(--color-red-400); }

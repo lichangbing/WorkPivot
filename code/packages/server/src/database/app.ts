@@ -38,6 +38,7 @@ import { WorkspaceRepository } from './workspace.js';
 import { RepositoryError, assertRestrictedRole, uuid } from './connection.js';
 import { authThrottle } from '../auth-throttle.js';
 import { ConversationRepository } from './conversation.js';
+import { RequestDeliveryRepository } from './request-delivery.js';
 import type { DatabaseExecution } from './execution.js';
 import type { ProviderRepository, ProviderInput } from './providers.js';
 import type { McpRepository } from './mcp.js';
@@ -53,6 +54,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   const iam = new IamRepository(authPool);
   const dailyLimits = new DailyLimits(authPool, appPool);
   const conversation = new ConversationRepository(appPool);
+  const requestDeliveries = new RequestDeliveryRepository(appPool);
   const notifications = new TaskNotifications(appPool);
   const app = express();
   app.disable('x-powered-by');
@@ -632,12 +634,17 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
     const user = actor(res), task = str(req.params['id']);
     await taskStream(req,res,{actor:user.id,task,after:str(req.query['after'] ?? req.headers['last-event-id'] ?? '0'),conversation,notifications,
       authorized:async()=>{const current=await accounts.resolve(token(req));return current?.id===user.id&&!current.mustChangePassword;},
-      state:async()=>({tasks:await workspace.listTasks(user.id),pending:execution?await execution.runs.pendingPermissions(user.id,task):[],interactions:execution?[...await execution.runs.pendingInteractions(user.id,task),...await execution.interactions.pending(user.id,task)]:[],steering:execution?await execution.runs.pendingSteering(user.id,task):[],expertSuggestions:await new Experts(appPool).suggestions(user.id,task)})});
+      state:async()=>({tasks:await workspace.listTasks(user.id),pending:execution?await execution.runs.pendingPermissions(user.id,task):[],interactions:execution?[...await execution.runs.pendingInteractions(user.id,task),...await execution.interactions.pending(user.id,task)]:[],steering:execution?await execution.runs.pendingSteering(user.id,task):[],deliveries:await requestDeliveries.views(user.id,task),expertSuggestions:await new Experts(appPool).suggestions(user.id,task)})});
   });
   app.get('/api/tasks/:id/conversation', async (req, res) => {
     const limit = req.query['before'] === undefined ? '5' : '1';
     if (req.query['limit'] !== undefined && req.query['limit'] !== limit) throw new RepositoryError(400, '首次加载5组，向上滚动每次加载1组');
-    res.json(await conversation.page(actor(res).id, str(req.params['id']), req.query['before'] === undefined ? undefined : str(req.query['before'])));
+    const page=await conversation.page(actor(res).id, str(req.params['id']), req.query['before'] === undefined ? undefined : str(req.query['before']));
+    const deliveries=await requestDeliveries.views(actor(res).id,str(req.params['id']),page.turns.map(turn=>turn.id));
+    res.json({...page,deliveries});
+  });
+  app.get('/api/tasks/:id/deliveries', async (req, res) => {
+    res.json({ deliveries: await requestDeliveries.views(actor(res).id, str(req.params['id'])) });
   });
   app.get('/api/tasks/:id/conversation/:turnId/events', async (req, res) => { res.json(await conversation.turnEvents(actor(res).id, str(req.params['id']), str(req.params['turnId']), str(req.query['after']), str(req.query['snapshot']))); });
   app.get('/api/tasks/:id/conversation-changes', async (req, res) => { res.json(await conversation.changes(actor(res).id, str(req.params['id']), str(req.query['after']), req.query['through'] === undefined ? undefined : str(req.query['through']))); });

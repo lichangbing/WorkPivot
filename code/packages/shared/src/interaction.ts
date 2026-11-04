@@ -107,6 +107,8 @@ export interface InteractionCapabilities {
   planApproval: boolean;
   permissionPreview: boolean;
   artifactReview: boolean;
+  deliveryState: boolean;
+  noFeedbackRecovery: boolean;
 }
 
 export function interactionCapabilities(env: NodeJS.ProcessEnv = process.env): InteractionCapabilities {
@@ -116,5 +118,7 @@ export function interactionCapabilities(env: NodeJS.ProcessEnv = process.env): I
     planApproval: enabled('WORKPIVOT_INTERACTION_PLAN_APPROVAL'),
     permissionPreview: enabled('WORKPIVOT_INTERACTION_PERMISSION_PREVIEW'),
     artifactReview: enabled('WORKPIVOT_INTERACTION_ARTIFACT_REVIEW'),
+    deliveryState: enabled('WORKPIVOT_INTERACTION_DELIVERY_STATE_V1'),
+    noFeedbackRecovery: enabled('WORKPIVOT_INTERACTION_NO_FEEDBACK_RECOVERY'),
   };
 }

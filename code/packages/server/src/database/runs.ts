@@ -265,7 +265,7 @@ export class RunRepository {
       // R006 P1：上一轮被中断时，把它的检查点作为本轮基础上下文（已补齐结果未知的调用），
       // 用户重发"继续"即可接着做；预算按剩余步数继承，不重置。
       const interrupted = task.status === 'interrupted'
-        ? (await c.query("SELECT model_messages,step_limit,used_steps FROM workpivot.task_runs WHERE task_id=$1 AND status='interrupted' ORDER BY created_at DESC,id DESC LIMIT 1", [taskId])).rows[0]
+        ? (await c.query("SELECT id,model_messages,step_limit,used_steps FROM workpivot.task_runs WHERE task_id=$1 AND status='interrupted' ORDER BY created_at DESC,id DESC LIMIT 1", [taskId])).rows[0]
         : undefined;
       const inherited = interrupted && !interrupted.model_messages?.length
         ? []
@@ -279,6 +279,7 @@ export class RunRepository {
       await c.query("INSERT INTO workpivot.task_runs(id,owner_user_id,task_id,turn_id,request_id,fence,status,lease_until,model_messages,step_limit) VALUES($1,$2,$3,$4,$5,$6,'running',now()+$7*interval '1 second',$8,$9)", [run.id, actor, taskId, run.turnId, requestId, run.fence, leaseSeconds, JSON.stringify(seedMessages), inheritedBudget]);
       if(resources)await c.query('UPDATE workpivot.task_runs SET resource_scope=$2 WHERE id=$1',[run.id,JSON.stringify(resources)]);
       await event(c, actor, run, 'user', content);
+      if (interrupted?.id) await event(c, actor, run, 'meta', JSON.stringify({ type: 'resumed', from: interrupted.id }));
       await c.query("UPDATE workpivot.task_runs SET expert_snapshot=(SELECT jsonb_build_object('id',e.id,'revision',e.revision,'settings',e.settings) FROM workpivot.tasks t JOIN workpivot.experts e ON e.id=t.expert_id WHERE t.id=$2 AND NOT e.public AND NOT e.disabled) WHERE id=$1",[run.id,taskId]);
       await c.query('UPDATE workpivot.task_runs SET attachment_ids=$2,memory_epoch=COALESCE((SELECT epoch FROM workpivot.knowledge_state WHERE owner_user_id=workpivot.actor_id()),0) WHERE id=$1', [run.id, attachments]);
       return run;
