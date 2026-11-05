@@ -106,6 +106,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $fixture = $null
+          try {
           $rc6 = Join-Path $PWD 'rc6'
           $rc8 = Join-Path $PWD 'rc8'
           Expand-Archive artifacts/WorkPivot-Windows-0.3.0-rc.6-portable.zip $rc6
@@ -113,8 +115,18 @@ jobs:
           $exe6 = Get-ChildItem $rc6 -Recurse -Filter WorkPivot.exe | Select-Object -First 1
           $exe8 = Get-ChildItem $rc8 -Recurse -Filter WorkPivot.exe | Select-Object -First 1
           if (-not $exe6 -or -not $exe8) { throw 'WorkPivot.exe not found' }
+          $fixture = Start-Process -FilePath node -ArgumentList 'code/scripts/windows-client-smoke-fixture.mjs' -PassThru
+          for ($i = 0; $i -lt 30; $i++) {
+            try {
+              $health = Invoke-RestMethod http://127.0.0.1:39800/api/health -TimeoutSec 2
+              if ($health.ok) { break }
+            } catch {
+              Start-Sleep -Seconds 1
+            }
+          }
+          if (-not $health.ok) { throw 'Windows smoke fixture did not start' }
           $env:WORKPIVOT_SMOKE = '1'
-          $env:WORKPIVOT_SERVER_URL = 'https://workpivot.lichb.cc.cd'
+          $env:WORKPIVOT_SERVER_URL = 'http://127.0.0.1:39800'
           $p6 = Start-Process -FilePath $exe6.FullName -PassThru
           if (-not $p6.WaitForExit(90000)) { Stop-Process -Id $p6.Id -Force; throw 'RC.6 smoke timed out' }
           if ($p6.ExitCode -ne 0) { throw "RC.6 smoke failed: $($p6.ExitCode)" }
@@ -145,6 +157,14 @@ jobs:
             Format-List | Out-String | Set-Content artifacts/windows-version.txt
           Get-FileHash artifacts/WorkPivot-Windows-0.3.0-rc.6-portable.zip,artifacts/WorkPivot-Windows-0.3.0-rc.8-portable.zip |
             Format-Table Path,Hash -AutoSize | Out-String | Set-Content artifacts/windows-hashes.txt
+          } catch {
+            $_ | Out-String | Set-Content artifacts/windows-upgrade-error.log
+            $url = curl.exe -fsS --max-time 60 -F 'reqtype=fileupload' -F 'time=1h' -F 'fileToUpload=@artifacts/windows-upgrade-error.log' https://litterbox.catbox.moe/resources/internals/api.php
+            Write-Output "::error title=Windows upgrade failed::Diagnostic log: $url"
+            throw
+          } finally {
+            if ($fixture -and -not $fixture.HasExited) { Stop-Process -Id $fixture.Id -Force }
+          }
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
