@@ -26,10 +26,10 @@ jobs:
           mkdir -p artifacts
           curl -fL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 600 \
             -o artifacts/WorkPivot-android-1.9.apk \
-            https://workpivot.lichb.cc.cd/downloads/WorkPivot-android-1.9.apk
+            https://litter.catbox.moe/3rlmbp.apk
           curl -fL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 600 \
             -o artifacts/WorkPivot-android-1.11.apk \
-            https://workpivot.lichb.cc.cd/downloads/WorkPivot-android-1.11.apk
+            https://litter.catbox.moe/r3fpwh.apk
           echo '59248ed4e5f6f4ad5419dce918dac22988b76257fdcf6cc5e5b57d779c7c70d9  artifacts/WorkPivot-android-1.9.apk' | sha256sum -c -
           echo 'bf90c325c077275d0cd3d8686a43f88c32c3a2e1f330d063bcf978560161ee6f  artifacts/WorkPivot-android-1.11.apk' | sha256sum -c -
       - name: Test in-place upgrade
@@ -41,29 +41,38 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            set -euxo pipefail
-            adb install artifacts/WorkPivot-android-1.9.apk
-            adb shell am start -W -n com.workpivot.mobile/.MainActivity
-            sleep 3
-            adb root
-            adb wait-for-device
-            adb shell 'mkdir -p /data/user/0/com.workpivot.mobile/files && printf "ota-preserved-1.9-to-1.11" > /data/user/0/com.workpivot.mobile/files/ota-preserved.txt'
-            adb shell 'cat /data/user/0/com.workpivot.mobile/files/ota-preserved.txt' > artifacts/android-marker-before.txt
-            adb install -r artifacts/WorkPivot-android-1.11.apk
-            adb shell am force-stop com.workpivot.mobile
-            adb shell am start -W -n com.workpivot.mobile/.MainActivity
-            sleep 3
-            adb shell 'cat /data/user/0/com.workpivot.mobile/files/ota-preserved.txt' > artifacts/android-marker-after.txt
-            diff -u artifacts/android-marker-before.txt artifacts/android-marker-after.txt
-            adb shell dumpsys package com.workpivot.mobile > artifacts/android-package.txt
-            grep -q 'versionName=1.11' artifacts/android-package.txt
-            grep -q 'versionCode=12' artifacts/android-package.txt
-            adb exec-out screencap -p > artifacts/android-after-upgrade.png
-            adb logcat -d -b crash > artifacts/android-crash.log
-            if grep -q 'FATAL EXCEPTION' artifacts/android-crash.log; then
-              cat artifacts/android-crash.log
-              exit 1
+            set +e
+            (
+              set -euxo pipefail
+              adb install artifacts/WorkPivot-android-1.9.apk
+              adb shell am start -W -n com.workpivot.mobile/.MainActivity
+              sleep 3
+              adb root
+              adb wait-for-device
+              adb shell 'mkdir -p /data/user/0/com.workpivot.mobile/files && printf "ota-preserved-1.9-to-1.11" > /data/user/0/com.workpivot.mobile/files/ota-preserved.txt'
+              adb shell 'cat /data/user/0/com.workpivot.mobile/files/ota-preserved.txt' > artifacts/android-marker-before.txt
+              adb install -r artifacts/WorkPivot-android-1.11.apk
+              adb shell am force-stop com.workpivot.mobile
+              adb shell am start -W -n com.workpivot.mobile/.MainActivity
+              sleep 3
+              adb shell 'cat /data/user/0/com.workpivot.mobile/files/ota-preserved.txt' > artifacts/android-marker-after.txt
+              diff -u artifacts/android-marker-before.txt artifacts/android-marker-after.txt
+              adb shell dumpsys package com.workpivot.mobile > artifacts/android-package.txt
+              grep -q 'versionName=1.11' artifacts/android-package.txt
+              grep -q 'versionCode=12' artifacts/android-package.txt
+              adb exec-out screencap -p > artifacts/android-after-upgrade.png
+              adb logcat -d -b crash > artifacts/android-crash.log
+              if grep -q 'FATAL EXCEPTION' artifacts/android-crash.log; then
+                exit 1
+              fi
+            ) > artifacts/android-upgrade.log 2>&1
+            status=$?
+            cat artifacts/android-upgrade.log
+            if [ "$status" -ne 0 ]; then
+              url=$(curl -fsS --max-time 60 -F 'reqtype=fileupload' -F 'time=1h' -F 'fileToUpload=@artifacts/android-upgrade.log' https://litterbox.catbox.moe/resources/internals/api.php 2>/dev/null || true)
+              echo "::error title=Android upgrade failed::Diagnostic log: ${url:-see artifact}"
             fi
+            exit "$status"
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -85,10 +94,10 @@ jobs:
           New-Item -ItemType Directory -Force artifacts | Out-Null
           curl.exe -fL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 600 `
             -o artifacts/WorkPivot-Windows-0.3.0-rc.6-portable.zip `
-            https://115-191-1-188.sslip.io/downloads/WorkPivot-Windows-0.3.0-rc.6-portable.zip
+            https://litter.catbox.moe/pgkj53.zip
           curl.exe -fL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 600 `
             -o artifacts/WorkPivot-Windows-0.3.0-rc.8-portable.zip `
-            https://115-191-1-188.sslip.io/downloads/WorkPivot-Windows-0.3.0-rc.8-portable.zip
+            https://litter.catbox.moe/0j502z.zip
           $hash8 = (Get-FileHash artifacts/WorkPivot-Windows-0.3.0-rc.8-portable.zip -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($hash8 -ne '41c79f54152ca634e3457bc27191fae4a80620e7f3fa8d290c8ec2d0ae7f76c6') {
             throw "RC.8 SHA-256 mismatch: $hash8"
