@@ -24,13 +24,23 @@ jobs:
         run: |
           npm install --global pnpm@11.22.0
           pnpm install --frozen-lockfile
-      - name: Build Windows clients
+      - name: Build desktop bundle
         working-directory: code
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           pnpm --filter @workpivot/desktop build
+      - name: Build NSIS installer
+        working-directory: code
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
           pnpm --filter @workpivot/desktop exec electron-builder --win nsis
+      - name: Create portable archive and hashes
+        working-directory: code
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
           $release = 'apps/desktop/release'
           $artifacts = Join-Path $release 'artifacts'
           New-Item -ItemType Directory -Force $artifacts | Out-Null
