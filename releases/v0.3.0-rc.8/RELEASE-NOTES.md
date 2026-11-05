@@ -10,6 +10,8 @@
 
 RC.8 聚焦客户端更新、移动恢复和正式业务交付验收。服务端、Web、Windows 和 Android 继续保持同一套项目、任务、记忆、业务事实和成果版本事实源。
 
+发布提交：`5e4dd00b9f3ab0e5a9ffa541c5433eeec03f7c81`；候选标签 `v0.3.0-rc.8` 已推送 GitHub。
+
 ## 主要变更
 
 ### 客户端更新
@@ -77,7 +79,7 @@ Windows 下载：<https://115-191-1-188.sslip.io:80/downloads/WorkPivot-Windows-
 - RC.8 真实模型、Browser、Worker 和 Office 混合 24 小时负载未完成。
 - 1.9 → 1.11 原地覆盖升级未完成。HONOR Android 16 拒绝 release 包从 versionCode 12 降级到 10，`adb install -r -d` 返回 `INSTALL_FAILED_VERSION_DOWNGRADE`；未通过卸载清数据规避该限制。
 - Windows RC.8 尚未在目标 Windows 机器执行实际安装、替换和失败回滚。
-- GitHub 推送仍受本机 GitHub SSH 公钥授权阻塞。
+- 正式 `v0.3.0` 版本仍不能在上述门禁关闭前发布。
 
 ## 使用与回退
 
