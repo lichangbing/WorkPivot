@@ -36,7 +36,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           pnpm --filter @workpivot/desktop exec electron-builder --win nsis
-      - name: Create portable archive and hashes
+      - name: Create portable archive
         working-directory: code
         shell: pwsh
         run: |
@@ -44,11 +44,21 @@ jobs:
           $release = 'apps/desktop/release'
           $artifacts = Join-Path $release 'artifacts'
           New-Item -ItemType Directory -Force $artifacts | Out-Null
-          Compress-Archive -Path (Join-Path $release 'win-unpacked/*') `
+          $items = Get-ChildItem (Join-Path $release 'win-unpacked') -Force
+          Compress-Archive -Path $items.FullName `
             -DestinationPath (Join-Path $artifacts 'WorkPivot-Windows-0.3.0-portable.zip') -Force
           Copy-Item (Join-Path $release 'WorkPivot-Setup-0.3.0.exe') $artifacts
-          Get-FileHash (Join-Path $artifacts 'WorkPivot-Windows-0.3.0-portable.zip'), `
-            (Join-Path $artifacts 'WorkPivot-Setup-0.3.0.exe') -Algorithm SHA256 |
+      - name: Create checksums
+        working-directory: code
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $artifacts = 'apps/desktop/release/artifacts'
+          $files = @(
+            (Join-Path $artifacts 'WorkPivot-Windows-0.3.0-portable.zip'),
+            (Join-Path $artifacts 'WorkPivot-Setup-0.3.0.exe')
+          )
+          Get-FileHash -Path $files -Algorithm SHA256 |
             ForEach-Object { "$($_.Hash.ToLowerInvariant())  $(Split-Path $_.Path -Leaf)" } |
             Set-Content (Join-Path $artifacts 'SHA256SUMS.txt')
       - name: Publish temporary download links
