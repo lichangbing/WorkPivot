@@ -26,10 +26,10 @@ jobs:
           mkdir -p artifacts
           curl -fL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 600 \
             -o artifacts/WorkPivot-android-1.9.apk \
-            https://115-191-1-188.sslip.io/downloads/WorkPivot-android-1.9.apk
+            https://workpivot.lichb.cc.cd/downloads/WorkPivot-android-1.9.apk
           curl -fL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 600 \
             -o artifacts/WorkPivot-android-1.11.apk \
-            https://115-191-1-188.sslip.io/downloads/WorkPivot-android-1.11.apk
+            https://workpivot.lichb.cc.cd/downloads/WorkPivot-android-1.11.apk
           echo '59248ed4e5f6f4ad5419dce918dac22988b76257fdcf6cc5e5b57d779c7c70d9  artifacts/WorkPivot-android-1.9.apk' | sha256sum -c -
           echo 'bf90c325c077275d0cd3d8686a43f88c32c3a2e1f330d063bcf978560161ee6f  artifacts/WorkPivot-android-1.11.apk' | sha256sum -c -
       - name: Test in-place upgrade
