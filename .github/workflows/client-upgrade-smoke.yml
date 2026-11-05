@@ -140,7 +140,7 @@ jobs:
           }
           $marker = Join-Path $log6.Directory.FullName 'ota-preserved.txt'
           Set-Content -Path $marker -Value 'windows-rc6-to-rc8' -NoNewline
-          Copy-Item -Path (Join-Path $rc8.FullName '*') -Destination $rc6.FullName -Recurse -Force
+          Copy-Item -Path (Join-Path $rc8 '*') -Destination $rc6 -Recurse -Force
           $p8 = Start-Process -FilePath $exe6.FullName -PassThru
           if (-not $p8.WaitForExit(90000)) { Stop-Process -Id $p8.Id -Force; throw 'RC.8 smoke timed out' }
           if ($p8.ExitCode -ne 0) { throw "RC.8 smoke failed: $($p8.ExitCode)" }
