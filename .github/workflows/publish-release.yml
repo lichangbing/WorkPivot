@@ -1,0 +1,47 @@
+name: Publish WorkPivot Release
+
+on:
+  push:
+    tags:
+      - v0.3.0
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download verified client assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          mkdir -p release-assets
+          gh release download v0.3.0-windows-build \
+            --dir release-assets \
+            --pattern 'WorkPivot-Windows-0.3.0-portable.zip' \
+            --pattern 'WorkPivot-Setup-0.3.0.exe' \
+            --pattern 'SHA256SUMS.txt'
+          curl -fL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 300 \
+            -o release-assets/WorkPivot-android-1.11.apk \
+            https://workpivot.lichb.cc.cd/downloads/WorkPivot-android-1.11.apk
+          echo 'bf90c325c077275d0cd3d8686a43f88c32c3a2e1f330d063bcf978560161ee6f  release-assets/WorkPivot-android-1.11.apk' | sha256sum -c -
+          echo '0013159372c3fd372f8b6929133ae129f38e0b913a7840c57a7d3b85668f4ca9  release-assets/WorkPivot-Windows-0.3.0-portable.zip' | sha256sum -c -
+          echo '57b84b77aeac2fb665223a808d65d4a1fe05ef117e9811c1364e14a789a0f28b  release-assets/WorkPivot-Setup-0.3.0.exe' | sha256sum -c -
+      - name: Create official GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.3.0
+          name: WorkPivot v0.3.0
+          body_path: releases/v0.3.0/RELEASE-NOTES.md
+          prerelease: false
+          make_latest: true
+          fail_on_unmatched_files: true
+          files: |
+            release-assets/WorkPivot-Windows-0.3.0-portable.zip
+            release-assets/WorkPivot-Setup-0.3.0.exe
+            release-assets/WorkPivot-android-1.11.apk
+            release-assets/SHA256SUMS.txt

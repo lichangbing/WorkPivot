@@ -1,7 +1,7 @@
 {
   "name": "@workpivot/desktop",
-  "version": "0.3.0-rc.8",
-  "workpivotBuild": 8,
+  "version": "0.3.0",
+  "workpivotBuild": 9,
   "private": true,
   "main": "dist/main.js",
   "scripts": {

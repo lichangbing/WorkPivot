@@ -18,11 +18,11 @@
     {
       "channel": "beta",
       "platform": "windows",
-      "version": "0.3.0-rc.8",
-      "build": 8,
+      "version": "0.3.0",
+      "build": 9,
       "minimumBuild": 1,
-      "downloadUrl": "https://115-191-1-188.sslip.io:80/downloads/WorkPivot-Windows-0.3.0-rc.8-portable.zip",
-      "sha256": "41c79f54152ca634e3457bc27191fae4a80620e7f3fa8d290c8ec2d0ae7f76c6",
+      "downloadUrl": "https://115-191-1-188.sslip.io:80/downloads/WorkPivot-Windows-0.3.0-portable.zip",
+      "sha256": "0013159372c3fd372f8b6929133ae129f38e0b913a7840c57a7d3b85668f4ca9",
       "minimumApiProtocol": 1,
       "maximumApiProtocol": 1,
       "publishedAt": "2026-11-05T10:00:00.000Z"

@@ -87,7 +87,7 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   const str = (value: unknown): string => { if (typeof value !== 'string') throw new RepositoryError(400, '缺少文本参数'); return value; };
   const num = (value: unknown): number => { if (typeof value !== 'number') throw new RepositoryError(400, '缺少版本参数'); return value; };
   app.get('/api/health', (_req, res) => {
-    res.json({ ok: true, name: 'workpivot', version: SERVICE_VERSION, releaseStage: 'rc', releaseScope: 'single-user', apiProtocol: API_PROTOCOL, storage: 'postgresql', productionReady: false, chatEnabled: !!execution, filesEnabled: !!files, providersEnabled: !!providers, mcpEnabled: !!mcp, interactionCapabilities: interactionCapabilities() });
+    res.json({ ok: true, name: 'workpivot', version: SERVICE_VERSION, releaseStage: 'stable', releaseScope: 'single-server', apiProtocol: API_PROTOCOL, storage: 'postgresql', productionReady: true, chatEnabled: !!execution, filesEnabled: !!files, providersEnabled: !!providers, mcpEnabled: !!mcp, interactionCapabilities: interactionCapabilities() });
   });
   app.get('/api/client-updates', async (_req,res) => {
     try {

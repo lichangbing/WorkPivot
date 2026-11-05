@@ -1,10 +1,10 @@
 # 发布与交付
 
-> 当前产品阶段：`v0.3.0-rc.8`
+> 当前产品阶段：`v0.3.0` 正式版
 > 文档基线：2026-11-05
 > 最近更新：2026-11-05
 
-本目录保存版本说明、部署入口和历史发布材料。当前产品仍处于 RC 阶段，`v0.3.0-rc.8` 已部署本地和正式服务器，但尚不创建 `v0.3.0` 正式标签。
+本目录保存版本说明、部署入口和发布材料。`v0.3.0` 单服务器正式版已部署本地和正式服务器。按产品负责人决定，24 小时真实混合负载未执行，发布说明明确保留该验证边界。
 
 ## 当前入口
 
@@ -16,19 +16,20 @@
 | 远程部署恢复记录 | [远程部署记录](../docs/03-项目/部署记录/远程部署-20261026.md) |
 | RC.1 历史发布说明 | [v0.3.0-rc.1](v0.3.0-rc.1/RELEASE-NOTES.md) |
 | RC.2 历史发布说明 | [v0.3.0-rc.2](v0.3.0-rc.2/RELEASE-NOTES.md) |
-| RC.8 当前发布说明 | [v0.3.0-rc.8](v0.3.0-rc.8/RELEASE-NOTES.md) |
-| RC.7 上一版发布说明 | [v0.3.0-rc.7](v0.3.0-rc.7/RELEASE-NOTES.md) |
+| 0.3.0 当前发布说明 | [v0.3.0](v0.3.0/RELEASE-NOTES.md) |
+| RC.8 上一候选版说明 | [v0.3.0-rc.8](v0.3.0-rc.8/RELEASE-NOTES.md) |
+| RC.7 历史候选版说明 | [v0.3.0-rc.7](v0.3.0-rc.7/RELEASE-NOTES.md) |
 | RC.6 历史发布说明 | [v0.3.0-rc.6](v0.3.0-rc.6/RELEASE-NOTES.md) |
 | RC.5 历史发布说明 | [v0.3.0-rc.5](v0.3.0-rc.5/RELEASE-NOTES.md) |
 | RC.4 历史发布说明 | [v0.3.0-rc.4](v0.3.0-rc.4/RELEASE-NOTES.md) |
 | RC.3 历史发布说明 | [v0.3.0-rc.3](v0.3.0-rc.3/RELEASE-NOTES.md) |
 | 当前接口设计 | [HTTP 与 SSE 接口总览](../docs/02-设计/架构/接口/接口总览.md) |
 | Android 1.11 内测包 | `https://115-191-1-188.sslip.io:80/downloads/WorkPivot-android-1.11.apk` |
-| Windows RC.8 便携客户端 | `https://115-191-1-188.sslip.io:80/downloads/WorkPivot-Windows-0.3.0-rc.8-portable.zip` |
+| Windows 0.3.0 便携客户端 | `https://115-191-1-188.sslip.io:80/downloads/WorkPivot-Windows-0.3.0-portable.zip` |
 | 备份与恢复 | [backup-recovery](../docs/03-项目/部署记录/备份与恢复-20261016.md) |
 | 全量变更日志 | [CHANGELOG](CHANGELOG.md) |
 
-`v0.3.0-rc.1` 记录 RC 初始交付；`v0.3.0-rc.2` 汇总右侧工作区和预览；`v0.3.0-rc.3` 完成 RC 技术门禁；`v0.3.0-rc.4` 完成只读文档增强；`v0.3.0-rc.5` 增加运行中资源范围增量；`v0.3.0-rc.6` 完成生产可观测性、安全审计基线、高危依赖修复和 Windows 制品；`v0.3.0-rc.7` 修复移动端换网恢复并发布 Android 1.9；`v0.3.0-rc.8` 增加三端更新检查并完成 Android 1.11、Windows RC.8 和真实业务交付验收。
+`v0.3.0-rc.1` 至 `v0.3.0-rc.8` 保留候选版历史；`v0.3.0` 收口单服务器正式版，完成 Android 真机换网/草稿、Android 模拟器 1.9 → 1.11 数据保留升级、Windows RC.6 → RC.8 覆盖替换和正式客户端发布。24 小时真实混合负载由产品负责人豁免。
 
 ## 版本阶段
 

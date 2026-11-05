@@ -1,6 +1,6 @@
 {
   "name": "workpivot",
-  "version": "0.3.0-rc.8",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.22.0",

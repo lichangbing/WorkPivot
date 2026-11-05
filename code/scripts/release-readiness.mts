@@ -6,7 +6,7 @@ import {join,resolve} from 'node:path';
 import {schemaUpgrades,schemaVersion} from '../packages/server/src/database/schema.js';
 
 const root=resolve(import.meta.dirname,'../..'),codeRoot=resolve(import.meta.dirname,'..');
-const output=resolve(process.argv[2]??join(root,'local-runtime','releases','v0.3.0-rc.8'));
+const output=resolve(process.argv[2]??join(root,'local-runtime','releases','v0.3.0'));
 const git=(...args:string[])=>execFileSync('git',args,{cwd:root,encoding:'utf8'}).trim();
 const exists=async(path:string)=>access(path,constants.R_OK).then(()=>true,()=>false);
 const workspace=JSON.parse(await readFile(join(codeRoot,'package.json'),'utf8')) as {version:string};
@@ -14,7 +14,7 @@ const desktop=JSON.parse(await readFile(join(codeRoot,'apps/desktop/package.json
 const manifestFiles=[
   'apps/web/dist/index.html',
   'apps/web/dist/admin.html',
-  'apps/desktop/release/artifacts/WorkPivot-Windows-0.3.0-rc.8-portable.zip',
+  'apps/desktop/release/artifacts/WorkPivot-Windows-0.3.0-portable.zip',
   'apps/mobile/android/app/build/outputs/apk/release/app-release.apk',
 ];
 const artifacts:Record<string,{path:string;bytes:number;sha256:string}>={};
@@ -26,7 +26,7 @@ for(const relative of manifestFiles){
 }
 const manifest={
   format:'workpivot-release-readiness',
-  version:'0.3.0-rc.8',
+  version:'0.3.0',
   generatedAt:new Date().toISOString(),
   git:{commit:git('rev-parse','HEAD'),branch:git('branch','--show-current'),clean:git('status','--porcelain')==='' },
   schema:{expected:schemaUpgrades.at(-1)?.version??schemaVersion},
@@ -35,7 +35,7 @@ const manifest={
     deployment:'single-server-docker-compose',
     web:'supported',
     windows:'supported-beta-unsigned',
-    android:'supported-beta-requires-physical-device',
+    android:'supported-beta-physical-install-network-draft-and-in-place-upgrade-validated',
     oidc:'optional-keycloak-validated',
     officePreview:'isolated-libreoffice-required',
     multiServer:'not-supported-until-v0.4.0',
@@ -47,8 +47,8 @@ const manifest={
     lint:'run separately and record result',
     database:'run separately and record result',
     fullEval:'run separately and record result',
-    soak24h:'required before v0.3.0 tag',
-    physicalDevice:'required before v0.3.0 tag',
+    soak24h:'waived by product owner; RC.8 602-second isolation soak passed',
+    physicalDevice:'Android and Windows in-place upgrade smoke passed',
   },
   containsSecrets:false,
 };

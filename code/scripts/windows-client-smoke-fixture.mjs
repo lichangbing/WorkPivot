@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 const health = JSON.stringify({
   ok: true,
   name: 'workpivot',
-  version: '0.3.0-rc.8',
+  version: '0.3.0',
   apiProtocol: 1,
   storage: 'postgresql',
 });

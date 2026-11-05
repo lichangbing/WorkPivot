@@ -1,5 +1,5 @@
 {
-  "date": "2026-11-05T05:10:07.322Z",
+  "date": "2026-11-05T13:17:36.479Z",
   "suites": {
     "W1": "pass",
     "W3": "pass",
@@ -11,6 +11,7 @@
     "W16": "pass",
     "W17": "pass",
     "MOBILE-RECONNECT": "pass",
+    "CLIENT-UPDATE": "pass",
     "W18": "pass",
     "W19": "pass",
     "W20": "pass",
@@ -56,7 +57,7 @@
         "pass": true
       },
       {
-        "name": "B01 建任务（工作目录已创建） —— /tmp/wp-ws-wTPaNl/.accounts/742e507d-dcf2-4f73-908d-65d3d63f65f7",
+        "name": "B01 建任务（工作目录已创建） —— /tmp/wp-ws-I3Pz0Y/.accounts/53fa3f2b-a820-4f44-a16a-eb4dae15ba8c",
         "pass": true
       },
       {
@@ -108,7 +109,7 @@
         "pass": true
       },
       {
-        "name": "F01 转写文件存在 —— /tmp/wp-home-H0AzkD/accounts/742e507d-dcf2-4f73-908d-65d3d63f65f7/data/tasks/t-1793855338745-c028e4/transcript.jsonl",
+        "name": "F01 转写文件存在 —— /tmp/wp-home-gJa7xD/accounts/53fa3f2b-a820-4f44-a16a-eb4dae15ba8c/data/tasks/t-1793884605285-b060eb/transcript.jsonl",
         "pass": true
       },
       {
@@ -158,7 +159,7 @@
         "pass": true
       },
       {
-        "name": "T3-03 打回后真实写盘 —— gate 目录: [\".workpivot\",\"总结.md\",\"简介.txt\"] | 工具事件: [{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_j45kbb\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"已写入 /tmp/wp3-ws-TcxxmF/.accounts/a2ea55e1-da24-46d9-a322-f0047efc4e77/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_vqhsza\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"已写入 /tmp/wp3-ws-TcxxmF/.accounts/a2ea55e1-da24-46d9-a322-f0047efc4e77/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_xooniu\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"[系统] 注意:这是第 3 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 /tmp/wp3-ws-TcxxmF/.accounts/a2ea55e1-da24-46d9-a322-f0047efc4e77/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_yytw26\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"[系统] 注意:这是第 4 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 /tmp/wp3-ws-TcxxmF/.accounts/a2ea55e1-da24-46d9-a322-f0047efc4e77/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_1obisl\",\"ok\":false,\"status\":\"error\",\"durationMs\":0,\"message\":\"错误:已连续多次产生完全相同的调用与结果,本次执行被拦截。请必须更换思路、修改参数,或向用户说明情况。\"}]",
+        "name": "T3-03 打回后真实写盘 —— gate 目录: [\".workpivot\",\"总结.md\",\"简介.txt\"] | 工具事件: [{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_7soq9n\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"已写入 /tmp/wp3-ws-kz3sUK/.accounts/daed0ca2-d3f8-4a69-88cd-a391d598e5d1/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_aze84c\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"已写入 /tmp/wp3-ws-kz3sUK/.accounts/daed0ca2-d3f8-4a69-88cd-a391d598e5d1/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_zl2thp\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"[系统] 注意:这是第 3 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 /tmp/wp3-ws-kz3sUK/.accounts/daed0ca2-d3f8-4a69-88cd-a391d598e5d1/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_3t8d4l\",\"ok\":true,\"status\":\"ok\",\"durationMs\":1,\"message\":\"[系统] 注意:这是第 4 次完全相同的调用与结果,继续重复将被拦截。请更换思路或向用户说明。\\n已写入 /tmp/wp3-ws-kz3sUK/.accounts/daed0ca2-d3f8-4a69-88cd-a391d598e5d1/总结.md（24 字节）\"},{\"type\":\"tool_result\",\"toolName\":\"write\",\"callId\":\"c_ycg25u\",\"ok\":false,\"status\":\"error\",\"durationMs\":0,\"message\":\"错误:已连续多次产生完全相同的调用与结果,本次执行被拦截。请必须更换思路、修改参数,或向用户说明情况。\"}]",
         "pass": true
       },
       {
@@ -166,11 +167,11 @@
         "pass": true
       },
       {
-        "name": "T3-06 大结果落盘（工具结果含\"已落盘\"） —— （工具结果过大已落盘:/tmp/wp3-ws-TcxxmF/.accounts/a2ea55e1-da24-46d9-a322-f0047efc4e77/.workpivot/results/result-1793855342666.txt",
+        "name": "T3-06 大结果落盘（工具结果含\"已落盘\"） —— （工具结果过大已落盘:/tmp/wp3-ws-kz3sUK/.accounts/daed0ca2-d3f8-4a69-88cd-a391d598e5d1/.workpivot/results/result-1793884608426.txt",
         "pass": true
       },
       {
-        "name": "T3-06 落盘文件真实存在（>50KB） —— resultsDir=/tmp/wp3-ws-TcxxmF/.accounts/a2ea55e1-da24-46d9-a322-f0047efc4e77/.workpivot/results | exists=true | stashed=[\"result-1793855342666.txt\",\"result-1793855342673.txt\",\"result-1793855342677.txt\",\"result-1793855342682.txt\"]",
+        "name": "T3-06 落盘文件真实存在（>50KB） —— resultsDir=/tmp/wp3-ws-kz3sUK/.accounts/daed0ca2-d3f8-4a69-88cd-a391d598e5d1/.workpivot/results | exists=true | stashed=[\"result-1793884608426.txt\",\"result-1793884608430.txt\",\"result-1793884608435.txt\",\"result-1793884608438.txt\"]",
         "pass": true
       },
       {
@@ -186,7 +187,7 @@
         "pass": true
       },
       {
-        "name": "T3-01 parentUuid 链首尾相接（fork/rewind 前置） —— [[\"user_message\",null],[\"meta\",\"9cc7fcc8\"],[\"meta\",\"9a342a88\"]]",
+        "name": "T3-01 parentUuid 链首尾相接（fork/rewind 前置） —— [[\"user_message\",null],[\"meta\",\"1bded5d7\"],[\"meta\",\"f90aa042\"]]",
         "pass": true
       }
     ],
@@ -196,7 +197,7 @@
         "pass": true
       },
       {
-        "name": "E01 条目区恰有一条\"蓝色\"（幂等去重） —— [{\"id\":\"m-1793855345146-rxms\",\"content\":\"用户最喜欢的颜色是蓝色\",\"createdAt\":\"2026-11-05T05:09:05.146Z\"}]",
+        "name": "E01 条目区恰有一条\"蓝色\"（幂等去重） —— [{\"id\":\"m-1793884610435-qpmo\",\"content\":\"用户最喜欢的颜色是蓝色\",\"createdAt\":\"2026-11-05T13:16:50.435Z\"}]",
         "pass": true
       },
       {
@@ -280,7 +281,7 @@
     ],
     "W8": [
       {
-        "name": "注册 anthropic 协议供应商（保存即验活通过） —— {\"provider\":{\"id\":\"f1d1a8a1-a14d-45a6-a8fd-173f5beee14e\",\"name\":\"Claude模拟\",\"baseUrl\":\"http://127.0.0.1:39908\",\"modelId\":",
+        "name": "注册 anthropic 协议供应商（保存即验活通过） —— {\"provider\":{\"id\":\"2d9ed926-e30f-4ebe-ba0d-c55790e15ae7\",\"name\":\"Claude模拟\",\"baseUrl\":\"http://127.0.0.1:39908\",\"modelId\":",
         "pass": true
       },
       {
@@ -312,7 +313,7 @@
         "pass": true
       },
       {
-        "name": "write 工具经 tool_use 真实落盘 —— /tmp/wp8-ws-Epc7mM/.accounts/dfe63b9d-5821-4c17-a7f9-7d4334c5f705/w8.txt",
+        "name": "write 工具经 tool_use 真实落盘 —— /tmp/wp8-ws-DFQ067/.accounts/4329849c-abba-4bd1-ad2d-72fef8ff1e93/w8.txt",
         "pass": true
       },
       {
@@ -338,7 +339,7 @@
         "pass": true
       },
       {
-        "name": "F06 创建定时任务 —— {\"schedule\":{\"id\":\"9f10ba1d-a566-4cc0-977e-5442a02ff642\",\"name\":\"W10 巡检\",\"cron\":\"* * * * *\",\"content",
+        "name": "F06 创建定时任务 —— {\"schedule\":{\"id\":\"eede6f48-f0dc-4c4d-ada1-905821c97351\",\"name\":\"W10 巡检\",\"cron\":\"* * * * *\",\"content",
         "pass": true
       },
       {
@@ -354,7 +355,7 @@
         "pass": true
       },
       {
-        "name": "F06 同分钟去重（不重复触发） —— +0 次",
+        "name": "F06 同分钟去重（不重复触发） —— +1 次",
         "pass": true
       },
       {
@@ -366,11 +367,11 @@
         "pass": true
       },
       {
-        "name": "F06 手动运行产生通知 —— 2 条",
+        "name": "F06 手动运行产生通知 —— 3 条",
         "pass": true
       },
       {
-        "name": "F06 错过补跑（missed_catchup 通知） —— run_ok,run_ok,missed_catchup,run_ok",
+        "name": "F06 错过补跑（missed_catchup 通知） —— run_ok,run_ok,run_ok,missed_catchup,run_ok",
         "pass": true
       },
       {
@@ -651,6 +652,40 @@
       },
       {
         "name": "同一待确认消息在断线后复用请求标识",
+        "pass": true
+      }
+    ],
+    "CLIENT-UPDATE": [
+      {
+        "name": "合法 Android 更新清单通过",
+        "pass": true
+      },
+      {
+        "name": "拒绝非 HTTPS 下载地址",
+        "pass": true
+      },
+      {
+        "name": "拒绝降级和无效版本",
+        "pass": true
+      },
+      {
+        "name": "拒绝错误 SHA-256",
+        "pass": true
+      },
+      {
+        "name": "Android 缺少包名或签名被拒绝",
+        "pass": true
+      },
+      {
+        "name": "只选择更高且协议兼容的版本",
+        "pass": true
+      },
+      {
+        "name": "更新检查间隔为 6～10 小时",
+        "pass": true
+      },
+      {
+        "name": "服务端只发布已到期清单并支持关闭",
         "pass": true
       }
     ],
@@ -2873,6 +2908,6 @@
       }
     ]
   },
-  "assertionCount": 685,
+  "assertionCount": 693,
   "overall": "pass"
 }
