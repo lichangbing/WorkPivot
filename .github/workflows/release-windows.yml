@@ -62,9 +62,10 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $artifacts = 'apps/desktop/release/artifacts'
-          $setup = 'apps/desktop/release/WorkPivot-Setup-0.3.0.exe'
-          if (-not (Test-Path $setup)) { throw "Installer not found: $setup" }
-          Copy-Item $setup $artifacts
+          $setup = Get-ChildItem 'apps/desktop/release' -Filter 'WorkPivot-Setup-*.exe' -Recurse |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $setup) { throw 'Installer not found under apps/desktop/release' }
+          Copy-Item $setup.FullName (Join-Path $artifacts 'WorkPivot-Setup-0.3.0.exe')
           $files = @(
             (Join-Path $artifacts 'WorkPivot-Windows-0.3.0-portable.zip'),
             (Join-Path $artifacts 'WorkPivot-Setup-0.3.0.exe')
