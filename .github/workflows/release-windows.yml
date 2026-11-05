@@ -41,19 +41,30 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $release = 'apps/desktop/release'
-          $artifacts = Join-Path $release 'artifacts'
-          New-Item -ItemType Directory -Force $artifacts | Out-Null
-          $items = Get-ChildItem (Join-Path $release 'win-unpacked') -Force
-          Compress-Archive -Path $items.FullName `
-            -DestinationPath (Join-Path $artifacts 'WorkPivot-Windows-0.3.0-portable.zip') -Force
-          Copy-Item (Join-Path $release 'WorkPivot-Setup-0.3.0.exe') $artifacts
-      - name: Create checksums
+          try {
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $source = Join-Path $PWD 'apps/desktop/release/win-unpacked'
+            $target = Join-Path $PWD 'apps/desktop/release/artifacts/WorkPivot-Windows-0.3.0-portable.zip'
+            New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
+            [System.IO.Compression.ZipFile]::CreateFromDirectory(
+              $source,
+              $target,
+              [System.IO.Compression.CompressionLevel]::Optimal,
+              $false
+            )
+          } catch {
+            Write-Output "::error title=Portable archive failed::$($_ | Out-String)"
+            throw
+          }
+      - name: Stage installer and checksums
         working-directory: code
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $artifacts = 'apps/desktop/release/artifacts'
+          $setup = 'apps/desktop/release/WorkPivot-Setup-0.3.0.exe'
+          if (-not (Test-Path $setup)) { throw "Installer not found: $setup" }
+          Copy-Item $setup $artifacts
           $files = @(
             (Join-Path $artifacts 'WorkPivot-Windows-0.3.0-portable.zip'),
             (Join-Path $artifacts 'WorkPivot-Setup-0.3.0.exe')
