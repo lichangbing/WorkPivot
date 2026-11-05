@@ -43,7 +43,7 @@ jobs:
           script: |
             set +e
             (
-              set -euxo pipefail
+              set -eux
               adb install artifacts/WorkPivot-android-1.9.apk
               adb shell am start -W -n com.workpivot.mobile/.MainActivity
               sleep 3
