@@ -51,7 +51,7 @@ jobs:
           if-no-files-found: warn
 
   windows-upgrade:
-    name: Windows RC.6 -> RC.8
+    name: Windows RC.6 -> 0.3.0
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -65,11 +65,11 @@ jobs:
             -o artifacts/WorkPivot-Windows-0.3.0-rc.6-portable.zip `
             https://litter.catbox.moe/pgkj53.zip
           curl.exe -fL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 600 `
-            -o artifacts/WorkPivot-Windows-0.3.0-rc.8-portable.zip `
-            https://litter.catbox.moe/0j502z.zip
-          $hash8 = (Get-FileHash artifacts/WorkPivot-Windows-0.3.0-rc.8-portable.zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($hash8 -ne '41c79f54152ca634e3457bc27191fae4a80620e7f3fa8d290c8ec2d0ae7f76c6') {
-            throw "RC.8 SHA-256 mismatch: $hash8"
+            -o artifacts/WorkPivot-Windows-0.3.0-portable.zip `
+            https://github.com/lichangbing/WorkPivot/releases/download/v0.3.0-windows-build/WorkPivot-Windows-0.3.0-portable.zip
+          $hash8 = (Get-FileHash artifacts/WorkPivot-Windows-0.3.0-portable.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash8 -ne '0013159372c3fd372f8b6929133ae129f38e0b913a7840c57a7d3b85668f4ca9') {
+            throw "0.3.0 SHA-256 mismatch: $hash8"
           }
       - name: Test portable replacement
         shell: pwsh
@@ -80,7 +80,7 @@ jobs:
           $rc6 = Join-Path $PWD 'rc6'
           $rc8 = Join-Path $PWD 'rc8'
           Expand-Archive artifacts/WorkPivot-Windows-0.3.0-rc.6-portable.zip $rc6
-          Expand-Archive artifacts/WorkPivot-Windows-0.3.0-rc.8-portable.zip $rc8
+          Expand-Archive artifacts/WorkPivot-Windows-0.3.0-portable.zip $rc8
           $exe6 = Get-ChildItem $rc6 -Recurse -Filter WorkPivot.exe | Select-Object -First 1
           $exe8 = Get-ChildItem $rc8 -Recurse -Filter WorkPivot.exe | Select-Object -First 1
           if (-not $exe6 -or -not $exe8) { throw 'WorkPivot.exe not found' }
@@ -112,7 +112,7 @@ jobs:
           Copy-Item -Path (Join-Path $rc8 '*') -Destination $rc6 -Recurse -Force
           $p8 = Start-Process -FilePath $exe6.FullName -PassThru
           if (-not $p8.WaitForExit(90000)) { Stop-Process -Id $p8.Id -Force; throw 'RC.8 smoke timed out' }
-          if ($p8.ExitCode -ne 0) { throw "RC.8 smoke failed: $($p8.ExitCode)" }
+          if ($p8.ExitCode -ne 0) { throw "0.3.0 smoke failed: $($p8.ExitCode)" }
           if (-not (Test-Path $marker) -or (Get-Content $marker -Raw) -ne 'windows-rc6-to-rc8') {
             throw 'Windows local user data did not survive portable replacement'
           }
@@ -120,11 +120,11 @@ jobs:
             Sort-Object LastWriteTime -Descending
           Copy-Item $logs[0].FullName artifacts/windows-rc8-client.log
           if ((Select-String -Path $logs[0].FullName -SimpleMatch 'SMOKE OK').Count -lt 1) {
-            throw 'RC.8 did not reach the WorkPivot server'
+            throw '0.3.0 did not reach the WorkPivot server'
           }
           (Get-Item $exe6.FullName).VersionInfo | Select-Object ProductVersion, FileVersion |
             Format-List | Out-String | Set-Content artifacts/windows-version.txt
-          Get-FileHash artifacts/WorkPivot-Windows-0.3.0-rc.6-portable.zip,artifacts/WorkPivot-Windows-0.3.0-rc.8-portable.zip |
+          Get-FileHash artifacts/WorkPivot-Windows-0.3.0-rc.6-portable.zip,artifacts/WorkPivot-Windows-0.3.0-portable.zip |
             Format-Table Path,Hash -AutoSize | Out-String | Set-Content artifacts/windows-hashes.txt
           } catch {
             $detail = $_ | Out-String
