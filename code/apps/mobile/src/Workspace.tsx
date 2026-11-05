@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { type MobileClient, type Project, type Task, type User } from './client';
+import { ApiError, type MobileClient, type Project, type Task, type User } from './client';
 import { Conversation } from './Conversation';
 import { Capabilities, TaskResources } from './Capabilities';
 import { Memories } from './MemoryEditor';
 import { BusinessFacts } from './BusinessFacts';
-import { readChatStream } from '@workpivot/shared';
+import { UpdateBar } from './UpdateBar';
+import { readChatStream, StreamInterruptedError } from '@workpivot/shared';
+import { errorStatus, isAuthenticationError, isRoutineStreamRotation, isTransientConnectionError, reconnectDelay, type TransportState } from './connection';
 
 interface WorkspaceEvent {
   type: 'workspace';
@@ -18,47 +20,82 @@ export function Workspace({ client, user, theme, onTheme, onLogout, onError }: {
   const selectionKey = `wp-mobile-task:${client.server}:${user.id}`;
   const [active, setActive] = useState<string | null>(() => localStorage.getItem(selectionKey));
   const [drawer, setDrawer] = useState(false), [settings, setSettings] = useState(false), [error, setError] = useState('');
+  const [transport, setTransport] = useState<TransportState>('connecting');
   const [creating, setCreating] = useState<'project' | 'task' | null>(null), [name, setName] = useState(''), [project, setProject] = useState('');
   const [busy, setBusy] = useState(false);
   const [panel, setPanel] = useState<'home' | 'capabilities' | 'resources' | 'memories' | 'business'>('home');
   const task = tasks.find(row => row.id === active);
-  const fail = (reason: unknown) => { setError(reason instanceof Error ? reason.message : '操作失败'); onError(reason); };
+  const report = (reason: unknown) => {
+    // 工作区 SSE 是全局连接状态的唯一来源，局部轮询失败不能反复覆盖或延长恢复提示。
+    if (isTransientConnectionError(reason)) return;
+    onError(reason);
+    if (!isAuthenticationError(reason)) setError(reason instanceof Error ? reason.message : '操作失败');
+  };
   const load = async (signal?: AbortSignal) => {
     const [p, t] = await Promise.all([client.json<{ projects: Project[] }>('/api/projects', { signal }), client.json<{ tasks: Task[] }>('/api/tasks', { signal })]);
     if (signal?.aborted) return;
     setProjects(p.projects); setTasks(t.tasks);
     setActive(id => t.tasks.some(row => row.id === id) ? id : null);
   };
-  useEffect(() => { const c = new AbortController(); void load(c.signal).catch(reason => { if (!c.signal.aborted) fail(reason); }); return () => c.abort(); }, [client]);
+  useEffect(() => { const c = new AbortController(); void load(c.signal).catch(reason => { if (!c.signal.aborted) report(reason); }); return () => c.abort(); }, [client]);
   useEffect(() => {
-    let stopped = false, after = '0', delay = 1000;
+    let stopped = false, after = '0', attempt = 0;
     const controller = new AbortController();
-    let retry: ReturnType<typeof setTimeout>;
+    let current: AbortController | undefined, retry: ReturnType<typeof setTimeout>;
+    const schedule = (immediate = false) => {
+      if (stopped) return;
+      clearTimeout(retry);
+      const delay = immediate ? 0 : reconnectDelay(attempt++);
+      retry = setTimeout(() => { void connect(); }, delay);
+    };
     const connect = async () => {
+      current = new AbortController();
+      const signal = AbortSignal.any([controller.signal, current.signal]);
+      const openedAt = Date.now();
       try {
-        const response = await client.response(`/api/workspace/stream?after=${after}`, { signal: controller.signal }, 60 * 60 * 1000);
+        const response = await client.response(`/api/workspace/stream?after=${after}`, { signal }, 60 * 60 * 1000);
         if (!response.body) throw new Error('工作区同步不可用');
         await readChatStream<WorkspaceEvent | { type: 'unavailable'; status: number }>(response.body, event => {
           if (stopped) return;
           if (event.type === 'unavailable') {
-            if (event.status !== 401) after = '0';
-            throw new Error(event.status === 401 ? '登录已失效，请重新登录' : '工作区同步已中断');
+            if (event.status === 401) throw new ApiError('登录已失效，请重新登录', 401);
+            after = '0';
+            throw new StreamInterruptedError('工作区游标已失效，正在重新同步');
           }
           after = event.value.revision;
           setProjects(event.value.projects);
           setTasks(event.value.tasks);
           setActive(current => current && event.value.tasks.some(row => row.id === current) ? current : null);
-          delay = 1000;
-        }, controller.signal, 60000);
+          attempt = 0;
+          setTransport('connected');
+        }, signal, 60000);
       } catch (reason) {
-        if (stopped || controller.signal.aborted) return;
-        setError(reason instanceof Error ? reason.message : '工作区同步中断');
-        retry = setTimeout(() => { void connect(); }, delay);
-        delay = Math.min(delay * 2, 10000);
+        if (stopped || controller.signal.aborted || signal.aborted) return;
+        if (isAuthenticationError(reason)) { onError(reason); return; }
+        if (isRoutineStreamRotation(reason, openedAt)) { setTransport('connected'); schedule(true); return; }
+        if (errorStatus(reason) === 409) { after = '0'; setTransport('connected'); schedule(true); return; }
+        setTransport('reconnecting');
+        if (!isTransientConnectionError(reason)) setError(reason instanceof Error ? reason.message : '工作区同步中断');
+        schedule();
+      } finally {
+        current = undefined;
       }
     };
+    const reconnectNow = () => {
+      if (stopped) return;
+      attempt = 0;
+      current?.abort();
+      schedule(true);
+    };
+    const resume = () => { if (document.visibilityState === 'visible') reconnectNow(); };
+    window.addEventListener('online', reconnectNow);
+    document.addEventListener('visibilitychange', resume);
     void connect();
-    return () => { stopped = true; clearTimeout(retry); controller.abort(); };
+    return () => {
+      stopped = true; clearTimeout(retry); current?.abort(); controller.abort();
+      window.removeEventListener('online', reconnectNow);
+      document.removeEventListener('visibilitychange', resume);
+    };
   }, [client, user.id]);
   useEffect(() => { if (active) localStorage.setItem(selectionKey, active); else localStorage.removeItem(selectionKey); }, [active, selectionKey]);
   const select = (id: string) => { setActive(id); setDrawer(false); setSettings(false); setError(''); };
@@ -74,16 +111,18 @@ export function Workspace({ client, user, theme, onTheme, onLogout, onError }: {
         await load(); select(value.task.id);
       }
       setCreating(null);
-    } catch (reason) { fail(reason); }
+    } catch (reason) { report(reason); }
     finally { setBusy(false); }
   };
   return <main className="mobile-workspace">
     <header className="topbar"><button aria-label="打开侧栏" onClick={() => setDrawer(true)}><svg viewBox="0 0 24 24"><path d="M4 7h16M4 17h16" /></svg></button>
       <div><strong>{settings ? '设置' : task?.name ?? 'WorkPivot'}</strong><small>{settings ? user.username : projects.find(p => p.id === task?.projectId)?.name ?? '项目工作空间'}</small></div>
       <button aria-label="新建任务" onClick={() => start(projects.length ? 'task' : 'project')}><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></button></header>
+    {transport === 'reconnecting' && <div className="connection-banner" role="status">网络连接已中断，正在恢复同步，任务不会丢失。</div>}
+    <UpdateBar client={client} />
     {settings && <div className="settings-page">
       {panel !== 'home' ? <><button onClick={() => setPanel('home')}>‹ 返回设置</button>
-        {panel === 'capabilities' ? <Capabilities client={client} onError={onError} /> : task ? panel === 'memories' ? <Memories key={task.id} client={client} task={task} onError={onError} /> : panel === 'business' ? <BusinessFacts key={task.id} client={client} task={task} onError={onError} /> : <TaskResources key={task.id} client={client} task={task} onError={onError} /> : <p>请先选择一个任务。</p>}
+        {panel === 'capabilities' ? <Capabilities client={client} onError={report} /> : task ? panel === 'memories' ? <Memories key={task.id} client={client} task={task} onError={report} /> : panel === 'business' ? <BusinessFacts key={task.id} client={client} task={task} onError={report} /> : <TaskResources key={task.id} client={client} task={task} onError={report} /> : <p>请先选择一个任务。</p>}
       </> : <><div className="profile"><span>{user.username.slice(0, 1).toUpperCase()}</span><h1>{user.username}</h1></div>
       <section><button onClick={onTheme}>界面主题 <span>{theme === 'dark' ? '黑色' : '白色'} ›</span></button>
         <div className="settings-row">服务器地址<small>{client.server}</small></div></section>
@@ -91,10 +130,10 @@ export function Workspace({ client, user, theme, onTheme, onLogout, onError }: {
         <button disabled={!task} onClick={() => setPanel('memories')}>三层记忆 <span>›</span></button>
         <button disabled={!task?.projectId} onClick={() => setPanel('business')}>项目业务事实 <span>›</span></button>
         <button disabled={!task} onClick={() => setPanel('resources')}>任务专家、资料与知识 <span>›</span></button></section>
-      <section><button disabled={busy} onClick={() => { setBusy(true); void onLogout().catch(fail).finally(() => setBusy(false)); }}>退出登录 / 更换服务器</button></section>
+      <section><button disabled={busy} onClick={() => { setBusy(true); void onLogout().catch(report).finally(() => setBusy(false)); }}>退出登录 / 更换服务器</button></section>
       <p className="muted">WorkPivot Mobile · 开发预览</p></>}
       <button onClick={() => setSettings(false)}>返回对话</button></div>}
-    <div className="chat-content" hidden={settings}>{task ? <Conversation key={task.id} client={client} task={task} onError={onError} />
+    <div className="chat-content" hidden={settings}>{task ? <Conversation key={task.id} client={client} task={task} onError={report} />
         : <div className="empty"><h1>你的项目工作空间</h1><p>选择一个任务继续，或开始新的项目。</p><button className="primary" onClick={() => setDrawer(true)}>查看项目</button><button onClick={() => start('project')}>创建项目</button></div>}</div>
     {error && <p className="error" role="alert">{error}</p>}
     {drawer && <div className="drawer-layer"><button className="shade" aria-label="关闭侧栏" onClick={() => setDrawer(false)} /><aside className="drawer" aria-label="项目导航">

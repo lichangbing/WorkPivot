@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MobileClient } from './client';
+import { isTransientConnectionError } from './connection';
 export interface ResourceSelection {
   scheduleIds?: string[]; versionIds: string[]; memoryScopes: ('user' | 'project' | 'task')[];
   expert: boolean; baseRunId?: string | null; epoch?: string; version?: 1;
@@ -16,7 +17,12 @@ export function ResourceScope({ client, taskId, refresh, disabled, onChange, onE
     void client.json<Snapshot>(`/api/tasks/${taskId}/resource-scope`, { signal: c.signal }).then(result => {
       if (c.signal.aborted) return;
       setData(result); setScope(result.scope); onChange(result.scope);
-    }).catch(reason => { if (!c.signal.aborted) { setError(reason instanceof Error ? reason.message : '资料范围读取失败'); onError(reason); } });
+    }).catch(reason => {
+      if (!c.signal.aborted) {
+        onError(reason);
+        if (!isTransientConnectionError(reason)) setError(reason instanceof Error ? reason.message : '资料范围读取失败');
+      }
+    });
     return () => c.abort();
   }, [client, taskId, refresh, retry, onChange]);
   const update = (value: ResourceSelection) => { setScope(value); onChange(value); };
@@ -48,7 +54,10 @@ export function RuntimeResourceScope({client,taskId,attachmentIds,onScope,onAppl
       onScope(current);
       const available=new Set(value.files.map(file=>file.id));
       setVersions(attachmentIds.filter(id=>available.has(id)&&!current.versionIds.includes(id)));setMemory([]);
-    }catch(reason){setData(undefined);setError(reason instanceof Error?reason.message:'运行资料范围读取失败');onError(reason);}
+    }catch(reason){
+      onError(reason);
+      if(!isTransientConnectionError(reason)){setData(undefined);setError(reason instanceof Error?reason.message:'运行资料范围读取失败');}
+    }
   };
   useEffect(()=>{void load();},[taskId,attachmentIds.join(',')]);
   const current=data?.activeRun?.scope;
@@ -65,7 +74,10 @@ export function RuntimeResourceScope({client,taskId,attachmentIds,onScope,onAppl
       if(!response.ok)throw new Error((await response.json() as {error?:string}).error??'范围调整失败');
       const result=await response.json() as {scope:ResourceSelection&{epoch:string}};onScope(result.scope);
       pending.current=null;setNotice('已加入，将在下一个安全步骤应用。');setVersions([]);setMemory([]);onApplied();
-    }catch(reason){setError(reason instanceof Error?reason.message:'范围调整失败');onError(reason);}
+    }catch(reason){
+      onError(reason);
+      if(!isTransientConnectionError(reason))setError(reason instanceof Error?reason.message:'范围调整失败');
+    }
     finally{setBusy(false);}
   };
   return <details className="resource-scope runtime-scope" open={open} onToggle={event=>setOpen(event.currentTarget.open)}>

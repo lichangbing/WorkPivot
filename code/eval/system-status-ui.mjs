@@ -26,11 +26,11 @@ try{
   await page.route('**/api/**',async route=>{
     const path=new URL(route.request().url()).pathname;
     let data={};
-    if(path==='/api/health')data={ok:true,storage:'postgresql',version:'0.3.0-rc.6',providersEnabled:true,mcpEnabled:true};
+    if(path==='/api/health')data={ok:true,storage:'postgresql',version:'0.3.0-rc.8',providersEnabled:true,mcpEnabled:true};
     else if(path==='/api/auth/state')data={authenticated:true,user:{id:'admin',username:'管理员',role:'admin'},needsSetup:false,registrationEnabled:true};
     else if(path==='/api/users')data={users:[{id:'admin',username:'管理员',role:'admin'}]};
     else if(path==='/api/admin/system-status')data={
-      version:'0.3.0-rc.6',generatedAt:'2026-11-04T08:00:00.000Z',status:'degraded',ready:true,
+      version:'0.3.0-rc.8',generatedAt:'2026-11-05T08:00:00.000Z',status:'degraded',ready:true,
       services:{api:{state:'ready',latencyMs:0},database:{state:'ready',latencyMs:4},browser:{state:'ready',latencyMs:8},worker:{state:'not_configured',latencyMs:null}},
       database:{latencyMs:4,app:{total:2,idle:1,waiting:0},auth:{total:1,idle:1,waiting:0}},
       storage:{state:'ready',totalBytes:40*1024*1024*1024,freeBytes:12*1024*1024*1024,usedRatio:.7},

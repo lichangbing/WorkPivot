@@ -96,6 +96,7 @@ import { buildMemoryTools, resolveMemoryConfirm, pendingMemory, cancelMemoryRequ
 import { memoryLayerRoutes, renderAdditionalMemory } from './memory-layers.js';
 import { buildPlanTool, readPlan } from './plan.js';
 import { initProjectMemory, memoryView, removeEntryById, renderMemoryInjection, setMemoryEnabled, writeHandbook } from './memory.js';
+import { loadClientUpdates } from './client-updates.js';
 
 export interface AppOptions {
   /** 前端构建产物目录（apps/web/dist）。存在则托管静态资源并提供 SPA 回退。 */
@@ -129,7 +130,7 @@ const PARALLEL_LIMIT = Number(process.env['WORKPIVOT_MAX_PARALLEL']) || 8;
 const web = new WebTools(browserConfiguration());
 
 // app.use('/api') 下 req.path 为相对路径（如 '/auth/login'）
-const PUBLIC_PATHS = new Set(['/health', '/auth/state', '/auth/login', '/auth/register']);
+const PUBLIC_PATHS = new Set(['/health', '/client-updates', '/auth/state', '/auth/login', '/auth/register']);
 
 export function createApp(opts: AppOptions = {}): Express {
   const app = express();
@@ -175,6 +176,15 @@ export function createApp(opts: AppOptions = {}): Express {
   app.get('/api/health', (_req, res) => {
     res.setHeader('cache-control', 'no-store');
     res.json({ ok: true, name: 'workpivot', version: SERVICE_VERSION, apiProtocol: API_PROTOCOL, ts: Date.now() });
+  });
+  app.get('/api/client-updates', async (_req,res) => {
+    try {
+      const value=await loadClientUpdates();
+      res.setHeader('cache-control','no-store');
+      res.json(value);
+    } catch {
+      res.status(503).json({error:'更新清单暂不可用'});
+    }
   });
 
   // ---- 认证路由 ----

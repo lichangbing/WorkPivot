@@ -49,6 +49,7 @@ import { IamRepository, oidcBindingCookie } from './iam.js';
 import {MetricsRegistry,requestId,requestObservability} from './observability.js';
 import {SystemStatusService,type OperationsConfiguration} from './system-status.js';
 import {timingSafeEqual} from 'node:crypto';
+import {loadClientUpdates} from '../client-updates.js';
 
 /** K01 联调接口；各服务适配完成后接入生产界面。 */
 export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken: string, execution?: DatabaseExecution, providers?: ProviderRepository, mcp?: McpRepository, webDist?: string, files?: FileRepository, skillBuilds?: SkillBuilds, automations?: Automations, embeddings?: Embeddings, browserWorkspace?: BrowserWorkspace,browserProfiles?:BrowserProfiles,preview?:DocumentPreview,operations?:OperationsConfiguration): Promise<Express> {
@@ -87,6 +88,15 @@ export async function createDatabaseApp(authPool: Pool, appPool: Pool, initToken
   const num = (value: unknown): number => { if (typeof value !== 'number') throw new RepositoryError(400, '缺少版本参数'); return value; };
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, name: 'workpivot', version: SERVICE_VERSION, releaseStage: 'rc', releaseScope: 'single-user', apiProtocol: API_PROTOCOL, storage: 'postgresql', productionReady: false, chatEnabled: !!execution, filesEnabled: !!files, providersEnabled: !!providers, mcpEnabled: !!mcp, interactionCapabilities: interactionCapabilities() });
+  });
+  app.get('/api/client-updates', async (_req,res) => {
+    try {
+      const value=await loadClientUpdates();
+      res.setHeader('Cache-Control','no-store');
+      res.json(value);
+    } catch {
+      throw new RepositoryError(503,'更新清单暂不可用');
+    }
   });
   app.get('/api/ready', async (_req,res) => {
     const readiness=await systemStatus.readiness();

@@ -8,6 +8,12 @@ label { display:block; font-size:14px; margin:20px 0; } input,select { display:b
 .password-field { display:flex; margin-top:8px; background:var(--surface); border:1px solid var(--line); border-radius:12px; }.password-field input { margin:0; border:0; background:none; }.password-field button { flex-shrink:0; font-size:13px; }
 .server-hint { color:var(--muted); font-size:12px; text-align:center; margin:-10px 0 18px; overflow-wrap:anywhere; }
 .connection-toggle { width:100%; margin-top:12px; }.version { color:var(--muted); font-size:12px; text-align:center; margin-top:36px; }.error { color:#ba3838; font-size:14px; padding:8px 16px; overflow-wrap:anywhere; }.global-error { position:absolute; top:0; left:0; right:0; }
+.connection-banner { flex-shrink:0; padding:8px 16px; border-bottom:1px solid #d8b76a; background:#fff7df; color:#75571b; font-size:13px; text-align:center; }
+:root[data-theme="dark"] .connection-banner { border-color:#6e5c2d; background:#332b18; color:#e5cb87; }
+.update-bar { flex-shrink:0; margin:8px 12px 0; padding:12px 14px; border:1px solid #8eb49a; border-radius:14px; background:#eef7f1; font-size:13px; }
+:root[data-theme="dark"] .update-bar { border-color:#456f56; background:#1d2d23; }
+.update-bar > div:first-child { display:flex; flex-direction:column; gap:4px; }.update-bar strong { font-size:15px; }.update-bar small { line-height:1.5; }
+.update-bar .update-actions { display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap; }.update-bar .primary { width:auto; }.update-bar a { color:inherit; font-size:12px; }
 .mobile-workspace { height:100dvh; display:flex; flex-direction:column; background:var(--bg); padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom); }
 .topbar { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; flex-shrink:0; }.topbar > div { text-align:center; min-width:0; }.topbar strong { display:block; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:64vw; }.topbar small { display:block; margin-top:3px; }
 .empty { margin:auto; text-align:center; padding:24px; color:var(--muted); }.empty h1,.empty h2 { color:var(--fg); }.empty .primary { margin-top:18px; }.connection-note { font-size:11px; text-align:center; color:var(--muted); }

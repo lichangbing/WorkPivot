@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { SecureStorage } from '@aparajita/capacitor-secure-storage';
+import { NetworkError } from './connection';
 import { normalizeServerAddress } from './server-address';
 
 export interface User { id: string; username: string; mustChangePassword?: boolean }
@@ -40,8 +41,8 @@ export class MobileClient {
       ...init, headers, credentials: 'omit', redirect: 'error',
       signal: AbortSignal.any([this.signal, ...(init.signal ? [init.signal] : []), AbortSignal.timeout(timeout)]),
     }).catch((error: unknown) => {
-      if (init.signal?.aborted) throw error;
-      throw new Error('无法连接服务器，请检查网络、地址及服务器的手机端访问配置');
+      if (this.signal.aborted || init.signal?.aborted) throw error;
+      throw new NetworkError(undefined, { cause: error });
     });
     if (!response.ok) {
       const body = await response.json().catch(() => ({})) as { error?: string };

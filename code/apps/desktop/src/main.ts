@@ -1,5 +1,5 @@
 /** 桌面客户端保存会话副本；账号、模型调用、任务执行及生成文件仍由服务器管理。 */
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Tray, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, powerMonitor, Tray, shell } from 'electron';
 import { downloadArtifact, artifactRequest } from './artifact.js';
 import { ConversationCache, type CachedConversation } from './conversation-cache.js';
 import { ArtifactSync, fetchManifest } from './artifact-sync.js';
@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { DEFAULT_SERVER_URL, normalizeServerUrl } from './server-address.js';
 import { checkServiceHealth, CompatibilityError } from '@workpivot/shared';
+import { downloadDesktopUpdate, fetchDesktopUpdate } from './updater.js';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -15,6 +16,8 @@ let quitting = false;
 let connectedOrigin: string | null = null;
 let lastError = '';
 let connecting = false;
+let updateTimer: ReturnType<typeof setTimeout> | undefined;
+let checkingUpdate = false;
 const connectionPage = join(__dirname, 'connection.html');
 const connectionPageUrl = pathToFileURL(connectionPage).href;
 const smoke = process.env['WORKPIVOT_SMOKE'] === '1';
@@ -31,6 +34,46 @@ function configuredServer(): string {
 function saveServer(serverUrl: string): void {
   const path = join(app.getPath('userData'), 'connection.json');
   writeFileSync(path + '.tmp', JSON.stringify({ serverUrl }, null, 2)); renameSync(path + '.tmp', path);
+}
+function desktopBuild(): number {
+  try {
+    const value = JSON.parse(readFileSync(join(app.getAppPath(), 'package.json'), 'utf8')).workpivotBuild;
+    return Number.isSafeInteger(value) && value > 0 ? value : 1;
+  } catch { return 1; }
+}
+async function checkForUpdate(serverUrl = connectedOrigin, manual = false): Promise<void> {
+  clearTimeout(updateTimer);
+  if (serverUrl && !checkingUpdate) {
+    checkingUpdate = true;
+    try {
+      const update = await fetchDesktopUpdate(serverUrl, desktopBuild());
+      if (update && mainWindow && !mainWindow.isDestroyed()) {
+        const choice = await dialog.showMessageBox(mainWindow, {
+          type: 'info', title: 'WorkPivot 更新',
+          message: `发现新版本 ${update.version}`,
+          detail: '服务器上的任务不会被删除。下载并校验完成后会打开安装包或便携包所在位置，请按发布说明完成替换。',
+          buttons: ['下载更新', '稍后'], defaultId: 0, cancelId: 1,
+        });
+        if (choice.response === 0) {
+          mainWindow.setTitle(`WorkPivot · 正在下载 ${update.version}`);
+          const installer = await downloadDesktopUpdate(update, join(app.getPath('temp'), 'workpivot-updates'));
+          mainWindow.setTitle(`WorkPivot · ${app.getVersion()}`);
+          const error = await shell.openPath(installer);
+          if (error) throw new Error(error);
+        }
+      } else if (manual && mainWindow && !mainWindow.isDestroyed()) {
+        await dialog.showMessageBox(mainWindow, { type: 'info', title: 'WorkPivot 更新', message: '当前已是最新版本' });
+      }
+    } catch (error) {
+      log(`UPDATE CHECK FAILED: ${error instanceof Error ? error.message : 'unknown'}`);
+      if (manual && mainWindow && !mainWindow.isDestroyed()) {
+        await dialog.showMessageBox(mainWindow, { type: 'warning', title: 'WorkPivot 更新', message: '暂时无法检查更新，请稍后重试。' });
+      }
+    } finally {
+      checkingUpdate = false;
+      if (serverUrl && !quitting) updateTimer = setTimeout(() => { void checkForUpdate(serverUrl); }, 6 * 60 * 60 * 1000);
+    }
+  }
 }
 async function showConnection(error = ''): Promise<void> {
   connectedOrigin = null; lastError = error;
@@ -50,6 +93,7 @@ async function connect(value: unknown): Promise<{ ok: boolean; error?: string }>
     await mainWindow.loadURL(serverUrl);
     mainWindow.setTitle(`WorkPivot · ${service.version}`);
     saveServer(serverUrl); lastError = ''; mainWindow.show();
+    void checkForUpdate(serverUrl);
     log(`CONNECTED ${serverUrl}; local backend disabled`);
     if (smoke) { log('SMOKE OK'); setTimeout(() => app.exit(0), 300); }
     return { ok: true };
@@ -123,7 +167,7 @@ async function boot(): Promise<void> {
   mainWindow.on('close', (event) => { if (!quitting) { event.preventDefault(); mainWindow?.hide(); } });
   mainWindow.on('closed', () => { mainWindow = null; });
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: '服务器', submenu: [{ label: '更换服务器', click: () => { void showConnection(); } }, { label: '重新连接', click: () => { void connect(configuredServer()); } }, { type: 'separator' }, { label: '退出', click: () => app.quit() }] },
+    { label: '服务器', submenu: [{ label: '更换服务器', click: () => { void showConnection(); } }, { label: '重新连接', click: () => { void connect(configuredServer()); } }, { label: '检查更新', click: () => { void checkForUpdate(); } }, { type: 'separator' }, { label: '退出', click: () => app.quit() }] },
     { label: '编辑', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
     { label: '视图', submenu: [{ role: 'reload' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }] },
   ]));
@@ -255,6 +299,7 @@ async function boot(): Promise<void> {
     return connect(value);
   });
   try { createTray(); } catch { log('Tray unavailable'); }
+  powerMonitor.on('resume', () => { void checkForUpdate(); });
   await showConnection();
   await connect(configuredServer());
 }

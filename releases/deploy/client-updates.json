@@ -1,0 +1,31 @@
+{
+  "generatedAt": "2026-11-05T10:00:00.000Z",
+  "updates": [
+    {
+      "channel": "beta",
+      "platform": "android",
+      "version": "1.11",
+      "build": 12,
+      "minimumBuild": 9,
+      "downloadUrl": "https://115-191-1-188.sslip.io:80/downloads/WorkPivot-android-1.11.apk",
+      "sha256": "bf90c325c077275d0cd3d8686a43f88c32c3a2e1f330d063bcf978560161ee6f",
+      "packageName": "com.workpivot.mobile",
+      "signerSha256": "f8e7ddbad68f6a5630d3f40cad339e2f5c627e60c35cb23b21d802fdbb9c9e90",
+      "minimumApiProtocol": 1,
+      "maximumApiProtocol": 1,
+      "publishedAt": "2026-11-05T10:00:00.000Z"
+    },
+    {
+      "channel": "beta",
+      "platform": "windows",
+      "version": "0.3.0-rc.8",
+      "build": 8,
+      "minimumBuild": 1,
+      "downloadUrl": "https://115-191-1-188.sslip.io:80/downloads/WorkPivot-Windows-0.3.0-rc.8-portable.zip",
+      "sha256": "41c79f54152ca634e3457bc27191fae4a80620e7f3fa8d290c8ec2d0ae7f76c6",
+      "minimumApiProtocol": 1,
+      "maximumApiProtocol": 1,
+      "publishedAt": "2026-11-05T10:00:00.000Z"
+    }
+  ]
+}

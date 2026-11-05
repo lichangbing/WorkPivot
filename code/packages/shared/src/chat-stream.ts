@@ -1,3 +1,13 @@
+export class StreamInterruptedError extends Error {
+  readonly code = 'stream-ended';
+  constructor(message = '实时连接已结束') { super(message); this.name = 'StreamInterruptedError'; }
+}
+
+export class StreamIdleError extends Error {
+  readonly code = 'stream-idle';
+  constructor(message = '连接长时间无响应') { super(message); this.name = 'StreamIdleError'; }
+}
+
 export async function readChatStream<T extends { type: string }>(body: ReadableStream<Uint8Array>, onEvent: (event: T) => void, signal?: AbortSignal, idleMs = 45000): Promise<void> {
   const reader = body.getReader(), decoder = new TextDecoder();
   let buffer = '';
@@ -7,9 +17,9 @@ export async function readChatStream<T extends { type: string }>(body: ReadableS
     for (;;) {
       signal?.throwIfAborted();
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const chunk = await Promise.race([reader.read(), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('连接长时间无响应，任务状态待确认，请恢复连接后查看任务。')), idleMs); })]).finally(() => clearTimeout(timer));
+      const chunk = await Promise.race([reader.read(), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new StreamIdleError('连接长时间无响应，任务状态待确认，请恢复连接后查看任务。')), idleMs); })]).finally(() => clearTimeout(timer));
       signal?.throwIfAborted();
-      if (chunk.done) throw new Error('连接提前中断，未收到任务结束确认。请查看任务状态后再决定是否继续，系统不会自动重发。');
+      if (chunk.done) throw new StreamInterruptedError('连接提前中断，未收到任务结束确认。请查看任务状态后再决定是否继续，系统不会自动重发。');
       buffer += decoder.decode(chunk.value, { stream: true });
       if (buffer.length > 1024 * 1024) throw new Error('服务器响应超过大小限制');
       let end: number;

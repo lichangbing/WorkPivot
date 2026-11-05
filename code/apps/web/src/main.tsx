@@ -7,6 +7,7 @@ import App from './App';
 import { ConnectionStatus } from './ConnectionStatus';
 import './index.css';
 import { DatabaseWorkspace } from './DatabaseWorkspace';
+import { UpdateNotice } from './UpdateNotice';
 
 function WorkspaceRoot() {
   const [storage, setStorage] = useState<'loading' | 'postgresql' | 'legacy'>('loading');
@@ -22,6 +23,7 @@ function WorkspaceRoot() {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    <UpdateNotice />
     <ConnectionStatus />
     <WorkspaceRoot />
   </StrictMode>,

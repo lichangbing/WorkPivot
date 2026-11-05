@@ -573,7 +573,7 @@ try {
     const address = runtimeServer.address(); if (!address || typeof address === 'string') throw Error('No runtime port');
     const origin = `http://127.0.0.1:${address.port}`;
     const healthResponse=await fetch(origin+'/api/health');
-    check(healthResponse.ok&&(await healthResponse.json()).version==='0.3.0-rc.6','存活检查不依赖数据库并可报告 RC.6 版本');
+    check(healthResponse.ok&&(await healthResponse.json()).version==='0.3.0-rc.8','存活检查不依赖数据库并可报告 RC.8 版本');
     check(/^[0-9a-f-]{36}$/i.test(healthResponse.headers.get('x-request-id')??''),'HTTP 响应带有关联请求标识');
     const readyResponse=await fetch(origin+'/api/ready'),readyData=await readyResponse.json() as {ready?:boolean;database?:boolean;storage?:boolean};
     check(readyResponse.ok&&readyData.ready===true,'就绪检查验证数据库与文件存储');
@@ -584,7 +584,7 @@ try {
     check(adminMetrics.ok&&metricsText.includes('workpivot_ready')&&metricsText.includes('workpivot_http_requests_total'),'管理员或监控令牌可读取 Prometheus 指标');
     const systemStatus=await fetch(origin+'/api/admin/system-status',{headers:{Authorization:'Bearer '+owner.token}});
     const systemStatusData=await systemStatus.json() as {version:string;services:Record<string,unknown>;work:Record<string,unknown>;alerts:unknown[]};
-    check(systemStatus.ok&&systemStatusData.version==='0.3.0-rc.6'&&!!systemStatusData.services.database&&!!systemStatusData.work&&Array.isArray(systemStatusData.alerts),'管理员只读系统状态返回服务、队列和告警摘要');
+    check(systemStatus.ok&&systemStatusData.version==='0.3.0-rc.8'&&!!systemStatusData.services.database&&!!systemStatusData.work&&Array.isArray(systemStatusData.alerts),'管理员只读系统状态返回服务、队列和告警摘要');
     const skillUrl = `http://127.0.0.1:${address.port}/api/skill-packages`;
     check((await fetch(skillUrl, { headers: { Authorization: 'Bearer ' + finalSession.token } })).status === 403, 'HTTP member cannot access skill package editor');
     const skillList = await fetch(skillUrl, { headers: { Authorization: 'Bearer ' + owner.token } });

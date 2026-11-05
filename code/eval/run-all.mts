@@ -18,6 +18,8 @@ const suites: Array<[string, string]> = [
   ['W13', 'eval/W13-session.mts'],
   ['W16', 'eval/W16-client.mts'],
   ['W17', 'eval/W17-connection.mts'],
+  ['MOBILE-RECONNECT', 'eval/mobile-reconnect.mts'],
+  ['CLIENT-UPDATE', 'eval/client-update.mts'],
   ['W18', 'eval/W18-capabilities.mts'],
   ['W19', 'eval/W19-chat-content.mts'],
   ['W20', 'eval/W20-skills.mts'],

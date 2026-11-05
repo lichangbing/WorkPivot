@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MobileClient } from './client';
+import { isTransientConnectionError } from './connection';
 
 export function ComposerSettings({ client, disabled, onError }: { client: MobileClient; disabled: boolean; onError: (error: unknown) => void }) {
   const [mode, setMode] = useState<{ value: string; revision: number }>();
@@ -20,7 +21,10 @@ export function ComposerSettings({ client, disabled, onError }: { client: Mobile
       if (results[0].status === 'fulfilled' && current === generation.current) setMode(results[0].value.setting ?? { value: 'manual', revision: 0 });
       if (results[1].status === 'fulfilled') setModel(results[1].value);
       if (results.every(result => result.status === 'fulfilled')) setError('');
-      for (const result of results) if (result.status === 'rejected') { setError(result.reason instanceof Error ? result.reason.message : '配置读取失败'); onError(result.reason); }
+      for (const result of results) if (result.status === 'rejected') {
+        onError(result.reason);
+        if (!isTransientConnectionError(result.reason)) setError(result.reason instanceof Error ? result.reason.message : '配置读取失败');
+      }
       timer = setTimeout(() => void load(), 10000);
     };
     void load(); return () => { c.abort(); clearTimeout(timer); };
@@ -32,7 +36,12 @@ export function ComposerSettings({ client, disabled, onError }: { client: Mobile
     try {
       const result = await client.json<{ revision: number }>('/api/preferences/execution.mode', { method: 'PUT', body: JSON.stringify({ value, revision: mode.revision }), signal: life.current.signal });
       setMode({ value, revision: result.revision });
-    } catch (reason) { if (!life.current.signal.aborted) { setError(reason instanceof Error ? reason.message : '模式修改失败'); onError(reason); } }
+    } catch (reason) {
+      if (!life.current.signal.aborted) {
+        onError(reason);
+        if (!isTransientConnectionError(reason)) setError(reason instanceof Error ? reason.message : '模式修改失败');
+      }
+    }
     finally { ++generation.current; setBusy(false); }
   };
   return <div className="composer-settings">

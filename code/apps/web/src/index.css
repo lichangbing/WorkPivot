@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+.update-notice { position:fixed; z-index:80; right:20px; bottom:20px; display:flex; align-items:center; gap:10px; max-width:min(92vw,560px); padding:12px 16px; border:1px solid #8eb49a; border-radius:12px; background:#eef7f1; color:#173d28; box-shadow:0 12px 36px #0002; font-size:13px; }
+.update-notice button { border:1px solid currentColor; border-radius:8px; padding:5px 10px; white-space:nowrap; }
+
 :root { font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--color-neutral-950); color: var(--color-neutral-100); }
 :root[data-theme="light"] {
   --color-neutral-50: #111827;

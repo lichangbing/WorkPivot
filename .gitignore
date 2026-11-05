@@ -91,4 +91,10 @@ code/apps/desktop/build/*
 code/apps/desktop/release-*/
 .workbuddy/
 releases/v0.*/
+!releases/v0.3.0-rc.7/
+releases/v0.3.0-rc.7/*
+!releases/v0.3.0-rc.7/RELEASE-NOTES.md
+!releases/v0.3.0-rc.8/
+releases/v0.3.0-rc.8/*
+!releases/v0.3.0-rc.8/RELEASE-NOTES.md
 code/.tmp/

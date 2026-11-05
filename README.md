@@ -15,14 +15,14 @@
   [文档导航](docs/README.md)
 </div>
 
-> **项目状态**：`v0.3.0-rc.6` 已发布到本地和正式服务器，schema v72。RC 技术门禁已完成：固定 Office 视觉集、真实模型 20+5、双客户端同步、故障恢复、15 分钟持续运行和 Keycloak OIDC 均已通过。RC.6 已补齐存活/就绪检查、结构化脱敏日志、Prometheus 指标、系统状态、备份状态、告警规则、安全审计覆盖和高危依赖修复；第二物理设备、24 小时真实负载与真实业务样本仍是创建 `v0.3.0` 正式标签前的外部条件。
+> **项目状态**：`v0.3.0-rc.8` 已部署到本地和正式服务器，schema v72。RC.8 增加 Web、Windows 和 Android 客户端更新检查，完成 Android 1.11、Windows RC.8 制品和五项真实 Office/PDF 业务验收。Android 1.11 真机安装、换网恢复和草稿保留已通过；RC.8 真实混合负载、Windows 实际更新和 1.9 → 1.11 覆盖升级仍是创建 `v0.3.0` 正式标签前的门禁。
 
 ### 当前外部入口
 
 - 用户端：<https://workpivot.lichb.cc.cd/>
 - 管理端：<https://workpivot.lichb.cc.cd/admin>
-- Android 下载：[WorkPivot-android-1.7.apk](https://115-191-1-188.sslip.io:80/downloads/WorkPivot-android-1.7.apk)
-- Windows 下载：[WorkPivot-Windows-0.3.0-rc.6-portable.zip](https://115-191-1-188.sslip.io:80/downloads/WorkPivot-Windows-0.3.0-rc.6-portable.zip)
+- Android 下载：[WorkPivot-android-1.11.apk](https://115-191-1-188.sslip.io:80/downloads/WorkPivot-android-1.11.apk)
+- Windows 下载：[WorkPivot-Windows-0.3.0-rc.8-portable.zip](https://115-191-1-188.sslip.io:80/downloads/WorkPivot-Windows-0.3.0-rc.8-portable.zip)
 - 回退入口：<https://115-191-1-188.sslip.io:80/>
 
 正式域名通过 Cloudflare Tunnel 对外提供标准 HTTPS，源站只连接本机
@@ -34,16 +34,16 @@ Cloudflare 免费链路在部分大陆网络下可能首次连接较慢；遇到
 10 次对话、200,000 Token、50 MB 上传和 1 个并发任务，按北京时间每天 12:00 刷新。
 管理员创建的账户默认不限，可在后台“限额管理”单独配置。
 
-Windows 便携客户端 `0.3.0-rc.6` 下载后解压，进入 `win-unpacked` 运行 `WorkPivot.exe`。
+Windows 便携客户端 `0.3.0-rc.8` 下载后解压，进入 `win-unpacked` 运行 `WorkPivot.exe`。
 客户端内部使用 `https://115-191-1-188.sslip.io:80` 连接后台，服务器地址收在“高级服务器设置”
 中；用户的正式网页入口仍为 `https://workpivot.lichb.cc.cd/`。该构建未做代码签名，
 Windows SmartScreen 首次运行可能需要选择“更多信息 → 仍要运行”。
 
-Windows ZIP SHA-256：`c4d090298b85c77e24023eef63423cf6f735c17abc57e661391a4b34bf8252d6`。
+Windows ZIP SHA-256：`41c79f54152ca634e3457bc27191fae4a80620e7f3fa8d290c8ec2d0ae7f76c6`。
 
-Android `1.7`（versionCode 8）APK SHA-256：
-`00768fcdc9759d82bdfe19e3445be5f7fce471b186209c0741155df0548f9ed6`。
-该包使用 WorkPivot 独立内测签名，仅用于内部测试。RC.6 的 Android 源码已将目标版本标记为 `1.8` / versionCode 9，但本机缺少 Android SDK、JDK 和发布签名环境，尚未生成可安装 APK；下载入口继续提供经过验证的 1.7。
+Android `1.11`（versionCode 12）APK SHA-256：
+`bf90c325c077275d0cd3d8686a43f88c32c3a2e1f330d063bcf978560161ee6f`。
+该包沿用 WorkPivot 独立内测签名，已加入更新检查、HTTPS 下载、APK 摘要/包名/版本/签名校验和系统安装确认。HONOR Android 16 真机的安装、Wi-Fi/蜂窝切换和断网草稿保留已通过。
 
 ## WorkPivot 是什么
 
@@ -76,6 +76,8 @@ WorkPivot 使用“候选版 → 单服务器正式版 → 多服务器治理版
 
 | 版本 | 定位 | 计划重点 |
 | --- | --- | --- |
+| `v0.3.0-rc.8` | 客户端更新与交付验收 | Web/Windows/Android 更新检查，Android 1.11、Windows RC.8，五项真实业务验收，换网/草稿/短稳真机验证 |
+| `v0.3.0-rc.7` | 移动恢复补丁 | Android 换网 SSE 恢复、单恢复提示、401/旧游标处理、Android 1.9 重发；在线自动更新需求登记 |
 | `v0.3.0-rc.6` | 正式发布门禁 | 正式服务器升级、客户端制品、双物理设备、24 小时运行、真实业务样本、备份恢复、健康/就绪、基础指标、告警规则、审计覆盖和只读系统状态 |
 | `v0.3.0` | 单服务器正式版 | Web/Windows 正式支持，Android 作为正式支持的 Beta 客户端；单机 Compose、单数据库、本地持久卷 |
 | `v0.3.x` | 正式补丁 | 只处理缺陷、安全更新、兼容性和部署问题 |

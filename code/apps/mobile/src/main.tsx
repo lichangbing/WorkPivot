@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Login } from './Login';
 import { PasswordChange } from './PasswordChange';
@@ -10,6 +10,7 @@ import { clearArtifactCache, initializeArtifactCache } from './artifact-export';
 function App() {
   const [session, setSession] = useState<{ client: MobileClient; auth: Auth } | null>(null);
   const [loading, setLoading] = useState(true), [error, setError] = useState('');
+  const expiring = useRef(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('wp-mobile-theme') === 'dark' ? 'dark' : 'light');
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('wp-mobile-theme', theme); }, [theme]);
   useEffect(() => {
@@ -37,8 +38,13 @@ function App() {
     catch { setError('已退出登录，但临时产物清理失败，请在系统设置中清除应用缓存'); }
   };
   if (loading) return <main className="login-page">正在恢复工作空间…</main>;
-  if (!session) return <>{error && <p className="error global-error" role="alert">{error}</p>}<Login onLogin={(client, auth) => { setError(''); setSession({ client, auth }); }} /></>;
+  if (!session) return <>{error && <p className="error global-error" role="alert">{error}</p>}<Login onLogin={(client, auth) => { expiring.current = false; setError(''); setSession({ client, auth }); }} /></>;
   if (session.auth.user?.mustChangePassword) return <PasswordChange client={session.client} onDone={() => leave(true)} />;
-  return <Workspace client={session.client} user={session.auth.user!} theme={theme} onTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')} onLogout={() => leave()} onError={reason => { if (reason instanceof ApiError && reason.status === 401) void leave(true).catch(() => setError('无法清除安全凭据，请重试')); }} />;
+  return <Workspace client={session.client} user={session.auth.user!} theme={theme} onTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')} onLogout={() => leave()} onError={reason => {
+    if (reason instanceof ApiError && reason.status === 401 && !expiring.current) {
+      expiring.current = true;
+      void leave(true).catch(() => { expiring.current = false; setError('无法清除安全凭据，请重试'); });
+    }
+  }} />;
 }
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);

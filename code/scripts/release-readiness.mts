@@ -6,7 +6,7 @@ import {join,resolve} from 'node:path';
 import {schemaUpgrades,schemaVersion} from '../packages/server/src/database/schema.js';
 
 const root=resolve(import.meta.dirname,'../..'),codeRoot=resolve(import.meta.dirname,'..');
-const output=resolve(process.argv[2]??join(root,'local-runtime','releases','v0.3.0-rc.6'));
+const output=resolve(process.argv[2]??join(root,'local-runtime','releases','v0.3.0-rc.8'));
 const git=(...args:string[])=>execFileSync('git',args,{cwd:root,encoding:'utf8'}).trim();
 const exists=async(path:string)=>access(path,constants.R_OK).then(()=>true,()=>false);
 const workspace=JSON.parse(await readFile(join(codeRoot,'package.json'),'utf8')) as {version:string};
@@ -14,7 +14,7 @@ const desktop=JSON.parse(await readFile(join(codeRoot,'apps/desktop/package.json
 const manifestFiles=[
   'apps/web/dist/index.html',
   'apps/web/dist/admin.html',
-  'apps/desktop/release/artifacts/WorkPivot-Windows-0.3.0-rc.6-portable.zip',
+  'apps/desktop/release/artifacts/WorkPivot-Windows-0.3.0-rc.8-portable.zip',
   'apps/mobile/android/app/build/outputs/apk/release/app-release.apk',
 ];
 const artifacts:Record<string,{path:string;bytes:number;sha256:string}>={};
@@ -26,11 +26,11 @@ for(const relative of manifestFiles){
 }
 const manifest={
   format:'workpivot-release-readiness',
-  version:'0.3.0-rc.6',
+  version:'0.3.0-rc.8',
   generatedAt:new Date().toISOString(),
   git:{commit:git('rev-parse','HEAD'),branch:git('branch','--show-current'),clean:git('status','--porcelain')==='' },
   schema:{expected:schemaUpgrades.at(-1)?.version??schemaVersion},
-  versions:{workspace:workspace.version,desktop:desktop.version,android:{versionCode:9,versionName:'1.8'}},
+  versions:{workspace:workspace.version,desktop:desktop.version,android:{versionCode:12,versionName:'1.11'}},
   supportMatrix:{
     deployment:'single-server-docker-compose',
     web:'supported',

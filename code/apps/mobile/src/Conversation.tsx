@@ -3,8 +3,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { groupEvents, mergeEvents, type ConversationPage, type StoredEvent, type StoredTurn } from '../../web/src/database-chat-state';
 import { displayUserMessageContent } from '../../web/src/chat-content';
-import { readChatStream } from '@workpivot/shared';
+import { readChatStream, StreamInterruptedError } from '@workpivot/shared';
 import { ApiError, MobileClient, type Task } from './client';
+import { errorStatus, isAuthenticationError, isRoutineStreamRotation, isTransientConnectionError, reconnectDelay } from './connection';
 import { Attachments, FileLabel } from './Attachments';
 import { ComposerSettings } from './ComposerSettings';
 import { MemoryReview, SummaryReview } from './MemoryReview';
@@ -13,6 +14,7 @@ import { ProcessTimeline } from './ProcessTimeline';
 import { InteractionDock } from './InteractionDock';
 import { RequestDeliveryStatus } from '../../web/src/RequestDeliveryStatus';
 import type { InteractionEnvelope, InteractionResponse, RequestDeliveryView, SteeringMessage } from '@workpivot/shared';
+import { requestIdFor, type PendingSend } from './send-request';
 
 interface Changes { type: 'changes'; events: StoredEvent[]; nextSequence: string }
 interface State { type: 'state'; value: { tasks: Task[]; interactions?: InteractionEnvelope[]; steering?: SteeringMessage[]; deliveries?: RequestDeliveryView[] } }
@@ -26,28 +28,42 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
   const [attachments, setAttachments] = useState<string[]>([]), [uploadBlocked, setUploadBlocked] = useState(false), [attachmentKey, setAttachmentKey] = useState(0);
   const attached = useCallback((ids: string[], blocked: boolean) => { setAttachments(ids); setUploadBlocked(blocked); }, []);
   const [resourceScope, setResourceScope] = useState<ResourceSelection | null>(null);
-  const pending = useRef<{ content: string; id: string } | null>(null);
+  const pending = useRef<PendingSend | null>(null);
   const viewport = useRef<HTMLDivElement>(null), follow = useRef(true), loading = useRef(false);
   const anchor = useRef<number | null>(null), lifetime = useRef(new AbortController());
-  const report = (reason: unknown) => { setError(reason instanceof Error ? reason.message : '操作失败'); onError(reason); };
+  const report = (reason: unknown) => {
+    if (isTransientConnectionError(reason) || isAuthenticationError(reason)) { onError(reason); return; }
+    setError(reason instanceof Error ? reason.message : '操作失败');
+  };
   useEffect(() => {
     const controller = new AbortController(); lifetime.current = controller;
     let timer: ReturnType<typeof setTimeout>, watermark = '0', initialized = false;
-    let connection: AbortController | undefined;
+    let connection: AbortController | undefined, attempt = 0, retrying = true;
+    const schedule = (immediate = false, retryScheduled = false) => {
+      if (!retrying || controller.signal.aborted) return retryScheduled;
+      clearTimeout(timer);
+      const delay = immediate ? 0 : reconnectDelay(attempt++);
+      timer = setTimeout(() => { void sync(); }, delay);
+      return true;
+    };
+    const loadSnapshot = async (signal: AbortSignal) => {
+      const page = await client.json<ConversationPage>(`/api/tasks/${task.id}/conversation`, { signal });
+      if (signal.aborted) return;
+      setEvents(page.turns.flatMap(turn => turn.events)); setBefore(page.nextCursor); if (page.deliveries) setDeliveries(page.deliveries);
+      setDetails(Object.fromEntries(page.turns.filter(turn => turn.hasMoreEvents).map(turn => [turn.id, { after: turn.nextEventSequence!, snapshot: page.snapshotSequence }])));
+      watermark = page.snapshotSequence; initialized = true; setReady(true);
+    };
     const sync = async () => {
       connection = new AbortController();
+      const attemptController = connection;
       const signal = AbortSignal.any([controller.signal, connection.signal]);
+      const openedAt = Date.now();
+      let staleCursor = false, retryScheduled = false;
       try {
-        if (!initialized) {
-          const page = await client.json<ConversationPage>(`/api/tasks/${task.id}/conversation`, { signal });
-          if (signal.aborted) return;
-          setEvents(page.turns.flatMap(turn => turn.events)); setBefore(page.nextCursor); if (page.deliveries) setDeliveries(page.deliveries);
-          setDetails(Object.fromEntries(page.turns.filter(turn => turn.hasMoreEvents).map(turn => [turn.id, { after: turn.nextEventSequence!, snapshot: page.snapshotSequence }])));
-          watermark = page.snapshotSequence; initialized = true; setReady(true);
-        }
+        if (!initialized) await loadSnapshot(signal);
         const response = await client.response(`/api/tasks/${task.id}/stream?after=${watermark}`, { signal }, 30 * 60 * 1000);
         if (!response.body || !response.headers.get('content-type')?.includes('text/event-stream')) throw new Error('实时连接不可用');
-        setConnected(true); setError('');
+        setConnected(true);
         await readChatStream<Changes | State | { type: 'unavailable'; status: number }>(response.body, event => {
           if (signal.aborted) return;
           if (event.type === 'changes') { setEvents(rows => mergeEvents(rows, event.events)); watermark = event.nextSequence; }
@@ -56,17 +72,43 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
             if (event.value.steering) setSteering(event.value.steering);
             if (event.value.deliveries) setDeliveries(event.value.deliveries);
             setStatus(event.value.tasks.find(row => row.id === task.id)?.status ?? 'unavailable');
-          } else { throw new ApiError('会话连接已失效，请重新打开任务', event.status); }
+          } else {
+            if (event.status === 401) throw new ApiError('登录已失效，请重新登录', 401);
+            staleCursor = true;
+            throw new StreamInterruptedError('会话游标已失效，正在重新同步');
+          }
+          attempt = 0;
+          setConnected(true);
         }, signal);
-      } catch (reason) { if (!signal.aborted) { setError(reason instanceof Error ? reason.message : '连接失败'); onError(reason); } }
+      } catch (reason) {
+        if (signal.aborted || attemptController.signal.aborted || controller.signal.aborted) return;
+        if (isAuthenticationError(reason)) { retrying = false; setConnected(false); onError(reason); return; }
+        if (staleCursor || errorStatus(reason) === 409) { initialized = false; setConnected(false); retryScheduled = schedule(true, retryScheduled); return; }
+        if (isRoutineStreamRotation(reason, openedAt)) { retryScheduled = schedule(true, retryScheduled); return; }
+        setConnected(false);
+        if (isTransientConnectionError(reason)) { onError(reason); retryScheduled = schedule(false, retryScheduled); return; }
+        setError(reason instanceof Error ? reason.message : '连接失败');
+        retryScheduled = schedule(false, retryScheduled);
+      }
       finally {
-        if (!controller.signal.aborted) { setConnected(false); timer = setTimeout(() => void sync(), 2000); }
+        if (!controller.signal.aborted && retrying && !retryScheduled && !attemptController.signal.aborted) schedule();
       }
     };
-    // 页面重新可见时断开旧订阅，由同一循环按持久化水位重新连接。
-    const resume = () => { if (document.visibilityState === 'visible') connection?.abort(); };
+    // 网络恢复或页面重新可见时立即用持久化水位重连，不重发用户消息。
+    const reconnectNow = () => {
+      if (controller.signal.aborted) return;
+      attempt = 0;
+      connection?.abort();
+      schedule(true);
+    };
+    const resume = () => { if (document.visibilityState === 'visible') reconnectNow(); };
+    window.addEventListener('online', reconnectNow);
     document.addEventListener('visibilitychange', resume); void sync();
-    return () => { controller.abort(); clearTimeout(timer); document.removeEventListener('visibilitychange', resume); };
+    return () => {
+      controller.abort(); clearTimeout(timer);
+      window.removeEventListener('online', reconnectNow);
+      document.removeEventListener('visibilitychange', resume);
+    };
   }, [client, task.id]);
   useLayoutEffect(() => {
     const node = viewport.current; if (!node) return;
@@ -93,7 +135,7 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
     if (busy || uploadBlocked || !resourceScope || !ready || !message.trim()) return;
     const content = message.trim();
     const fingerprint = JSON.stringify({ content, attachments, resourceScope });
-    if (!pending.current || pending.current.content !== fingerprint) pending.current = { content: fingerprint, id: crypto.randomUUID() };
+    pending.current = requestIdFor(pending.current, fingerprint);
     setBusy(true); setError(''); follow.current = true; if (!running) setStatus('running');
     try {
       if (running) {
@@ -111,7 +153,7 @@ export function Conversation({ client, task, onError }: { client: MobileClient; 
       if (!lifetime.current.signal.aborted) {
         report(reason);
         // 网络错误不等于未提交，重新读取后台状态后才开放后续操作。
-        try { const value = await client.json<{ tasks: Task[] }>('/api/tasks', { signal: lifetime.current.signal }); setStatus(value.tasks.find(row => row.id === task.id)?.status ?? 'unavailable'); } catch (error) { onError(error); }
+        try { const value = await client.json<{ tasks: Task[] }>('/api/tasks', { signal: lifetime.current.signal }); setStatus(value.tasks.find(row => row.id === task.id)?.status ?? 'unavailable'); } catch (error) { report(error); }
       }
     }
     finally { setBusy(false); }

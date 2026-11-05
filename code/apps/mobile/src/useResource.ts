@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MobileClient } from './client';
+import { isTransientConnectionError } from './connection';
 
 /** 统一取消离页请求，防止旧轮询覆盖操作后的刷新结果。 */
 export function useResource<T>(client: MobileClient, path: string, onError: (error: unknown) => void, interval = 0) {
@@ -12,7 +13,10 @@ export function useResource<T>(client: MobileClient, path: string, onError: (err
       const result = await client.json<T>(path, { signal });
       if (!signal.aborted && current === serial.current) { setValue(result); setError(''); }
     } catch (reason) {
-      if (!signal.aborted && current === serial.current) { setError(reason instanceof Error ? reason.message : '读取失败'); handler.current(reason); }
+      if (!signal.aborted && current === serial.current) {
+        if (isTransientConnectionError(reason)) handler.current(reason);
+        else { setError(reason instanceof Error ? reason.message : '读取失败'); handler.current(reason); }
+      }
     }
   }, [client, path]);
   useEffect(() => {

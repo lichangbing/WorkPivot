@@ -33,6 +33,7 @@ export function createTagLogger(tag: string): TagLogger {
 
 export * from './automation.js';
 export * from './chat-stream.js';
+export * from './client-update.js';
 export * from './delivery.js';
 export * from './interaction.js';
 export * from './steering.js';
