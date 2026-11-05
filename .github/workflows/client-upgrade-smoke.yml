@@ -69,8 +69,8 @@ jobs:
             status=$?
             cat artifacts/android-upgrade.log
             if [ "$status" -ne 0 ]; then
-              url=$(curl -fsS --max-time 60 -F 'reqtype=fileupload' -F 'time=1h' -F 'fileToUpload=@artifacts/android-upgrade.log' https://litterbox.catbox.moe/resources/internals/api.php 2>/dev/null || true)
-              echo "::error title=Android upgrade failed::Diagnostic log: ${url:-see artifact}"
+              detail=$(tail -n 80 artifacts/android-upgrade.log | tr '\n' ' ' | cut -c1-5000)
+              echo "::error title=Android upgrade failed::$detail"
             fi
             exit "$status"
       - name: Upload evidence
@@ -158,9 +158,11 @@ jobs:
           Get-FileHash artifacts/WorkPivot-Windows-0.3.0-rc.6-portable.zip,artifacts/WorkPivot-Windows-0.3.0-rc.8-portable.zip |
             Format-Table Path,Hash -AutoSize | Out-String | Set-Content artifacts/windows-hashes.txt
           } catch {
-            $_ | Out-String | Set-Content artifacts/windows-upgrade-error.log
-            $url = curl.exe -fsS --max-time 60 -F 'reqtype=fileupload' -F 'time=1h' -F 'fileToUpload=@artifacts/windows-upgrade-error.log' https://litterbox.catbox.moe/resources/internals/api.php
-            Write-Output "::error title=Windows upgrade failed::Diagnostic log: $url"
+            $detail = $_ | Out-String
+            $detail | Set-Content artifacts/windows-upgrade-error.log
+            $summary = ($detail -replace "`r?`n", ' | ')
+            if ($summary.Length -gt 5000) { $summary = $summary.Substring(0, 5000) }
+            Write-Output "::error title=Windows upgrade failed::$summary"
             throw
           } finally {
             if ($fixture -and -not $fixture.HasExited) { Stop-Process -Id $fixture.Id -Force }
