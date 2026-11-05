@@ -1,0 +1,70 @@
+name: Build Windows 0.3.0
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/release-windows.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: code/pnpm-lock.yaml
+      - name: Install dependencies
+        working-directory: code
+        shell: pwsh
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.22.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Build Windows clients
+        working-directory: code
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pnpm --filter @workpivot/desktop build
+          pnpm --filter @workpivot/desktop exec electron-builder --win nsis
+          $release = 'apps/desktop/release'
+          $artifacts = Join-Path $release 'artifacts'
+          New-Item -ItemType Directory -Force $artifacts | Out-Null
+          Compress-Archive -Path (Join-Path $release 'win-unpacked/*') `
+            -DestinationPath (Join-Path $artifacts 'WorkPivot-Windows-0.3.0-portable.zip') -Force
+          Copy-Item (Join-Path $release 'WorkPivot-Setup-0.3.0.exe') $artifacts
+          Get-FileHash (Join-Path $artifacts 'WorkPivot-Windows-0.3.0-portable.zip'), `
+            (Join-Path $artifacts 'WorkPivot-Setup-0.3.0.exe') -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLowerInvariant())  $(Split-Path $_.Path -Leaf)" } |
+            Set-Content (Join-Path $artifacts 'SHA256SUMS.txt')
+      - name: Publish temporary download links
+        working-directory: code/apps/desktop/release/artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $portable = curl.exe -fsS --retry 5 --retry-all-errors --max-time 300 `
+            -F 'reqtype=fileupload' -F 'time=1h' `
+            -F 'fileToUpload=@WorkPivot-Windows-0.3.0-portable.zip' `
+            https://litterbox.catbox.moe/resources/internals/api.php
+          $setup = curl.exe -fsS --retry 5 --retry-all-errors --max-time 300 `
+            -F 'reqtype=fileupload' -F 'time=1h' `
+            -F 'fileToUpload=@WorkPivot-Setup-0.3.0.exe' `
+            https://litterbox.catbox.moe/resources/internals/api.php
+          @("portable=$portable", "setup=$setup") | Set-Content download-urls.txt
+          Get-Content download-urls.txt
+          Write-Output "::notice title=Windows 0.3.0 artifacts::portable=$portable;setup=$setup"
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-0.3.0
+          path: |
+            code/apps/desktop/release/artifacts/WorkPivot-Windows-0.3.0-portable.zip
+            code/apps/desktop/release/artifacts/WorkPivot-Setup-0.3.0.exe
+            code/apps/desktop/release/artifacts/SHA256SUMS.txt
