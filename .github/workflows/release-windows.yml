@@ -18,14 +18,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: code/pnpm-lock.yaml
       - name: Install dependencies
         working-directory: code
         shell: pwsh
         run: |
-          corepack enable
-          corepack prepare pnpm@11.22.0 --activate
+          npm install --global pnpm@11.22.0
           pnpm install --frozen-lockfile
       - name: Build Windows clients
         working-directory: code
