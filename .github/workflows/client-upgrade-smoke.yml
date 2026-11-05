@@ -1,0 +1,145 @@
+name: Client Upgrade Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/client-upgrade-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  android-upgrade:
+    name: Android 1.9 -> 1.11
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Download clients
+        run: |
+          mkdir -p artifacts
+          curl -fL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 600 \
+            -o artifacts/WorkPivot-android-1.9.apk \
+            https://115-191-1-188.sslip.io/downloads/WorkPivot-android-1.9.apk
+          curl -fL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 600 \
+            -o artifacts/WorkPivot-android-1.11.apk \
+            https://115-191-1-188.sslip.io/downloads/WorkPivot-android-1.11.apk
+          echo '59248ed4e5f6f4ad5419dce918dac22988b76257fdcf6cc5e5b57d779c7c70d9  artifacts/WorkPivot-android-1.9.apk' | sha256sum -c -
+          echo 'bf90c325c077275d0cd3d8686a43f88c32c3a2e1f330d063bcf978560161ee6f  artifacts/WorkPivot-android-1.11.apk' | sha256sum -c -
+      - name: Test in-place upgrade
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            set -euxo pipefail
+            adb install artifacts/WorkPivot-android-1.9.apk
+            adb shell am start -W -n com.workpivot.mobile/.MainActivity
+            sleep 3
+            adb root
+            adb wait-for-device
+            adb shell 'mkdir -p /data/user/0/com.workpivot.mobile/files && printf "ota-preserved-1.9-to-1.11" > /data/user/0/com.workpivot.mobile/files/ota-preserved.txt'
+            adb shell 'cat /data/user/0/com.workpivot.mobile/files/ota-preserved.txt' > artifacts/android-marker-before.txt
+            adb install -r artifacts/WorkPivot-android-1.11.apk
+            adb shell am force-stop com.workpivot.mobile
+            adb shell am start -W -n com.workpivot.mobile/.MainActivity
+            sleep 3
+            adb shell 'cat /data/user/0/com.workpivot.mobile/files/ota-preserved.txt' > artifacts/android-marker-after.txt
+            diff -u artifacts/android-marker-before.txt artifacts/android-marker-after.txt
+            adb shell dumpsys package com.workpivot.mobile > artifacts/android-package.txt
+            grep -q 'versionName=1.11' artifacts/android-package.txt
+            grep -q 'versionCode=12' artifacts/android-package.txt
+            adb exec-out screencap -p > artifacts/android-after-upgrade.png
+            adb logcat -d -b crash > artifacts/android-crash.log
+            if grep -q 'FATAL EXCEPTION' artifacts/android-crash.log; then
+              cat artifacts/android-crash.log
+              exit 1
+            fi
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-upgrade-evidence
+          path: artifacts/
+          if-no-files-found: warn
+
+  windows-upgrade:
+    name: Windows RC.6 -> RC.8
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify portable clients
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          curl.exe -fL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 600 `
+            -o artifacts/WorkPivot-Windows-0.3.0-rc.6-portable.zip `
+            https://115-191-1-188.sslip.io/downloads/WorkPivot-Windows-0.3.0-rc.6-portable.zip
+          curl.exe -fL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 600 `
+            -o artifacts/WorkPivot-Windows-0.3.0-rc.8-portable.zip `
+            https://115-191-1-188.sslip.io/downloads/WorkPivot-Windows-0.3.0-rc.8-portable.zip
+          $hash8 = (Get-FileHash artifacts/WorkPivot-Windows-0.3.0-rc.8-portable.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash8 -ne '41c79f54152ca634e3457bc27191fae4a80620e7f3fa8d290c8ec2d0ae7f76c6') {
+            throw "RC.8 SHA-256 mismatch: $hash8"
+          }
+      - name: Test portable replacement
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $rc6 = Join-Path $PWD 'rc6'
+          $rc8 = Join-Path $PWD 'rc8'
+          Expand-Archive artifacts/WorkPivot-Windows-0.3.0-rc.6-portable.zip $rc6
+          Expand-Archive artifacts/WorkPivot-Windows-0.3.0-rc.8-portable.zip $rc8
+          $exe6 = Get-ChildItem $rc6 -Recurse -Filter WorkPivot.exe | Select-Object -First 1
+          $exe8 = Get-ChildItem $rc8 -Recurse -Filter WorkPivot.exe | Select-Object -First 1
+          if (-not $exe6 -or -not $exe8) { throw 'WorkPivot.exe not found' }
+          $env:WORKPIVOT_SMOKE = '1'
+          $env:WORKPIVOT_SERVER_URL = 'https://workpivot.lichb.cc.cd'
+          $p6 = Start-Process -FilePath $exe6.FullName -PassThru
+          if (-not $p6.WaitForExit(90000)) { Stop-Process -Id $p6.Id -Force; throw 'RC.6 smoke timed out' }
+          if ($p6.ExitCode -ne 0) { throw "RC.6 smoke failed: $($p6.ExitCode)" }
+          $logs = Get-ChildItem $env:APPDATA -Recurse -Filter client.log -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending
+          if (-not $logs) { throw 'client.log not found after RC.6 smoke' }
+          $log6 = $logs[0]
+          Copy-Item $log6.FullName artifacts/windows-rc6-client.log
+          if (-not (Select-String -Path $log6.FullName -SimpleMatch 'SMOKE OK' -Quiet)) {
+            throw 'RC.6 did not reach the WorkPivot server'
+          }
+          $marker = Join-Path $log6.Directory.FullName 'ota-preserved.txt'
+          Set-Content -Path $marker -Value 'windows-rc6-to-rc8' -NoNewline
+          Copy-Item -Path (Join-Path $rc8.FullName '*') -Destination $rc6.FullName -Recurse -Force
+          $p8 = Start-Process -FilePath $exe6.FullName -PassThru
+          if (-not $p8.WaitForExit(90000)) { Stop-Process -Id $p8.Id -Force; throw 'RC.8 smoke timed out' }
+          if ($p8.ExitCode -ne 0) { throw "RC.8 smoke failed: $($p8.ExitCode)" }
+          if (-not (Test-Path $marker) -or (Get-Content $marker -Raw) -ne 'windows-rc6-to-rc8') {
+            throw 'Windows local user data did not survive portable replacement'
+          }
+          $logs = Get-ChildItem $env:APPDATA -Recurse -Filter client.log -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending
+          Copy-Item $logs[0].FullName artifacts/windows-rc8-client.log
+          if ((Select-String -Path $logs[0].FullName -SimpleMatch 'SMOKE OK').Count -lt 1) {
+            throw 'RC.8 did not reach the WorkPivot server'
+          }
+          (Get-Item $exe6.FullName).VersionInfo | Select-Object ProductVersion, FileVersion |
+            Format-List | Out-String | Set-Content artifacts/windows-version.txt
+          Get-FileHash artifacts/WorkPivot-Windows-0.3.0-rc.6-portable.zip,artifacts/WorkPivot-Windows-0.3.0-rc.8-portable.zip |
+            Format-Table Path,Hash -AutoSize | Out-String | Set-Content artifacts/windows-hashes.txt
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-upgrade-evidence
+          path: artifacts/
+          if-no-files-found: warn
